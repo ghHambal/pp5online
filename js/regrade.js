@@ -853,7 +853,7 @@ async function renderGradeTable() {
 // ============================================================================
 const dashboard = {
   categoryTab: 'all', drilldown: null,
-  view: 'overview',
+  view: 'overview', overviewTab: 'summary',
   classLevels: null,
   attnLevelKey: '', attnRoom: '', attnRooms: [],
   browseCategory: 'สามัญ', browseLevel: '', browseRoomsCache: [],
@@ -912,29 +912,24 @@ async function renderDashboardOverview(content) {
   const genTotal = sumCnt(rows.filter(r => r.category === 'สามัญ'))
   const relTotal = sumCnt(rows.filter(r => r.category === 'ศาสนา'))
 
-  let classLevels
-  try { classLevels = await ensureClassLevels() } catch { classLevels = [] }
-  const attnLevelOptHtml = () => `<option value="">ทุกระดับชั้น</option>` +
-    ['สามัญ', 'ศาสนา'].map(cat => {
-      const levels = classLevels.filter(l => l.category === cat)
-      if (!levels.length) return ''
-      return `<optgroup label="${cat}">${levels.map(l => `<option value="${cat}|${escHtml(l.class_level)}" ${dashboard.attnLevelKey === `${cat}|${l.class_level}` ? 'selected' : ''}>${escHtml(l.class_level)}</option>`).join('')}</optgroup>`
-    }).join('')
+  const subTabsHtml = `
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <button data-otab="summary" style="${tab(dashboard.overviewTab === 'summary')}">📊 สรุปตัวเลข</button>
+      <button data-otab="teachers" style="${tab(dashboard.overviewTab === 'teachers')}">👩‍🏫 รายครูผู้สอน</button>
+      <button data-otab="attention" style="${tab(dashboard.overviewTab === 'attention')}">🎯 นักเรียนที่ต้องติดตาม</button>
+    </div>`
+  const categoryTabsHtml = `
+    <div class="flex gap-2 mb-4 flex-wrap">
+      <button data-dcat="all" style="${tab(dashboard.categoryTab === 'all')}">📊 ทั้งหมด (${rows.length})</button>
+      <button data-dcat="สามัญ" style="${tab(dashboard.categoryTab === 'สามัญ')}">📘 สามัญ (${genTotal})</button>
+      <button data-dcat="ศาสนา" style="${tab(dashboard.categoryTab === 'ศาสนา')}">🕌 ศาสนา (${relTotal})</button>
+    </div>`
 
-  content.innerHTML = `
-      <div class="flex gap-2 mb-4 flex-wrap">
-        <button data-dcat="all" style="${tab(dashboard.categoryTab === 'all')}">📊 ทั้งหมด (${rows.length})</button>
-        <button data-dcat="สามัญ" style="${tab(dashboard.categoryTab === 'สามัญ')}">📘 สามัญ (${genTotal})</button>
-        <button data-dcat="ศาสนา" style="${tab(dashboard.categoryTab === 'ศาสนา')}">🕌 ศาสนา (${relTotal})</button>
-      </div>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <button data-drill="all" class="rg-card p-4 text-center">${statNum(total, 'รายวิชาค้างทั้งหมด', 'var(--ink)')}</button>
-        <button data-drill="requested" class="rg-card p-4 text-center">${statNum(requested, 'จำนงแล้ว', 'var(--gold-ink)')}</button>
-        <button data-drill="assigned" class="rg-card p-4 text-center">${statNum(assigned, 'กำลังดำเนินการปรับแก้', 'var(--info)')}</button>
-        <button data-drill="done" class="rg-card p-4 text-center">${statNum(done, 'ปรับแก้สำเร็จ', 'var(--ok)')}</button>
-      </div>
-      <div id="regrade-drilldown"></div>
-      <div class="rg-card p-4 mb-4">
+  let sectionHtml = ''
+  if (dashboard.overviewTab === 'teachers') {
+    sectionHtml = `
+      ${categoryTabsHtml}
+      <div class="rg-card p-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-1">ความคืบหน้าแยกรายครูผู้สอน</p>
         <p class="text-[10px] text-[var(--muted-2)] mb-3">เรียงจากครูที่มีคำร้องรอตอบรับมากที่สุดก่อน</p>
         <div class="overflow-x-auto"><table class="w-full text-xs">
@@ -947,7 +942,17 @@ async function renderDashboardOverview(content) {
             <td class="py-2 px-2 text-center" style="color:var(--ok)">${t.done}</td>
           </tr>`).join('')}</tbody>
         </table></div>
-      </div>
+      </div>`
+  } else if (dashboard.overviewTab === 'attention') {
+    let classLevels
+    try { classLevels = await ensureClassLevels() } catch { classLevels = [] }
+    const attnLevelOptHtml = () => `<option value="">ทุกระดับชั้น</option>` +
+      ['สามัญ', 'ศาสนา'].map(cat => {
+        const levels = classLevels.filter(l => l.category === cat)
+        if (!levels.length) return ''
+        return `<optgroup label="${cat}">${levels.map(l => `<option value="${cat}|${escHtml(l.class_level)}" ${dashboard.attnLevelKey === `${cat}|${l.class_level}` ? 'selected' : ''}>${escHtml(l.class_level)}</option>`).join('')}</optgroup>`
+      }).join('')
+    sectionHtml = `
       <div class="rg-card p-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-1">นักเรียนที่จำเป็นต้องติดตาม</p>
         <p class="text-[10px] text-[var(--muted-2)] mb-3">เรียงจากคนที่มีรายวิชาค้างมากที่สุดก่อน (สูงสุด 20 คน)</p>
@@ -960,23 +965,52 @@ async function renderDashboardOverview(content) {
         </div>
         <div id="regrade-attn-list" class="overflow-x-auto"></div>
       </div>`
+  } else {
+    const donePercent = total ? Math.round(done / total * 100) : 0
+    sectionHtml = `
+      ${categoryTabsHtml}
+      <div class="rg-card p-4 mb-4">
+        <p class="text-xs font-bold text-[var(--ink-2)] mb-3">สัดส่วนสถานะ</p>
+        ${total ? donutChartHtml([
+          { value: notYet, color: '#9ca3af', label: 'ยังไม่แจ้ง' },
+          { value: onlyReq, color: 'var(--gold-ink)', label: 'จำนงแล้ว' },
+          { value: assigned, color: 'var(--info)', label: 'กำลังดำเนินการ' },
+          { value: done, color: 'var(--ok)', label: 'สำเร็จแล้ว' },
+        ], `${donePercent}%`, 'สำเร็จแล้ว') : `<p class="text-center text-xs text-[var(--muted-2)] py-4">ยังไม่มีข้อมูล</p>`}
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <button data-drill="all" class="rg-card p-4 text-center">${statNum(total, 'รายวิชาค้างทั้งหมด', 'var(--ink)')}</button>
+        <button data-drill="requested" class="rg-card p-4 text-center">${statNum(requested, 'จำนงแล้ว', 'var(--gold-ink)')}</button>
+        <button data-drill="assigned" class="rg-card p-4 text-center">${statNum(assigned, 'กำลังดำเนินการปรับแก้', 'var(--info)')}</button>
+        <button data-drill="done" class="rg-card p-4 text-center">${statNum(done, 'ปรับแก้สำเร็จ', 'var(--ok)')}</button>
+      </div>
+      <div id="regrade-drilldown"></div>`
+  }
 
+  content.innerHTML = subTabsHtml + sectionHtml
+
+  content.querySelectorAll('[data-otab]').forEach(btn => btn.addEventListener('click', () => { dashboard.overviewTab = btn.dataset.otab; renderDashboardOverview(content) }))
   content.querySelectorAll('[data-dcat]').forEach(btn => btn.addEventListener('click', () => { dashboard.categoryTab = btn.dataset.dcat; dashboard.drilldown = null; renderDashboard() }))
-  content.querySelectorAll('[data-drill]').forEach(btn => btn.addEventListener('click', () => { dashboard.drilldown = btn.dataset.drill; renderDashboardDrilldown(scoped) }))
-  if (dashboard.drilldown) renderDashboardDrilldown(scoped)
 
-  document.getElementById('regrade-attn-level').addEventListener('change', async (e) => {
-    dashboard.attnLevelKey = e.target.value
-    dashboard.attnRoom = ''
-    dashboard.attnRooms = []
-    if (dashboard.attnLevelKey) {
-      const [cat, level] = dashboard.attnLevelKey.split('|')
-      try { dashboard.attnRooms = (await getClassroomSummary(cat, level)).map(r => r.room) } catch { dashboard.attnRooms = [] }
-    }
-    renderDashboardOverview(content)
-  })
-  document.getElementById('regrade-attn-room').addEventListener('change', (e) => { dashboard.attnRoom = e.target.value; renderAttentionTable() })
-  renderAttentionTable()
+  if (dashboard.overviewTab === 'summary') {
+    content.querySelectorAll('[data-drill]').forEach(btn => btn.addEventListener('click', () => { dashboard.drilldown = btn.dataset.drill; renderDashboardDrilldown(scoped) }))
+    if (dashboard.drilldown) renderDashboardDrilldown(scoped)
+  }
+
+  if (dashboard.overviewTab === 'attention') {
+    document.getElementById('regrade-attn-level').addEventListener('change', async (e) => {
+      dashboard.attnLevelKey = e.target.value
+      dashboard.attnRoom = ''
+      dashboard.attnRooms = []
+      if (dashboard.attnLevelKey) {
+        const [cat, level] = dashboard.attnLevelKey.split('|')
+        try { dashboard.attnRooms = (await getClassroomSummary(cat, level)).map(r => r.room) } catch { dashboard.attnRooms = [] }
+      }
+      renderDashboardOverview(content)
+    })
+    document.getElementById('regrade-attn-room').addEventListener('change', (e) => { dashboard.attnRoom = e.target.value; renderAttentionTable() })
+    renderAttentionTable()
+  }
 }
 
 async function renderAttentionTable() {
