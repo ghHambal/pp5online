@@ -656,6 +656,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
           <span>⚙️</span><span>ปรับหน้าภาพรวมแบบรวดเร็ว</span>
         </button>
       </div>
+      ${iconTiles.length > 5 ? `<p class="text-[10px] text-gray-400 mb-1.5 px-0.5">👉 เลื่อนซ้าย-ขวาเพื่อดูระบบทั้งหมด</p>` : ''}
       <div class="flex gap-3 overflow-x-auto pb-1">
         ${iconGridHtml}
       </div>

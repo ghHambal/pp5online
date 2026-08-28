@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.590'
+import { APP_VERSION } from './version.js?v=10.22.591'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -514,6 +514,8 @@ export async function renderStudentOverview(student) {
          เต็มแถว/แถบเมนูล่างถาวร (กีฬาสี) มาเป็นไอคอน -->
     <div class="mb-4">
       <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">ระบบอื่น ๆ</p>
+      ${[sportsVisible, futsalVisible, councilVisible, terangganuVisible, regradeVisible, student.can_scan_prayer].filter(Boolean).length + 1 > 5
+        ? `<p class="text-[10px] text-gray-400 mb-1.5 px-0.5">👉 เลื่อนซ้าย-ขวาเพื่อดูระบบทั้งหมด</p>` : ''}
       <div class="flex gap-3 overflow-x-auto pb-1">
         <button type="button" id="btn-stu-my-certificates" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
           <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-500 shadow-md flex items-center justify-center text-2xl">🎖️</span>
