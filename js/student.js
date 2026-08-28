@@ -28,7 +28,6 @@ let _activeClassId = null
 let _activeSubjectTab = 'todo'
 let _activeScoreTab = 'life'
 let _activeSportsTab = 'overview'
-let _sportsVisibility = { enabled: true, teacher_menu: true, student_menu: true, public_page: true }
 let _futsalRegistered = false
 
 async function _loadFutsalVisibility() {
@@ -39,22 +38,6 @@ async function _loadFutsalVisibility() {
   } catch {
     _futsalRegistered = false
   }
-}
-
-async function _loadSportsVisibility() {
-  try {
-    const { data, error } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'sports_visibility')
-      .maybeSingle()
-    if (!error && data?.value) {
-      _sportsVisibility = { ..._sportsVisibility, ...data.value }
-    }
-  } catch {
-    // ถ้าโมดูลกีฬาสียังไม่ได้ลง SQL patch ให้ใช้ค่าเปิดตามเดิม
-  }
-  return _sportsVisibility
 }
 
 // ── เตือนแจ้งไซซ์เสื้อกีฬาสี (ยังไม่แจ้ง) ──────────────────────────────────────
@@ -185,7 +168,6 @@ async function init() {
   await applyThemeForRole('student')
 
   _student = await getMyStudentProfile()
-  await _loadSportsVisibility()
   await _loadFutsalVisibility()
   updateLastSeen('students').catch(() => {})
   logLogin('student').catch(() => {})
@@ -309,9 +291,6 @@ function _renderMainNav(activeView = 'overview') {
     _navButtonHTML('subjects', '📚', 'รายวิชา'),
     _navButtonHTML('scores', '📊', 'คะแนน'),
   ]
-  if (_sportsVisibility.enabled !== false && _sportsVisibility.student_menu !== false) {
-    items.push(_navButtonHTML('sports', '🏆', 'กีฬาสี'))
-  }
   if (_futsalRegistered) {
     items.push(_navButtonHTML('futsal', '⚽', 'ฟุตซอล'))
   }

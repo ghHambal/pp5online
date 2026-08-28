@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.580'
+import { APP_VERSION } from './version.js?v=10.22.583'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -459,6 +459,17 @@ export async function renderStudentOverview(student) {
     regradeVisible = false
   }
 
+  // ปุ่มกีฬาสี — เดิมอยู่แถบเมนูล่างถาวร (student.js _loadSportsVisibility/_sportsVisibility ถูกลบไปแล้ว
+  // เพราะไม่มีจุดใช้อื่นเหลืออยู่) ย้ายมารวมกับกลุ่ม "ระบบอื่น ๆ" แทน เช็ค settings key เดียวกันตรงๆ ที่นี่
+  // ค่าเริ่มต้นเปิดไว้ก่อนถ้ายังไม่เคยตั้งค่าแถวนี้ในระบบ
+  let sportsVisible = true
+  try {
+    const { data: sportsVisData } = await supabase.from('settings').select('value').eq('key', 'sports_visibility').maybeSingle()
+    if (sportsVisData?.value) sportsVisible = sportsVisData.value.enabled !== false && sportsVisData.value.student_menu !== false
+  } catch (_) {
+    sportsVisible = true
+  }
+
   setContent(`
     <!-- Profile card -->
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-6 mb-4 flex items-center gap-4 sm:gap-6">
@@ -486,9 +497,10 @@ export async function renderStudentOverview(student) {
       </div>
     </div>
 
-    <!-- ระบบอื่น ๆ — กริดไอคอนแอปเลื่อนแนวนอนได้ถ้ามีมากกว่าที่จอแสดงพอดี (councilVisible/terangganuVisible/
-         regradeVisible/can_scan_prayer ล้วนเปิด-ปิดแยกอิสระ รวมกันอาจเกิน 4 ช่องได้) — เกียรติบัตรแสดงเสมอ
-         ส่วนที่เหลือ conditional เหมือนเดิมทุกประการ แค่เปลี่ยนรูปแบบจากแบนเนอร์เต็มแถวเป็นไอคอน -->
+    <!-- ระบบอื่น ๆ — กริดไอคอนแอปเลื่อนแนวนอนได้ถ้ามีมากกว่าที่จอแสดงพอดี (sportsVisible/councilVisible/
+         terangganuVisible/regradeVisible/can_scan_prayer ล้วนเปิด-ปิดแยกอิสระ รวมกันอาจเกิน 4 ช่องได้)
+         — เกียรติบัตรแสดงเสมอ ส่วนที่เหลือ conditional เหมือนเดิมทุกประการ แค่เปลี่ยนรูปแบบจากแบนเนอร์
+         เต็มแถว/แถบเมนูล่างถาวร (กีฬาสี) มาเป็นไอคอน -->
     <div class="mb-4">
       <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">ระบบอื่น ๆ</p>
       <div class="flex gap-3 overflow-x-auto pb-1">
@@ -496,6 +508,11 @@ export async function renderStudentOverview(student) {
           <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-500 shadow-md flex items-center justify-center text-2xl">🎖️</span>
           <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">เกียรติบัตร<br>ของฉัน</span>
         </button>
+        ${sportsVisible ? `
+        <button type="button" onclick="window._stuNav('sports')" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
+          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 shadow-md flex items-center justify-center text-2xl">🏆</span>
+          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">กีฬาสี</span>
+        </button>` : ''}
         ${councilVisible ? `
         <a href="council.html" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
           <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-600 shadow-md flex items-center justify-center text-2xl">🏛️</span>
