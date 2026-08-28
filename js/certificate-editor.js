@@ -1,4 +1,7 @@
 // js/certificate-editor.js — ตัวแก้ไขเทมเพลตเกียรติบัตรแบบลากวาง (drag & drop) ใช้ร่วมกันทุกระบบ
+// (teacher.html / dashboard.html / council.html) — ใช้ Tailwind สีตายตัวล้วนๆ ไม่พึ่ง CSS custom
+// property แบบ var(--surface) ที่ทำงานอยู่ (council-theme.css/regrade-theme.css เท่านั้นที่ประกาศตัว
+// แปรพวกนี้ไว้ — teacher.html/dashboard.html ไม่มี ทำให้พื้นหลังโปร่งใสไปหมดถ้าใช้ var(--...) ตรงๆ)
 // พอร์ตมาจาก council-certificate-editor.js เดิม generalize ให้ผู้เรียก (ระบบไหนก็ตาม) ส่ง
 // previewVariables + placeholderTokens ของตัวเองเข้ามาได้ ไม่ผูกกับ "สภา"/"กิจกรรม" ตายตัวอีกต่อไป
 // ใช้เอนจินเรนเดอร์เดียวกับ certificate-engine.js (renderCertificateCanvasHtml) เพื่อให้พรีวิวตรงกับ
@@ -40,30 +43,30 @@ export function openCertificateLayoutEditor(opts) {
 
   const overlay = document.createElement('div')
   overlay.id = 'cce-overlay'
-  overlay.className = 'fixed inset-0 z-[9999] bg-[var(--surface)] flex flex-col'
+  overlay.className = 'fixed inset-0 z-[9999] bg-white flex flex-col'
   overlay.innerHTML = `
-    <div class="flex items-center gap-3 px-4 sm:px-5 py-3 border-b border-[var(--line-soft)] flex-shrink-0 shadow-sm">
-      <h3 class="flex-1 min-w-0 font-bold text-sm text-[var(--ink)] truncate">🎨 ออกแบบเทมเพลตเกียรติบัตร — ${_esc(template?.name ?? '')}</h3>
-      <button id="cce-add-el" type="button" class="px-3 py-1.5 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold flex-shrink-0">+ เพิ่มข้อความ</button>
-      <button id="cce-save" type="button" class="px-3 py-1.5 rounded-lg bg-[var(--ok)] hover:opacity-90 text-white text-xs font-bold flex-shrink-0">💾 บันทึก</button>
-      <button id="cce-close" type="button" class="text-[var(--muted)] hover:text-[var(--ink)] text-2xl leading-none px-2 flex-shrink-0">&times;</button>
+    <div class="flex items-center gap-3 px-4 sm:px-5 py-3 border-b border-gray-200 flex-shrink-0 shadow-sm">
+      <h3 class="flex-1 min-w-0 font-bold text-sm text-gray-800 truncate">🎨 ออกแบบเทมเพลตเกียรติบัตร — ${_esc(template?.name ?? '')}</h3>
+      <button id="cce-add-el" type="button" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex-shrink-0">+ เพิ่มข้อความ</button>
+      <button id="cce-save" type="button" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex-shrink-0">💾 บันทึก</button>
+      <button id="cce-close" type="button" class="text-gray-400 hover:text-gray-700 text-2xl leading-none px-2 flex-shrink-0">&times;</button>
     </div>
     <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto">
-      <div class="flex-1 min-w-0 p-4 sm:p-6 flex flex-col gap-3 overflow-auto">
+      <div class="flex-1 min-w-0 p-4 sm:p-6 flex flex-col gap-3 overflow-auto bg-gray-50">
         <div id="cce-canvas-wrap" class="relative w-full max-w-3xl mx-auto select-none" style="cursor:default"></div>
-        <p class="text-[11px] text-[var(--muted-2)] text-center">ลากข้อความบนภาพเพื่อจัดตำแหน่ง • คลิกเพื่อเลือกและแก้ไขในแผงด้านขวา • นี่คือข้อมูลตัวอย่างสำหรับพรีวิวเท่านั้น</p>
+        <p class="text-[11px] text-gray-400 text-center">ลากข้อความบนภาพเพื่อจัดตำแหน่ง • คลิกเพื่อเลือกและแก้ไขในแผงด้านขวา • นี่คือข้อมูลตัวอย่างสำหรับพรีวิวเท่านั้น</p>
         <div class="max-w-3xl w-full mx-auto grid sm:grid-cols-2 gap-3">
-          <div class="bg-[var(--muted-bg,#f8fafc)] border border-[var(--line-soft)] rounded-xl p-3">
-            <p class="text-[11px] font-bold text-[var(--ink-2)] mb-2">📐 แนวกระดาษ</p>
+          <div class="bg-white border border-gray-200 rounded-xl p-3">
+            <p class="text-[11px] font-bold text-gray-700 mb-2">📐 แนวกระดาษ</p>
             <div class="flex gap-2">
               <button type="button" id="cce-orient-landscape" class="cce-orient-btn flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold">▭ แนวนอน</button>
               <button type="button" id="cce-orient-portrait" class="cce-orient-btn flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold">▯ แนวตั้ง</button>
             </div>
           </div>
-          <div class="bg-[var(--muted-bg,#f8fafc)] border border-[var(--line-soft)] rounded-xl p-3">
-            <p class="text-[11px] font-bold text-[var(--ink-2)] mb-2">🖼️ พื้นหลัง</p>
+          <div class="bg-white border border-gray-200 rounded-xl p-3">
+            <p class="text-[11px] font-bold text-gray-700 mb-2">🖼️ พื้นหลัง</p>
             <div class="flex flex-wrap items-center gap-2">
-              <label class="px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs font-bold cursor-pointer bg-[var(--surface)]">
+              <label class="px-2.5 py-1.5 rounded-lg border border-gray-300 text-xs font-bold cursor-pointer bg-white">
                 📤 อัปโหลด<input type="file" id="cce-bg-file" accept="image/*" class="hidden" />
               </label>
               ${Object.entries(CERT_PRESETS).map(([k, p]) => `<button type="button" class="cce-bg-preset w-7 h-7 rounded-full border-2 border-white shadow" style="background:${p.bg}" data-preset="${k}" title="${_esc(k)}"></button>`).join('')}
@@ -71,7 +74,7 @@ export function openCertificateLayoutEditor(opts) {
           </div>
         </div>
       </div>
-      <div id="cce-panel" class="lg:w-96 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-[var(--line-soft)] bg-[var(--surface)] p-5 overflow-y-auto"></div>
+      <div id="cce-panel" class="lg:w-96 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-gray-200 bg-white p-5 overflow-y-auto"></div>
     </div>`
   document.body.appendChild(overlay)
 
@@ -89,53 +92,53 @@ export function openCertificateLayoutEditor(opts) {
       elDiv.style.outlineOffset = '3px'
       elDiv.addEventListener('pointerdown', ev => startDrag(ev, id))
     })
-    const activeCls = 'bg-[var(--primary)] text-white border-[var(--primary)]'
-    const inactiveCls = 'bg-[var(--surface)] text-[var(--ink-2)] border-[var(--line)]'
+    const activeCls = 'bg-indigo-600 text-white border-indigo-600'
+    const inactiveCls = 'bg-white text-gray-700 border-gray-300'
     overlay.querySelector('#cce-orient-landscape').className = `cce-orient-btn flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold ${isPortrait ? inactiveCls : activeCls}`
     overlay.querySelector('#cce-orient-portrait').className = `cce-orient-btn flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold ${isPortrait ? activeCls : inactiveCls}`
   }
 
   function renderPanel() {
     const el = layout.elements.find(e => e.id === selectedId)
-    if (!el) { panel.innerHTML = `<p class="text-xs text-[var(--muted-2)] text-center py-8">คลิกข้อความบนเกียรติบัตรเพื่อแก้ไข</p>`; return }
-    const sectionLabel = t => `<p class="text-[10px] font-bold text-[var(--muted-2)] uppercase tracking-wider mb-2">${t}</p>`
+    if (!el) { panel.innerHTML = `<p class="text-xs text-gray-400 text-center py-8">คลิกข้อความบนเกียรติบัตรเพื่อแก้ไข</p>`; return }
+    const sectionLabel = t => `<p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">${t}</p>`
     panel.innerHTML = `
       <div class="space-y-5">
         <div>
           ${sectionLabel('ข้อความ')}
-          <textarea id="cce-f-text" rows="3" class="w-full border border-[var(--line)] rounded-lg px-2.5 py-2 text-xs bg-[var(--surface)] leading-relaxed">${_esc(el.text)}</textarea>
-          <p class="text-[10px] text-[var(--muted-2)] mt-2 mb-1">แทรกข้อมูลอัตโนมัติ:</p>
+          <textarea id="cce-f-text" rows="3" class="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-xs bg-white leading-relaxed">${_esc(el.text)}</textarea>
+          <p class="text-[10px] text-gray-400 mt-2 mb-1">แทรกข้อมูลอัตโนมัติ:</p>
           <div class="flex flex-wrap gap-1.5">
-            ${allTokens.map(t => `<button type="button" class="cce-insert-token px-2.5 py-1 rounded-full bg-[var(--primary-soft)] text-[var(--primary-dark)] text-[10px] font-bold hover:opacity-80 transition" data-token="${_esc(t.token)}">${_esc(t.label)}</button>`).join('')}
+            ${allTokens.map(t => `<button type="button" class="cce-insert-token px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold hover:opacity-80 transition" data-token="${_esc(t.token)}">${_esc(t.label)}</button>`).join('')}
           </div>
         </div>
 
-        <div class="pt-4 border-t border-[var(--line-soft)]">
+        <div class="pt-4 border-t border-gray-200">
           ${sectionLabel('รูปแบบตัวอักษร')}
           <div class="grid grid-cols-2 gap-2.5">
-            <div><label class="text-[11px] text-[var(--muted)] block mb-1">ขนาด</label><input id="cce-f-size" type="number" min="8" max="72" value="${el.fontSize}" class="w-full border border-[var(--line)] rounded-lg px-2.5 py-1.5 text-xs bg-[var(--surface)]" /></div>
-            <div><label class="text-[11px] text-[var(--muted)] block mb-1">สี</label><input id="cce-f-color" type="color" value="${_esc(el.color)}" class="w-full h-[31px] border border-[var(--line)] rounded-lg bg-[var(--surface)] cursor-pointer" /></div>
+            <div><label class="text-[11px] text-gray-500 block mb-1">ขนาด</label><input id="cce-f-size" type="number" min="8" max="72" value="${el.fontSize}" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white" /></div>
+            <div><label class="text-[11px] text-gray-500 block mb-1">สี</label><input id="cce-f-color" type="color" value="${_esc(el.color)}" class="w-full h-[31px] border border-gray-300 rounded-lg bg-white cursor-pointer" /></div>
           </div>
           <div class="mt-2.5">
-            <label class="text-[11px] text-[var(--muted)] block mb-1">การจัดวาง</label>
-            <select id="cce-f-align" class="w-full border border-[var(--line)] rounded-lg px-2.5 py-1.5 text-xs bg-[var(--surface)]">
+            <label class="text-[11px] text-gray-500 block mb-1">การจัดวาง</label>
+            <select id="cce-f-align" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white">
               ${['left', 'center', 'right'].map(a => `<option value="${a}" ${el.align === a ? 'selected' : ''}>${a === 'left' ? 'ชิดซ้าย' : a === 'right' ? 'ชิดขวา' : 'กึ่งกลาง'}</option>`).join('')}
             </select>
           </div>
           <label class="flex items-center gap-2 text-xs mt-2.5 cursor-pointer"><input id="cce-f-bold" type="checkbox" ${el.bold ? 'checked' : ''} class="rounded" /> ตัวหนา</label>
         </div>
 
-        <div class="pt-4 border-t border-[var(--line-soft)]">
+        <div class="pt-4 border-t border-gray-200">
           ${sectionLabel('ตัวเลือกเพิ่มเติม')}
           <label class="flex items-center gap-2 text-xs cursor-pointer"><input id="cce-f-bordertop" type="checkbox" ${el.borderTop ? 'checked' : ''} class="rounded" /> เส้นคั่นด้านบน (สำหรับช่องลงนาม)</label>
           <div class="mt-2.5">
-            <label class="text-[11px] text-[var(--muted)] block mb-1">ตัดบรรทัด (% ความกว้าง, เว้นว่าง = บรรทัดเดียว)</label>
-            <input id="cce-f-maxwidth" type="number" min="10" max="100" value="${el.maxWidth ?? ''}" class="w-full border border-[var(--line)] rounded-lg px-2.5 py-1.5 text-xs bg-[var(--surface)]" />
+            <label class="text-[11px] text-gray-500 block mb-1">ตัดบรรทัด (% ความกว้าง, เว้นว่าง = บรรทัดเดียว)</label>
+            <input id="cce-f-maxwidth" type="number" min="10" max="100" value="${el.maxWidth ?? ''}" class="w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs bg-white" />
           </div>
         </div>
 
-        <div class="pt-4 border-t border-[var(--line-soft)]">
-          <button id="cce-f-delete" type="button" class="w-full py-2 rounded-lg border border-[var(--bad)] text-[var(--bad)] text-xs font-bold hover:bg-[var(--bad)]/5 transition">🗑️ ลบข้อความนี้</button>
+        <div class="pt-4 border-t border-gray-200">
+          <button id="cce-f-delete" type="button" class="w-full py-2 rounded-lg border border-red-400 text-red-500 text-xs font-bold hover:bg-red-50 transition">🗑️ ลบข้อความนี้</button>
         </div>
       </div>`
 
