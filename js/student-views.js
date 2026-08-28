@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.578'
+import { APP_VERSION } from './version.js?v=10.22.580'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -486,80 +486,51 @@ export async function renderStudentOverview(student) {
       </div>
     </div>
 
-    <!-- เกียรติบัตรของฉัน — รวบรวมเกียรติบัตรจากทุกระบบที่เชื่อมกับปพ.5 ไว้ที่เดียว -->
-    <button type="button" id="btn-stu-my-certificates" class="relative overflow-hidden bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl border border-amber-400 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all w-full text-left">
-      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🎖️</div>
-      <div class="min-w-0 z-10">
-        <h4 class="font-bold text-xs sm:text-sm">🎖️ เกียรติบัตรของฉัน</h4>
-        <p class="text-[10px] text-amber-50 mt-0.5">เกียรติบัตรทั้งหมดที่นักเรียนได้รับ</p>
+    <!-- ระบบอื่น ๆ — กริดไอคอนแอปเลื่อนแนวนอนได้ถ้ามีมากกว่าที่จอแสดงพอดี (councilVisible/terangganuVisible/
+         regradeVisible/can_scan_prayer ล้วนเปิด-ปิดแยกอิสระ รวมกันอาจเกิน 4 ช่องได้) — เกียรติบัตรแสดงเสมอ
+         ส่วนที่เหลือ conditional เหมือนเดิมทุกประการ แค่เปลี่ยนรูปแบบจากแบนเนอร์เต็มแถวเป็นไอคอน -->
+    <div class="mb-4">
+      <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">ระบบอื่น ๆ</p>
+      <div class="flex gap-3 overflow-x-auto pb-1">
+        <button type="button" id="btn-stu-my-certificates" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
+          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-500 shadow-md flex items-center justify-center text-2xl">🎖️</span>
+          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">เกียรติบัตร<br>ของฉัน</span>
+        </button>
+        ${councilVisible ? `
+        <a href="council.html" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
+          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-600 shadow-md flex items-center justify-center text-2xl">🏛️</span>
+          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">สภา<br>นักเรียน</span>
+        </a>` : ''}
+        ${terangganuVisible ? `
+        <a href="terangganu.html" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
+          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-700 to-emerald-600 shadow-md flex items-center justify-center text-2xl">⚜️</span>
+          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">ค่าย<br>TERANGGANU</span>
+        </a>` : ''}
+        ${regradeVisible ? `
+        <a href="regrade.html" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
+          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-800 to-pink-700 shadow-md flex items-center justify-center text-2xl">📋</span>
+          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">แก้ค้างเก่า</span>
+        </a>` : ''}
+        ${student.can_scan_prayer ? `
+        <button type="button" onclick="window._stuNav('prayer_scan_history')" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
+          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-600 shadow-md flex items-center justify-center text-2xl">🗂️</span>
+          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">ประวัติ<br>การสแกน</span>
+        </button>` : ''}
       </div>
-      <span class="relative z-10 px-3 py-1.5 bg-white text-amber-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">
-        📄 เปิดดู
-      </span>
-    </button>
+    </div>
 
-    <!-- ระบบสภานักเรียน — ลิงก์ไป council.html เพื่อติดตามกิจกรรม/รายชื่อสภา/สมัคร/โหวต
-         ปิดได้จากหน้าตั้งค่าแอดมิน (council_visible_to_all) ยกเว้นรหัสนักเรียนที่อยู่ใน
-         รายชื่อทดสอบ (council_test_student_codes) จะยังเห็นปุ่มนี้เสมอแม้ปิดไว้ก็ตาม -->
-    ${councilVisible ? `
-    <a href="council.html" class="relative overflow-hidden bg-gradient-to-r from-violet-600 to-purple-600 rounded-2xl border border-violet-500 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all block">
-      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🏛️</div>
-      <div class="min-w-0 z-10">
-        <h4 class="font-bold text-xs sm:text-sm">🏛️ ระบบสภานักเรียน</h4>
-        <p class="text-[10px] text-violet-100 mt-0.5">ดูกิจกรรม รายชื่อสภา สมัคร และโหวตเลือกตั้ง</p>
-      </div>
-      <span class="relative z-10 px-3 py-1.5 bg-white text-violet-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">
-        เข้าสู่ระบบ →
-      </span>
-    </a>
-    ` : ''}
-
-    ${terangganuVisible ? `
-    <a href="terangganu.html" class="relative overflow-hidden bg-gradient-to-r from-teal-700 to-emerald-600 rounded-2xl border border-teal-500 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all block">
-      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">⚜️</div>
-      <div class="min-w-0 z-10">
-        <h4 class="font-bold text-xs sm:text-sm">⚜️ ค่ายลูกเสือ TERANGGANU 2026</h4>
-        <p class="text-[10px] text-teal-100 mt-0.5">กรอกแบบสำรวจ ตรวจสอบการชำระเงิน และดาวน์โหลดใบเสร็จ</p>
-      </div>
-      <span class="relative z-10 px-3 py-1.5 bg-white text-teal-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">เปิดแบบฟอร์ม →</span>
-    </a>
-    ` : ''}
-
-    ${regradeVisible ? `
-    <a href="regrade.html" class="relative overflow-hidden bg-gradient-to-r from-rose-800 to-pink-700 rounded-2xl border border-rose-600 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all block">
-      <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">📋</div>
-      <div class="min-w-0 z-10">
-        <h4 class="font-bold text-xs sm:text-sm">📋 แก้ค้างเก่า</h4>
-        <p class="text-[10px] text-rose-100 mt-0.5">แจ้งความจำนงขอปรับแก้วิชาที่ค้าง ติดตามสถานะได้ที่นี่</p>
-      </div>
-      <span class="relative z-10 px-3 py-1.5 bg-white text-rose-800 font-bold text-[10px] rounded-xl shadow flex-shrink-0">เข้าสู่ระบบ →</span>
-    </a>
-    ` : ''}
-
-    <!-- Scanner Access Banner -->
+    <!-- Scanner Access Banner — เร่งด่วน/ตามช่วงเวลาจริง จึงยังคงเป็นแบนเนอร์เด่นเหมือนเดิม ไม่ยุบเป็นไอคอน -->
     ${_hasScannerPermissionForToday(student, cfg) && _isPrayerTimeWindow(cfg, hasExtendedScanWindow) ? `
     <div class="relative overflow-hidden bg-gradient-to-r from-teal-600 to-emerald-600 rounded-2xl border border-emerald-500/20 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4">
       <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🕌</div>
       <div class="min-w-0 z-10">
         <h4 class="font-bold text-sm sm:text-base">🕌 ระบบเช็คชื่อละหมาด (สภานักเรียน)</h4>
-        <p class="text-xs text-emerald-100 mt-1">คุณได้รับสิทธิ์ให้ทำหน้าที่สแกนเนอร์ บันทึกเวลาละหมาด</p>
+        <p class="text-xs text-emerald-100 mt-1">นักเรียนได้รับสิทธิ์ให้ทำหน้าที่สแกนเนอร์ บันทึกเวลาละหมาด</p>
       </div>
       <button onclick="window._stuNav('prayer_scanner')" class="relative z-10 px-4 py-2 bg-white text-emerald-700 font-bold text-xs sm:text-sm rounded-xl hover:bg-emerald-50 active:scale-95 transition-all shadow flex-shrink-0">
         เข้าสู่ระบบสแกน →
       </button>
     </div>
-    ` : ''}
-    ${student.can_scan_prayer ? `
-    <button onclick="window._stuNav('prayer_scan_history')" class="w-full flex items-center justify-between gap-3 bg-white rounded-2xl border border-gray-200 shadow-sm p-3.5 mb-4 hover:border-emerald-300 transition-colors text-left">
-      <div class="flex items-center gap-3 min-w-0">
-        <span class="w-9 h-9 rounded-xl bg-emerald-50 flex items-center justify-center text-lg flex-shrink-0">🗂️</span>
-        <div class="min-w-0">
-          <p class="text-sm font-bold text-gray-700 truncate">ประวัติการสแกนของฉัน</p>
-          <p class="text-[11px] text-gray-400">ดูย้อนหลัง ค้นหา และบันทึกซ้ำถ้าข้อมูลหาย</p>
-        </div>
-      </div>
-      <span class="text-gray-300 flex-shrink-0">→</span>
-    </button>
     ` : ''}
 
     <!-- แบบทดสอบที่เปิดสอบอยู่ตอนนี้ (ครูกดเริ่มแล้ว) -->
@@ -579,56 +550,26 @@ export async function renderStudentOverview(student) {
       </div>`
     }).join('')}
 
-    <!-- Stats row -->
+    <!-- Stats row — คลิกได้แล้ว ลิงก์ไปหน้าที่เกี่ยวข้องโดยตรง -->
     <div class="grid grid-cols-3 gap-2 sm:gap-3 mb-4">
-      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 sm:p-4 text-center">
+      <button type="button" onclick="window._stuNav('subjects')" class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 sm:p-4 text-center relative active:scale-95 transition-transform">
+        <span class="absolute top-1.5 right-2 text-gray-300 text-xs">›</span>
         <p class="text-xl sm:text-3xl font-bold text-emerald-600">${classes.length}</p>
         <p class="text-[9px] sm:text-xs text-gray-400 mt-0.5 leading-tight">รายวิชา</p>
-      </div>
-      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 sm:p-4 text-center">
+      </button>
+      <button type="button" onclick="window._stuNav('requests')" class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 sm:p-4 text-center relative active:scale-95 transition-transform">
+        <span class="absolute top-1.5 right-2 text-gray-300 text-xs">›</span>
         <p class="text-xl sm:text-3xl font-bold text-amber-600">${pending.length}</p>
         <p class="text-[9px] sm:text-xs text-gray-400 mt-0.5 leading-tight">คำร้อง<br>รอดำเนินการ</p>
-      </div>
-      <div class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 sm:p-4 text-center">
+      </button>
+      <button type="button" onclick="window._stuNav('requests')" class="bg-white rounded-xl border border-gray-200 shadow-md p-2.5 sm:p-4 text-center relative active:scale-95 transition-transform">
+        <span class="absolute top-1.5 right-2 text-gray-300 text-xs">›</span>
         <p class="text-xl sm:text-3xl font-bold text-blue-600">${requests.length}</p>
         <p class="text-[9px] sm:text-xs text-gray-400 mt-0.5 leading-tight">คำร้อง<br>ทั้งหมด</p>
-      </div>
+      </button>
     </div>
 
-    <!-- ปุ่มภาระงานของฉัน — แสดงตลอด ไม่ใช่แค่ตอนมีงานค้าง (หาเจอง่าย เข้าถึงได้ทุกครั้ง) -->
-    ${(() => {
-      const hasPending = pendingAssignments.length > 0
-      const nearest = pendingAssignments[0]
-      const nearestDue = nearest?.due_at ? new Date(nearest.due_at).toLocaleString('th-TH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : null
-      return `<button onclick="window._stuNav('assignments')"
-        class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150 w-full mb-4 flex items-center gap-3"
-        style="background:linear-gradient(135deg,${hasPending ? '#dc2626,#b91c1c' : '#059669,#047857'})">
-        <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
-        <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
-        <p class="text-2xl relative flex-shrink-0">📝</p>
-        <div class="relative min-w-0 flex-1">
-          <p class="font-bold text-sm text-white">ภาระงานของฉัน</p>
-          <p class="text-[11px] ${hasPending ? 'text-red-200' : 'text-emerald-200'} mt-0.5 truncate">${hasPending ? `ค้างอยู่ ${pendingAssignments.length} ชิ้น · ใกล้สุด: ${_esc(nearest.title)}${nearestDue ? ` (${nearestDue})` : ''}` : 'ไม่มีงานค้าง 🎉'}</p>
-        </div>
-        <p class="relative text-white text-lg flex-shrink-0">→</p>
-      </button>`
-    })()}
-
-    <!-- ปุ่มแชทห้องเรียน — แสดงตลอด (แม้ยังไม่มีวิชาไหนเปิดใช้งาน) หน้าถัดไปจะอธิบายเองถ้ายังไม่มี -->
-    <button onclick="window._stuNav('classroom-chat')"
-      class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150 w-full mb-4 flex items-center gap-3"
-      style="background:linear-gradient(135deg,#f59e0b,#b45309)">
-      <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
-      <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
-      <p class="text-2xl relative flex-shrink-0">🏫</p>
-      <div class="relative min-w-0 flex-1">
-        <p class="font-bold text-sm text-white">แชทห้องเรียน</p>
-        <p class="text-[11px] text-amber-100 mt-0.5 truncate">คุยกับคุณครูในรายวิชาที่เปิดใช้งานแชท</p>
-      </div>
-      <p class="relative text-white text-lg flex-shrink-0">→</p>
-    </button>
-
-    <!-- Quick actions — 4 ปุ่มใน grid เดียว: 2×2 บนมือถือ, 4×1 บน tablet -->
+    <!-- Quick actions — ย้ายมาอยู่ใต้การ์ดตัวเลขทันที (เดิมอยู่ล่างสุดของหน้า) — 4 ปุ่มใน grid เดียว -->
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
       <button onclick="window._stuNav('subjects')"
         class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150"
@@ -675,6 +616,25 @@ export async function renderStudentOverview(student) {
         <p class="text-[10px] text-purple-200 mt-0.5 relative">GPA ภาคเรียนนี้</p>
       </button>
     </div>
+
+    <!-- ปุ่มภาระงานของฉัน — แสดงตลอด ไม่ใช่แค่ตอนมีงานค้าง (หาเจอง่าย เข้าถึงได้ทุกครั้ง) -->
+    ${(() => {
+      const hasPending = pendingAssignments.length > 0
+      const nearest = pendingAssignments[0]
+      const nearestDue = nearest?.due_at ? new Date(nearest.due_at).toLocaleString('th-TH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : null
+      return `<button onclick="window._stuNav('assignments')"
+        class="relative overflow-hidden rounded-2xl p-4 text-left shadow-lg hover:shadow-xl active:scale-95 transition-all duration-150 w-full mb-4 flex items-center gap-3"
+        style="background:linear-gradient(135deg,${hasPending ? '#dc2626,#b91c1c' : '#059669,#047857'})">
+        <div class="absolute inset-0 bg-white opacity-[0.07] rounded-2xl"></div>
+        <div class="absolute top-0 left-0 right-0 h-px bg-white opacity-30 rounded-t-2xl"></div>
+        <p class="text-2xl relative flex-shrink-0">📝</p>
+        <div class="relative min-w-0 flex-1">
+          <p class="font-bold text-sm text-white">ภาระงานของฉัน</p>
+          <p class="text-[11px] ${hasPending ? 'text-red-200' : 'text-emerald-200'} mt-0.5 truncate">${hasPending ? `ค้างอยู่ ${pendingAssignments.length} ชิ้น · ใกล้สุด: ${_esc(nearest.title)}${nearestDue ? ` (${nearestDue})` : ''}` : 'ไม่มีงานค้าง 🎉'}</p>
+        </div>
+        <p class="relative text-white text-lg flex-shrink-0">→</p>
+      </button>`
+    })()}
 
     <!-- รูทีนของวัน -->
     ${(() => {

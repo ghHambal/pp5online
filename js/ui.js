@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.578'
+import { APP_VERSION } from './version.js?v=10.22.580'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -212,7 +212,7 @@ export function injectFeedbackWidget({ profileId, role, name }) {
 
   const fab = document.createElement('button')
   fab.id = 'feedback-fab'
-  fab.title = 'ส่งความคิดเห็นถึงแอดมิน/ผู้พัฒนา'
+  fab.title = role === 'student' ? 'ติดต่อแอดมิน / แชทห้องเรียน' : 'ส่งความคิดเห็นถึงแอดมิน/ผู้พัฒนา'
   fab.className = 'fixed z-40 w-11 h-11 sm:w-14 sm:h-14 rounded-full text-white shadow-lg flex items-center justify-center overflow-hidden transition-transform hover:scale-105'
   // ครู: ซ้อนเหนือปุ่มกาแฟ ☕ (ขวาล่าง, สูง 56px) เว้นช่องว่าง — นักเรียน: เลี่ยงแถบเมนูล่าง (ไม่มีปุ่มกาแฟ)
   const bottomOffset = role === 'student'
@@ -222,7 +222,13 @@ export function injectFeedbackWidget({ profileId, role, name }) {
   fab.textContent = '💬'
   document.body.appendChild(fab)
 
-  fab.addEventListener('click', () => _openFeedbackModal({ profileId, role, name }))
+  // นักเรียน: ปุ่มลอยขยายเป็นเมนู 2 ตัวเลือก (ติดต่อแอดมิน / แชทห้องเรียน) แทนเปิดฟอร์มตรงๆ — บทบาทอื่น
+  // (ครู/แอดมิน) ยังคงกดแล้วเปิดฟอร์มความคิดเห็นทันทีเหมือนเดิม เพราะยังไม่มีฟีเจอร์แชทฝั่งนั้นให้เลือก
+  if (role === 'student') {
+    fab.addEventListener('click', () => _toggleFeedbackFabMenu({ profileId, role, name }, fab))
+  } else {
+    fab.addEventListener('click', () => _openFeedbackModal({ profileId, role, name }))
+  }
 
   window._openFeedbackWidget = (prefillMessage, prefillCategory) => {
     _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCategory })
@@ -230,6 +236,39 @@ export function injectFeedbackWidget({ profileId, role, name }) {
   window._openPasswordResetRequest = () => {
     _openFeedbackModal({ profileId, role, name, prefillCategory: 'password_reset' })
   }
+}
+
+// เมนูลอยของปุ่มแชท (นักเรียน) — แคปซูลปุ่มลอยเหนือ FAB ตรง pattern เดียวกับเมนูมือถือของสภานักเรียน
+// (js/council.js renderMobileSheet: แบคดรอปโปร่ง + ปุ่มแคปซูลเรียงซ้อนเหนือจุดกด, กดพื้นหลังเพื่อปิด)
+function _toggleFeedbackFabMenu({ profileId, role, name }, fab) {
+  document.getElementById('feedback-fab-menu')?.remove()
+  if (fab.dataset.menuOpen === '1') { fab.dataset.menuOpen = '0'; return }
+  fab.dataset.menuOpen = '1'
+
+  const items = [
+    { icon: '📣', label: 'ติดต่อแอดมิน', onClick: () => _openFeedbackModal({ profileId, role, name }) },
+    { icon: '🏫', label: 'แชทห้องเรียน', onClick: () => window._stuNav?.('classroom-chat') },
+  ]
+  const wrap = document.createElement('div')
+  wrap.id = 'feedback-fab-menu'
+  wrap.className = 'fixed inset-0 z-40'
+  wrap.innerHTML = `
+    <div class="absolute" style="right:max(0.75rem, env(safe-area-inset-right));bottom:calc(76px + 12px + 3.75rem + env(safe-area-inset-bottom));">
+      <div class="flex flex-col-reverse gap-2 items-stretch animate-fade" style="width:11.5rem;">
+        ${items.map((item, i) => `
+          <button type="button" data-fab-menu-item="${i}"
+            class="text-left bg-white border border-gray-200 shadow-lg px-4 py-3 rounded-full text-sm font-bold text-gray-700 flex items-center gap-2.5 min-h-[44px] hover:bg-gray-50 active:scale-95 transition-all">
+            <span class="text-base">${item.icon}</span><span>${item.label}</span>
+          </button>`).join('')}
+      </div>
+    </div>`
+  document.body.appendChild(wrap)
+
+  const close = () => { fab.dataset.menuOpen = '0'; wrap.remove() }
+  wrap.addEventListener('click', e => { if (e.target === wrap) close() })
+  wrap.querySelectorAll('[data-fab-menu-item]').forEach(btn => {
+    btn.addEventListener('click', () => { items[Number(btn.dataset.fabMenuItem)].onClick(); close() })
+  })
 }
 
 const _FB_STATUS = {
@@ -742,6 +781,13 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.580': [
+    '📱 หน้าภาพรวมนักเรียน: จัดระเบียบใหม่ทั้งหน้า — เกียรติบัตร/สภานักเรียน/แก้ค้างเก่า/ประวัติการสแกน ยุบเป็นกริดไอคอนแอปเลื่อนแนวนอนได้ ย้ายกลุ่มรายวิชา/คะแนน/ประกาศ/เกรดเฉลี่ยมาไว้ใต้การ์ดตัวเลขทันที การ์ดตัวเลขกดลิงก์ไปหน้าที่เกี่ยวข้องได้แล้ว',
+    '💬 ปุ่มลอยติดต่อแอดมินฝั่งนักเรียน กดแล้วขยายเป็นเมนูเลือก "ติดต่อแอดมิน" หรือ "แชทห้องเรียน" (เดิมแชทห้องเรียนเป็นแบนเนอร์แยกอยู่ในหน้าภาพรวม)',
+  ],
+  '10.22.579': [
+    '⌨️ ตารางรายชื่อในระบบเกียรติบัตร: กด Enter เพื่อขึ้นแถวใหม่ได้ทันที และวางข้อมูลทั้งคอลัมน์จาก Excel/Google ชีทลงหลายแถวพร้อมกันได้เลย',
+  ],
   '10.22.578': [
     '👩‍🏫 ตารางรายชื่อกลางของระบบเกียรติบัตรรองรับทั้งนักเรียนและคุณครู เลือกประเภทผู้รับต่อหนึ่งตาราง กรอกรหัสแล้วเติมชื่ออัตโนมัติ และออกหลายใบพร้อมกันได้',
   ],
