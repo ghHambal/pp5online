@@ -21,6 +21,7 @@ export const POS_LBL = {
   academic_samai:'วิชาการสามัญ', academic_religion:'วิชาการศาสนา', academic_pvch:'วิชาการปวช',
   house_color_admin:'สีนักเรียน',
   classroom_leaders_admin:'ผู้ดูแลหัวหน้า/รองหัวหน้า',
+  executive:'ผู้บริหาร',
 }
 export const _teacherPositionList = teacher =>
   teacher?.positions?.length ? teacher.positions : (teacher?.position ? [teacher.position] : [])

@@ -204,12 +204,12 @@
                bg-emerald-800 text-white">
         <span>📊</span> ภาพรวม
       </a>
-      <a href="#" data-nav="my-courses"
+      <a href="#" id="menu-my-courses" data-nav="my-courses"
         class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
                text-emerald-200 hover:bg-emerald-800 hover:text-white">
         <span>📖</span> คอร์สวิชาของฉัน
       </a>
-      <a href="#" data-nav="my-classes"
+      <a href="#" id="menu-my-classes" data-nav="my-classes"
         class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
                text-emerald-200 hover:bg-emerald-800 hover:text-white">
         <span>🏫</span> ห้องเรียนของฉัน
@@ -240,59 +240,63 @@
         </a>
       </div>
 
-      <p class="px-4 pt-3 pb-1 text-xs text-emerald-400 uppercase tracking-widest">งานรายวัน</p>
-      <a href="#" id="btn-quick-attendance"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-emerald-200 hover:bg-emerald-800 hover:text-white">
-        <span>✅</span> เช็คชื่อ
-      </a>
-      <a href="#" id="btn-quick-grades"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-emerald-200 hover:bg-emerald-800 hover:text-white">
-        <span>📝</span> บันทึกคะแนน
-      </a>
-      <a href="#" data-nav="requests"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-emerald-200 hover:bg-emerald-800 hover:text-white">
-        <span>🔔</span> คำร้องนักเรียน
-        <span id="badge-requests" class="hidden ml-auto bg-red-500 text-white text-xs
-               rounded-full w-5 h-5 flex items-center justify-center font-bold">0</span>
-      </a>
-      <a href="#" data-nav="schedule"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-emerald-200 hover:bg-emerald-800 hover:text-white">
-        <span>🗓️</span> ตารางสอน
-      </a>
-      <a href="#" data-nav="flashcards"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-emerald-200 hover:bg-emerald-800 hover:text-white">
-        <span>🃏</span> บัตรคำศัพท์ (Flash Cards)
-      </a>
-      <a href="#" data-nav="certificates"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-emerald-200 hover:bg-emerald-800 hover:text-white">
-        <span>🏅</span> ระบบเกียรติบัตร
-      </a>
-      <a href="#" data-nav="quiz-system"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-emerald-200 hover:bg-emerald-800 hover:text-white">
-        <span>📝</span> แบบทดสอบออนไลน์ (Quiz)
-      </a>
-      <a href="#" data-nav="exam-docs"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-emerald-200 hover:bg-emerald-800 hover:text-white">
-        <span>📄</span> เอกสารช่วงสอบ
-      </a>
-      <a href="#" data-nav="student-qr-print"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-emerald-200 hover:bg-emerald-800 hover:text-white">
-        <span>🖨️</span> พิมพ์ QR Code นักเรียน
-      </a>
-      <a href="#" data-nav="student-leave-scanner"
-        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
-               text-emerald-200 hover:bg-emerald-800 hover:text-white">
-        <span>📋</span> ตรวจสอบใบอนุญาตออกนอกห้อง
-      </a>
+      <!-- งานรายวัน — เครื่องมือรายห้อง/รายนักเรียนทั้งหมด ซ่อนให้บัญชี "ผู้บริหาร" ล้วนๆ
+           (ไม่มีภาระสอน) เพื่อลดเมนูที่ไม่เกี่ยวข้อง (v10.22.560) -->
+      <div id="daily-work-section">
+        <p class="px-4 pt-3 pb-1 text-xs text-emerald-400 uppercase tracking-widest">งานรายวัน</p>
+        <a href="#" id="btn-quick-attendance"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>✅</span> เช็คชื่อ
+        </a>
+        <a href="#" id="btn-quick-grades"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📝</span> บันทึกคะแนน
+        </a>
+        <a href="#" data-nav="requests"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🔔</span> คำร้องนักเรียน
+          <span id="badge-requests" class="hidden ml-auto bg-red-500 text-white text-xs
+                 rounded-full w-5 h-5 flex items-center justify-center font-bold">0</span>
+        </a>
+        <a href="#" data-nav="schedule"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🗓️</span> ตารางสอน
+        </a>
+        <a href="#" data-nav="flashcards"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🃏</span> บัตรคำศัพท์ (Flash Cards)
+        </a>
+        <a href="#" data-nav="certificates"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🏅</span> ระบบเกียรติบัตร
+        </a>
+        <a href="#" data-nav="quiz-system"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📝</span> แบบทดสอบออนไลน์ (Quiz)
+        </a>
+        <a href="#" data-nav="exam-docs"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📄</span> เอกสารช่วงสอบ
+        </a>
+        <a href="#" data-nav="student-qr-print"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🖨️</span> พิมพ์ QR Code นักเรียน
+        </a>
+        <a href="#" data-nav="student-leave-scanner"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📋</span> ตรวจสอบใบอนุญาตออกนอกห้อง
+        </a>
+      </div>
       <a href="#" data-nav="tutorial"
         class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
                text-emerald-200 hover:bg-emerald-800 hover:text-white">
@@ -349,7 +353,7 @@
         </button>
         <div class="text-right hidden sm:block">
           <p id="user-name" class="text-sm font-semibold text-gray-800">—</p>
-          <p class="text-xs text-emerald-500">ครูผู้สอน</p>
+          <p id="user-role-label" class="text-xs text-emerald-500">ครูผู้สอน</p>
         </div>
         <div id="user-avatar"
           class="w-9 h-9 bg-gradient-to-tr from-emerald-500 to-teal-500 text-white
@@ -380,7 +384,7 @@
   </div>
 
   <!-- Scripts -->
-  <script type="module" src="js/teacher.js?v=10.22.559"></script>
+  <script type="module" src="js/teacher.js?v=10.22.563"></script>
 
 </body>
 </html>

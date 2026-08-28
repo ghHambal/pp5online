@@ -174,9 +174,43 @@ export function _renderWenDutyCard(todayDuty, teacherCode, gradeInfo = null) {
   </div>`
 }
 
+// ภาพรวมแบบย่อสำหรับบัญชี "ผู้บริหาร" ล้วนๆ (ไม่มีภาระสอน) — แดชบอร์ดครูเต็มรูปแบบด้านล่าง
+// (คอร์สวิชา/ตารางสอน/โควตาห้องเรียน/งานรายวัน ฯลฯ) ไม่มีความหมายกับบัญชีนี้เลย จึงแยกเป็น
+// เนื้อหาของตัวเอง ไม่พยายามแทรกเงื่อนไขเข้าไปในฟังก์ชันเดิมที่ใหญ่และพึ่งพากันสูงอยู่แล้ว (v10.22.560)
+function renderExecutiveOverview(teacher) {
+  setContent(`<div class="animate-fade max-w-2xl">
+    <div class="mb-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
+      <p class="text-lg font-bold text-gray-800">👔 ${_htmlEsc(teacher?.full_name ?? 'ผู้บริหาร')}</p>
+      <p class="text-xs text-gray-400 mt-1">บัญชีนี้ตั้งค่าเป็นบทบาท "ผู้บริหาร" — ไม่มีภาระการสอนในระบบ เมนูจึงถูกย่อให้เหลือเฉพาะส่วนที่เกี่ยวข้อง</p>
+    </div>
+
+    <a href="council.html" class="mb-4 rounded-2xl shadow-lg px-5 py-4 flex items-center gap-4 group transition hover:shadow-xl"
+      style="background:linear-gradient(135deg,#0f766e,#0d9488,#5eead4)">
+      <div class="text-4xl flex-shrink-0">🏛️</div>
+      <div class="flex-1 min-w-0">
+        <p class="text-white font-extrabold text-base leading-tight">ระบบสภานักเรียน</p>
+        <p class="text-white/85 text-xs mt-0.5">ดูภาพรวมสภานักเรียนวาระปัจจุบัน + ภาพรวมการสมัคร + รายนามครูที่ปรึกษา ที่แท็บ "ภาพรวม"</p>
+      </div>
+      <span class="text-white/70 group-hover:text-white transition text-lg flex-shrink-0">→</span>
+    </a>
+
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
+      <p class="text-sm font-semibold text-gray-700 mb-1">📢 ประกาศ / ปฏิทินปฏิบัติงาน</p>
+      <p class="text-xs text-gray-400">ดูได้จากเมนูด้านซ้าย</p>
+    </div>
+  </div>`)
+}
+
 export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setActiveNav('overview')
   setTitle('ภาพรวม')
+
+  // บัญชี "ผู้บริหาร" ล้วนๆ (ไม่มีภาระสอน) — โชว์ภาพรวมแบบย่อแทน ข้ามการดึงข้อมูลแดชบอร์ด
+  // ครูเต็มรูปแบบด้านล่างทั้งหมด (ตารางสอน/โควตา/สติกเกอร์โดเนท ฯลฯ ไม่มีความหมายกับบัญชีนี้)
+  if (_teacherPositionList(teacher).includes('executive')) {
+    renderExecutiveOverview(teacher)
+    return
+  }
   const { getPendingExamRequestCount } = await import('./api.js')
   const { getMyDonationRequests } = await import('./api.js')
   const { getUnreadNotifications } = await import('./api.js')
