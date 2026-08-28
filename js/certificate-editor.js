@@ -98,6 +98,20 @@ export function openCertificateLayoutEditor(opts) {
   const panel = overlay.querySelector('#cce-panel')
   const duplicateBtn = overlay.querySelector('#cce-duplicate')
   const sectionLabel = text => `<p class="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">${text}</p>`
+  const sliderField = ({ id, label, value, min, max, step = 1, suffix = '' }) => `
+    <label class="block text-[11px] text-gray-500">
+      <span class="flex items-center justify-between gap-2"><span>${label}</span><output data-range-value="${id}" class="min-w-[3.25rem] rounded-md bg-indigo-50 px-2 py-0.5 text-right font-bold text-indigo-700">${value}${suffix}</output></span>
+      <input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${value}" class="mt-1.5 w-full accent-indigo-600 cursor-pointer" />
+    </label>`
+  const bindSlider = (root, id, onInput, suffix = '') => {
+    const input = root.querySelector(`#${id}`)
+    if (!input) return
+    const output = root.querySelector(`[data-range-value="${id}"]`)
+    input.addEventListener('input', event => {
+      if (output) output.textContent = `${event.target.value}${suffix}`
+      onInput(event)
+    })
+  }
 
   function selectedElement() { return (layout.elements ?? []).find(el => el.id === selectedId) }
 
@@ -162,16 +176,16 @@ export function openCertificateLayoutEditor(opts) {
               <button type="button" data-corner-pos="top" class="cce-corner-pos px-3 py-2 rounded-lg border text-xs font-bold ${el.position !== 'bottom' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}">⌜ ด้านบน</button>
               <button type="button" data-corner-pos="bottom" class="cce-corner-pos px-3 py-2 rounded-lg border text-xs font-bold ${el.position === 'bottom' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}">⌞ ด้านล่าง</button>
             </div>
-            <div class="grid grid-cols-2 gap-2 mt-3">
-              <label class="text-[11px] text-gray-500">ระยะขอบซ้าย-ขวา (%)<input id="cce-f-inset-x" type="number" min="0" max="45" value="${el.insetX ?? 2}" class="mt-1 w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs" /></label>
-              <label class="text-[11px] text-gray-500">ระยะขอบบน-ล่าง (%)<input id="cce-f-inset-y" type="number" min="0" max="45" value="${el.insetY ?? 2}" class="mt-1 w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs" /></label>
+            <div class="space-y-3 mt-3">
+              ${sliderField({ id: 'cce-f-inset-x', label: 'ระยะขอบซ้าย-ขวา', value: el.insetX ?? 2, min: 0, max: 45, suffix: '%' })}
+              ${sliderField({ id: 'cce-f-inset-y', label: 'ระยะขอบบน-ล่าง', value: el.insetY ?? 2, min: 0, max: 45, suffix: '%' })}
             </div>
           </div>` : ''}
         <div class="pt-4 border-t border-gray-200">
           ${sectionLabel('ขนาดและความโปร่งใส')}
-          <div class="grid grid-cols-2 gap-2">
-            <label class="text-[11px] text-gray-500">ความกว้าง (%)<input id="cce-f-width" type="number" min="2" max="100" value="${el.width ?? 20}" class="mt-1 w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs" /></label>
-            <label class="text-[11px] text-gray-500">ความทึบ (%)<input id="cce-f-opacity" type="number" min="0" max="100" value="${Math.round((el.opacity ?? 1) * 100)}" class="mt-1 w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs" /></label>
+          <div class="space-y-3">
+            ${sliderField({ id: 'cce-f-width', label: 'ความกว้าง', value: el.width ?? 20, min: 2, max: isCorner ? 45 : 100, suffix: '%' })}
+            ${sliderField({ id: 'cce-f-opacity', label: 'ความทึบ', value: Math.round((el.opacity ?? 1) * 100), min: 0, max: 100, suffix: '%' })}
           </div>
           ${!isCorner ? `<button type="button" id="cce-f-flip" title="สะท้อนรูปแนวนอน" class="mt-3 w-full py-2 rounded-lg border text-xs font-bold ${el.flipX ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-gray-300 text-gray-600'}">⇆ สะท้อนแนวนอน</button>` : `<p class="text-[10px] text-amber-600 mt-2">✨ รูปฝั่งขวาจะสะท้อนจากฝั่งซ้ายอัตโนมัติ</p>`}
         </div>
@@ -182,12 +196,12 @@ export function openCertificateLayoutEditor(opts) {
       </div>`
 
     const commit = patch => { Object.assign(el, patch); renderCanvas() }
-    panel.querySelector('#cce-f-width').addEventListener('input', event => commit({ width: clamp(Number(event.target.value) || 14, 2, isCorner ? 45 : 100) }))
-    panel.querySelector('#cce-f-opacity').addEventListener('input', event => commit({ opacity: clamp(Number(event.target.value) || 0, 0, 100) / 100 }))
+    bindSlider(panel, 'cce-f-width', event => commit({ width: clamp(Number(event.target.value) || 14, 2, isCorner ? 45 : 100) }), '%')
+    bindSlider(panel, 'cce-f-opacity', event => commit({ opacity: clamp(Number(event.target.value) || 0, 0, 100) / 100 }), '%')
     panel.querySelector('#cce-f-flip')?.addEventListener('click', () => { commit({ flipX: !el.flipX }); renderImagePanel(el) })
     panel.querySelectorAll('.cce-corner-pos').forEach(btn => btn.addEventListener('click', () => { commit({ position: btn.dataset.cornerPos }); renderImagePanel(el) }))
-    panel.querySelector('#cce-f-inset-x')?.addEventListener('input', event => commit({ insetX: clamp(Number(event.target.value) || 0, 0, 45) }))
-    panel.querySelector('#cce-f-inset-y')?.addEventListener('input', event => commit({ insetY: clamp(Number(event.target.value) || 0, 0, 45) }))
+    bindSlider(panel, 'cce-f-inset-x', event => commit({ insetX: clamp(Number(event.target.value) || 0, 0, 45) }), '%')
+    bindSlider(panel, 'cce-f-inset-y', event => commit({ insetY: clamp(Number(event.target.value) || 0, 0, 45) }), '%')
     panel.querySelector('#cce-f-image-replace').addEventListener('change', async event => {
       const file = event.target.files?.[0]
       if (!file) return
@@ -233,40 +247,37 @@ export function openCertificateLayoutEditor(opts) {
             <button type="button" id="cce-f-bold" title="ตัวหนา" class="h-9 w-9 rounded-lg border font-black ${el.bold ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}">B</button>
             ${[['left', '≡', 'ชิดซ้าย'], ['center', '≣', 'กึ่งกลาง'], ['right', '≡', 'ชิดขวา']].map(([align, icon, title]) => `<button type="button" data-align="${align}" title="${title}" class="cce-align h-9 w-9 rounded-lg border font-bold ${el.align === align ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}" style="${align === 'right' ? 'transform:scaleX(-1)' : ''}">${icon}</button>`).join('')}
           </div>
-          <div class="grid grid-cols-2 gap-2">
-            <label class="text-[11px] text-gray-500">ขนาด<input id="cce-f-size" type="number" min="6" max="120" value="${el.fontSize}" class="mt-1 w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs" /></label>
-            <label class="text-[11px] text-gray-500">สี<input id="cce-f-color" type="color" value="${_esc(el.color)}" class="mt-1 w-full h-[31px] border border-gray-300 rounded-lg cursor-pointer" /></label>
-            <label class="text-[11px] text-gray-500">ระยะห่างตัวอักษร<input id="cce-f-letter" type="number" min="-5" max="20" step="0.5" value="${el.letterSpacing ?? 0}" class="mt-1 w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs" /></label>
-            <label class="text-[11px] text-gray-500">ความทึบ (%)<input id="cce-f-opacity" type="number" min="0" max="100" value="${Math.round((el.opacity ?? 1) * 100)}" class="mt-1 w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs" /></label>
+          <label class="text-[11px] text-gray-500 block mb-3">สี<input id="cce-f-color" type="color" value="${_esc(el.color)}" class="mt-1 w-full h-9 border border-gray-300 rounded-lg cursor-pointer" /></label>
+          <div class="space-y-3">
+            ${sliderField({ id: 'cce-f-size', label: 'ขนาดตัวอักษร', value: el.fontSize, min: 6, max: 120, suffix: ' px' })}
+            ${sliderField({ id: 'cce-f-letter', label: 'ระยะห่างตัวอักษร', value: el.letterSpacing ?? 0, min: -5, max: 20, step: 0.5, suffix: ' px' })}
+            ${sliderField({ id: 'cce-f-opacity', label: 'ความทึบ', value: Math.round((el.opacity ?? 1) * 100), min: 0, max: 100, suffix: '%' })}
           </div>
         </div>
         <div class="pt-4 border-t border-gray-200">
           ${sectionLabel('เอฟเฟกต์')}
           <div class="grid grid-cols-2 gap-2">
-            <button type="button" id="cce-toggle-shadow" title="เปิด/ปิดเงา" class="px-3 py-2 rounded-lg border text-xs font-bold ${shadow.enabled ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}">◒ เงา</button>
-            <button type="button" id="cce-toggle-stroke" title="เปิด/ปิดสโตรก" class="px-3 py-2 rounded-lg border text-xs font-bold ${stroke.enabled ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}">◎ สโตรก</button>
+            <button type="button" id="cce-toggle-shadow" title="${shadow.enabled ? 'กดเพื่อปิดเงา' : 'กดเพื่อเปิดเงา'}" class="px-3 py-2 rounded-lg border text-xs font-bold ${shadow.enabled ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}">◒ เงา: ${shadow.enabled ? 'เปิด' : 'ปิด'}</button>
+            <button type="button" id="cce-toggle-stroke" title="${stroke.enabled ? 'กดเพื่อปิดสโตรก' : 'กดเพื่อเปิดสโตรก'}" class="px-3 py-2 rounded-lg border text-xs font-bold ${stroke.enabled ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}">◎ สโตรก: ${stroke.enabled ? 'เปิด' : 'ปิด'}</button>
           </div>
-          <div class="mt-3 p-3 rounded-xl bg-gray-50 space-y-2 ${shadow.enabled ? '' : 'opacity-50'}">
+          ${shadow.enabled ? `<div class="mt-3 p-3 rounded-xl border border-indigo-100 bg-indigo-50/50 space-y-3">
             <p class="text-[10px] font-bold text-gray-500">ค่าเงา</p>
-            <div class="grid grid-cols-4 gap-1.5">
-              <input id="cce-shadow-color" title="สีเงา" type="color" value="${_esc(shadow.color)}" class="w-full h-8 rounded border" />
-              <input id="cce-shadow-x" title="เยื้องแนวนอน" type="number" value="${shadow.offsetX}" class="w-full border rounded px-1.5 text-xs" />
-              <input id="cce-shadow-y" title="เยื้องแนวตั้ง" type="number" value="${shadow.offsetY}" class="w-full border rounded px-1.5 text-xs" />
-              <input id="cce-shadow-blur" title="ความเบลอ" type="number" min="0" max="30" value="${shadow.blur}" class="w-full border rounded px-1.5 text-xs" />
-            </div>
-          </div>
-          <div class="mt-2 p-3 rounded-xl bg-gray-50 space-y-2 ${stroke.enabled ? '' : 'opacity-50'}">
+            <label class="text-[11px] text-gray-500 block">สีเงา<input id="cce-shadow-color" type="color" value="${_esc(shadow.color)}" class="mt-1 w-full h-8 rounded border cursor-pointer" /></label>
+            ${sliderField({ id: 'cce-shadow-x', label: 'เยื้องแนวนอน', value: shadow.offsetX, min: -20, max: 20, suffix: ' px' })}
+            ${sliderField({ id: 'cce-shadow-y', label: 'เยื้องแนวตั้ง', value: shadow.offsetY, min: -20, max: 20, suffix: ' px' })}
+            ${sliderField({ id: 'cce-shadow-blur', label: 'ความเบลอ', value: shadow.blur, min: 0, max: 30, suffix: ' px' })}
+          </div>` : ''}
+          ${stroke.enabled ? `<div class="mt-3 p-3 rounded-xl border border-indigo-100 bg-indigo-50/50 space-y-3">
             <p class="text-[10px] font-bold text-gray-500">ค่าสโตรก</p>
-            <div class="grid grid-cols-2 gap-2">
-              <input id="cce-stroke-color" title="สีสโตรก" type="color" value="${_esc(stroke.color)}" class="w-full h-8 rounded border" />
-              <input id="cce-stroke-width" title="ความหนาสโตรก" type="number" min="0" max="10" step="0.5" value="${stroke.width}" class="w-full border rounded px-2 text-xs" />
-            </div>
-          </div>
+            <label class="text-[11px] text-gray-500 block">สีสโตรก<input id="cce-stroke-color" type="color" value="${_esc(stroke.color)}" class="mt-1 w-full h-8 rounded border cursor-pointer" /></label>
+            ${sliderField({ id: 'cce-stroke-width', label: 'ความหนาสโตรก', value: stroke.width, min: 0, max: 10, step: 0.5, suffix: ' px' })}
+          </div>` : ''}
         </div>
         <div class="pt-4 border-t border-gray-200">
           ${sectionLabel('ตัวเลือกเพิ่มเติม')}
           <button type="button" id="cce-f-bordertop" title="เส้นคั่นสำหรับช่องลงนาม" class="w-full py-2 rounded-lg border text-xs font-bold ${el.borderTop ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}">— เส้นคั่นด้านบน</button>
-          <label class="text-[11px] text-gray-500 block mt-2">ความกว้างตัดบรรทัด (%)<input id="cce-f-maxwidth" type="number" min="10" max="100" value="${el.maxWidth ?? ''}" placeholder="เว้นว่าง = บรรทัดเดียว" class="mt-1 w-full border border-gray-300 rounded-lg px-2.5 py-1.5 text-xs" /></label>
+          <button type="button" id="cce-toggle-maxwidth" class="mt-2 w-full py-2 rounded-lg border text-xs font-bold ${el.maxWidth != null ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}">↩ ตัดบรรทัด: ${el.maxWidth != null ? 'เปิด' : 'ปิด'}</button>
+          ${el.maxWidth != null ? `<div class="mt-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">${sliderField({ id: 'cce-f-maxwidth', label: 'ความกว้างตัดบรรทัด', value: el.maxWidth, min: 10, max: 100, suffix: '%' })}</div>` : ''}
         </div>
         <div class="pt-4 border-t border-gray-200 grid grid-cols-2 gap-2">
           <button id="cce-f-duplicate" type="button" class="py-2 rounded-lg border border-indigo-300 text-indigo-600 text-xs font-bold hover:bg-indigo-50">⧉ คัดลอกทั้งหมด</button>
@@ -292,20 +303,21 @@ export function openCertificateLayoutEditor(opts) {
     })
     panel.querySelector('#cce-f-bold').addEventListener('click', () => { commit({ bold: !el.bold }); renderTextPanel(el) })
     panel.querySelectorAll('.cce-align').forEach(btn => btn.addEventListener('click', () => { commit({ align: btn.dataset.align }); renderTextPanel(el) }))
-    panel.querySelector('#cce-f-size').addEventListener('input', event => commit({ fontSize: clamp(Number(event.target.value) || 12, 6, 120) }))
+    bindSlider(panel, 'cce-f-size', event => commit({ fontSize: clamp(Number(event.target.value) || 12, 6, 120) }), ' px')
     panel.querySelector('#cce-f-color').addEventListener('input', event => commit({ color: event.target.value }))
-    panel.querySelector('#cce-f-letter').addEventListener('input', event => commit({ letterSpacing: clamp(Number(event.target.value) || 0, -5, 20) }))
-    panel.querySelector('#cce-f-opacity').addEventListener('input', event => commit({ opacity: clamp(Number(event.target.value) || 0, 0, 100) / 100 }))
+    bindSlider(panel, 'cce-f-letter', event => commit({ letterSpacing: clamp(Number(event.target.value) || 0, -5, 20) }), ' px')
+    bindSlider(panel, 'cce-f-opacity', event => commit({ opacity: clamp(Number(event.target.value) || 0, 0, 100) / 100 }), '%')
     panel.querySelector('#cce-toggle-shadow').addEventListener('click', () => { commit({ shadow: { ...shadow, enabled: !shadow.enabled } }); renderTextPanel(el) })
     panel.querySelector('#cce-toggle-stroke').addEventListener('click', () => { commit({ stroke: { ...stroke, enabled: !stroke.enabled } }); renderTextPanel(el) })
-    ;[['#cce-shadow-color', 'color'], ['#cce-shadow-x', 'offsetX'], ['#cce-shadow-y', 'offsetY'], ['#cce-shadow-blur', 'blur']].forEach(([selector, key]) => {
-      panel.querySelector(selector).addEventListener('input', event => commit({ shadow: { ...shadow, [key]: key === 'color' ? event.target.value : Number(event.target.value) || 0 } }))
-    })
-    ;[['#cce-stroke-color', 'color'], ['#cce-stroke-width', 'width']].forEach(([selector, key]) => {
-      panel.querySelector(selector).addEventListener('input', event => commit({ stroke: { ...stroke, [key]: key === 'color' ? event.target.value : Number(event.target.value) || 0 } }))
-    })
+    panel.querySelector('#cce-shadow-color')?.addEventListener('input', event => commit({ shadow: { ...el.shadow, color: event.target.value } }))
+    bindSlider(panel, 'cce-shadow-x', event => commit({ shadow: { ...el.shadow, offsetX: Number(event.target.value) || 0 } }), ' px')
+    bindSlider(panel, 'cce-shadow-y', event => commit({ shadow: { ...el.shadow, offsetY: Number(event.target.value) || 0 } }), ' px')
+    bindSlider(panel, 'cce-shadow-blur', event => commit({ shadow: { ...el.shadow, blur: Number(event.target.value) || 0 } }), ' px')
+    panel.querySelector('#cce-stroke-color')?.addEventListener('input', event => commit({ stroke: { ...el.stroke, color: event.target.value } }))
+    bindSlider(panel, 'cce-stroke-width', event => commit({ stroke: { ...el.stroke, width: Number(event.target.value) || 0 } }), ' px')
     panel.querySelector('#cce-f-bordertop').addEventListener('click', () => { commit({ borderTop: !el.borderTop }); renderTextPanel(el) })
-    panel.querySelector('#cce-f-maxwidth').addEventListener('input', event => commit({ maxWidth: event.target.value ? clamp(Number(event.target.value), 10, 100) : null }))
+    panel.querySelector('#cce-toggle-maxwidth').addEventListener('click', () => { commit({ maxWidth: el.maxWidth == null ? 80 : null }); renderTextPanel(el) })
+    bindSlider(panel, 'cce-f-maxwidth', event => commit({ maxWidth: clamp(Number(event.target.value), 10, 100) }), '%')
     panel.querySelector('#cce-f-duplicate').addEventListener('click', duplicateSelected)
     panel.querySelector('#cce-f-delete').addEventListener('click', deleteSelected)
   }

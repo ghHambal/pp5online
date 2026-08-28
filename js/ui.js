@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.576'
+import { APP_VERSION } from './version.js?v=10.22.577'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -742,6 +742,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.577': [
+    '🎚️ ตัวแก้ไขเกียรติบัตรเปลี่ยนค่าตัวเลขเป็น Slider พร้อมแสดงค่าปัจจุบัน และซ่อนรายละเอียดเงา สโตรก และการตัดบรรทัดจนกว่าจะเปิดใช้งาน',
+  ],
   '10.22.576': [
     '🎖️ หน้านักเรียน: ปุ่ม "บัตรของฉัน" เปลี่ยนชื่อเป็น "เกียรติบัตรของฉัน" ให้ชัดเจนขึ้นว่าคือเกียรติบัตร',
   ],
