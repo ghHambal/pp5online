@@ -26,14 +26,18 @@ const REGRADE_SLIP_TOKENS = [
   { token: '{{student_name}}', label: 'ชื่อนักเรียน' },
   { token: '{{student_code}}', label: 'รหัสนักเรียน' },
   { token: '{{room}}', label: 'ห้องเรียน' },
+  { token: '{{class_level}}', label: 'ชั้น/ระดับ' },
+  { token: '{{category}}', label: 'หมวด (สามัญ/ศาสนา)' },
   { token: '{{subject_name}}', label: 'ชื่อรายวิชา' },
   { token: '{{subject_code}}', label: 'รหัสวิชา' },
   { token: '{{semester}}', label: 'ภาคเรียน' },
+  { token: '{{grade_failed_at}}', label: 'ผลการเรียนที่ติด (ร/มส/0)' },
   { token: '{{teacher_name}}', label: 'ชื่อครูผู้สอน' },
 ]
 const REGRADE_SLIP_PREVIEW_VARS = {
-  student_name: 'ตัวอย่าง ชื่อ-สกุล นักเรียน', student_code: '00000', room: 'ม.6/1',
-  subject_name: 'วิชาตัวอย่าง', subject_code: 'ว00000', semester: '1/2569', teacher_name: 'ครูตัวอย่าง',
+  student_name: 'ตัวอย่าง ชื่อ-สกุล นักเรียน', student_code: '00000', room: 'ม.6/1', class_level: 'ม.6',
+  category: 'สามัญ', subject_name: 'วิชาตัวอย่าง', subject_code: 'ว00000', semester: '1/2569',
+  grade_failed_at: 'ร', teacher_name: 'ครูตัวอย่าง',
 }
 const REGRADE_SLIP_DEFAULT_LAYOUT = {
   orientation: 'portrait',
@@ -58,7 +62,9 @@ async function printRegradeSlip(row, teacherNameOverride) {
     layout: template.layout,
     variables: {
       student_name: row.students?.full_name ?? '', student_code: row.students?.student_code ?? '', room,
+      class_level: row.class_level ?? '', category: row.category ?? '',
       subject_name: row.subject_name ?? '', subject_code: row.subject_code ?? '', semester: row.semester ?? '',
+      grade_failed_at: row.grade_failed_at ?? '',
       teacher_name: teacherNameOverride ?? row.teachers?.full_name ?? row.teacher_name_raw ?? '',
     },
     docTitle: `ใบแก้ค้างเก่า ${row.students?.full_name ?? ''}`,
