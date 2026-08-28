@@ -5065,7 +5065,7 @@ function wireActivitiesEvents() {
       btn.disabled = true; btn.textContent = 'กำลังออก...'
       try {
         const cert = await issueCentralCertificate({
-          templateId: rule.template_id, studentId, studentName: student?.full_name ?? '—',
+          templateId: rule.template_id, recipientType: 'student', studentId, recipientName: student?.full_name ?? '—',
           variables: { reason: `เข้าร่วมกิจกรรม "${activity?.title ?? ''}" ของสภานักเรียนจนสำเร็จ` },
           title: activity?.title ?? null, issuedByTeacherId: ctx.teacher?.id ?? null,
           sourceSystem: 'council_activity', sourceRefId: activityId,
@@ -5087,7 +5087,7 @@ function wireActivitiesEvents() {
       if (!certRow) return
       openCentralCertificatePrint({
         layout: certRow.layout_snapshot,
-        variables: { name: certRow.student_name ?? '', date: new Date(certRow.issued_at).toLocaleDateString('th-TH', { dateStyle: 'long' }), no: certRow.certificate_no, ...certRow.variables },
+        variables: { name: certRow.recipient_name ?? '', date: new Date(certRow.issued_at).toLocaleDateString('th-TH', { dateStyle: 'long' }), no: certRow.certificate_no, ...certRow.variables },
         docTitle: certRow.title,
       }, showToast)
     })

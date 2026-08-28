@@ -1,6 +1,8 @@
 // js/certificates-api.js — ระบบเกียรติบัตรกลาง ใช้ร่วมกันทุกระบบ (สภานักเรียน/ทั่วไป/ฯลฯ)
 // เทมเพลตเป็น pool กลางให้ครูทุกคนสร้าง/ใช้ร่วมกันได้ ส่วนใบที่ออกจริงเก็บ layout_snapshot ของตัวเอง
 // (ไม่ join เทมเพลตสดตอนแสดงผล) กันแก้/ลบเทมเพลตทีหลังแล้วใบเก่าที่ออกไปแล้วเปลี่ยนหน้าตา
+// ผู้รับ (recipient) เป็นได้ทั้งนักเรียน (recipient_type='student', student_id) และครู
+// (recipient_type='teacher', teacher_id) — exactly-one คุมด้วย DB check constraint
 import { supabase } from './supabase.js'
 
 // ─── เทมเพลต ────────────────────────────────────────────────────────────────
@@ -37,17 +39,21 @@ export async function deleteCertificateTemplate(id) {
 }
 
 // ─── ออกเกียรติบัตร ───────────────────────────────────────────────────────────
-// sourceSystem/sourceRefId ไม่บังคับ (null = ครูออกเองทั่วไป ไม่ผูกระบบไหน) — ถ้าใส่มา จะ upsert กันออกซ้ำ
-// ให้คนเดิมจากที่มาเดิม (unique index บน source_system+source_ref_id+student_id)
-export async function issueCertificate({ templateId, studentId, studentName, variables, title, issuedByTeacherId, sourceSystem, sourceRefId }) {
+// recipientType: 'student' | 'teacher' — ต้องส่ง studentId (student) หรือ teacherId (teacher) มาให้ตรงกัน
+// sourceSystem/sourceRefId ไม่บังคับ (null = ครูออกเองทั่วไป ไม่ผูกระบบไหน) — ถ้าใส่มาและเป็นผู้รับ
+// ประเภทนักเรียน จะ upsert กันออกซ้ำให้คนเดิมจากที่มาเดิม (unique index บน source_system+source_ref_id+student_id
+// — ยังไม่รองรับ recipient ประเภทครูสำหรับ index นี้ เพราะปัจจุบันยังไม่มี flow ที่ผูก source ออกให้ครู)
+export async function issueCertificate({ templateId, recipientType = 'student', studentId, teacherId, recipientName, variables, title, issuedByTeacherId, sourceSystem, sourceRefId }) {
   const template = await getCertificateTemplate(templateId)
   if (!template) throw new Error('ไม่พบเทมเพลตที่เลือก')
   const payload = {
     template_id: templateId,
     layout_snapshot: template.layout,
     variables: variables ?? {},
-    student_id: studentId,
-    student_name: studentName,
+    recipient_type: recipientType,
+    student_id: recipientType === 'student' ? studentId : null,
+    teacher_id: recipientType === 'teacher' ? teacherId : null,
+    recipient_name: recipientName,
     title: title || null,
     issued_by_teacher_id: issuedByTeacherId ?? null,
     source_system: sourceSystem || null,
@@ -55,7 +61,8 @@ export async function issueCertificate({ templateId, studentId, studentName, var
     issued_at: new Date().toISOString(),
   }
   const query = supabase.from('certificates')
-  const { data, error } = sourceSystem
+  const canUpsert = sourceSystem && recipientType === 'student'
+  const { data, error } = canUpsert
     ? await query.upsert(payload, { onConflict: 'source_system,source_ref_id,student_id' }).select('*').single()
     : await query.insert(payload).select('*').single()
   if (error) throw error
@@ -71,14 +78,24 @@ export async function getMyCertificates(studentId) {
   return data ?? []
 }
 
+// เกียรติบัตรของครูคนหนึ่ง (ผู้รับประเภทครู) — ใช้แสดงในหน้า "บัตรของฉัน" ฝั่งครู
+export async function getMyCertificatesAsTeacher(teacherId) {
+  const { data, error } = await supabase.from('certificates')
+    .select('id, certificate_no, layout_snapshot, variables, title, source_system, issued_at')
+    .eq('teacher_id', teacherId)
+    .order('issued_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
 // ประวัติ/ค้นหาสำหรับหน้าจัดการของครู — RLS จำกัดให้เห็นเฉพาะที่ตัวเองออก (หรือแอดมินเห็นทั้งหมด) อยู่แล้ว
 export async function getIssuedCertificates({ query, limit = 200 } = {}) {
   let q = supabase.from('certificates')
-    .select('id, certificate_no, student_id, student_name, title, layout_snapshot, variables, source_system, issued_at, certificate_templates(id, name)')
+    .select('id, certificate_no, student_id, teacher_id, recipient_type, recipient_name, title, layout_snapshot, variables, source_system, issued_at, certificate_templates(id, name)')
     .order('issued_at', { ascending: false })
     .limit(limit)
   const search = (query ?? '').trim()
-  if (search) q = q.or(`student_name.ilike.%${search}%,certificate_no.ilike.%${search}%`)
+  if (search) q = q.or(`recipient_name.ilike.%${search}%,certificate_no.ilike.%${search}%`)
   const { data, error } = await q
   if (error) throw error
   return data ?? []
@@ -93,19 +110,30 @@ export async function deleteCertificate(id) {
 // นักเรียนคนไหนได้ใบไปแล้วบ้าง กันปุ่ม "ออกเกียรติบัตร" ซ้ำในหน้าจัดการของระบบนั้นๆ
 export async function getCertificatesBySource(sourceSystem, sourceRefId) {
   const { data, error } = await supabase.from('certificates')
-    .select('id, certificate_no, student_id, student_name, layout_snapshot, variables, title, issued_at')
+    .select('id, certificate_no, student_id, recipient_name, layout_snapshot, variables, title, issued_at')
     .eq('source_system', sourceSystem).eq('source_ref_id', String(sourceRefId))
   if (error) throw error
   return data ?? []
 }
 
-// ─── ค้นหานักเรียนสำหรับออกเกียรติบัตร ──────────────────────────────────────────
+// ─── ค้นหาผู้รับสำหรับออกเกียรติบัตร ────────────────────────────────────────────
 export async function searchStudentsForCertificateIssuance(query) {
   const q = (query ?? '').trim()
   if (q.length < 2) return []
   const { data, error } = await supabase.from('students')
     .select('id, full_name, student_code, main_room, image_url, photo_url')
     .or(`full_name.ilike.%${q}%,student_code.ilike.%${q}%`)
+    .limit(15)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function searchTeachersForCertificateIssuance(query) {
+  const q = (query ?? '').trim()
+  if (q.length < 2) return []
+  const { data, error } = await supabase.from('teachers')
+    .select('id, full_name, teacher_code, image_url')
+    .or(`full_name.ilike.%${q}%,teacher_code.ilike.%${q}%`)
     .limit(15)
   if (error) throw error
   return data ?? []
