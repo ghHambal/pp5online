@@ -1,7 +1,7 @@
 import {
   getMySubjects, getMasterSubjects, getMyClasses, getDepartments, getTeachers,
   getSystemConfig, getMySchedule, getClassScheduleLinks, getPeriods, getClassrooms,
-  getWorkCalendarEvents,
+  getWorkCalendarEvents, updateTeacher,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { copySheetTemplate } from './sync.js'
@@ -217,7 +217,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     teacher ? getUnreadNotifications(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDuty(teacher.teacher_code).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDutyGrade(teacher.teacher_code).catch(()=>null) : Promise.resolve(null),
-    teacher ? import('./sports-portals.js?v=10.22.588').then(m => m.getTeacherShirtButtonState(teacher)).catch(() => ({ visible: false, enabled: false })) : Promise.resolve({ visible: false, enabled: false }),
+    teacher ? import('./sports-portals.js?v=10.22.590').then(m => m.getTeacherShirtButtonState(teacher)).catch(() => ({ visible: false, enabled: false })) : Promise.resolve({ visible: false, enabled: false }),
   ])
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
@@ -453,31 +453,69 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
   // ไซซ์เสื้อกีฬาสี (ครู) — เปิด modal เดิมของ sports-portals.js ตรงๆ
   window._openTeacherShirtModal = async () => {
-    const { openTeacherShirtSizeModal } = await import('./sports-portals.js?v=10.22.588')
+    const { openTeacherShirtSizeModal } = await import('./sports-portals.js?v=10.22.590')
     openTeacherShirtSizeModal(teacher)
   }
 
   // กริด "ระบบอื่น ๆ" — เลื่อนซ้าย-ขวาได้อิสระ, โผล่เฉพาะระบบที่มีสิทธิ์/เกี่ยวข้องกับครูคนนี้จริง
+  // ทุก tile ต้องมี key คงที่ (อ้างอิงจาก teacher.overview_prefs ได้เสมอ แม้เพิ่ม/ย้ายตำแหน่งทีหลัง)
   const readingRoomsForTeacher = [...new Set(classes.map(c => c.class_name).filter(Boolean))].sort()
   const readingRoomsJson = JSON.stringify(readingRoomsForTeacher).replace(/"/g, '&quot;')
-  const iconTiles = [
-    { show: true, onclick: `window._openSmartClassroomLanding()`, emoji:'👑', label:'Smart<br>Classroom', from:'from-amber-400', to:'to-yellow-600' },
-    { show: _svPositions.length > 0, onclick: `window._enterSupervisorMode()`, emoji:'📊', label:'บอร์ด<br>บทบาท', from:'from-slate-400', to:'to-slate-600' },
-    { show: !!teacher, onclick: `window._openWenDuty('${teacher?.teacher_code}')`, emoji:'🛡️', label:'ระบบเวร', from:'from-rose-400', to:'to-rose-600' },
-    { show: true, onclick: `window._showClassQuickPicker('attendance')`, emoji:'✅', label:'เช็คชื่อ', from:'from-teal-400', to:'to-teal-600' },
-    { show: true, onclick: `window._showClassQuickPicker('grades')`, emoji:'📝', label:'บันทึก<br>คะแนน', from:'from-indigo-400', to:'to-indigo-600' },
-    { show: samaiHomeroomRooms.length > 0, onclick: `window._openLifeSkillScore()`, emoji:'🌱', label:'ทักษะ<br>ชีวิต', from:'from-lime-400', to:'to-lime-600' },
-    { show: teacher?.dept === 'THAI', onclick: `window._openReadingScorePicker('${readingRoomsJson}')`, emoji:'📖', label:'คะแนน<br>การอ่าน', from:'from-orange-400', to:'to-orange-600' },
-    { show: true, onclick: `window._navTo('schedule')`, emoji:'🗓️', label:'ตารางสอน', from:'from-sky-400', to:'to-sky-600' },
-    { show: homeroomRooms.length > 0, onclick: `window._openHomeroomPopup()`, emoji:'🏠', label:'ห้องที่<br>ปรึกษา', from:'from-amber-400', to:'to-amber-700' },
-    { show: true, onclick: `window._showQuotaFromOverview()`, emoji:'🎯', label:'โควตา<br>ห้องเรียน', from:'from-purple-400', to:'to-purple-600' },
-    { show: shirtBtnState.visible, onclick: `window._openTeacherShirtModal()`, emoji:'👕', label:'ไซซ์เสื้อ<br>กีฬาสี', from:'from-pink-400', to:'to-pink-600' },
-  ].filter(t => t.show)
+  const localTiles = [
+    { key:'smart-classroom', show: true, onclick: `window._openSmartClassroomLanding()`, emoji:'👑', label:'Smart<br>Classroom', from:'from-amber-400', to:'to-yellow-600' },
+    { key:'sv-board',        show: _svPositions.length > 0, onclick: `window._enterSupervisorMode()`, emoji:'📊', label:'บอร์ด<br>บทบาท', from:'from-slate-400', to:'to-slate-600' },
+    { key:'wen',             show: !!teacher, onclick: `window._openWenDuty('${teacher?.teacher_code}')`, emoji:'🛡️', label:'ระบบเวร', from:'from-rose-400', to:'to-rose-600' },
+    { key:'attendance',      show: true, onclick: `window._showClassQuickPicker('attendance')`, emoji:'✅', label:'เช็คชื่อ', from:'from-teal-400', to:'to-teal-600' },
+    { key:'grades',          show: true, onclick: `window._showClassQuickPicker('grades')`, emoji:'📝', label:'บันทึก<br>คะแนน', from:'from-indigo-400', to:'to-indigo-600' },
+    { key:'life-skill',      show: samaiHomeroomRooms.length > 0, onclick: `window._openLifeSkillScore()`, emoji:'🌱', label:'ทักษะ<br>ชีวิต', from:'from-lime-400', to:'to-lime-600' },
+    { key:'reading-score',   show: teacher?.dept === 'THAI', onclick: `window._openReadingScorePicker('${readingRoomsJson}')`, emoji:'📖', label:'คะแนน<br>การอ่าน', from:'from-orange-400', to:'to-orange-600' },
+    { key:'schedule',        show: true, onclick: `window._navTo('schedule')`, emoji:'🗓️', label:'ตารางสอน', from:'from-sky-400', to:'to-sky-600' },
+    { key:'homeroom',        show: homeroomRooms.length > 0, onclick: `window._openHomeroomPopup()`, emoji:'🏠', label:'ห้องที่<br>ปรึกษา', from:'from-amber-400', to:'to-amber-700' },
+    { key:'quota',           show: true, onclick: `window._showQuotaFromOverview()`, emoji:'🎯', label:'โควตา<br>ห้องเรียน', from:'from-purple-400', to:'to-purple-600' },
+    { key:'shirt-size',      show: shirtBtnState.visible, onclick: `window._openTeacherShirtModal()`, emoji:'👕', label:'ไซซ์เสื้อ<br>กีฬาสี', from:'from-pink-400', to:'to-pink-600' },
+  ]
+  // มิเรอร์รายการเดียวกับเมนูไซด์บาร์ (คำนวณสิทธิ์ไว้แล้วครั้งเดียวใน _applyRoleMenus, js/teacher.js)
+  // แต่ละ key คู่กับชุดสี gradient ของตัวเอง ไม่ซ้ำกับ 11 อันด้านบน
+  const sidebarTileColors = {
+    council: ['from-indigo-400', 'to-indigo-700'], terangganu: ['from-fuchsia-400', 'to-fuchsia-700'],
+    regrade: ['from-stone-400', 'to-stone-600'], sports: ['from-orange-500', 'to-red-500'],
+    certificates: ['from-yellow-400', 'to-amber-600'], 'advisor-students': ['from-cyan-400', 'to-cyan-700'],
+    'my-team': ['from-red-400', 'to-red-700'], 'shirt-summary': ['from-zinc-400', 'to-zinc-600'],
+    'sports-fund': ['from-green-400', 'to-green-700'], 'shirt-vote': ['from-violet-400', 'to-violet-700'],
+    'qr-print': ['from-blue-400', 'to-blue-700'], 'prayer-score': ['from-emerald-400', 'to-emerald-700'],
+  }
+  const sidebarTiles = (window._teacherOverviewSystems || [])
+    .filter(s => s.show)
+    .map(s => {
+      const [from, to] = sidebarTileColors[s.key] || ['from-gray-400', 'to-gray-600']
+      return {
+        key: s.key, show: true, emoji: s.emoji, label: s.label, from, to,
+        onclick: s.href ? `window.location.href='${s.href}'` : `window._navTo('${s.nav}')`,
+      }
+    })
+  const allTiles = [...localTiles, ...sidebarTiles].filter(t => t.show)
+  // เรียง/ซ่อนตามที่ครูปรับแต่งไว้เอง (teacher.overview_prefs, บันทึกผ่านปุ่ม ⚙️ ปรับหน้าภาพรวมแบบรวดเร็ว)
+  const overviewPrefs = teacher?.overview_prefs || null
+  const iconTiles = overviewPrefs
+    ? allTiles
+        .filter(t => !(overviewPrefs.hiddenKeys || []).includes(t.key))
+        .sort((a, b) => {
+          const order = overviewPrefs.iconOrder || []
+          const ia = order.indexOf(a.key), ib = order.indexOf(b.key)
+          if (ia === -1 && ib === -1) return 0
+          if (ia === -1) return 1
+          if (ib === -1) return -1
+          return ia - ib
+        })
+    : allTiles
   const iconGridHtml = iconTiles.map(t => `
       <button type="button" onclick="${t.onclick}" class="flex-shrink-0 w-[4.6rem] lg:w-24 flex flex-col items-center gap-1.5 lg:gap-2 active:scale-95 transition-transform">
         <span class="w-14 h-14 lg:w-20 lg:h-20 rounded-2xl bg-gradient-to-br ${t.from} ${t.to} shadow-md flex items-center justify-center text-2xl lg:text-4xl">${t.emoji}</span>
         <span class="text-[10px] lg:text-sm font-bold text-gray-600 text-center leading-tight">${t.label}</span>
       </button>`).join('')
+
+  // ปุ่ม "ปรับหน้าภาพรวมแบบรวดเร็ว" — เปิดโมดัลซ่อน/แสดง+เรียงลำดับไอคอนกริดด้านบน บันทึกเข้าบัญชีครู
+  window._openOverviewCustomizer = () => _openOverviewCustomizerModal(teacher, allTiles, homeroomRooms)
 
   setContent(`<div class="animate-fade">
 
@@ -611,7 +649,13 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
     <!-- ระบบอื่น ๆ -->
     <div class="mb-4">
-      <h4 class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">ระบบอื่น ๆ</h4>
+      <div class="flex items-center justify-between mb-2 px-0.5">
+        <h4 class="text-[11px] font-bold text-gray-400 uppercase tracking-wide">ระบบอื่น ๆ</h4>
+        <button type="button" onclick="window._openOverviewCustomizer()"
+          class="flex items-center gap-1 text-[11px] font-bold text-gray-400 hover:text-emerald-600 transition px-1.5 py-0.5 -mr-1.5">
+          <span>⚙️</span><span>ปรับหน้าภาพรวมแบบรวดเร็ว</span>
+        </button>
+      </div>
       <div class="flex gap-3 overflow-x-auto pb-1">
         ${iconGridHtml}
       </div>
@@ -795,6 +839,125 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     }, 1000)
   }
 
+}
+
+// โมดัลปรับหน้าภาพรวมแบบรวดเร็ว — ซ่อน/แสดง + เรียงลำดับไอคอนกริด "ระบบอื่น ๆ" บันทึกเข้า
+// teacher.overview_prefs (jsonb) เพื่อให้ใช้ได้ทุกเครื่องที่ครูล็อกอิน ไม่ใช่แค่เครื่องนี้
+// ใช้ปุ่มลูกศร ▲▼ เรียงลำดับแทน drag-and-drop (โค้ดเบสนี้ไม่มี pattern ลากวางอยู่แล้ว และปุ่มลูกศร
+// ใช้งานได้แน่นอนกว่าบนมือถือ/หน้าจอสัมผัส)
+function _openOverviewCustomizerModal(teacher, allTiles, homeroomRooms) {
+  document.getElementById('overview-customizer-modal')?.remove()
+  const prefs = teacher?.overview_prefs || null
+  // state เริ่มต้น: ใช้ลำดับ/ซ่อนที่บันทึกไว้ ถ้ามี ไม่งั้นใช้ลำดับเริ่มต้นของ allTiles ทั้งหมด (โชว์ทุกอัน)
+  let order = allTiles.map(t => t.key)
+  if (prefs?.iconOrder?.length) {
+    const known = new Set(order)
+    const savedKnown = prefs.iconOrder.filter(k => known.has(k))
+    const missing = order.filter(k => !savedKnown.includes(k))
+    order = [...savedKnown, ...missing]
+  }
+  const hidden = new Set((prefs?.hiddenKeys || []).filter(k => order.includes(k)))
+  const tileByKey = Object.fromEntries(allTiles.map(t => [t.key, t]))
+
+  const modal = document.createElement('div')
+  modal.id = 'overview-customizer-modal'
+  modal.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4'
+
+  const renderRows = () => order.map((key, i) => {
+    const t = tileByKey[key]
+    if (!t) return ''
+    const isHidden = hidden.has(key)
+    const plainLabel = t.label.replace(/<br\s*\/?>/gi, ' ')
+    return `
+    <div class="flex items-center gap-3 py-2 px-1 border-b border-gray-50 last:border-0 ${isHidden ? 'opacity-40' : ''}">
+      <span class="w-9 h-9 rounded-xl bg-gradient-to-br ${t.from} ${t.to} flex items-center justify-center text-base flex-shrink-0">${t.emoji}</span>
+      <span class="flex-1 text-sm font-semibold text-gray-700 truncate">${plainLabel}</span>
+      <button type="button" data-oc-up="${key}" ${i === 0 ? 'disabled' : ''}
+        class="w-7 h-7 rounded-lg border border-gray-200 text-gray-400 flex items-center justify-center disabled:opacity-30 hover:bg-gray-50">▲</button>
+      <button type="button" data-oc-down="${key}" ${i === order.length - 1 ? 'disabled' : ''}
+        class="w-7 h-7 rounded-lg border border-gray-200 text-gray-400 flex items-center justify-center disabled:opacity-30 hover:bg-gray-50">▼</button>
+      <button type="button" data-oc-toggle="${key}"
+        class="w-11 h-6 rounded-full flex-shrink-0 relative transition ${isHidden ? 'bg-gray-200' : 'bg-emerald-500'}">
+        <span class="absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition ${isHidden ? 'left-0.5' : 'left-[1.375rem]'}"></span>
+      </button>
+    </div>`
+  }).join('')
+
+  const render = () => {
+    const list = modal.querySelector('#oc-list')
+    if (list) list.innerHTML = renderRows()
+    wireRows()
+  }
+
+  const wireRows = () => {
+    modal.querySelectorAll('[data-oc-toggle]').forEach(btn => btn.onclick = () => {
+      const key = btn.dataset.ocToggle
+      hidden.has(key) ? hidden.delete(key) : hidden.add(key)
+      render()
+    })
+    modal.querySelectorAll('[data-oc-up]').forEach(btn => btn.onclick = () => {
+      const i = order.indexOf(btn.dataset.ocUp)
+      if (i > 0) { [order[i - 1], order[i]] = [order[i], order[i - 1]]; render() }
+    })
+    modal.querySelectorAll('[data-oc-down]').forEach(btn => btn.onclick = () => {
+      const i = order.indexOf(btn.dataset.ocDown)
+      if (i < order.length - 1) { [order[i + 1], order[i]] = [order[i], order[i + 1]]; render() }
+    })
+  }
+
+  modal.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[85vh] flex flex-col">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <div>
+          <p class="font-bold text-gray-800 text-sm">⚙️ ปรับหน้าภาพรวมแบบรวดเร็ว</p>
+          <p class="text-[11px] text-gray-400 mt-0.5">ซ่อน/แสดง และเรียงลำดับไอคอน "ระบบอื่น ๆ"</p>
+        </div>
+        <button class="text-gray-400 hover:text-gray-600 text-xl leading-none" id="oc-close">×</button>
+      </div>
+      <div class="px-4 py-2 overflow-y-auto flex-1" id="oc-list">
+        ${renderRows()}
+      </div>
+      <div class="px-5 py-4 border-t border-gray-100 flex-shrink-0 space-y-2">
+        <button type="button" id="oc-save" class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">บันทึก</button>
+        <button type="button" id="oc-reset" class="w-full py-2 rounded-xl text-xs text-gray-400 hover:text-gray-600 transition">รีเซ็ตเป็นค่าเริ่มต้น</button>
+      </div>
+    </div>`
+  document.body.appendChild(modal)
+  wireRows()
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+  modal.querySelector('#oc-close').addEventListener('click', () => modal.remove())
+
+  modal.querySelector('#oc-save').addEventListener('click', async () => {
+    const saveBtn = modal.querySelector('#oc-save')
+    saveBtn.disabled = true
+    saveBtn.textContent = 'กำลังบันทึก...'
+    try {
+      const overview_prefs = { iconOrder: order, hiddenKeys: [...hidden] }
+      await updateTeacher(teacher.id, { overview_prefs })
+      teacher.overview_prefs = overview_prefs
+      modal.remove()
+      showToast('บันทึกการปรับแต่งแล้ว', 'success')
+      renderTeacherOverview(teacher, homeroomRooms)
+    } catch (e) {
+      console.error(e)
+      showToast('บันทึกไม่สำเร็จ ลองใหม่อีกครั้ง', 'error')
+      saveBtn.disabled = false
+      saveBtn.textContent = 'บันทึก'
+    }
+  })
+
+  modal.querySelector('#oc-reset').addEventListener('click', async () => {
+    try {
+      await updateTeacher(teacher.id, { overview_prefs: null })
+      teacher.overview_prefs = null
+      modal.remove()
+      showToast('รีเซ็ตเป็นค่าเริ่มต้นแล้ว', 'success')
+      renderTeacherOverview(teacher, homeroomRooms)
+    } catch (e) {
+      console.error(e)
+      showToast('รีเซ็ตไม่สำเร็จ ลองใหม่อีกครั้ง', 'error')
+    }
+  })
 }
 
 // ─── Lesson Plan Approval Document ───────────────────────────────────────────

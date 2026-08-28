@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.588'
+import { APP_VERSION } from './version.js?v=10.22.590'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -26,7 +26,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.588'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.590'
 import {
   renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
   renderMyClasses, renderAttendance, renderGrades,
@@ -692,6 +692,25 @@ async function _applyRoleMenus() {
 
   _isQrReissueManager = !!qrManagerRes?.data
   toggle('menu-qr-reissue-requests', _isQrReissueManager)
+
+  // มิเรอร์รายการเดียวกับเมนูไซด์บาร์ด้านบนนี้ให้กริดไอคอน "ระบบอื่น ๆ" ในหน้าภาพรวม (renderTeacherOverview,
+  // js/teacher-views.js) ใช้ตัดสินใจได้เลยโดยไม่ต้อง query ซ้ำ — ต้องคำนวณเสร็จก่อน navigate('overview')
+  // เสมอ (ดูจุดเรียก _applyRoleMenus ใน DOMContentLoaded ท้ายไฟล์ ซึ่งอยู่ก่อน navigate('overview') เสมอ)
+  const canSeeSports = _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false
+  window._teacherOverviewSystems = [
+    { key: 'council',            show: cfg.council_visible_to_all !== 'false' || _isAlsoAdmin || isExecutive, emoji: '🏛️', label: 'สภา<br>นักเรียน',       href: 'council.html' },
+    { key: 'terangganu',         show: campAccess?.is_manager === true || campAccess?.teacher_participant === true, emoji: '⚜️', label: 'ค่าย<br>TERANGGANU', href: 'terangganu.html' },
+    { key: 'regrade',            show: regradeCfg.visibility?.teacher_menu === true || _isAlsoAdmin, emoji: '📋', label: 'แก้ค้าง<br>เก่า',           href: 'regrade.html' },
+    { key: 'sports',             show: canSeeSports,                          emoji: '🏆', label: 'กีฬาสี',                nav: 'sports' },
+    { key: 'certificates',       show: true,                                  emoji: '🏅', label: 'เกียรติ<br>บัตร',          nav: 'certificates' },
+    { key: 'advisor-students',   show: hasAdvisorRoom,                        emoji: '👥', label: 'นักเรียน<br>ที่ปรึกษา',      nav: 'advisor-students' },
+    { key: 'my-team',            show: sportsMemberships.length > 0,          emoji: '🛡️', label: 'จัดการ<br>สีของฉัน',        nav: 'my-team-workspace' },
+    { key: 'shirt-summary',      show: !!canViewSportsShirtSummary,           emoji: '📦', label: 'สรุปยอด<br>เสื้อกีฬาสี',     nav: 'shirt-summary' },
+    { key: 'sports-fund',        show: !!isSportsManager,                     emoji: '💰', label: 'บัญชีเงิน<br>กีฬาสี',        nav: 'sports-fund-admin' },
+    { key: 'shirt-vote',         show: !!(isSportsManager || isShirtVoteManager), emoji: '🗳️', label: 'ผลโหวต<br>แบบเสื้อ',    nav: 'shirt-vote-dashboard' },
+    { key: 'qr-print',           show: _isQrReissueManager,                   emoji: '🎫', label: 'พิมพ์/คำขอ<br>QR',         nav: 'student-qr-print' },
+    { key: 'prayer-score',       show: hasPrayer,                             emoji: '🕌', label: 'คะแนน<br>ศาสนา',           nav: 'prayer-score' },
+  ]
 }
 
 // refresh profile หลัง save
@@ -2729,7 +2748,7 @@ function _showShirtSizeReminderPopup() {
   document.body.appendChild(wrap)
   wrap.querySelector('#ssrp-go').addEventListener('click', () => {
     wrap.remove()
-    import('./sports-portals.js?v=10.22.588').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+    import('./sports-portals.js?v=10.22.590').then(m => m.openTeacherShirtSizeModal?.(_teacher))
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
 }

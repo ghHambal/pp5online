@@ -53,7 +53,7 @@ export async function updateSystemConfig(key, value) {
 export async function getMyTeacherProfile(profileId) {
   const { data, error } = await supabase
     .from('teachers')
-    .select('id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, positions, position_dept_id, smart_classroom_free_class_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)')
+    .select('id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, positions, position_dept_id, smart_classroom_free_class_id, overview_prefs, teachers_quota(total_classes_created, is_paid, package_type, paid_at)')
     .eq('profile_id', profileId)
     .maybeSingle()
   if (error) throw error
