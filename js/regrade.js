@@ -932,6 +932,7 @@ const dashboard = {
   classLevels: null,
   attnLevelKey: '', attnRoom: '', attnRooms: [],
   browseCategory: 'สามัญ', browseLevel: '', browseRoomsCache: [],
+  classroomSortDesc: true,
   expandedRooms: new Set(), roomStudents: {},
   expandedStudents: new Set(), studentSubjects: {},
 }
@@ -1205,9 +1206,15 @@ function renderBrowseRoomsList() {
   wireBrowseHandlers(el)
 }
 
+function sortByOutstanding(list) {
+  const dir = dashboard.classroomSortDesc ? -1 : 1
+  return [...list].sort((a, b) => (a.not_yet - b.not_yet) * dir)
+}
+
 function classroomCard(r) {
   const isOpen = dashboard.expandedRooms.has(r.room)
   const students = dashboard.roomStudents[r.room]
+  const sorted = students ? sortByOutstanding(students) : null
   return `
   <div class="rg-card p-4">
     <div class="flex justify-between items-start gap-2">
@@ -1226,7 +1233,8 @@ function classroomCard(r) {
       <button data-print-room="${escHtml(r.room)}" class="px-3 py-1.5 rounded-lg text-[10px] font-bold" style="background:var(--primary-soft);color:var(--primary-dark)">🖨 พิมพ์รายชื่อห้อง</button>
     </div>
     ${isOpen ? `<div class="mt-3 pt-3 border-t border-dashed border-[var(--line-soft)] flex flex-col gap-2">
-      ${students ? (students.length ? students.map(s => studentBrowseRow(s)).join('') : `<p class="text-center text-xs text-[var(--muted-2)] py-4">ไม่มีข้อมูลนักเรียน</p>`) : `<p class="text-center text-xs text-[var(--muted-2)] py-4">กำลังโหลด...</p>`}
+      <button data-toggle-sort class="self-start px-2.5 py-1 rounded-full text-[10px] font-bold mb-1" style="background:var(--surface-2);color:var(--muted)">↕️ เรียง${dashboard.classroomSortDesc ? 'ค้างมาก→น้อย' : 'ค้างน้อย→มาก'}</button>
+      ${sorted ? (sorted.length ? sorted.map(s => studentBrowseRow(s)).join('') : `<p class="text-center text-xs text-[var(--muted-2)] py-4">ไม่มีข้อมูลนักเรียน</p>`) : `<p class="text-center text-xs text-[var(--muted-2)] py-4">กำลังโหลด...</p>`}
     </div>` : ''}
   </div>`
 }
@@ -1287,6 +1295,10 @@ function wireBrowseHandlers(el) {
       }
     }
   }))
+  el.querySelectorAll('[data-toggle-sort]').forEach(btn => btn.addEventListener('click', () => {
+    dashboard.classroomSortDesc = !dashboard.classroomSortDesc
+    renderBrowseRoomsList()
+  }))
   el.querySelectorAll('[data-print-room]').forEach(btn => btn.addEventListener('click', () => printClassroomRoster(btn.dataset.printRoom)))
   el.querySelectorAll('[data-print-student]').forEach(btn => btn.addEventListener('click', () => printStudentReport(Number(btn.dataset.printStudent))))
 }
@@ -1314,14 +1326,15 @@ async function printClassroomRoster(room) {
   if (!students) {
     try { students = await getClassroomStudents(dashboard.browseCategory, room) } catch (err) { showToast('โหลดข้อมูลไม่สำเร็จ: ' + err.message, 'error'); return }
   }
+  students = sortByOutstanding(students)
   const rowsHtml = students.map((s, i) => `<tr>
-    <td>${i + 1}</td><td>${escHtml(s.full_name)}</td><td>${escHtml(s.student_code || '')}</td>
+    <td>${i + 1}</td><td>${escHtml(s.student_code || '')}</td><td>${escHtml(s.full_name)}</td>
     <td style="text-align:center">${s.not_yet}</td><td style="text-align:center">${s.requested}</td><td style="text-align:center">${s.done}</td>
   </tr>`).join('')
   openPrintWindow(`รายชื่อห้อง ${room}`, `
     <h1>รายชื่อนักเรียนที่มีวิชาค้าง — ห้อง ${escHtml(room)}</h1>
-    <p class="sub">พิมพ์เมื่อ ${new Date().toLocaleString('th-TH')} · ทั้งหมด ${students.length} คน</p>
-    <table><thead><tr><th>#</th><th>ชื่อ-สกุล</th><th>เลขประจำตัว</th><th>ค้าง</th><th>จำนงแล้ว</th><th>สำเร็จ</th></tr></thead>
+    <p class="sub">พิมพ์เมื่อ ${new Date().toLocaleString('th-TH')} · ทั้งหมด ${students.length} คน · เรียงตาม${dashboard.classroomSortDesc ? 'ค้างมาก→น้อย' : 'ค้างน้อย→มาก'}</p>
+    <table><thead><tr><th>#</th><th>เลขประจำตัว</th><th>ชื่อ-สกุล</th><th>ค้าง</th><th>จำนงแล้ว</th><th>สำเร็จ</th></tr></thead>
     <tbody>${rowsHtml}</tbody></table>`)
 }
 
