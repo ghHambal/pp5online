@@ -1328,13 +1328,13 @@ async function printClassroomRoster(room) {
   }
   students = sortByOutstanding(students)
   const rowsHtml = students.map((s, i) => `<tr>
-    <td>${i + 1}</td><td>${escHtml(s.student_code || '')}</td><td>${escHtml(s.full_name)}</td>
+    <td>${i + 1}</td><td style="text-align:center">${escHtml(s.student_code || '')}</td><td>${escHtml(s.full_name)}</td>
     <td style="text-align:center">${s.not_yet}</td><td style="text-align:center">${s.requested}</td><td style="text-align:center">${s.done}</td>
   </tr>`).join('')
   openPrintWindow(`รายชื่อห้อง ${room}`, `
     <h1>รายชื่อนักเรียนที่มีวิชาค้าง — ห้อง ${escHtml(room)}</h1>
     <p class="sub">พิมพ์เมื่อ ${new Date().toLocaleString('th-TH')} · ทั้งหมด ${students.length} คน · เรียงตาม${dashboard.classroomSortDesc ? 'ค้างมาก→น้อย' : 'ค้างน้อย→มาก'}</p>
-    <table><thead><tr><th>#</th><th>เลขประจำตัว</th><th>ชื่อ-สกุล</th><th>ค้าง</th><th>จำนงแล้ว</th><th>สำเร็จ</th></tr></thead>
+    <table><thead><tr><th>#</th><th style="text-align:center">เลขประจำตัว</th><th>ชื่อ-สกุล</th><th>ค้าง</th><th>จำนงแล้ว</th><th>สำเร็จ</th></tr></thead>
     <tbody>${rowsHtml}</tbody></table>`)
 }
 
