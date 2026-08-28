@@ -69,6 +69,29 @@ export async function issueCertificate({ templateId, recipientType = 'student', 
   return data
 }
 
+// ออกเกียรติบัตรจากตารางรายชื่อใน request เดียว ทุกแถวเก็บ variables ของตัวเอง
+export async function issueCertificatesBatch({ templateId, recipients, title, issuedByTeacherId }) {
+  const template = await getCertificateTemplate(templateId)
+  if (!template) throw new Error('ไม่พบเทมเพลตที่เลือก')
+  const issuedAt = new Date().toISOString()
+  const payloads = (recipients ?? []).map(recipient => ({
+    template_id: templateId,
+    layout_snapshot: template.layout,
+    variables: recipient.variables ?? {},
+    recipient_type: 'student',
+    student_id: recipient.studentId,
+    teacher_id: null,
+    recipient_name: recipient.recipientName,
+    title: title || null,
+    issued_by_teacher_id: issuedByTeacherId ?? null,
+    issued_at: issuedAt,
+  }))
+  if (!payloads.length) return []
+  const { data, error } = await supabase.from('certificates').insert(payloads).select('*')
+  if (error) throw error
+  return data ?? []
+}
+
 export async function getMyCertificates(studentId) {
   const { data, error } = await supabase.from('certificates')
     .select('id, certificate_no, layout_snapshot, variables, title, source_system, issued_at')
@@ -128,6 +151,17 @@ export async function searchStudentsForCertificateIssuance(query) {
   return data ?? []
 }
 
+export async function getStudentByCodeForCertificateIssuance(studentCode) {
+  const code = String(studentCode ?? '').trim()
+  if (!code) return null
+  const { data, error } = await supabase.from('students')
+    .select('id, full_name, student_code, main_room, image_url, photo_url')
+    .eq('student_code', code)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
 export async function searchTeachersForCertificateIssuance(query) {
   const q = (query ?? '').trim()
   if (q.length < 2) return []
@@ -137,4 +171,44 @@ export async function searchTeachersForCertificateIssuance(query) {
     .limit(15)
   if (error) throw error
   return data ?? []
+}
+
+// ─── ตารางรายชื่อกลาง ───
+export async function getCertificateRecipientTables(createdByTeacherId) {
+  let query = supabase.from('certificate_recipient_tables').select('*').order('updated_at', { ascending: false })
+  if (createdByTeacherId != null) query = query.eq('created_by_teacher_id', createdByTeacherId)
+  const { data, error } = await query
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createCertificateRecipientTable({ name, templateId, title, columns, rows, createdByTeacherId }) {
+  const { data, error } = await supabase.from('certificate_recipient_tables').insert({
+    name,
+    template_id: templateId || null,
+    title: title || null,
+    columns,
+    rows,
+    created_by_teacher_id: createdByTeacherId,
+  }).select('*').single()
+  if (error) throw error
+  return data
+}
+
+export async function updateCertificateRecipientTable({ id, name, templateId, title, columns, rows }) {
+  const { data, error } = await supabase.from('certificate_recipient_tables').update({
+    name,
+    template_id: templateId || null,
+    title: title || null,
+    columns,
+    rows,
+    updated_at: new Date().toISOString(),
+  }).eq('id', id).select('*').single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteCertificateRecipientTable(id) {
+  const { error } = await supabase.from('certificate_recipient_tables').delete().eq('id', id)
+  if (error) throw error
 }

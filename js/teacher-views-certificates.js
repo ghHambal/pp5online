@@ -4,9 +4,11 @@ import {
   getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate, updateCertificateTemplateLayout,
   issueCertificate, getIssuedCertificates, deleteCertificate, getMyCertificatesAsTeacher,
   searchStudentsForCertificateIssuance, searchTeachersForCertificateIssuance,
+  getCertificateRecipientTables,
 } from './certificates-api.js'
 import { CERT_PRESET_LABELS, openCertificatePrint } from './certificate-engine.js'
 import { openCertificateLayoutEditor } from './certificate-editor.js'
+import { renderCertificateRecipientTable } from './certificate-recipient-table.js'
 import { uploadCertificateTemplateImage } from './storage.js'
 import { setContent, setTitle, setActiveNav } from './teacher-views-utils.js'
 import { showToast, showDangerConfirm } from './ui.js'
@@ -16,6 +18,25 @@ const _esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<':
 let _activeTab = 'templates'
 let _templates = null
 let _issuedHistory = null
+let _recipientTables = null
+
+const DEFAULT_RECIPIENT_COLUMNS = [
+  { key: 'student_code', label: 'รหัสนักเรียน', system: true, removable: false },
+  { key: 'name', label: 'ชื่อ-สกุลนักเรียน', system: true, removable: false },
+]
+
+function _templateColumnTokens(columns = null) {
+  const sourceColumns = columns ?? (_recipientTables ?? []).flatMap(table => table.columns ?? [])
+  const tokens = new Map([
+    ['{{student_code}}', { token: '{{student_code}}', label: 'รหัสนักเรียน' }],
+    ['{{reason}}', { token: '{{reason}}', label: 'เหตุผล/รายละเอียด' }],
+  ])
+  sourceColumns.forEach(column => {
+    if (!column?.key || column.key === 'name') return
+    tokens.set(`{{${column.key}}}`, { token: `{{${column.key}}}`, label: column.label || column.key })
+  })
+  return [...tokens.values()]
+}
 
 export async function renderCertificateManager(teacher) {
   setActiveNav('certificates')
@@ -26,7 +47,7 @@ export async function renderCertificateManager(teacher) {
       <div class="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h3 class="text-lg font-bold text-gray-800">🏅 ระบบเกียรติบัตร</h3>
-          <p class="text-xs text-gray-400 mt-0.5">ครูทุกคนสร้างเทมเพลตและออกเกียรติบัตรให้นักเรียน/ครูได้เอง — นักเรียนดูของตัวเองได้ที่หน้าโปรไฟล์ "🎖️ บัตรของฉัน"</p>
+          <p class="text-xs text-gray-400 mt-0.5">ครูทุกคนสร้างเทมเพลตและออกเกียรติบัตรให้นักเรียน/ครูได้เอง — นักเรียนดูของตัวเองได้ที่หน้าโปรไฟล์ "🎖️ เกียรติบัตรของฉัน"</p>
         </div>
         ${teacher?.id ? `<button type="button" id="cert-my-received-btn" class="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-xs font-bold flex-shrink-0">🎖️ บัตรของฉันที่ได้รับ</button>` : ''}
       </div>
@@ -62,7 +83,10 @@ async function _renderTemplatesTab(teacher) {
   const panel = document.getElementById('cert-tab-panel')
   panel.innerHTML = `<p class="text-sm text-gray-400 text-center py-12">⏳ กำลังโหลด...</p>`
   try {
-    _templates = await getCertificateTemplates()
+    ;[_templates, _recipientTables] = await Promise.all([
+      getCertificateTemplates(),
+      teacher?.id ? getCertificateRecipientTables(teacher.id).catch(() => []) : Promise.resolve([]),
+    ])
   } catch (err) {
     panel.innerHTML = `<p class="text-sm text-red-400 text-center py-12">โหลดไม่สำเร็จ: ${_esc(err.message ?? '')}</p>`
     return
@@ -79,6 +103,7 @@ async function _renderTemplatesTab(teacher) {
           <p class="text-sm font-bold text-gray-800 truncate">${_esc(t.name)}</p>
           <div class="flex gap-1.5">
             <button type="button" class="cert-design-tpl flex-1 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px]" data-id="${t.id}">🎨 ออกแบบ</button>
+            <button type="button" title="คัดลอกทั้งดีไซน์ ฟอนต์ เอฟเฟกต์ และการผูกข้อมูล" class="cert-copy-tpl px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-[11px]" data-id="${t.id}">⧉</button>
             <button type="button" class="cert-delete-tpl px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px]" data-id="${t.id}">🗑️</button>
           </div>
         </div>`).join('') || '<p class="text-xs text-gray-400 col-span-full text-center py-6">ยังไม่มีเทมเพลต</p>'}
@@ -145,14 +170,36 @@ async function _renderTemplatesTab(teacher) {
       if (!template) return
       openCertificateLayoutEditor({
         template,
-        previewVariables: { reason: 'ทำความดีเป็นแบบอย่างที่ดี' },
-        placeholderTokens: [{ token: '{{reason}}', label: 'เหตุผล/รายละเอียด' }],
+        previewVariables: { student_code: '25944', reason: 'ทำความดีเป็นแบบอย่างที่ดี' },
+        placeholderTokens: _templateColumnTokens(),
         onSave: async (layout, backgroundImageUrl) => {
           await updateCertificateTemplateLayout({ id: template.id, layout, backgroundImageUrl })
           showToast('บันทึกดีไซน์แล้ว ✅', 'success')
           _renderTemplatesTab(teacher)
         },
       })
+    })
+  })
+  panel.querySelectorAll('.cert-copy-tpl').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const source = _templates.find(t => t.id === Number(btn.dataset.id))
+      if (!source) return
+      btn.disabled = true
+      try {
+        await createCertificateTemplate({
+          name: `${source.name} (สำเนา)`,
+          type: source.type,
+          presetKey: source.preset_key,
+          backgroundImageUrl: source.background_image_url,
+          layout: JSON.parse(JSON.stringify(source.layout)),
+          createdByTeacherId: teacher?.id,
+        })
+        showToast('คัดลอกเทมเพลตพร้อมค่าทั้งหมดแล้ว ✅', 'success')
+        _renderTemplatesTab(teacher)
+      } catch (err) {
+        showToast('คัดลอกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
+      }
     })
   })
   panel.querySelectorAll('.cert-delete-tpl').forEach(btn => {
@@ -170,6 +217,31 @@ async function _renderTemplatesTab(teacher) {
 // แล้วกด "เพิ่ม" ระบบค้นหาทีละรายการแล้วแสดงเป็นการ์ดพร้อมรูป ก่อนออกจริงพร้อมกันทั้งหมด
 function _renderIssueTab(teacher) {
   const panel = document.getElementById('cert-tab-panel')
+  panel.innerHTML = `
+    <div class="space-y-3">
+      <div class="inline-flex gap-1.5 p-1 bg-gray-100 rounded-xl">
+        <button type="button" id="cert-issue-mode-table" class="px-3 py-2 rounded-lg text-xs font-bold bg-white text-indigo-600 shadow-sm">📊 ตารางรายชื่อนักเรียน</button>
+        <button type="button" id="cert-issue-mode-quick" class="px-3 py-2 rounded-lg text-xs font-bold text-gray-500">⚡ ค้นหาด่วน / ออกให้ครู</button>
+      </div>
+      <div id="cert-issue-mode-panel"></div>
+    </div>`
+  const content = panel.querySelector('#cert-issue-mode-panel')
+  const tableButton = panel.querySelector('#cert-issue-mode-table')
+  const quickButton = panel.querySelector('#cert-issue-mode-quick')
+  const setMode = mode => {
+    content.dataset.certMode = mode
+    tableButton.className = `px-3 py-2 rounded-lg text-xs font-bold ${mode === 'table' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`
+    quickButton.className = `px-3 py-2 rounded-lg text-xs font-bold ${mode === 'quick' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`
+    if (mode === 'table') renderCertificateRecipientTable({ panel: content, teacher, templates: _templates ?? [] })
+    else _renderQuickIssueTab(teacher, content)
+  }
+  tableButton.addEventListener('click', () => setMode('table'))
+  quickButton.addEventListener('click', () => setMode('quick'))
+  setMode('table')
+}
+
+function _renderQuickIssueTab(teacher, targetPanel = null) {
+  const panel = targetPanel ?? document.getElementById('cert-tab-panel')
   let recipientType = 'student' // 'student' | 'teacher' — สลับได้ระหว่างพิมพ์เพิ่ม ไม่ล้างการ์ดที่เพิ่มไปแล้ว
   let selectedRecipients = [] // [{ type, id, full_name, code, sub, photo }]
 

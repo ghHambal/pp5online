@@ -18,6 +18,12 @@ export const CERT_PRESETS = {
 }
 export const CERT_PRESET_LABELS = { gold_classic: '🏛️ ทองคลาสสิก', blue_modern: '🎓 น้ำเงินโมเดิร์น', green_nature: '🌿 เขียวธรรมชาติ' }
 
+// ฟอนต์ไทยที่เหมาะกับเกียรติบัตร โหลดจาก Google Fonts เมื่อถูกเลือกใช้ใน layout
+export const CERT_GOOGLE_FONTS = [
+  'Sarabun', 'Prompt', 'Kanit', 'Mitr', 'Anuphan', 'Mali', 'Charm', 'Itim',
+  'Chakra Petch', 'Noto Sans Thai', 'Noto Serif Thai',
+]
+
 // ปุ่มแทรกด่วนที่มีให้ใช้เสมอทุกระบบ (ผู้เรียกเพิ่ม token เฉพาะของตัวเองต่อได้ในตัวแก้ไข)
 export const UNIVERSAL_PLACEHOLDER_TOKENS = [
   { token: '{{name}}', label: 'ชื่อผู้รับ' },
@@ -60,19 +66,39 @@ export function layoutForTemplate(template) {
   return defaultLayoutFor(template?.type === 'custom' ? 'custom' : (template?.preset_key ?? 'gold_classic'))
 }
 
+const safeFontFamily = value => String(value || 'Sarabun').replace(/[^A-Za-z0-9 _-]/g, '').trim() || 'Sarabun'
+
 function elementStyle(el) {
   const alignTransform = el.align === 'left' ? 'translate(0,-50%)' : el.align === 'right' ? 'translate(-100%,-50%)' : 'translate(-50%,-50%)'
   const widthRule = el.borderTop ? 'width:180px;' : el.maxWidth ? `width:${el.maxWidth}%;` : 'white-space:nowrap;'
   const borderRule = el.borderTop ? 'border-top:1px solid #999;padding-top:6px;' : ''
-  return `position:absolute;left:${el.x}%;top:${el.y}%;transform:${alignTransform};font-size:${el.fontSize}px;font-weight:${el.bold ? 700 : 400};color:${_esc(el.color)};text-align:${el.align};line-height:1.6;${widthRule}${borderRule}font-family:'Sarabun',sans-serif;`
+  const shadow = el.shadow?.enabled
+    ? `text-shadow:${Number(el.shadow.offsetX) || 0}px ${Number(el.shadow.offsetY) || 0}px ${Number(el.shadow.blur) || 0}px ${_esc(el.shadow.color || '#000000')};`
+    : ''
+  const stroke = el.stroke?.enabled
+    ? `-webkit-text-stroke:${Number(el.stroke.width) || 1}px ${_esc(el.stroke.color || '#ffffff')};paint-order:stroke fill;`
+    : ''
+  const opacity = el.opacity == null ? 1 : Math.min(1, Math.max(0, Number(el.opacity)))
+  const letterSpacing = Number(el.letterSpacing) || 0
+  return `position:absolute;left:${el.x}%;top:${el.y}%;transform:${alignTransform};font-size:${el.fontSize}px;font-weight:${el.bold ? 700 : 400};color:${_esc(el.color)};text-align:${el.align};line-height:1.6;opacity:${opacity};letter-spacing:${letterSpacing}px;${widthRule}${borderRule}${shadow}${stroke}font-family:'${safeFontFamily(el.fontFamily)}',sans-serif;`
 }
 
 // element ปกติเป็นข้อความ (text, ค่าเริ่มต้นถ้าไม่ระบุ type) — type:'image' คือรูปโลโก้/ตราสัญลักษณ์ที่วาง
 // ลงบนการ์ดได้อิสระ (คนละแนวคิดกับพื้นหลังเต็มใบ) width เป็น % ของความกว้างการ์ด สูงปรับตามสัดส่วนรูปเอง
 function renderElement(el, escapedVars) {
+  if (el.type === 'cornerGraphic') {
+    const width = Math.min(45, Math.max(2, Number(el.width) || 14))
+    const insetX = Math.min(45, Math.max(0, Number(el.insetX) || 2))
+    const insetY = Math.min(45, Math.max(0, Number(el.insetY) || 2))
+    const vertical = el.position === 'bottom' ? `bottom:${insetY}%;` : `top:${insetY}%;`
+    const opacity = el.opacity == null ? 1 : Math.min(1, Math.max(0, Number(el.opacity)))
+    const common = `position:absolute;${vertical}width:${width}%;height:auto;opacity:${opacity};`
+    return `<img data-cert-el-id="${_esc(el.id)}" src="${_esc(el.imageUrl)}" style="${common}left:${insetX}%;" /><img src="${_esc(el.imageUrl)}" aria-hidden="true" style="${common}right:${insetX}%;transform:scaleX(-1);" />`
+  }
   if (el.type === 'image') {
     const w = el.width ?? 20
-    return `<img data-cert-el-id="${_esc(el.id)}" src="${_esc(el.imageUrl)}" style="position:absolute;left:${el.x}%;top:${el.y}%;width:${w}%;height:auto;transform:translate(-50%,-50%);" />`
+    const opacity = el.opacity == null ? 1 : Math.min(1, Math.max(0, Number(el.opacity)))
+    return `<img data-cert-el-id="${_esc(el.id)}" src="${_esc(el.imageUrl)}" style="position:absolute;left:${el.x}%;top:${el.y}%;width:${w}%;height:auto;opacity:${opacity};transform:translate(-50%,-50%)${el.flipX ? ' scaleX(-1)' : ''};" />`
   }
   return `<div data-cert-el-id="${_esc(el.id)}" style="${elementStyle(el)}">${substitutePlaceholders(_esc(el.text), escapedVars)}</div>`
 }
@@ -94,8 +120,10 @@ export function buildCertificateHtml({ layout, variables, docTitle }) {
   const canvasHtml = renderCertificateCanvasHtml({ layout, variables })
   const title = _esc(docTitle || `เกียรติบัตร ${variables?.name ?? ''}`)
   const isPortrait = layout.orientation === 'portrait'
+  const fonts = [...new Set(['Sarabun', ...(layout.elements ?? []).filter(el => !el.type || el.type === 'text').map(el => safeFontFamily(el.fontFamily))])]
+  const fontQuery = fonts.map(f => `family=${encodeURIComponent(f).replace(/%20/g, '+')}:wght@400;600;700`).join('&amp;')
   return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${title}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?${fontQuery}&amp;display=swap" rel="stylesheet">
     <style>
       * { box-sizing: border-box; }
       body { font-family: 'Sarabun', sans-serif; background: #e5e7eb; padding: 40px; margin: 0; }

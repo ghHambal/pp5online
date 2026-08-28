@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.574'
+import { APP_VERSION } from './version.js?v=10.22.575'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -486,12 +486,12 @@ export async function renderStudentOverview(student) {
       </div>
     </div>
 
-    <!-- บัตรของฉัน — รวบรวมเกียรติบัตรจากทุกระบบที่เชื่อมกับปพ.5 ไว้ที่เดียว -->
+    <!-- เกียรติบัตรของฉัน — รวบรวมเกียรติบัตรจากทุกระบบที่เชื่อมกับปพ.5 ไว้ที่เดียว -->
     <button type="button" id="btn-stu-my-certificates" class="relative overflow-hidden bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl border border-amber-400 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all w-full text-left">
       <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🎖️</div>
       <div class="min-w-0 z-10">
-        <h4 class="font-bold text-xs sm:text-sm">🎖️ บัตรของฉัน</h4>
-        <p class="text-[10px] text-amber-50 mt-0.5">เกียรติบัตรทั้งหมดที่คุณได้รับ</p>
+        <h4 class="font-bold text-xs sm:text-sm">🎖️ เกียรติบัตรของฉัน</h4>
+        <p class="text-[10px] text-amber-50 mt-0.5">เกียรติบัตรทั้งหมดที่นักเรียนได้รับ</p>
       </div>
       <span class="relative z-10 px-3 py-1.5 bg-white text-amber-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">
         📄 เปิดดู
@@ -2835,8 +2835,8 @@ export async function renderStudentProfile(student, onLogout) {
     <button type="button" id="btn-stu-my-certificates-profile" class="relative overflow-hidden bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl border border-amber-400 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all w-full text-left">
       <div class="absolute -right-6 -bottom-6 text-7xl opacity-10 select-none">🎖️</div>
       <div class="min-w-0 z-10">
-        <h4 class="font-bold text-xs sm:text-sm">🎖️ บัตรของฉัน</h4>
-        <p class="text-[10px] text-amber-50 mt-0.5">เกียรติบัตรทั้งหมดที่คุณได้รับ</p>
+        <h4 class="font-bold text-xs sm:text-sm">🎖️ เกียรติบัตรของฉัน</h4>
+        <p class="text-[10px] text-amber-50 mt-0.5">เกียรติบัตรทั้งหมดที่นักเรียนได้รับ</p>
       </div>
       <span class="relative z-10 px-3 py-1.5 bg-white text-amber-700 font-bold text-[10px] rounded-xl shadow flex-shrink-0">
         📄 เปิดดู
