@@ -47,8 +47,14 @@ async function uploadFile(bucket, path, fileOrBlob, contentType = 'image/jpeg') 
   return data.publicUrl
 }
 
-// รูปลายเซ็น/โลโก้ใน system_config → บีบ max 1200px (ต้องชัด), quality 0.88
+// รูปลายเซ็น/โลโก้ใน system_config (ใช้ร่วม: โลโก้หน้า Login/โลโก้หลักสี/โลโก้ขาวดำ/ลายเซ็นผู้บริหาร
+// ทุกตำแหน่ง/QR PromptPay/รูปหน้า Smart Classroom) — ถ้าเป็น PNG อัปโหลดไฟล์ต้นฉบับตรงๆ รักษาความ
+// โปร่งใสไว้ (โลโก้/ลายเซ็นสแกนส่วนใหญ่เป็น PNG พื้นหลังโปร่งใส บีบผ่าน canvas เป็น JPEG แล้วพื้นจะ
+// กลายเป็นดำ) ไฟล์ประเภทอื่นยังบีบเป็น JPEG ตามเดิม max 1200px quality 0.88
 export async function uploadSystemAsset(key, file) {
+  if (file.type === 'image/png') {
+    return uploadFile('system-assets', `${key}.png`, file, 'image/png')
+  }
   const blob = await compressImage(file, { maxWidth: 1200, quality: 0.88 })
   return uploadFile('system-assets', `${key}.jpg`, blob)
 }
@@ -65,9 +71,13 @@ export async function uploadTeacherPhoto(teacherId, file) {
   return uploadFile('teacher-photos', `${teacherId}/profile.jpg`, blob)
 }
 
-// รูปหัวหน้ากลุ่มสาระ (photo/sign) → บีบ max 600px
+// รูปหัวหน้ากลุ่มสาระ (photo/sign) → ลายเซ็นสแกนมักเป็น PNG พื้นหลังโปร่งใส อัปโหลดตรงถ้าเป็น PNG
+// (เหตุผลเดียวกับ uploadSystemAsset) ไฟล์อื่นยังบีบ max 600px ตามเดิม
 export async function uploadDeptAsset(deptCode, type, file) {
   // type: 'photo' | 'sign'
+  if (file.type === 'image/png') {
+    return uploadFile('system-assets', `dept/${deptCode}/${type}.png`, file, 'image/png')
+  }
   const blob = await compressImage(file, { maxWidth: 600, quality: 0.85 })
   return uploadFile('system-assets', `dept/${deptCode}/${type}.jpg`, blob)
 }
