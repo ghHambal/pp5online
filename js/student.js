@@ -291,9 +291,6 @@ function _renderMainNav(activeView = 'overview') {
     _navButtonHTML('subjects', '📚', 'รายวิชา'),
     _navButtonHTML('scores', '📊', 'คะแนน'),
   ]
-  if (_futsalRegistered) {
-    items.push(_navButtonHTML('futsal', '⚽', 'ฟุตซอล'))
-  }
   items.push(_navButtonHTML('profile', '👤', 'โปรไฟล์'))
   nav.innerHTML = items.join('')
   _bindNav()
