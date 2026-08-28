@@ -50,12 +50,25 @@ export async function updateSystemConfig(key, value) {
 }
 
 // ─── Teacher Profile (linked via profile_id) ─────────────────────────────────
+const _TEACHER_PROFILE_COLUMNS_BASE = 'id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, positions, position_dept_id, smart_classroom_free_class_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)'
+
+// overview_prefs เป็นคอลัมน์ที่เพิ่มทีหลัง (patch_teacher_overview_prefs.sql) — ถ้าใครยังไม่ได้รัน
+// migration select จะ error "column does not exist" ทันที ต้อง fallback ตัดคอลัมน์นี้ออกแทนการ throw
+// เพราะฟังก์ชันนี้เรียกทุกครั้งที่ครูล็อกอิน พังทั้งระบบไม่ได้แค่เพราะฟีเจอร์เสริมตัวเดียว
 export async function getMyTeacherProfile(profileId) {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('teachers')
-    .select('id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, positions, position_dept_id, smart_classroom_free_class_id, overview_prefs, teachers_quota(total_classes_created, is_paid, package_type, paid_at)')
+    .select(`${_TEACHER_PROFILE_COLUMNS_BASE}, overview_prefs`)
     .eq('profile_id', profileId)
     .maybeSingle()
+  if (error) {
+    console.warn('getMyTeacherProfile: overview_prefs column missing, retrying without it — run patch_teacher_overview_prefs.sql', error)
+    ;({ data, error } = await supabase
+      .from('teachers')
+      .select(_TEACHER_PROFILE_COLUMNS_BASE)
+      .eq('profile_id', profileId)
+      .maybeSingle())
+  }
   if (error) throw error
   return data
 }

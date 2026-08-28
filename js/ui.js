@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.591'
+import { APP_VERSION } from './version.js?v=10.22.592'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -781,6 +781,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.592': [
+    '🚨 แก้ด่วน: ครูล็อกอินไม่ได้/ค้างหน้าโหลดตลอดถ้ายังไม่ได้รัน patch_teacher_overview_prefs.sql — getMyTeacherProfile ลอง select ไม่มีคอลัมน์นี้ได้แล้ว แทนที่จะพังทั้งระบบ',
+  ],
   '10.22.591': [
     '👉 กริดไอคอน "ระบบอื่น ๆ" (หน้าภาพรวมครู/นักเรียน): เพิ่มข้อความแนะนำ "เลื่อนซ้าย-ขวาเพื่อดูระบบทั้งหมด" เมื่อมีไอคอนเยอะเกินจอ กันคนไม่รู้ว่าเลื่อนดูเพิ่มได้',
   ],
