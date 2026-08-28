@@ -856,6 +856,7 @@ async function renderGradeTable() {
 const dashboard = {
   categoryTab: 'all', drilldown: null,
   view: 'overview', overviewTab: 'summary',
+  teacherSort: { key: 'pending', dir: 'desc' },
   classLevels: null,
   attnLevelKey: '', attnRoom: '', attnRooms: [],
   browseCategory: 'สามัญ', browseLevel: '', browseRoomsCache: [],
@@ -864,6 +865,16 @@ const dashboard = {
 }
 
 const sumCnt = (list) => list.reduce((s, r) => s + Number(r.cnt), 0)
+
+function sortRowsBy(rows, sort) {
+  const dir = sort.dir === 'asc' ? 1 : -1
+  return [...rows].sort((a, b) => {
+    const av = a[sort.key], bv = b[sort.key]
+    if (typeof av === 'string') return av.localeCompare(bv, 'th') * dir
+    return (av - bv) * dir
+  })
+}
+function sortArrow(sort, key) { return sort.key === key ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : '' }
 
 async function ensureClassLevels() {
   if (!dashboard.classLevels) dashboard.classLevels = await getRegradeDistinctClassLevels()
@@ -902,14 +913,15 @@ async function renderDashboardOverview(content) {
   const requested = onlyReq + assigned
 
   const teacherGroups = {}
-  scoped.forEach(r => { (teacherGroups[r.teacher_name] ??= []).push(r) })
-  const teacherRows = Object.entries(teacherGroups).map(([name, list]) => ({
+  scoped.forEach(r => { (teacherGroups[r.teacher_name] ??= { dept: r.teacher_dept || '-', list: [] }).list.push(r) })
+  const teacherRows = sortRowsBy(Object.entries(teacherGroups).map(([name, g]) => ({
     name,
-    total: sumCnt(list),
-    pending: sumCnt(list.filter(x => x.status === 'จำนงแล้ว')),
-    assigned: sumCnt(list.filter(x => x.status === 'กำลังดำเนินการปรับแก้')),
-    done: sumCnt(list.filter(x => x.status === 'ปรับแก้สำเร็จ')),
-  })).sort((a, b) => b.pending - a.pending)
+    dept: g.dept,
+    total: sumCnt(g.list),
+    pending: sumCnt(g.list.filter(x => x.status === 'จำนงแล้ว')),
+    assigned: sumCnt(g.list.filter(x => x.status === 'กำลังดำเนินการปรับแก้')),
+    done: sumCnt(g.list.filter(x => x.status === 'ปรับแก้สำเร็จ')),
+  })), dashboard.teacherSort)
 
   const genTotal = sumCnt(rows.filter(r => r.category === 'สามัญ'))
   const relTotal = sumCnt(rows.filter(r => r.category === 'ศาสนา'))
@@ -934,14 +946,18 @@ async function renderDashboardOverview(content) {
 
   let sectionHtml = ''
   if (dashboard.overviewTab === 'teachers') {
+    const th = (label, key, align = '') => `<th class="py-2 px-2 cursor-pointer select-none hover:text-[var(--ink-2)] ${align}" data-sort-key="${key}">${escHtml(label)}${sortArrow(dashboard.teacherSort, key)}</th>`
     sectionHtml = `
       <div class="rg-card p-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-1">ความคืบหน้าแยกรายครูผู้สอน</p>
-        <p class="text-[10px] text-[var(--muted-2)] mb-3">เรียงจากครูที่มีคำร้องรอตอบรับมากที่สุดก่อน</p>
+        <p class="text-[10px] text-[var(--muted-2)] mb-3">คลิกหัวคอลัมน์เพื่อเรียงจากมาก↔น้อย หรือ ก↔ฮ</p>
         <div class="overflow-x-auto"><table class="w-full text-xs">
-          <thead><tr class="border-b-2 border-[var(--line)] text-left text-[var(--muted-2)]"><th class="py-2 px-2">ครูผู้สอน</th><th class="py-2 px-2 text-center">ทั้งหมด</th><th class="py-2 px-2 text-center">รอตอบรับ</th><th class="py-2 px-2 text-center">มอบหมายแล้ว</th><th class="py-2 px-2 text-center">สำเร็จ</th></tr></thead>
+          <thead><tr class="border-b-2 border-[var(--line)] text-left text-[var(--muted-2)]">
+            ${th('ครูผู้สอน', 'name')}${th('กลุ่มสาระ', 'dept')}${th('ทั้งหมด', 'total', 'text-center')}${th('รอตอบรับ', 'pending', 'text-center')}${th('มอบหมายแล้ว', 'assigned', 'text-center')}${th('สำเร็จ', 'done', 'text-center')}
+          </tr></thead>
           <tbody>${teacherRows.map(t => `<tr class="border-b border-[var(--line-soft)]">
             <td class="py-2 px-2 font-bold text-[var(--ink-2)]">${escHtml(t.name)}</td>
+            <td class="py-2 px-2 text-[var(--muted)]">${escHtml(t.dept)}</td>
             <td class="py-2 px-2 text-center text-[var(--muted)]">${t.total}</td>
             <td class="py-2 px-2 text-center">${t.pending > 0 ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold" style="background:var(--gold-soft);color:var(--gold-ink)">${t.pending}</span>` : t.pending}</td>
             <td class="py-2 px-2 text-center" style="color:var(--info)">${t.assigned}</td>
@@ -995,6 +1011,12 @@ async function renderDashboardOverview(content) {
   content.innerHTML = headerRowHtml + sectionHtml
 
   content.querySelectorAll('[data-otab]').forEach(btn => btn.addEventListener('click', () => { dashboard.overviewTab = btn.dataset.otab; renderDashboardOverview(content) }))
+  content.querySelectorAll('[data-sort-key]').forEach(th => th.addEventListener('click', () => {
+    const key = th.dataset.sortKey
+    if (dashboard.teacherSort.key === key) dashboard.teacherSort.dir = dashboard.teacherSort.dir === 'asc' ? 'desc' : 'asc'
+    else { dashboard.teacherSort.key = key; dashboard.teacherSort.dir = (key === 'name' || key === 'dept') ? 'asc' : 'desc' }
+    renderDashboardOverview(content)
+  }))
   content.querySelectorAll('[data-dcat]').forEach(btn => btn.addEventListener('click', () => { dashboard.categoryTab = btn.dataset.dcat; dashboard.drilldown = null; renderDashboard() }))
 
   if (dashboard.overviewTab === 'summary') {
