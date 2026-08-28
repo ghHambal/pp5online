@@ -26,6 +26,28 @@ const newRow = type => {
 }
 const safeKey = value => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)
 
+// Google Sheets และ Excel ส่งข้อมูลผ่าน Clipboard เป็นตารางคั่นด้วย Tab/ขึ้นบรรทัดใหม่
+// รองรับเครื่องหมายคำพูดและเครื่องหมายคำพูดซ้อนตามรูปแบบ TSV ด้วย
+export function parseCertificateRecipientClipboard(text) {
+  const source = String(text ?? '').replace(/\r\n?/g, '\n')
+  const rows = []
+  let row = [], cell = '', quoted = false
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index]
+    if (char === '"') {
+      if (quoted && source[index + 1] === '"') { cell += '"'; index++ }
+      else quoted = !quoted
+    } else if (char === '\t' && !quoted) {
+      row.push(cell); cell = ''
+    } else if (char === '\n' && !quoted) {
+      row.push(cell); rows.push(row); row = []; cell = ''
+    } else cell += char
+  }
+  row.push(cell); rows.push(row)
+  while (rows.length > 1 && rows.at(-1).every(value => value === '')) rows.pop()
+  return rows
+}
+
 function fullThaiPrefix(value) {
   const name = String(value ?? '').trim().replace(/\s+/g, ' ')
   for (const [pattern, full] of [
@@ -129,7 +151,7 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
     })
     const config = recipientConfig[current.recipient_type]
     panel.querySelector('#crt-grid-title').textContent = `📊 ตารางผู้รับ: ${config.label}`
-    panel.querySelector('#crt-grid-help').textContent = `กรอก${config.codeLabel}แล้วออกจากช่อง ระบบจะเติม${config.nameLabel}อัตโนมัติ`
+    panel.querySelector('#crt-grid-help').textContent = `กรอก${config.codeLabel}แล้วออกจากช่อง ระบบจะเติม${config.nameLabel}อัตโนมัติ • กด Enter เพื่อขึ้นแถวใหม่ • วางข้อมูลทั้งคอลัมน์จาก Excel/Sheets ได้เลย`
   }
   function renderGrid() {
     const config = recipientConfig[current.recipient_type]
@@ -152,6 +174,16 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
         if (input.dataset.key === config.codeKey) { row.student_id = null; row.teacher_id = null; row.values.name = ''; row.lookup_status = 'idle' }
       })
       if (input.dataset.key === config.codeKey) input.addEventListener('change', () => lookup(input.dataset.row))
+      input.addEventListener('keydown', e => {
+        if (e.key !== 'Enter') return
+        e.preventDefault()
+        const rowIndex = current.rows.findIndex(r => r.id === input.dataset.row)
+        if (rowIndex === -1) return
+        if (rowIndex === current.rows.length - 1) { current.rows.push(newRow(current.recipient_type)); renderGrid() }
+        const nextRow = current.rows[rowIndex + 1]
+        grid.querySelector(`.crt-cell[data-row="${nextRow.id}"][data-key="${input.dataset.key}"]`)?.focus()
+      })
+      input.addEventListener('paste', e => handlePaste(e, input))
     })
     grid.querySelectorAll('.crt-remove-row').forEach(button => button.addEventListener('click', () => { current.rows = current.rows.filter(r => r.id !== button.dataset.row); if (!current.rows.length) current.rows.push(newRow(current.recipient_type)); renderGrid() }))
     grid.querySelectorAll('.crt-remove-col').forEach(button => button.addEventListener('click', () => { current.columns = current.columns.filter(c => c.key !== button.dataset.key); current.rows.forEach(r => { delete r.values[button.dataset.key] }); renderGrid() }))
@@ -179,6 +211,40 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
       }
     } catch (error) { row.student_id = null; row.teacher_id = null; row.values.name = ''; row.lookup_status = 'missing'; showToast('ค้นหาไม่สำเร็จ: ' + error.message, 'error') }
     renderGrid()
+  }
+  async function handlePaste(event, input) {
+    const text = event.clipboardData?.getData('text')
+    if (text == null) return
+    const parsed = parseCertificateRecipientClipboard(text)
+    if (parsed.length === 1 && parsed[0].length === 1) {
+      event.preventDefault()
+      const value = parsed[0][0]
+      const start = input.selectionStart ?? input.value.length; const end = input.selectionEnd ?? input.value.length
+      input.value = input.value.slice(0, start) + value + input.value.slice(end)
+      input.setSelectionRange(start + value.length, start + value.length)
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      return
+    }
+    event.preventDefault()
+    const config = recipientConfig[current.recipient_type]
+    const editableColumns = current.columns.filter(c => c.key !== 'name')
+    const startColIndex = editableColumns.findIndex(c => c.key === input.dataset.key)
+    const startRowIndex = current.rows.findIndex(r => r.id === input.dataset.row)
+    if (startColIndex === -1 || startRowIndex === -1) return
+    const touchedCodeRowIds = []
+    parsed.forEach((sourceRow, rowOffset) => {
+      const rowIndex = startRowIndex + rowOffset
+      while (rowIndex >= current.rows.length) current.rows.push(newRow(current.recipient_type))
+      const row = current.rows[rowIndex]
+      sourceRow.forEach((value, colOffset) => {
+        const column = editableColumns[startColIndex + colOffset]
+        if (!column) return
+        row.values[column.key] = value.trim()
+        if (column.key === config.codeKey) { row.student_id = null; row.teacher_id = null; row.values.name = ''; row.lookup_status = 'idle'; touchedCodeRowIds.push(row.id) }
+      })
+    })
+    renderGrid()
+    await Promise.all(touchedCodeRowIds.map(rowId => lookup(rowId)))
   }
   function syncMeta() { current.name = nameInput.value.trim(); current.template_id = Number(templateSelect.value) || null; current.title = titleInput.value.trim() }
   async function save(quiet = false) {

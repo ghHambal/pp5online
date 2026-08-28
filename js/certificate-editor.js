@@ -39,7 +39,7 @@ export function openCertificateLayoutEditor(opts) {
   if (!layout.orientation) layout.orientation = 'landscape'
   if (!Array.isArray(layout.customFonts)) layout.customFonts = []
 
-  let selectedId = null
+  let selectedIds = new Set()
   let pendingBgFile = null
   const tokenMap = new Map()
   ;[...UNIVERSAL_PLACEHOLDER_TOKENS, ...placeholderTokens].forEach(token => tokenMap.set(token.token, token))
@@ -65,14 +65,15 @@ export function openCertificateLayoutEditor(opts) {
       <label id="cce-add-logo" title="เพิ่มโลโก้หรือรูป" class="h-9 px-3 inline-flex items-center rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold cursor-pointer whitespace-nowrap">🖼️ รูป<input type="file" id="cce-add-logo-file" accept="image/*" class="hidden" /></label>
       <label title="เพิ่มกราฟิกมุมบน ระบบจะสะท้อนไปอีกฝั่งอัตโนมัติ" class="h-9 px-3 inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-bold cursor-pointer whitespace-nowrap">⌜ มุมบน<input type="file" id="cce-add-corner-top" accept="image/*" class="hidden" /></label>
       <label title="เพิ่มกราฟิกมุมล่าง ระบบจะสะท้อนไปอีกฝั่งอัตโนมัติ" class="h-9 px-3 inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 text-xs font-bold cursor-pointer whitespace-nowrap">⌞ มุมล่าง<input type="file" id="cce-add-corner-bottom" accept="image/*" class="hidden" /></label>
-      <button id="cce-duplicate" type="button" title="คัดลอกองค์ประกอบพร้อมค่าทั้งหมด" disabled class="h-9 w-9 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-30 text-base">⧉</button>
+      <button id="cce-select-all" type="button" title="เลือกทุกองค์ประกอบ" class="h-9 px-3 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-100 text-xs font-bold whitespace-nowrap">☑ เลือกทั้งหมด</button>
+      <button id="cce-duplicate" type="button" title="คัดลอกองค์ประกอบที่เลือกพร้อมค่าทั้งหมด" disabled class="h-9 w-9 rounded-lg border border-gray-300 text-gray-500 hover:bg-gray-100 disabled:opacity-30 text-base">⧉</button>
       <button id="cce-save" type="button" class="h-9 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold whitespace-nowrap">💾 บันทึก</button>
       <button id="cce-close" type="button" title="ปิด" class="h-9 w-9 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 text-xl">×</button>
     </div>
     <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto">
       <div class="flex-1 min-w-0 p-4 sm:p-6 flex flex-col gap-3 overflow-auto bg-slate-50">
         <div id="cce-canvas-wrap" class="relative w-full max-w-3xl mx-auto select-none drop-shadow-xl"></div>
-        <p class="text-[11px] text-gray-400 text-center">ลากเพื่อจัดตำแหน่ง • กดองค์ประกอบเพื่อแก้ไข • Ctrl/⌘ + D เพื่อคัดลอก</p>
+        <p class="text-[11px] text-gray-400 text-center">ลากเพื่อจัดตำแหน่ง • กดองค์ประกอบเพื่อแก้ไข • Shift/Ctrl + คลิก เพื่อเลือกหลายรายการ • Ctrl/⌘ + D เพื่อคัดลอก</p>
         <div class="max-w-3xl w-full mx-auto grid sm:grid-cols-2 gap-3">
           <div class="bg-white border border-gray-200 rounded-xl p-3">
             <p class="text-[11px] font-bold text-gray-700 mb-2">📐 แนวกระดาษ</p>
@@ -113,26 +114,36 @@ export function openCertificateLayoutEditor(opts) {
     })
   }
 
-  function selectedElement() { return (layout.elements ?? []).find(el => el.id === selectedId) }
+  function selectedElements() { return (layout.elements ?? []).filter(el => selectedIds.has(el.id)) }
 
   function renderCanvas() {
     const isPortrait = layout.orientation === 'portrait'
     canvasWrap.style.maxWidth = isPortrait ? '26rem' : '48rem'
     canvasWrap.innerHTML = renderCertificateCanvasHtml({ layout, variables: previewVars })
+    const canvasEl = canvasWrap.querySelector('.cert-canvas')
+    canvasEl?.addEventListener('pointerdown', event => {
+      if (!event.target.closest('[data-cert-el-id]') && selectedIds.size) { selectedIds.clear(); renderCanvas(); renderPanel() }
+    })
     canvasWrap.querySelectorAll('[data-cert-el-id]').forEach(node => {
       const id = node.dataset.certElId
       const model = layout.elements.find(el => el.id === id)
       node.style.cursor = model?.type === 'cornerGraphic' ? 'pointer' : 'move'
-      node.style.outline = id === selectedId ? '2px dashed #0ea5e9' : 'none'
+      node.style.outline = selectedIds.has(id) ? '2px dashed #0ea5e9' : 'none'
       node.style.outlineOffset = '3px'
       node.addEventListener('pointerdown', event => {
+        const toggle = event.shiftKey || event.ctrlKey || event.metaKey
+        if (toggle) {
+          event.preventDefault()
+          if (selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id)
+          renderCanvas(); renderPanel(); return
+        }
         if (model?.type === 'cornerGraphic') {
-          event.preventDefault(); selectedId = id; renderCanvas(); renderPanel(); return
+          event.preventDefault(); selectedIds = new Set([id]); renderCanvas(); renderPanel(); return
         }
         startDrag(event, id)
       })
     })
-    duplicateBtn.disabled = !selectedElement()
+    duplicateBtn.disabled = !selectedIds.size
     const active = 'bg-indigo-600 text-white border-indigo-600'
     const inactive = 'bg-white text-gray-700 border-gray-300'
     overlay.querySelector('#cce-orient-landscape').className = `cce-orient-btn flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold ${isPortrait ? inactive : active}`
@@ -140,24 +151,29 @@ export function openCertificateLayoutEditor(opts) {
   }
 
   function deleteSelected() {
-    if (!selectedId) return
-    layout.elements = layout.elements.filter(el => el.id !== selectedId)
-    selectedId = null
+    if (!selectedIds.size) return
+    const count = selectedIds.size
+    layout.elements = layout.elements.filter(el => !selectedIds.has(el.id))
+    selectedIds.clear()
     renderCanvas(); renderPanel()
+    if (count > 1) showToast(`ลบ ${count} รายการแล้ว`, 'success')
   }
 
   function duplicateSelected() {
-    const source = selectedElement()
-    if (!source) return
-    const copy = JSON.parse(JSON.stringify(source))
-    copy.id = uid(source.type === 'image' || source.type === 'cornerGraphic' ? 'img' : 'el')
-    if (copy.x != null) copy.x = clamp(Number(copy.x) + 3, 0, 100)
-    if (copy.y != null) copy.y = clamp(Number(copy.y) + 3, 0, 100)
-    if (copy.type === 'cornerGraphic') copy.insetY = clamp(Number(copy.insetY || 2) + 3, 0, 45)
-    layout.elements.push(copy)
-    selectedId = copy.id
+    const sources = selectedElements()
+    if (!sources.length) return
+    const copies = sources.map(source => {
+      const copy = JSON.parse(JSON.stringify(source))
+      copy.id = uid(source.type === 'image' || source.type === 'cornerGraphic' ? 'img' : 'el')
+      if (copy.x != null) copy.x = clamp(Number(copy.x) + 3, 0, 100)
+      if (copy.y != null) copy.y = clamp(Number(copy.y) + 3, 0, 100)
+      if (copy.type === 'cornerGraphic') copy.insetY = clamp(Number(copy.insetY || 2) + 3, 0, 45)
+      return copy
+    })
+    layout.elements.push(...copies)
+    selectedIds = new Set(copies.map(copy => copy.id))
     renderCanvas(); renderPanel()
-    showToast('คัดลอกพร้อมรูปแบบและเอฟเฟกต์แล้ว', 'success')
+    showToast(copies.length > 1 ? `คัดลอก ${copies.length} รายการพร้อมรูปแบบและเอฟเฟกต์แล้ว` : 'คัดลอกพร้อมรูปแบบและเอฟเฟกต์แล้ว', 'success')
   }
 
   function renderImagePanel(el) {
@@ -323,24 +339,90 @@ export function openCertificateLayoutEditor(opts) {
   }
 
   function renderPanel() {
-    const el = selectedElement()
-    if (!el) {
-      panel.innerHTML = `<div class="text-center py-12"><div class="text-4xl mb-3">👆</div><p class="text-sm font-bold text-gray-600">เลือกองค์ประกอบบนเกียรติบัตร</p><p class="text-xs text-gray-400 mt-1">แล้วตั้งค่าจากแผงนี้</p></div>`
+    const elements = selectedElements()
+    if (!elements.length) {
+      panel.innerHTML = `<div class="text-center py-12"><div class="text-4xl mb-3">👆</div><p class="text-sm font-bold text-gray-600">เลือกองค์ประกอบบนเกียรติบัตร</p><p class="text-xs text-gray-400 mt-1">แล้วตั้งค่าจากแผงนี้ • กด Shift/Ctrl ค้างแล้วคลิกเพื่อเลือกหลายรายการ</p></div>`
       return
     }
+    if (elements.length > 1) { renderBulkPanel(elements); return }
+    const el = elements[0]
     if (el.type === 'image' || el.type === 'cornerGraphic') renderImagePanel(el)
     else renderTextPanel(el)
+  }
+
+  function renderBulkPanel(elements) {
+    const textEls = elements.filter(el => el.type !== 'image' && el.type !== 'cornerGraphic')
+    const first = elements[0]
+    const availableFonts = [...new Set([...CERT_GOOGLE_FONTS, ...layout.customFonts])]
+    panel.innerHTML = `
+      <div class="space-y-5">
+        <div class="rounded-xl bg-indigo-50 border border-indigo-100 px-3 py-2.5 flex items-center justify-between gap-2">
+          <p class="text-xs font-bold text-indigo-700">✓ เลือกไว้ ${elements.length} รายการ</p>
+          <button id="cce-bulk-clear" type="button" class="text-[11px] font-bold text-indigo-500 hover:text-indigo-700 whitespace-nowrap">ยกเลิกเลือก</button>
+        </div>
+        ${textEls.length ? `
+        <div>
+          ${sectionLabel(`ปรับข้อความพร้อมกัน (${textEls.length} รายการ)`)}
+          <select id="cce-bulk-font" class="w-full border border-gray-300 rounded-lg px-2.5 py-2 text-sm bg-white">
+            <option value="">— ไม่เปลี่ยนฟอนต์ —</option>
+            ${availableFonts.map(font => `<option value="${_esc(font)}" style="font-family:'${_esc(font)}',sans-serif">${_esc(font)} — ตัวอย่างภาษาไทย</option>`).join('')}
+          </select>
+          <div class="flex gap-1.5 mt-2.5 mb-3">
+            <button type="button" id="cce-bulk-bold" title="ตัวหนา" class="h-9 w-9 rounded-lg border font-black ${first.bold ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}">B</button>
+            ${[['left', '≡', 'ชิดซ้าย'], ['center', '≣', 'กึ่งกลาง'], ['right', '≡', 'ชิดขวา']].map(([align, icon, title]) => `<button type="button" data-align="${align}" title="${title}" class="cce-bulk-align h-9 w-9 rounded-lg border font-bold ${first.align === align ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}" style="${align === 'right' ? 'transform:scaleX(-1)' : ''}">${icon}</button>`).join('')}
+          </div>
+          <label class="text-[11px] text-gray-500 block mb-3">สี<input id="cce-bulk-color" type="color" value="${_esc(first.color || '#1d1519')}" class="mt-1 w-full h-9 border border-gray-300 rounded-lg cursor-pointer" /></label>
+          <div class="space-y-3">
+            ${sliderField({ id: 'cce-bulk-size', label: 'ขนาดตัวอักษร', value: first.fontSize ?? 16, min: 6, max: 120, suffix: ' px' })}
+            ${sliderField({ id: 'cce-bulk-letter', label: 'ระยะห่างตัวอักษร', value: first.letterSpacing ?? 0, min: -5, max: 20, step: 0.5, suffix: ' px' })}
+          </div>
+          <div class="grid grid-cols-2 gap-2 mt-3">
+            <button type="button" id="cce-bulk-shadow" class="px-3 py-2 rounded-lg border text-xs font-bold ${first.shadow?.enabled ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}">◒ เงา: ${first.shadow?.enabled ? 'เปิด' : 'ปิด'}</button>
+            <button type="button" id="cce-bulk-stroke" class="px-3 py-2 rounded-lg border text-xs font-bold ${first.stroke?.enabled ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-300 text-gray-600'}">◎ สโตรก: ${first.stroke?.enabled ? 'เปิด' : 'ปิด'}</button>
+          </div>
+        </div>` : ''}
+        <div class="pt-4 border-t border-gray-200">
+          ${sectionLabel('ความทึบ (ทุกรายการที่เลือก)')}
+          ${sliderField({ id: 'cce-bulk-opacity', label: 'ความทึบ', value: Math.round((first.opacity ?? 1) * 100), min: 0, max: 100, suffix: '%' })}
+        </div>
+        <div class="pt-4 border-t border-gray-200 grid grid-cols-2 gap-2">
+          <button id="cce-bulk-duplicate" type="button" class="py-2 rounded-lg border border-indigo-300 text-indigo-600 text-xs font-bold hover:bg-indigo-50">⧉ คัดลอกทั้งหมด</button>
+          <button id="cce-bulk-delete" type="button" class="py-2 rounded-lg border border-red-300 text-red-500 text-xs font-bold hover:bg-red-50">🗑️ ลบทั้งหมด</button>
+        </div>
+      </div>`
+
+    const commitAll = patch => { elements.forEach(el => Object.assign(el, patch)); renderCanvas() }
+    const commitText = patch => { textEls.forEach(el => Object.assign(el, patch)); renderCanvas() }
+
+    panel.querySelector('#cce-bulk-clear').addEventListener('click', () => { selectedIds.clear(); renderCanvas(); renderPanel() })
+    panel.querySelector('#cce-bulk-font')?.addEventListener('change', event => {
+      if (!event.target.value) return
+      ensureGoogleFont(event.target.value); commitText({ fontFamily: event.target.value })
+    })
+    panel.querySelector('#cce-bulk-bold')?.addEventListener('click', () => { commitText({ bold: !first.bold }); renderBulkPanel(elements) })
+    panel.querySelectorAll('.cce-bulk-align').forEach(btn => btn.addEventListener('click', () => { commitText({ align: btn.dataset.align }); renderBulkPanel(elements) }))
+    panel.querySelector('#cce-bulk-color')?.addEventListener('input', event => commitText({ color: event.target.value }))
+    bindSlider(panel, 'cce-bulk-size', event => commitText({ fontSize: clamp(Number(event.target.value) || 12, 6, 120) }), ' px')
+    bindSlider(panel, 'cce-bulk-letter', event => commitText({ letterSpacing: clamp(Number(event.target.value) || 0, -5, 20) }), ' px')
+    panel.querySelector('#cce-bulk-shadow')?.addEventListener('click', () => { commitText({ shadow: { ...(first.shadow ?? {}), enabled: !first.shadow?.enabled } }); renderBulkPanel(elements) })
+    panel.querySelector('#cce-bulk-stroke')?.addEventListener('click', () => { commitText({ stroke: { ...(first.stroke ?? {}), enabled: !first.stroke?.enabled } }); renderBulkPanel(elements) })
+    bindSlider(panel, 'cce-bulk-opacity', event => commitAll({ opacity: clamp(Number(event.target.value) || 0, 0, 100) / 100 }), '%')
+    panel.querySelector('#cce-bulk-duplicate').addEventListener('click', duplicateSelected)
+    panel.querySelector('#cce-bulk-delete').addEventListener('click', deleteSelected)
   }
 
   const SNAP_THRESHOLD = 1.2
   function startDrag(event, id) {
     event.preventDefault()
-    selectedId = id
+    const isGroup = selectedIds.has(id) && selectedIds.size > 1
+    if (!isGroup) selectedIds = new Set([id])
     renderCanvas(); renderPanel()
     const canvas = canvasWrap.querySelector('.cert-canvas')
     const rect = canvas.getBoundingClientRect()
-    const model = layout.elements.find(el => el.id === id)
-    const node = canvas.querySelector(`[data-cert-el-id="${id}"]`)
+    const primaryModel = layout.elements.find(el => el.id === id)
+    const groupModels = isGroup ? layout.elements.filter(el => selectedIds.has(el.id) && el.x != null && el.y != null) : [primaryModel]
+    const startPositions = new Map(groupModels.map(el => [el.id, { x: el.x, y: el.y }]))
+    const nodesById = new Map(groupModels.map(el => [el.id, canvas.querySelector(`[data-cert-el-id="${el.id}"]`)]))
     const vGuide = document.createElement('div')
     vGuide.style.cssText = 'position:absolute;top:0;bottom:0;left:50%;border-left:1.5px dashed #ec4899;pointer-events:none;z-index:50;display:none;'
     const hGuide = document.createElement('div')
@@ -354,8 +436,16 @@ export function openCertificateLayoutEditor(opts) {
       if (snapX) x = 50
       if (snapY) y = 50
       vGuide.style.display = snapX ? 'block' : 'none'; hGuide.style.display = snapY ? 'block' : 'none'
-      model.x = Math.round(x * 10) / 10; model.y = Math.round(y * 10) / 10
-      if (node) { node.style.left = model.x + '%'; node.style.top = model.y + '%' }
+      x = Math.round(x * 10) / 10; y = Math.round(y * 10) / 10
+      const primaryStart = startPositions.get(primaryModel.id)
+      const dx = x - primaryStart.x, dy = y - primaryStart.y
+      groupModels.forEach(el => {
+        const start = startPositions.get(el.id)
+        el.x = clamp(Math.round((start.x + dx) * 10) / 10, 0, 100)
+        el.y = clamp(Math.round((start.y + dy) * 10) / 10, 0, 100)
+        const node = nodesById.get(el.id)
+        if (node) { node.style.left = el.x + '%'; node.style.top = el.y + '%' }
+      })
     }
     const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); renderCanvas() }
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
@@ -368,14 +458,15 @@ export function openCertificateLayoutEditor(opts) {
       const element = position
         ? { id: uid('corner'), type: 'cornerGraphic', imageUrl, position, width: 14, insetX: 2, insetY: 2, opacity: 1 }
         : { id: uid('img'), type: 'image', imageUrl, x: 50, y: 15, width: 15, opacity: 1 }
-      layout.elements.push(element); selectedId = element.id; renderCanvas(); renderPanel()
+      layout.elements.push(element); selectedIds = new Set([element.id]); renderCanvas(); renderPanel()
     } catch (error) { showToast('อัปโหลดไม่สำเร็จ: ' + (error.message ?? ''), 'error') }
   }
 
   overlay.querySelector('#cce-add-el').addEventListener('click', () => {
     const element = { id: uid('el'), text: 'ข้อความใหม่', x: 50, y: 50, fontSize: 16, color: '#1d1519', fontFamily: 'Sarabun', align: 'center', bold: false, opacity: 1 }
-    layout.elements.push(element); selectedId = element.id; renderCanvas(); renderPanel()
+    layout.elements.push(element); selectedIds = new Set([element.id]); renderCanvas(); renderPanel()
   })
+  overlay.querySelector('#cce-select-all').addEventListener('click', () => { selectedIds = new Set(layout.elements.map(el => el.id)); renderCanvas(); renderPanel() })
   overlay.querySelector('#cce-add-logo-file').addEventListener('change', event => { addUploadedImage(event.target.files?.[0]); event.target.value = '' })
   overlay.querySelector('#cce-add-corner-top').addEventListener('change', event => { addUploadedImage(event.target.files?.[0], 'top'); event.target.value = '' })
   overlay.querySelector('#cce-add-corner-bottom').addEventListener('change', event => { addUploadedImage(event.target.files?.[0], 'bottom'); event.target.value = '' })
