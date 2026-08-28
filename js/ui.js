@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.593'
+import { APP_VERSION } from './version.js?v=10.22.594'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -781,6 +781,10 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.594': [
+    '⚡ Smart Classroom โหลดเร็วขึ้น: ตัด getMyDonationRequests ที่ยิงซ้ำ 2 รอบออก และเปลี่ยน getMyClasses จากรอให้เสร็จก่อน (sequential) เป็นยิงพร้อมกับ query อื่นๆ ทั้งหมด (parallel) ตัด round-trip ที่ไม่จำเป็นออกจากเส้นทางวิกฤตก่อนหน้าจะแสดงผล',
+    '🎓 การ์ดห้องเรียนในหน้า "ห้องเรียนของฉัน": เพิ่มป้ายหน่วยกิตของวิชา',
+  ],
   '10.22.593': [
     '⚡ แก้แอปโหลดช้า (หน้าครู): เดิม teacher.js ดึงฟังก์ชันจาก teacher-views.js แบบ static import ทำให้ Rollup รวมทุกไฟล์ที่เกี่ยวข้อง (รวม teacher-views-classes/pp5-doc/supervisor) เป็นไฟล์เดียวกว่า 1.15MB ที่ต้องโหลดก่อนหน้าภาพรวมจะแสดงผลได้เสมอ — เปลี่ยนเป็น dynamic import ทั้งหมดตาม pattern ที่มีอยู่แล้วในระบบ ลดขนาดไฟล์ที่ต้องโหลดตอนเปิดแอปลงกว่า 1.2MB',
   ],

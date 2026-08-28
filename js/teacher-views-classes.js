@@ -203,6 +203,7 @@ export async function renderMyClasses(teacher) {
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
                     <span class="px-2 py-0.5 bg-white/80 text-emerald-700 text-xs font-mono rounded-full">${ms?.subject_code??'—'}</span>
+                    ${ms?.credit != null ? `<span class="px-2 py-0.5 bg-white/80 text-gray-500 text-xs rounded-full">${ms.credit} หน่วยกิต</span>` : ''}
                     ${groupBadge ? `<span class="px-2 py-0.5 ${groupBadge.cls} text-xs rounded-full">${groupBadge.text}</span>` : ''}
                     ${c.google_sheet_id
                       ? `<span class="px-2 py-0.5 bg-white/80 text-green-700 text-xs rounded-full">✓ Sheet</span>`

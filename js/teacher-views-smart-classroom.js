@@ -54,10 +54,11 @@ async function _resolveSmartClassroomAccess(teacher) {
   const cfg = await getSystemConfig().catch(() => window._pp5SystemCfg ?? {})
   const minTier = _smartClassroomMinTier(cfg)
   let tierIndex = window._pp5DonorTierIndex ?? 0
+  let donationRequests = []
   if (teacher?.id) {
     try {
-      const requests = await getMyDonationRequests(teacher.id)
-      const totalApproved = requests
+      donationRequests = await getMyDonationRequests(teacher.id)
+      const totalApproved = donationRequests
         .filter(r => r.package_type === 'donation' && r.status === 'approved')
         .reduce((sum, r) => sum + (r.amount ?? 0), 0)
       const minAmt = _toPositiveInt(cfg.donationMinAmount, 49)
@@ -66,7 +67,9 @@ async function _resolveSmartClassroomAccess(teacher) {
       tierIndex = _getDonorTierIndex(cfg, tiers, totalApproved)
     } catch { /* query สดล้มเหลว — ใช้ค่า global เดิมเป็น fallback สุดท้าย */ }
   }
-  return { cfg, minTier, unlocked: tierIndex >= minTier }
+  // คืน donationRequests ที่ query ไปแล้วด้วย — renderSmartClassroom ใช้ซ้ำแทนการยิง
+  // getMyDonationRequests ซ้ำอีกรอบใน Promise.all ก้อนใหญ่ (เคยเป็น 2 round-trip เดิมๆ ซ้ำกัน)
+  return { cfg, minTier, unlocked: tierIndex >= minTier, donationRequests }
 }
 
 // ─── ห้องฟรี 1 ห้อง สำหรับครูที่ยังไม่ถึงระดับโดเนทที่ปลดล็อก Smart Classroom ────
@@ -299,7 +302,7 @@ export async function renderSmartClassroom(teacher, classId) {
     </svg>
   </div>`)
 
-  const { cfg, minTier, unlocked } = await _resolveSmartClassroomAccess(teacher)
+  const { cfg, minTier, unlocked, donationRequests: _scDonationRequests } = await _resolveSmartClassroomAccess(teacher)
 
   if (!canUseSmartClassroomForClass(unlocked, teacher, classId)) {
     const freeClassId = teacher?.smart_classroom_free_class_id
@@ -363,24 +366,26 @@ export async function renderSmartClassroom(teacher, classId) {
     syllabusItems, lessonPlans, annTypeSuggestions
   let courseId = null
   try {
-    const classes = await getMyClasses(teacher.id)
-    cls = classes.find(c => c.id === classId)
-    if (!cls) { renderClassDetail(teacher, classId); return }
-    courseId = cls.course_id ?? cls.master_subjects?.id ?? null
-
     const academicYear = parseInt(cfg.academicYear ?? 2568)
     const semester = parseInt(cfg.semester ?? 1)
 
-    ;[students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
+    // donationRequests ใช้ค่าที่ _resolveSmartClassroomAccess ยิงไปแล้วก่อนหน้านี้ ไม่ยิงซ้ำ
+    donationRequests = _scDonationRequests
+    // getMyClasses ไม่ต้องรอให้เสร็จก่อนแล้วค่อยยิง 16 query ที่เหลือทีละสเต็ปแบบเดิม (เดิมเสีย
+    // round-trip เต็มๆ ไปก่อนโดยเปล่าประโยชน์ เพราะ query อื่นแทบทั้งหมดไม่ได้ต้องพึ่ง cls/courseId
+    // เลย) — ยิงพร้อมกันในก้อนเดียว มีแค่ getCourseSyllabus/getLessonPlans เท่านั้นที่ต้องรอ courseId
+    // จาก cls ก่อนจริงๆ จึงแยกไปยิงต่ออีกก้อนเล็กหลัง cls resolve
+    let classes
+    ;[classes, students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes,
       scoreColumns, studentScores, attendanceFull, leaveHistory, assignments,
       examRequestsAll, mySchedule, scheduleLinks, periods, classAnnouncements,
-      syllabusItems, lessonPlans, annTypeSuggestions] = await Promise.all([
+      annTypeSuggestions] = await Promise.all([
+      getMyClasses(teacher.id),
       getClassStudents(classId).catch(() => []),
       getActiveLeavePermissionsForClass(classId).catch(() => []),
       getLeaveMaxActiveForClass(classId).catch(() => 3),
       getLeaveMaxPerStudentWeekForClass(classId).catch(() => 2),
       getQuizzesForClass(classId).catch(() => []),
-      getMyDonationRequests(teacher.id).catch(() => []),
       getScoreColumns(classId).catch(() => []),
       getStudentScores(classId).catch(() => []),
       getClassAttendanceAllFull(classId).catch(() => []),
@@ -391,9 +396,15 @@ export async function renderSmartClassroom(teacher, classId) {
       getClassScheduleLinks(teacher.id).catch(() => []),
       getPeriods().catch(() => []),
       getClassAnnouncements(classId).catch(() => []),
+      getAnnouncementTypeSuggestions().catch(() => []),
+    ])
+    cls = classes.find(c => c.id === classId)
+    if (!cls) { renderClassDetail(teacher, classId); return }
+    courseId = cls.course_id ?? cls.master_subjects?.id ?? null
+
+    ;[syllabusItems, lessonPlans] = await Promise.all([
       courseId ? getCourseSyllabus(courseId).catch(() => []) : Promise.resolve([]),
       courseId ? getLessonPlans(courseId).catch(() => []) : Promise.resolve([]),
-      getAnnouncementTypeSuggestions().catch(() => []),
     ])
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
