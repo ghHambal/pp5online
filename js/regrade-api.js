@@ -78,7 +78,7 @@ export async function assignWork(subjectRowId, { method, dueText, fileUrl }) {
 // ─── ฝั่งทะเบียน/แอดมิน (RLS อนุญาตเฉพาะ is_regrade_registrar()) ────────────────
 export async function getPendingCloseOut(query) {
   let q = supabase.from('regrade_subjects')
-    .select('*, students(full_name, student_code, main_room, religion_room, photo_url, image_url)')
+    .select('*, students(full_name, student_code, main_room, religion_room, photo_url, image_url), teachers(full_name)')
     .eq('status', 'กำลังดำเนินการปรับแก้')
     .order('assigned_at', { ascending: false })
   const { data, error } = await q
