@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.560'
+import { APP_VERSION } from './version.js?v=10.22.562'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -112,8 +112,8 @@ function _renderTeacherSidebarUI(teacher) {
   // เช็ค position — ถ้ามีบทบาทพิเศษแสดงปุ่มสลับ Dashboard (ป้องกัน duplicate)
   const nav = document.querySelector('#sidebar nav')
   const _teacherPositions = _teacherPositionList(teacher)
+  const posLabel = _teacherPositionLabel(teacher)
   if (_teacherPositions.length > 0 && nav && !document.getElementById('btn-sv-mode')) {
-    const posLabel = _teacherPositionLabel(teacher)
     const svBtn = document.createElement('button')
     svBtn.id = 'btn-sv-mode'
     svBtn.className = 'flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition w-full text-left text-emerald-200 hover:bg-emerald-800 hover:text-white'
@@ -144,8 +144,10 @@ function _renderTeacherSidebarUI(teacher) {
   // แจ้งเตือนจากหัวหน้า
   if (teacher?.id) _loadSupervisorNotifications(teacher.id)
 
-  // Header
+  // Header — ป้ายบทบาทใต้ชื่อ แสดงตามตำแหน่งจริง (เดิม hardcode "ครูผู้สอน" ทุกบัญชี)
   document.getElementById('user-name').textContent = name
+  const roleLabelEl = document.getElementById('user-role-label')
+  if (roleLabelEl) roleLabelEl.textContent = _teacherPositions.length ? posLabel : 'ครูผู้สอน'
   const headerAvatar = document.getElementById('user-avatar')
   if (imgUrl) {
     headerAvatar.innerHTML = `<img src="${imgUrl}" class="w-full h-full object-cover" />`
@@ -642,11 +644,16 @@ async function _applyRoleMenus() {
     el.classList.toggle('hidden', !show)
     el.classList.toggle('flex', show)
   }
+  // สำหรับ div ครอบกลุ่มเมนู (ไม่ใช่ flex item เดี่ยวๆ) — toggle แค่ hidden เฉยๆ ไม่แตะ flex
+  const toggleBlock = (id, show) => { document.getElementById(id)?.classList.toggle('hidden', !show) }
   const hasAdvisorRoom = _homeroomRooms.length > 0
   const teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
   // ผู้บริหาร (บทบาทใหม่ทั้งระบบ) — เห็นเมนู "สภานักเรียน" เสมอแม้ปิด council_visible_to_all
   // ไว้สำหรับครูทั่วไป เพราะต้องเข้าไปดูหน้า "ภาพรวม" ในนั้น (สิทธิ์จริงคุมที่ ctx.isExecutive ใน council.js)
   const isExecutive = teacherPositions.includes('executive') || _isAlsoAdmin
+  // ต่างจาก isExecutive ด้านบน — ตัวนี้ไม่รวม is_also_admin เพราะจุดประสงค์ต่างกัน (ซ่อนเมนูสอน
+  // ให้บัญชี "ผู้บริหาร" ล้วนๆ ที่ไม่มีภาระสอนจริง แอดมินที่สอนจริงด้วยต้องไม่โดนซ่อนเมนูสอนไปด้วย)
+  const isExecutiveOnly = teacherPositions.includes('executive')
 
   toggle('menu-life-skill', hasLifeSkill)
   toggle('menu-reading',    hasReading)
@@ -654,6 +661,13 @@ async function _applyRoleMenus() {
   toggle('menu-advisor-students', hasAdvisorRoom)
   // ปิดการแสดงผลได้จากหน้าตั้งค่าแอดมิน (council_visible_to_all) — ปิดแล้วเห็นเฉพาะครูที่ is_also_admin/ผู้บริหาร
   toggle('menu-council', cfg.council_visible_to_all !== 'false' || _isAlsoAdmin || isExecutive)
+  // ซ่อนเมนูที่เกี่ยวกับการสอน (รายวิชา/ห้องเรียน/งานรายวันทั้งหมด) ให้บัญชี "ผู้บริหาร" ล้วนๆ
+  // ที่ไม่มีภาระสอนจริง (v10.22.560 — เจอจริงตอนทดสอบ ทีมผู้บริหาร (1122) ยังเห็นเมนูครูเต็มรูปแบบ)
+  toggle('menu-my-courses', !isExecutiveOnly)
+  toggle('menu-my-classes', !isExecutiveOnly)
+  toggle('menu-dashboard',  !isExecutiveOnly)
+  toggleBlock('daily-work-section', !isExecutiveOnly)
+  toggleBlock('sem-work-section',   !isExecutiveOnly)
 
   const campAccess = campAccessRes?.data
   toggle('menu-terangganu', campAccess?.is_manager === true || campAccess?.teacher_participant === true)
@@ -2203,7 +2217,8 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
     registrar_samai:'ทะเบียน (สามัญ)',
     registrar_religion:'ทะเบียน (ศาสนา)', registrar_pvch:'ทะเบียน (ปวช)',
     academic_samai:'วิชาการ (สามัญ)', academic_religion:'วิชาการ (ศาสนา)',
-    academic_pvch:'วิชาการ (ปวช)', house_color_admin:'สีนักเรียน', classroom_leaders_admin:'ผู้ดูแลหัวหน้า/รองหัวหน้า' }
+    academic_pvch:'วิชาการ (ปวช)', house_color_admin:'สีนักเรียน', classroom_leaders_admin:'ผู้ดูแลหัวหน้า/รองหัวหน้า',
+    executive:'ผู้บริหาร' }
   const _tPositions2 = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
   const posLabel = _tPositions2.length ? _tPositions2.map(p => _POS_LBL2[p] ?? p).join(' / ') : (isAdmin ? 'แอดมิน' : 'หัวหน้า')
   const sportsVisibleForTeacher = _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false

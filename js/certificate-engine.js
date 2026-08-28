@@ -38,6 +38,7 @@ export function defaultLayoutFor(kind) {
   const muted = '#6b7280'
   const icon = preset?.icon ?? '🏅'
   return {
+    orientation: 'landscape', // 'landscape' | 'portrait' — เทมเพลตเก่าก่อนมีฟีเจอร์นี้ (ไม่มี field นี้) fallback เป็น landscape เสมอ (ดู renderCertificateCanvasHtml)
     background: preset
       ? { type: 'flat', color: preset.bg, cardColor: preset.cardBg, borderColor: preset.border, borderWidth: preset.borderWidth, borderStyle: preset.borderStyle }
       : { type: 'image', imageUrl: null },
@@ -77,18 +78,21 @@ export function renderCertificateCanvasHtml({ layout, variables }, canvasStyleEx
   const elementsHtml = (layout.elements ?? []).map(el =>
     `<div data-cert-el-id="${_esc(el.id)}" style="${elementStyle(el)}">${substitutePlaceholders(_esc(el.text), escapedVars)}</div>`
   ).join('')
-  return `<div class="cert-canvas" style="position:relative;width:100%;aspect-ratio:1.414/1;${bgStyle}${canvasStyleExtra}">${elementsHtml}</div>`
+  const aspectRatio = layout.orientation === 'portrait' ? '1/1.414' : '1.414/1'
+  return `<div class="cert-canvas" style="position:relative;width:100%;aspect-ratio:${aspectRatio};${bgStyle}${canvasStyleExtra}">${elementsHtml}</div>`
 }
 
 export function buildCertificateHtml({ layout, variables, docTitle }) {
   const canvasHtml = renderCertificateCanvasHtml({ layout, variables })
   const title = _esc(docTitle || `เกียรติบัตร ${variables?.name ?? ''}`)
+  const isPortrait = layout.orientation === 'portrait'
   return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${title}</title>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
       * { box-sizing: border-box; }
       body { font-family: 'Sarabun', sans-serif; background: #e5e7eb; padding: 40px; margin: 0; }
-      .cert-canvas { max-width: 1000px; margin: 0 auto; }
+      .cert-canvas { max-width: ${isPortrait ? '700px' : '1000px'}; margin: 0 auto; }
+      @page { size: ${isPortrait ? 'portrait' : 'landscape'}; margin: 0; }
       @media print { body { background: #fff; padding: 0; } }
     </style></head>
     <body>

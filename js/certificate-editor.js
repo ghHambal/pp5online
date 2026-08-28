@@ -27,39 +27,51 @@ export function openCertificateLayoutEditor(opts) {
   if (layout.background?.type === 'image' && !layout.background.imageUrl && template?.background_image_url) {
     layout.background.imageUrl = template.background_image_url
   }
+  // เทมเพลตเก่าก่อนมีฟีเจอร์เลือกแนวกระดาษ — ตั้งเป็นแนวนอนชัดเจน (พฤติกรรมเดิมของทุกเทมเพลตก่อนหน้านี้)
+  if (!layout.orientation) layout.orientation = 'landscape'
   let selectedId = null
   let pendingBgFile = null
 
   const allTokens = [...UNIVERSAL_PLACEHOLDER_TOKENS, ...placeholderTokens]
   const previewVars = { name: 'ตัวอย่าง ชื่อ-สกุล นักเรียน', date: new Date().toLocaleDateString('th-TH', { dateStyle: 'long' }), no: '0001', ...previewVariables }
 
+  const previousOverflow = document.body.style.overflow
+  document.body.style.overflow = 'hidden'
+
   const overlay = document.createElement('div')
   overlay.id = 'cce-overlay'
-  overlay.className = 'fixed inset-0 z-[9999] bg-black/70 flex items-center justify-center p-3'
+  overlay.className = 'fixed inset-0 z-[9999] bg-[var(--surface)] flex flex-col'
   overlay.innerHTML = `
-    <div class="bg-[var(--surface)] rounded-2xl shadow-2xl w-full max-w-6xl max-h-[95vh] flex flex-col overflow-hidden">
-      <div class="flex items-center gap-3 px-4 py-3 border-b border-[var(--line-soft)] flex-shrink-0">
-        <h3 class="flex-1 font-bold text-sm text-[var(--ink)]">🎨 ออกแบบเทมเพลตเกียรติบัตร — ${_esc(template?.name ?? '')}</h3>
-        <button id="cce-add-el" type="button" class="px-3 py-1.5 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold">+ เพิ่มข้อความ</button>
-        <button id="cce-save" type="button" class="px-3 py-1.5 rounded-lg bg-[var(--ok)] hover:opacity-90 text-white text-xs font-bold">💾 บันทึก</button>
-        <button id="cce-close" type="button" class="text-[var(--muted)] hover:text-[var(--ink)] text-2xl leading-none px-2">&times;</button>
-      </div>
-      <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto">
-        <div class="flex-1 min-w-0 p-4 flex flex-col gap-3 overflow-auto">
-          <div id="cce-canvas-wrap" class="relative w-full max-w-2xl mx-auto select-none" style="cursor:default"></div>
-          <p class="text-[11px] text-[var(--muted-2)] text-center">ลากข้อความบนภาพเพื่อจัดตำแหน่ง • คลิกเพื่อเลือกและแก้ไขในแผงด้านขวา • นี่คือข้อมูลตัวอย่างสำหรับพรีวิวเท่านั้น</p>
+    <div class="flex items-center gap-3 px-4 sm:px-5 py-3 border-b border-[var(--line-soft)] flex-shrink-0 shadow-sm">
+      <h3 class="flex-1 min-w-0 font-bold text-sm text-[var(--ink)] truncate">🎨 ออกแบบเทมเพลตเกียรติบัตร — ${_esc(template?.name ?? '')}</h3>
+      <button id="cce-add-el" type="button" class="px-3 py-1.5 rounded-lg bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-xs font-bold flex-shrink-0">+ เพิ่มข้อความ</button>
+      <button id="cce-save" type="button" class="px-3 py-1.5 rounded-lg bg-[var(--ok)] hover:opacity-90 text-white text-xs font-bold flex-shrink-0">💾 บันทึก</button>
+      <button id="cce-close" type="button" class="text-[var(--muted)] hover:text-[var(--ink)] text-2xl leading-none px-2 flex-shrink-0">&times;</button>
+    </div>
+    <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto">
+      <div class="flex-1 min-w-0 p-4 sm:p-6 flex flex-col gap-3 overflow-auto">
+        <div id="cce-canvas-wrap" class="relative w-full max-w-3xl mx-auto select-none" style="cursor:default"></div>
+        <p class="text-[11px] text-[var(--muted-2)] text-center">ลากข้อความบนภาพเพื่อจัดตำแหน่ง • คลิกเพื่อเลือกและแก้ไขในแผงด้านขวา • นี่คือข้อมูลตัวอย่างสำหรับพรีวิวเท่านั้น</p>
+        <div class="max-w-3xl w-full mx-auto grid sm:grid-cols-2 gap-3">
+          <div class="bg-[var(--muted-bg,#f8fafc)] border border-[var(--line-soft)] rounded-xl p-3">
+            <p class="text-[11px] font-bold text-[var(--ink-2)] mb-2">📐 แนวกระดาษ</p>
+            <div class="flex gap-2">
+              <button type="button" id="cce-orient-landscape" class="cce-orient-btn flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold">▭ แนวนอน</button>
+              <button type="button" id="cce-orient-portrait" class="cce-orient-btn flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold">▯ แนวตั้ง</button>
+            </div>
+          </div>
           <div class="bg-[var(--muted-bg,#f8fafc)] border border-[var(--line-soft)] rounded-xl p-3">
             <p class="text-[11px] font-bold text-[var(--ink-2)] mb-2">🖼️ พื้นหลัง</p>
             <div class="flex flex-wrap items-center gap-2">
               <label class="px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs font-bold cursor-pointer bg-[var(--surface)]">
-                📤 อัปโหลดรูปพื้นหลัง<input type="file" id="cce-bg-file" accept="image/*" class="hidden" />
+                📤 อัปโหลด<input type="file" id="cce-bg-file" accept="image/*" class="hidden" />
               </label>
               ${Object.entries(CERT_PRESETS).map(([k, p]) => `<button type="button" class="cce-bg-preset w-7 h-7 rounded-full border-2 border-white shadow" style="background:${p.bg}" data-preset="${k}" title="${_esc(k)}"></button>`).join('')}
             </div>
           </div>
         </div>
-        <div id="cce-panel" class="lg:w-72 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-[var(--line-soft)] p-4 overflow-y-auto"></div>
       </div>
+      <div id="cce-panel" class="lg:w-96 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-[var(--line-soft)] bg-[var(--surface)] p-5 overflow-y-auto"></div>
     </div>`
   document.body.appendChild(overlay)
 
@@ -67,6 +79,8 @@ export function openCertificateLayoutEditor(opts) {
   const panel = overlay.querySelector('#cce-panel')
 
   function renderCanvas() {
+    const isPortrait = layout.orientation === 'portrait'
+    canvasWrap.style.maxWidth = isPortrait ? '26rem' : '48rem'
     canvasWrap.innerHTML = renderCertificateCanvasHtml({ layout, variables: previewVars })
     canvasWrap.querySelectorAll('[data-cert-el-id]').forEach(elDiv => {
       const id = elDiv.dataset.certElId
@@ -75,6 +89,10 @@ export function openCertificateLayoutEditor(opts) {
       elDiv.style.outlineOffset = '3px'
       elDiv.addEventListener('pointerdown', ev => startDrag(ev, id))
     })
+    const activeCls = 'bg-[var(--primary)] text-white border-[var(--primary)]'
+    const inactiveCls = 'bg-[var(--surface)] text-[var(--ink-2)] border-[var(--line)]'
+    overlay.querySelector('#cce-orient-landscape').className = `cce-orient-btn flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold ${isPortrait ? inactiveCls : activeCls}`
+    overlay.querySelector('#cce-orient-portrait').className = `cce-orient-btn flex-1 px-2.5 py-1.5 rounded-lg border text-xs font-bold ${isPortrait ? activeCls : inactiveCls}`
   }
 
   function renderPanel() {
@@ -190,6 +208,9 @@ export function openCertificateLayoutEditor(opts) {
     renderCanvas(); renderPanel()
   })
 
+  overlay.querySelector('#cce-orient-landscape').addEventListener('click', () => { layout.orientation = 'landscape'; renderCanvas() })
+  overlay.querySelector('#cce-orient-portrait').addEventListener('click', () => { layout.orientation = 'portrait'; renderCanvas() })
+
   overlay.querySelector('#cce-bg-file').addEventListener('change', e => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -204,7 +225,15 @@ export function openCertificateLayoutEditor(opts) {
     renderCanvas()
   }))
 
-  overlay.querySelector('#cce-close').addEventListener('click', () => overlay.remove())
+  const closeEditor = () => {
+    document.removeEventListener('keydown', onKeydown)
+    document.body.style.overflow = previousOverflow
+    overlay.remove()
+  }
+  const onKeydown = e => { if (e.key === 'Escape') closeEditor() }
+  document.addEventListener('keydown', onKeydown)
+
+  overlay.querySelector('#cce-close').addEventListener('click', closeEditor)
   overlay.querySelector('#cce-save').addEventListener('click', async () => {
     const saveBtn = overlay.querySelector('#cce-save')
     saveBtn.disabled = true; saveBtn.textContent = 'กำลังบันทึก...'
@@ -213,7 +242,7 @@ export function openCertificateLayoutEditor(opts) {
       if (pendingBgFile) backgroundImageUrl = await uploadCertificateTemplateImage(pendingBgFile)
       if (backgroundImageUrl) layout.background = { type: 'image', imageUrl: backgroundImageUrl }
       await onSave(layout, backgroundImageUrl)
-      overlay.remove()
+      closeEditor()
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       saveBtn.disabled = false; saveBtn.textContent = '💾 บันทึก'
