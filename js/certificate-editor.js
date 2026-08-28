@@ -7,7 +7,7 @@
 // ใช้เอนจินเรนเดอร์เดียวกับ certificate-engine.js (renderCertificateCanvasHtml) เพื่อให้พรีวิวตรงกับ
 // ของจริงที่พิมพ์ออกมา 100%
 import { renderCertificateCanvasHtml, defaultLayoutFor, UNIVERSAL_PLACEHOLDER_TOKENS, CERT_PRESETS } from './certificate-engine.js'
-import { uploadCertificateTemplateImage } from './storage.js'
+import { uploadCertificateTemplateImage, uploadCertificateLogoImage } from './storage.js'
 import { showToast } from './ui.js'
 
 const _esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -132,7 +132,7 @@ export function openCertificateLayoutEditor(opts) {
       const input = e.target
       input.disabled = true
       try {
-        const url = await uploadCertificateTemplateImage(file)
+        const url = await uploadCertificateLogoImage(file)
         commit({ imageUrl: url })
         renderImagePanel(el)
       } catch (err) {
@@ -268,7 +268,7 @@ export function openCertificateLayoutEditor(opts) {
     label.style.pointerEvents = 'none'
     label.style.opacity = '0.5'
     try {
-      const url = await uploadCertificateTemplateImage(file)
+      const url = await uploadCertificateLogoImage(file)
       const id = 'img-' + Date.now().toString(36)
       layout.elements.push({ id, type: 'image', imageUrl: url, x: 50, y: 15, width: 15 })
       selectedId = id

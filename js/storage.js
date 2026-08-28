@@ -105,10 +105,20 @@ export async function uploadCouncilTeacherSignature(teacherId, fileOrBlob) {
 }
 
 // รูปพื้นหลังเทมเพลตเกียรติบัตร — ระบบกลาง (ครูคนใดก็ได้ ไม่ผูกเฉพาะสภาอีกต่อไป)
+// ใช้ compressImage แปลงเป็น JPEG เสมอ — เหมาะกับพื้นหลังเต็มใบที่มักทึบอยู่แล้ว ไม่ต้องการ alpha
 export async function uploadCertificateTemplateImage(file) {
   const blob = await compressImage(file, { maxWidth: 1600, quality: 0.9 })
   const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
   return uploadFile('system-assets', `certificates/templates/${key}.jpg`, blob)
+}
+
+// รูปโลโก้/ตราสัญลักษณ์วางบนเทมเพลตเกียรติบัตร — อัปโหลดไฟล์ต้นฉบับตรงๆ ไม่ผ่าน canvas บีบอัดเลย
+// (ต่างจากพื้นหลังด้านบน) เพราะโลโก้มักเป็น PNG พื้นหลังโปร่งใส ถ้าบีบอัดผ่าน canvas แล้วแปลงเป็น JPEG
+// (ไม่มี alpha channel) ส่วนโปร่งใสจะถูกเติมเป็นสีดำอัตโนมัติ — ตรงปัญหาที่เคยเจอกับรูปสติกเกอร์มาก่อน
+export async function uploadCertificateLogoImage(file) {
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const ext = file.type === 'image/png' ? 'png' : file.type === 'image/svg+xml' ? 'svg' : 'jpg'
+  return uploadFile('system-assets', `certificates/logos/${key}.${ext}`, file, file.type || 'image/png')
 }
 
 // เกียรติบัตร/รางวัลแนบตอนสมัครสภานักเรียน — รับได้ทั้งรูปภาพ (บีบอัด) และ PDF (เก็บไฟล์ต้นฉบับตรงๆ ไม่ผ่าน canvas)
