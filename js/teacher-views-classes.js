@@ -61,6 +61,343 @@ function _openExamDocsForClass(classId) {
   showToast('ไม่พบเมนูเอกสารช่วงสอบ กรุณาเปิดจากหน้าเมนครู', 'warning')
 }
 
+async function _openStudentManagerImpl(teacher, classId) {
+  const cls = window._classCache?.[classId]
+  if (!cls) return
+  setActiveNav('my-classes')
+  setTitle('จัดการนักเรียน', 'class-students')
+  setContent(`<div class="flex justify-center py-12 text-gray-400">
+    <svg class="animate-spin h-6 w-6 mr-3 text-sky-400" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg> กำลังโหลดรายชื่อนักเรียน...
+  </div>`)
+  try {
+    const [students, cfg] = await Promise.all([
+      getClassRosterStudents(classId),
+      getSystemConfig().catch(() => ({})),
+    ])
+    const viewKey = `classRosterView_${classId}`
+    const viewMode = localStorage.getItem(viewKey) || 'table'
+    const activeCount = students.filter(s => s.is_active).length
+    const ms = cls.master_subjects ?? {}
+    const isReligionCourse = ['AGM', 'AGMVOC'].includes(ms.subject_group)
+    const isACDMVOC = ms.subject_group === 'ACDMVOC'
+    const showHouseColor = cfg.showStudentHouseColor !== 'false'
+    const showShirtSize = cfg.showStudentSportsShirtSize !== 'false'
+    const SPECIAL_RESULT_OPTS = ['ข.ร.','ข.ส.','ม.ส.','ข.ป.']
+    const specialResultSelect = s => `
+      <select data-special-enrollment="${s.enrollment_id}" onclick="event.stopPropagation()"
+        class="border border-gray-200 rounded-lg px-1.5 py-1 text-xs bg-white text-gray-600">
+        <option value="" ${!s.special_result ? 'selected' : ''}>ปกติ</option>
+        ${SPECIAL_RESULT_OPTS.map(v => `<option value="${v}" ${s.special_result === v ? 'selected' : ''}>${v}</option>`).join('')}
+      </select>`
+    const displayRoom = s => isReligionCourse
+      ? (s.main_room || s.religion_room || '—')
+      : (s.religion_room || s.main_room || '—')
+    const extraBadges = s => `
+      ${showHouseColor ? `<span class="inline-flex px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium">สี: ${_htmlEsc(s.house_color || '—')}</span>` : ''}
+      ${showShirtSize ? `<span class="inline-flex px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[11px] font-medium">เสื้อ: ${_htmlEsc(s.sports_shirt_size || '—')}</span>` : ''}`
+    const avatar = (s, size = 'w-12 h-16') => s.image_url
+      ? `<img src="${_htmlEsc(s.image_url)}" class="${size} rounded-2xl object-cover bg-gray-100 border border-gray-100 shadow-sm" loading="lazy" />`
+      : `<div class="${size} rounded-2xl bg-sky-100 text-sky-700 border border-sky-100 shadow-sm flex items-center justify-center font-bold">${_htmlEsc((s.full_name || '?').trim().slice(0,1))}</div>`
+    const tableRows = students.map((s, i) => `
+      <tr class="student-status-target cursor-pointer transition ${s.is_active ? 'bg-white hover:bg-emerald-50/40' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}"
+        data-enrollment-id="${s.enrollment_id}" data-next="${s.is_active ? 'false' : 'true'}" data-name="${_htmlEsc(s.full_name)}">
+        <td class="px-3 py-2 text-center text-xs text-gray-400">${i + 1}</td>
+        <td class="px-3 py-2">${avatar(s)}</td>
+        <td class="px-3 py-2 font-mono text-sm">${_htmlEsc(s.student_code)}</td>
+        <td class="px-3 py-2">
+          <p class="font-semibold text-gray-800 ${s.is_active ? '' : 'line-through text-gray-400'}">${_htmlEsc(s.full_name)}</p>
+          <p class="text-xs text-gray-400">${_htmlEsc(displayRoom(s))}</p>
+          <div class="mt-1 flex flex-wrap gap-1">${extraBadges(s)}</div>
+        </td>
+        ${showHouseColor ? `<td class="px-3 py-2 text-center text-sm text-gray-600">${_htmlEsc(s.house_color || '—')}</td>` : ''}
+        ${showShirtSize ? `<td class="px-3 py-2 text-center text-sm text-gray-600">${_htmlEsc(s.sports_shirt_size || '—')}</td>` : ''}
+        ${isACDMVOC ? `<td class="px-3 py-2 text-center">${specialResultSelect(s)}</td>` : ''}
+        <td class="px-3 py-2 text-center">
+          <span class="inline-flex px-3 py-1 rounded-full text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}">
+            ${s.is_active ? 'กำลังเรียน' : 'ไม่เรียน'}
+          </span>
+        </td>
+      </tr>`).join('')
+    const gridCards = students.map(s => `
+      <button type="button"
+        class="student-status-target text-left rounded-2xl border p-4 transition ${s.is_active ? 'border-emerald-300 bg-white shadow-[0_0_0_3px_rgba(16,185,129,0.12),0_8px_20px_rgba(16,185,129,0.12)] hover:shadow-[0_0_0_4px_rgba(16,185,129,0.18),0_10px_24px_rgba(16,185,129,0.16)]' : 'border-gray-300 bg-gray-50 opacity-80 hover:opacity-100'}"
+        data-enrollment-id="${s.enrollment_id}" data-next="${s.is_active ? 'false' : 'true'}" data-name="${_htmlEsc(s.full_name)}">
+        <div class="flex items-start justify-between gap-3">
+          ${avatar(s, 'w-20 h-28')}
+          <span class="px-2 py-1 rounded-full text-[11px] font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}">
+            ${s.is_active ? 'กำลังเรียน' : 'ไม่เรียน'}
+          </span>
+        </div>
+        <p class="mt-3 font-bold text-gray-800 ${s.is_active ? '' : 'line-through text-gray-400'}">${_htmlEsc(s.full_name)}</p>
+        <p class="text-xs font-mono text-sky-700 mt-0.5">${_htmlEsc(s.student_code)}</p>
+        <p class="text-xs text-gray-400 mt-0.5">${_htmlEsc(displayRoom(s))}</p>
+        <div class="mt-2 flex flex-wrap gap-1">${extraBadges(s)}</div>
+      </button>`).join('')
+
+    setContent(`<div class="animate-fade">
+      <div id="students-back-placeholder" class="hidden"></div>
+      <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
+        <div class="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p class="text-sm font-semibold text-gray-700">ทั้งหมด ${students.length} คน · กำลังเรียน ${activeCount} คน</p>
+            <p class="text-xs text-gray-400 mt-0.5">ปิดสถานะเมื่อนักเรียนออกกลางคัน ระบบจะไม่ดึงไปเช็คชื่อ/ใบรายชื่อ</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <div class="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
+              <button class="student-view-toggle px-2.5 py-1.5 rounded-lg text-xs font-semibold ${viewMode === 'table' ? 'bg-white text-sky-700 shadow' : 'text-gray-400'}" data-view="table" title="มุมมองตาราง">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M10 6h4M10 18h4M3 6h4M3 18h4M17 6h4M17 18h4"/></svg>
+              </button>
+              <button class="student-view-toggle px-2.5 py-1.5 rounded-lg text-xs font-semibold ${viewMode === 'grid' ? 'bg-white text-sky-700 shadow' : 'text-gray-400'}" data-view="grid" title="มุมมองกริด">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+              </button>
+            </div>
+            <button id="students-sync-enroll" class="px-3 py-2 rounded-xl bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700" title="รีเฟรชรายชื่อนักเรียนในห้องนี้ตามข้อมูลล่าสุด">🔄 รีเฟรชรายชื่อ</button>
+            <button id="students-add" class="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700">＋ เพิ่มนักเรียน</button>
+            <button id="students-roster" class="px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700">🖨️ สร้างใบรายชื่อ</button>
+            <button id="students-print-qr" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">🖨️ พิมพ์ QR Code</button>
+          </div>
+        </div>
+        ${!students.length ? `
+          <div class="p-12 text-center text-gray-400">
+            <p class="text-4xl mb-3">👥</p>
+            <p class="font-medium">ยังไม่มีนักเรียนในรายวิชานี้</p>
+          </div>` : viewMode === 'grid' ? `
+          <div class="p-4 grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            ${gridCards}
+          </div>` : `
+          <div class="overflow-auto">
+            <table class="w-full text-sm">
+              <thead class="bg-gray-50 text-gray-500">
+                <tr>
+                  <th class="px-3 py-2 text-center w-12">#</th>
+                  <th class="px-3 py-2 text-left w-16">รูป</th>
+                  <th class="px-3 py-2 text-left w-28">รหัส</th>
+                  <th class="px-3 py-2 text-left">นักเรียน</th>
+                  ${showHouseColor ? `<th class="px-3 py-2 text-center w-24">ประจำสี</th>` : ''}
+                  ${showShirtSize ? `<th class="px-3 py-2 text-center w-28">ไซด์เสื้อ</th>` : ''}
+                  ${isACDMVOC ? `<th class="px-3 py-2 text-center w-24">สถานะพิเศษ</th>` : ''}
+                  <th class="px-3 py-2 text-center w-28">สถานะ</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-gray-50">${tableRows}</tbody>
+            </table>
+          </div>`}
+      </div>
+    </div>`)
+
+    const refresh = () => window._openStudentManager(classId)
+    // students-back ถูกลบออก (อยู่ใน class detail sticky header แล้ว)
+    document.querySelectorAll('[data-special-enrollment]').forEach(sel => {
+      sel.addEventListener('change', async () => {
+        try {
+          await updateClassStudentSpecialResult(sel.dataset.specialEnrollment, sel.value)
+          showToast('บันทึกสถานะพิเศษแล้ว', 'success')
+        } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      })
+    })
+    document.getElementById('students-roster')?.addEventListener('click', () => window._openRosterPicker(classId))
+    document.getElementById('students-print-qr')?.addEventListener('click', () => {
+      window._pendingQRClassId = classId
+      window._navTo('student-qr-print')
+    })
+    document.getElementById('students-sync-enroll')?.addEventListener('click', async (e) => {
+      const btn = e.currentTarget
+      const orig = btn.textContent
+      btn.disabled = true
+      btn.textContent = 'กำลังรีเฟรช...'
+      try {
+        await autoEnrollStudentsByRoom()
+        showToast('รีเฟรชรายชื่อสำเร็จ', 'success')
+        window._loadClassTab?.('students') ?? window._openStudentManager(classId)
+      } catch {
+        showToast('รีเฟรชไม่สำเร็จ', 'error')
+        btn.disabled = false
+        btn.textContent = orig
+      }
+    })
+    document.querySelectorAll('.student-view-toggle').forEach(btn => {
+      btn.addEventListener('click', () => {
+        localStorage.setItem(viewKey, btn.dataset.view)
+        refresh()
+      })
+    })
+    document.querySelectorAll('.student-status-target').forEach(el => {
+      el.addEventListener('click', () => {
+        const nextActive = el.dataset.next === 'true'
+        const studentName = el.dataset.name || 'นักเรียน'
+        document.getElementById('student-status-confirm')?.remove()
+        const modal = document.createElement('div')
+        modal.id = 'student-status-confirm'
+        modal.className = 'fixed inset-0 z-[95] bg-white flex flex-col'
+
+        if (nextActive) {
+          modal.innerHTML = `<div class="flex-1 flex items-center justify-center p-6">
+            <div class="w-full max-w-md text-center">
+              <div class="mx-auto mb-5 w-20 h-20 rounded-full flex items-center justify-center text-4xl bg-emerald-100 text-emerald-700">
+                ✓
+              </div>
+              <h3 class="text-2xl font-bold text-gray-800">เปิดสถานะกำลังเรียน?</h3>
+              <p class="mt-3 text-gray-500">${_htmlEsc(studentName)}</p>
+              <p class="mt-2 text-sm text-gray-400">นักเรียนจะกลับมาอยู่ในเช็คชื่อ/ใบรายชื่อของรายวิชานี้</p>
+              <div class="mt-8 grid grid-cols-2 gap-3">
+                <button id="student-status-cancel" class="py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50">ยกเลิก</button>
+                <button id="student-status-ok" class="py-3 rounded-xl text-white font-semibold bg-emerald-600 hover:bg-emerald-700">ยืนยัน</button>
+              </div>
+            </div>
+          </div>`
+        } else {
+          modal.innerHTML = `<div class="flex-1 flex items-center justify-center p-6">
+            <div class="w-full max-w-md text-center">
+              <div class="mx-auto mb-5 w-20 h-20 rounded-full flex items-center justify-center text-4xl bg-red-50 text-red-500 border border-red-100 shadow-sm">
+                🗑️
+              </div>
+              <h3 class="text-2xl font-bold text-gray-900">ลบนักเรียนออกจากห้องเรียนนี้?</h3>
+              <p class="mt-3 text-gray-800 font-semibold text-lg">${_htmlEsc(studentName)}</p>
+              <p class="mt-2 text-sm text-gray-400">นักเรียนจะถูกลบออกจากรายวิชานี้ และระบบซิงก์หรือปุ่มรีเฟรชจะไม่เพิ่มกลับมาอีก<br/>หากต้องการนำกลับ สามารถใช้ปุ่ม “เพิ่มนักเรียน” ได้ภายหลัง</p>
+              <div class="mt-8 grid grid-cols-2 gap-3">
+                <button id="student-status-cancel" class="py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50">ยกเลิก</button>
+                <button id="student-status-ok" class="py-3 rounded-xl text-white font-semibold bg-red-600 hover:bg-red-700">ยืนยันการลบ</button>
+              </div>
+            </div>
+          </div>`
+        }
+
+        document.body.appendChild(modal)
+        modal.querySelector('#student-status-cancel').addEventListener('click', () => modal.remove())
+        modal.querySelector('#student-status-ok').addEventListener('click', async () => {
+          try {
+            if (nextActive) {
+              await updateClassStudentActive(el.dataset.enrollmentId, true)
+              showToast('เปิดสถานะกำลังเรียนแล้ว', 'success')
+            } else {
+              await removeStudentFromClass(el.dataset.enrollmentId)
+              showToast('ลบนักเรียนออกจากห้องเรียนนี้แล้ว', 'success')
+            }
+            modal.remove()
+            refresh()
+          } catch (err) {
+            showToast('ดำเนินการไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          }
+        })
+      })
+    })
+    document.getElementById('students-add')?.addEventListener('click', () => {
+      document.getElementById('add-student-modal')?.remove()
+      const modal = document.createElement('div')
+      modal.id = 'add-student-modal'
+      modal.className = 'fixed inset-0 z-[90] bg-white flex flex-col animate-fade'
+      modal.innerHTML = `
+        <div class="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+          <div>
+            <h3 class="text-xl font-bold text-gray-800">เพิ่มนักเรียนเข้ารายวิชา (หลายคน)</h3>
+            <p class="text-xs text-gray-500 mt-1">${_htmlEsc(ms.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
+          </div>
+          <button id="add-student-close" class="px-5 py-2.5 bg-sky-600 text-white rounded-xl text-sm font-semibold hover:bg-sky-700 shadow transition">เสร็จสิ้น</button>
+        </div>
+        <div class="flex-1 overflow-auto p-5 max-w-2xl w-full mx-auto space-y-6">
+          <div class="bg-gray-50 border border-gray-200 rounded-3xl p-6">
+            <label class="block text-sm font-bold text-gray-700 mb-2">ยิงบาร์โค้ด หรือกรอกรหัสนักเรียนเพื่อเพิ่มทันที</label>
+            <div class="flex gap-2">
+              <input id="add-student-code" class="${INPUT_CLS} text-lg font-mono flex-1 bg-white" placeholder="กรอกรหัสแล้วกด Enter" autocomplete="off" autofocus />
+              <button id="add-student-search-btn" class="px-5 py-2.5 rounded-xl bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 shadow-sm transition">เพิ่ม</button>
+            </div>
+            <div id="add-student-status" class="mt-3 text-sm"></div>
+          </div>
+          
+          <!-- รายชื่อนักเรียนที่เพิ่งเพิ่มเข้ามา -->
+          <div class="border-t border-gray-100 pt-4">
+            <h4 class="text-sm font-bold text-gray-700 mb-3">นักเรียนที่เพิ่มสำเร็จในรอบนี้ (<span id="added-count">0</span> คน)</h4>
+            <div id="added-students-list" class="space-y-2">
+              <p class="text-xs text-gray-400 italic">ยังไม่มีการเพิ่มในรอบนี้</p>
+            </div>
+          </div>
+        </div>`
+      document.body.appendChild(modal)
+
+      const inputEl = modal.querySelector('#add-student-code')
+      const searchBtn = modal.querySelector('#add-student-search-btn')
+      const statusEl = modal.querySelector('#add-student-status')
+      const listEl = modal.querySelector('#added-students-list')
+      const countEl = modal.querySelector('#added-count')
+
+      let _newlyAdded = []
+
+      function _renderAddedList() {
+        countEl.textContent = _newlyAdded.length
+        if (!_newlyAdded.length) {
+          listEl.innerHTML = `<p class="text-xs text-gray-400 italic">ยังไม่มีการเพิ่มในรอบนี้</p>`
+          return
+        }
+        listEl.innerHTML = _newlyAdded.map((s, index) => `
+          <div class="flex items-center gap-3 p-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl animate-fade">
+            <span class="text-xs font-bold text-emerald-600 bg-emerald-100 w-5 h-5 flex items-center justify-center rounded-full">${_newlyAdded.length - index}</span>
+            <div class="flex-1">
+              <p class="text-sm font-bold text-gray-800">${_htmlEsc(s.full_name)}</p>
+              <p class="text-xs font-mono text-gray-500">${_htmlEsc(s.student_code)} · ${_htmlEsc(displayRoom(s))}</p>
+            </div>
+            <span class="text-xs text-emerald-600 font-bold">✓ เพิ่มแล้ว</span>
+          </div>
+        `).join('')
+      }
+
+      const doAddStudent = async () => {
+        const code = inputEl.value.trim()
+        if (!code) return
+        
+        statusEl.innerHTML = '<span class="text-gray-400">กำลังค้นหาและเพิ่ม...</span>'
+        inputEl.disabled = true
+        searchBtn.disabled = true
+        
+        try {
+          const s = await getStudentByCode(code)
+          if (!s) {
+            statusEl.innerHTML = '<span class="text-red-500 font-medium">⚠️ ไม่พบนักเรียนรหัสนี้</span>'
+            return
+          }
+          
+          // ลองเพิ่มนักเรียนเข้ารายวิชา
+          await addStudentToClass(classId, s.id)
+          
+          // เพิ่มสำเร็จ!
+          _newlyAdded.unshift(s) // ใส่ตัวใหม่ไว้ด้านบน
+          _renderAddedList()
+          statusEl.innerHTML = `<span class="text-emerald-600 font-medium">✓ เพิ่ม ${_htmlEsc(s.full_name)} สำเร็จ!</span>`
+          
+          // เคลียร์ค่า
+          inputEl.value = ''
+        } catch (err) {
+          statusEl.innerHTML = `<span class="text-red-500 font-medium">⚠️ ${err.message || 'เกิดข้อผิดพลาด'}</span>`
+        } finally {
+          inputEl.disabled = false
+          searchBtn.disabled = false
+          inputEl.focus()
+        }
+      }
+
+      modal.querySelector('#add-student-close').addEventListener('click', () => {
+        modal.remove()
+        refresh()
+      })
+
+      searchBtn.addEventListener('click', doAddStudent)
+      inputEl.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          doAddStudent()
+        }
+      })
+
+      setTimeout(() => inputEl.focus(), 50)
+    })
+  } catch (err) {
+    showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    renderMyClasses(teacher)
+  }
+}
+
 export async function renderMyClasses(teacher) {
   setActiveNav('my-classes')
   setTitle('ห้องเรียนของฉัน', 'classes')
@@ -617,342 +954,7 @@ export async function renderMyClasses(teacher) {
       })
     }
 
-    window._openStudentManager = async (classId) => {
-      const cls = window._classCache?.[classId]
-      if (!cls) return
-      setActiveNav('my-classes')
-      setTitle('จัดการนักเรียน', 'class-students')
-      setContent(`<div class="flex justify-center py-12 text-gray-400">
-        <svg class="animate-spin h-6 w-6 mr-3 text-sky-400" viewBox="0 0 24 24" fill="none">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-        </svg> กำลังโหลดรายชื่อนักเรียน...
-      </div>`)
-      try {
-        const [students, cfg] = await Promise.all([
-          getClassRosterStudents(classId),
-          getSystemConfig().catch(() => ({})),
-        ])
-        const viewKey = `classRosterView_${classId}`
-        const viewMode = localStorage.getItem(viewKey) || 'table'
-        const activeCount = students.filter(s => s.is_active).length
-        const ms = cls.master_subjects ?? {}
-        const isReligionCourse = ['AGM', 'AGMVOC'].includes(ms.subject_group)
-        const isACDMVOC = ms.subject_group === 'ACDMVOC'
-        const showHouseColor = cfg.showStudentHouseColor !== 'false'
-        const showShirtSize = cfg.showStudentSportsShirtSize !== 'false'
-        const SPECIAL_RESULT_OPTS = ['ข.ร.','ข.ส.','ม.ส.','ข.ป.']
-        const specialResultSelect = s => `
-          <select data-special-enrollment="${s.enrollment_id}" onclick="event.stopPropagation()"
-            class="border border-gray-200 rounded-lg px-1.5 py-1 text-xs bg-white text-gray-600">
-            <option value="" ${!s.special_result ? 'selected' : ''}>ปกติ</option>
-            ${SPECIAL_RESULT_OPTS.map(v => `<option value="${v}" ${s.special_result === v ? 'selected' : ''}>${v}</option>`).join('')}
-          </select>`
-        const displayRoom = s => isReligionCourse
-          ? (s.main_room || s.religion_room || '—')
-          : (s.religion_room || s.main_room || '—')
-        const extraBadges = s => `
-          ${showHouseColor ? `<span class="inline-flex px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium">สี: ${_htmlEsc(s.house_color || '—')}</span>` : ''}
-          ${showShirtSize ? `<span class="inline-flex px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 text-[11px] font-medium">เสื้อ: ${_htmlEsc(s.sports_shirt_size || '—')}</span>` : ''}`
-        const avatar = (s, size = 'w-12 h-16') => s.image_url
-          ? `<img src="${_htmlEsc(s.image_url)}" class="${size} rounded-2xl object-cover bg-gray-100 border border-gray-100 shadow-sm" loading="lazy" />`
-          : `<div class="${size} rounded-2xl bg-sky-100 text-sky-700 border border-sky-100 shadow-sm flex items-center justify-center font-bold">${_htmlEsc((s.full_name || '?').trim().slice(0,1))}</div>`
-        const tableRows = students.map((s, i) => `
-          <tr class="student-status-target cursor-pointer transition ${s.is_active ? 'bg-white hover:bg-emerald-50/40' : 'bg-gray-50 text-gray-400 hover:bg-gray-100'}"
-            data-enrollment-id="${s.enrollment_id}" data-next="${s.is_active ? 'false' : 'true'}" data-name="${_htmlEsc(s.full_name)}">
-            <td class="px-3 py-2 text-center text-xs text-gray-400">${i + 1}</td>
-            <td class="px-3 py-2">${avatar(s)}</td>
-            <td class="px-3 py-2 font-mono text-sm">${_htmlEsc(s.student_code)}</td>
-            <td class="px-3 py-2">
-              <p class="font-semibold text-gray-800 ${s.is_active ? '' : 'line-through text-gray-400'}">${_htmlEsc(s.full_name)}</p>
-              <p class="text-xs text-gray-400">${_htmlEsc(displayRoom(s))}</p>
-              <div class="mt-1 flex flex-wrap gap-1">${extraBadges(s)}</div>
-            </td>
-            ${showHouseColor ? `<td class="px-3 py-2 text-center text-sm text-gray-600">${_htmlEsc(s.house_color || '—')}</td>` : ''}
-            ${showShirtSize ? `<td class="px-3 py-2 text-center text-sm text-gray-600">${_htmlEsc(s.sports_shirt_size || '—')}</td>` : ''}
-            ${isACDMVOC ? `<td class="px-3 py-2 text-center">${specialResultSelect(s)}</td>` : ''}
-            <td class="px-3 py-2 text-center">
-              <span class="inline-flex px-3 py-1 rounded-full text-xs font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}">
-                ${s.is_active ? 'กำลังเรียน' : 'ไม่เรียน'}
-              </span>
-            </td>
-          </tr>`).join('')
-        const gridCards = students.map(s => `
-          <button type="button"
-            class="student-status-target text-left rounded-2xl border p-4 transition ${s.is_active ? 'border-emerald-300 bg-white shadow-[0_0_0_3px_rgba(16,185,129,0.12),0_8px_20px_rgba(16,185,129,0.12)] hover:shadow-[0_0_0_4px_rgba(16,185,129,0.18),0_10px_24px_rgba(16,185,129,0.16)]' : 'border-gray-300 bg-gray-50 opacity-80 hover:opacity-100'}"
-            data-enrollment-id="${s.enrollment_id}" data-next="${s.is_active ? 'false' : 'true'}" data-name="${_htmlEsc(s.full_name)}">
-            <div class="flex items-start justify-between gap-3">
-              ${avatar(s, 'w-20 h-28')}
-              <span class="px-2 py-1 rounded-full text-[11px] font-semibold ${s.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-200 text-gray-500'}">
-                ${s.is_active ? 'กำลังเรียน' : 'ไม่เรียน'}
-              </span>
-            </div>
-            <p class="mt-3 font-bold text-gray-800 ${s.is_active ? '' : 'line-through text-gray-400'}">${_htmlEsc(s.full_name)}</p>
-            <p class="text-xs font-mono text-sky-700 mt-0.5">${_htmlEsc(s.student_code)}</p>
-            <p class="text-xs text-gray-400 mt-0.5">${_htmlEsc(displayRoom(s))}</p>
-            <div class="mt-2 flex flex-wrap gap-1">${extraBadges(s)}</div>
-          </button>`).join('')
-
-        setContent(`<div class="animate-fade">
-          <div id="students-back-placeholder" class="hidden"></div>
-          <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
-            <div class="p-4 border-b border-gray-100 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p class="text-sm font-semibold text-gray-700">ทั้งหมด ${students.length} คน · กำลังเรียน ${activeCount} คน</p>
-                <p class="text-xs text-gray-400 mt-0.5">ปิดสถานะเมื่อนักเรียนออกกลางคัน ระบบจะไม่ดึงไปเช็คชื่อ/ใบรายชื่อ</p>
-              </div>
-              <div class="flex flex-wrap gap-2">
-                <div class="inline-flex rounded-xl border border-gray-200 bg-gray-50 p-1">
-                  <button class="student-view-toggle px-2.5 py-1.5 rounded-lg text-xs font-semibold ${viewMode === 'table' ? 'bg-white text-sky-700 shadow' : 'text-gray-400'}" data-view="table" title="มุมมองตาราง">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M3 14h18M10 6h4M10 18h4M3 6h4M3 18h4M17 6h4M17 18h4"/></svg>
-                  </button>
-                  <button class="student-view-toggle px-2.5 py-1.5 rounded-lg text-xs font-semibold ${viewMode === 'grid' ? 'bg-white text-sky-700 shadow' : 'text-gray-400'}" data-view="grid" title="มุมมองกริด">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-                  </button>
-                </div>
-                <button id="students-sync-enroll" class="px-3 py-2 rounded-xl bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700" title="รีเฟรชรายชื่อนักเรียนในห้องนี้ตามข้อมูลล่าสุด">🔄 รีเฟรชรายชื่อ</button>
-                <button id="students-add" class="px-3 py-2 rounded-xl bg-sky-600 text-white text-xs font-semibold hover:bg-sky-700">＋ เพิ่มนักเรียน</button>
-                <button id="students-roster" class="px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700">🖨️ สร้างใบรายชื่อ</button>
-                <button id="students-print-qr" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700">🖨️ พิมพ์ QR Code</button>
-              </div>
-            </div>
-            ${!students.length ? `
-              <div class="p-12 text-center text-gray-400">
-                <p class="text-4xl mb-3">👥</p>
-                <p class="font-medium">ยังไม่มีนักเรียนในรายวิชานี้</p>
-              </div>` : viewMode === 'grid' ? `
-              <div class="p-4 grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-                ${gridCards}
-              </div>` : `
-              <div class="overflow-auto">
-                <table class="w-full text-sm">
-                  <thead class="bg-gray-50 text-gray-500">
-                    <tr>
-                      <th class="px-3 py-2 text-center w-12">#</th>
-                      <th class="px-3 py-2 text-left w-16">รูป</th>
-                      <th class="px-3 py-2 text-left w-28">รหัส</th>
-                      <th class="px-3 py-2 text-left">นักเรียน</th>
-                      ${showHouseColor ? `<th class="px-3 py-2 text-center w-24">ประจำสี</th>` : ''}
-                      ${showShirtSize ? `<th class="px-3 py-2 text-center w-28">ไซด์เสื้อ</th>` : ''}
-                      ${isACDMVOC ? `<th class="px-3 py-2 text-center w-24">สถานะพิเศษ</th>` : ''}
-                      <th class="px-3 py-2 text-center w-28">สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-gray-50">${tableRows}</tbody>
-                </table>
-              </div>`}
-          </div>
-        </div>`)
-
-        const refresh = () => window._openStudentManager(classId)
-        // students-back ถูกลบออก (อยู่ใน class detail sticky header แล้ว)
-        document.querySelectorAll('[data-special-enrollment]').forEach(sel => {
-          sel.addEventListener('change', async () => {
-            try {
-              await updateClassStudentSpecialResult(sel.dataset.specialEnrollment, sel.value)
-              showToast('บันทึกสถานะพิเศษแล้ว', 'success')
-            } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
-          })
-        })
-        document.getElementById('students-roster')?.addEventListener('click', () => window._openRosterPicker(classId))
-        document.getElementById('students-print-qr')?.addEventListener('click', () => {
-          window._pendingQRClassId = classId
-          window._navTo('student-qr-print')
-        })
-        document.getElementById('students-sync-enroll')?.addEventListener('click', async (e) => {
-          const btn = e.currentTarget
-          const orig = btn.textContent
-          btn.disabled = true
-          btn.textContent = 'กำลังรีเฟรช...'
-          try {
-            await autoEnrollStudentsByRoom()
-            showToast('รีเฟรชรายชื่อสำเร็จ', 'success')
-            window._loadClassTab?.('students') ?? window._openStudentManager(classId)
-          } catch {
-            showToast('รีเฟรชไม่สำเร็จ', 'error')
-            btn.disabled = false
-            btn.textContent = orig
-          }
-        })
-        document.querySelectorAll('.student-view-toggle').forEach(btn => {
-          btn.addEventListener('click', () => {
-            localStorage.setItem(viewKey, btn.dataset.view)
-            refresh()
-          })
-        })
-        document.querySelectorAll('.student-status-target').forEach(el => {
-          el.addEventListener('click', () => {
-            const nextActive = el.dataset.next === 'true'
-            const studentName = el.dataset.name || 'นักเรียน'
-            document.getElementById('student-status-confirm')?.remove()
-            const modal = document.createElement('div')
-            modal.id = 'student-status-confirm'
-            modal.className = 'fixed inset-0 z-[95] bg-white flex flex-col'
-
-            if (nextActive) {
-              modal.innerHTML = `<div class="flex-1 flex items-center justify-center p-6">
-                <div class="w-full max-w-md text-center">
-                  <div class="mx-auto mb-5 w-20 h-20 rounded-full flex items-center justify-center text-4xl bg-emerald-100 text-emerald-700">
-                    ✓
-                  </div>
-                  <h3 class="text-2xl font-bold text-gray-800">เปิดสถานะกำลังเรียน?</h3>
-                  <p class="mt-3 text-gray-500">${_htmlEsc(studentName)}</p>
-                  <p class="mt-2 text-sm text-gray-400">นักเรียนจะกลับมาอยู่ในเช็คชื่อ/ใบรายชื่อของรายวิชานี้</p>
-                  <div class="mt-8 grid grid-cols-2 gap-3">
-                    <button id="student-status-cancel" class="py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50">ยกเลิก</button>
-                    <button id="student-status-ok" class="py-3 rounded-xl text-white font-semibold bg-emerald-600 hover:bg-emerald-700">ยืนยัน</button>
-                  </div>
-                </div>
-              </div>`
-            } else {
-              modal.innerHTML = `<div class="flex-1 flex items-center justify-center p-6">
-                <div class="w-full max-w-md text-center">
-                  <div class="mx-auto mb-5 w-20 h-20 rounded-full flex items-center justify-center text-4xl bg-red-50 text-red-500 border border-red-100 shadow-sm">
-                    🗑️
-                  </div>
-                  <h3 class="text-2xl font-bold text-gray-900">ลบนักเรียนออกจากห้องเรียนนี้?</h3>
-                  <p class="mt-3 text-gray-800 font-semibold text-lg">${_htmlEsc(studentName)}</p>
-                  <p class="mt-2 text-sm text-gray-400">นักเรียนจะถูกลบออกจากรายวิชานี้ และระบบซิงก์หรือปุ่มรีเฟรชจะไม่เพิ่มกลับมาอีก<br/>หากต้องการนำกลับ สามารถใช้ปุ่ม “เพิ่มนักเรียน” ได้ภายหลัง</p>
-                  <div class="mt-8 grid grid-cols-2 gap-3">
-                    <button id="student-status-cancel" class="py-3 rounded-xl border border-gray-200 text-gray-600 font-semibold hover:bg-gray-50">ยกเลิก</button>
-                    <button id="student-status-ok" class="py-3 rounded-xl text-white font-semibold bg-red-600 hover:bg-red-700">ยืนยันการลบ</button>
-                  </div>
-                </div>
-              </div>`
-            }
-
-            document.body.appendChild(modal)
-            modal.querySelector('#student-status-cancel').addEventListener('click', () => modal.remove())
-            modal.querySelector('#student-status-ok').addEventListener('click', async () => {
-              try {
-                if (nextActive) {
-                  await updateClassStudentActive(el.dataset.enrollmentId, true)
-                  showToast('เปิดสถานะกำลังเรียนแล้ว', 'success')
-                } else {
-                  await removeStudentFromClass(el.dataset.enrollmentId)
-                  showToast('ลบนักเรียนออกจากห้องเรียนนี้แล้ว', 'success')
-                }
-                modal.remove()
-                refresh()
-              } catch (err) {
-                showToast('ดำเนินการไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-              }
-            })
-          })
-        })
-        document.getElementById('students-add')?.addEventListener('click', () => {
-          document.getElementById('add-student-modal')?.remove()
-          const modal = document.createElement('div')
-          modal.id = 'add-student-modal'
-          modal.className = 'fixed inset-0 z-[90] bg-white flex flex-col animate-fade'
-          modal.innerHTML = `
-            <div class="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
-              <div>
-                <h3 class="text-xl font-bold text-gray-800">เพิ่มนักเรียนเข้ารายวิชา (หลายคน)</h3>
-                <p class="text-xs text-gray-500 mt-1">${_htmlEsc(ms.subject_name || '')} · ${_htmlEsc(cls.class_name || '')}</p>
-              </div>
-              <button id="add-student-close" class="px-5 py-2.5 bg-sky-600 text-white rounded-xl text-sm font-semibold hover:bg-sky-700 shadow transition">เสร็จสิ้น</button>
-            </div>
-            <div class="flex-1 overflow-auto p-5 max-w-2xl w-full mx-auto space-y-6">
-              <div class="bg-gray-50 border border-gray-200 rounded-3xl p-6">
-                <label class="block text-sm font-bold text-gray-700 mb-2">ยิงบาร์โค้ด หรือกรอกรหัสนักเรียนเพื่อเพิ่มทันที</label>
-                <div class="flex gap-2">
-                  <input id="add-student-code" class="${INPUT_CLS} text-lg font-mono flex-1 bg-white" placeholder="กรอกรหัสแล้วกด Enter" autocomplete="off" autofocus />
-                  <button id="add-student-search-btn" class="px-5 py-2.5 rounded-xl bg-sky-600 text-white text-sm font-semibold hover:bg-sky-700 shadow-sm transition">เพิ่ม</button>
-                </div>
-                <div id="add-student-status" class="mt-3 text-sm"></div>
-              </div>
-              
-              <!-- รายชื่อนักเรียนที่เพิ่งเพิ่มเข้ามา -->
-              <div class="border-t border-gray-100 pt-4">
-                <h4 class="text-sm font-bold text-gray-700 mb-3">นักเรียนที่เพิ่มสำเร็จในรอบนี้ (<span id="added-count">0</span> คน)</h4>
-                <div id="added-students-list" class="space-y-2">
-                  <p class="text-xs text-gray-400 italic">ยังไม่มีการเพิ่มในรอบนี้</p>
-                </div>
-              </div>
-            </div>`
-          document.body.appendChild(modal)
-
-          const inputEl = modal.querySelector('#add-student-code')
-          const searchBtn = modal.querySelector('#add-student-search-btn')
-          const statusEl = modal.querySelector('#add-student-status')
-          const listEl = modal.querySelector('#added-students-list')
-          const countEl = modal.querySelector('#added-count')
-
-          let _newlyAdded = []
-
-          function _renderAddedList() {
-            countEl.textContent = _newlyAdded.length
-            if (!_newlyAdded.length) {
-              listEl.innerHTML = `<p class="text-xs text-gray-400 italic">ยังไม่มีการเพิ่มในรอบนี้</p>`
-              return
-            }
-            listEl.innerHTML = _newlyAdded.map((s, index) => `
-              <div class="flex items-center gap-3 p-3 bg-emerald-50/50 border border-emerald-100 rounded-2xl animate-fade">
-                <span class="text-xs font-bold text-emerald-600 bg-emerald-100 w-5 h-5 flex items-center justify-center rounded-full">${_newlyAdded.length - index}</span>
-                <div class="flex-1">
-                  <p class="text-sm font-bold text-gray-800">${_htmlEsc(s.full_name)}</p>
-                  <p class="text-xs font-mono text-gray-500">${_htmlEsc(s.student_code)} · ${_htmlEsc(displayRoom(s))}</p>
-                </div>
-                <span class="text-xs text-emerald-600 font-bold">✓ เพิ่มแล้ว</span>
-              </div>
-            `).join('')
-          }
-
-          const doAddStudent = async () => {
-            const code = inputEl.value.trim()
-            if (!code) return
-            
-            statusEl.innerHTML = '<span class="text-gray-400">กำลังค้นหาและเพิ่ม...</span>'
-            inputEl.disabled = true
-            searchBtn.disabled = true
-            
-            try {
-              const s = await getStudentByCode(code)
-              if (!s) {
-                statusEl.innerHTML = '<span class="text-red-500 font-medium">⚠️ ไม่พบนักเรียนรหัสนี้</span>'
-                return
-              }
-              
-              // ลองเพิ่มนักเรียนเข้ารายวิชา
-              await addStudentToClass(classId, s.id)
-              
-              // เพิ่มสำเร็จ!
-              _newlyAdded.unshift(s) // ใส่ตัวใหม่ไว้ด้านบน
-              _renderAddedList()
-              statusEl.innerHTML = `<span class="text-emerald-600 font-medium">✓ เพิ่ม ${_htmlEsc(s.full_name)} สำเร็จ!</span>`
-              
-              // เคลียร์ค่า
-              inputEl.value = ''
-            } catch (err) {
-              statusEl.innerHTML = `<span class="text-red-500 font-medium">⚠️ ${err.message || 'เกิดข้อผิดพลาด'}</span>`
-            } finally {
-              inputEl.disabled = false
-              searchBtn.disabled = false
-              inputEl.focus()
-            }
-          }
-
-          modal.querySelector('#add-student-close').addEventListener('click', () => {
-            modal.remove()
-            refresh()
-          })
-
-          searchBtn.addEventListener('click', doAddStudent)
-          inputEl.addEventListener('keydown', e => {
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              doAddStudent()
-            }
-          })
-
-          setTimeout(() => inputEl.focus(), 50)
-        })
-      } catch (err) {
-        showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
-        renderMyClasses(teacher)
-      }
-    }
+    window._openStudentManager = (classId) => _openStudentManagerImpl(teacher, classId)
 
     window._openClassCopyModal = (classId) => {
       const cls = window._classCache?.[classId]
@@ -1456,6 +1458,12 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
     }
     window._openPP5Doc    = (cid) => openPP5Doc(cid)
     window._openExamDocsForClass = (cid) => _openExamDocsForClass(cid)
+    // ต้องตั้งเองตรงนี้ด้วย ไม่พึ่งว่า renderMyClasses ต้องเคยเรนเดอร์มาก่อนในเซสชันเดียวกัน —
+    // เจอจริง: เข้าห้องเรียนผ่านทางลัดอื่น (เช่นกด "← กลับ" ใน Smart Classroom) ที่มาหน้านี้ตรงๆ
+    // โดยไม่ผ่านหน้า "ห้องเรียนของฉัน" เลย ทำให้ window._openStudentManager ยังไม่เคยถูกตั้งค่า
+    // แท็บ "นักเรียน" (ค่าเริ่มต้น) เลยพัง "โหลดข้อมูลไม่สำเร็จ" ทันทีที่เปิดหน้า — ยกเว้นโหมด
+    // supervisor ที่ผู้เรียกตั้ง stub ไว้ก่อนแล้วเจตนา (ดูข้อมูลอย่างเดียว ห้ามยุ่งกับนักเรียนจริง)
+    if (!ctx.supervisorMode) window._openStudentManager = (cid) => _openStudentManagerImpl(teacher, cid)
     window._openCombinedEdit2 = (cid) => {
       const c = window._classCache?.[cid]
       if (c) _openCombinedEditModal(teacher, c, classrooms, schedule, linksByClass, periodMap, scheduleMap, () => renderClassDetail(teacher, cid))

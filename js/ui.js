@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.594'
+import { APP_VERSION } from './version.js?v=10.22.595'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -781,6 +781,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.595': [
+    '🐛 แก้ "โหลดข้อมูลไม่สำเร็จ" ตอนกด "← กลับ" ใน Smart Classroom: window._openStudentManager เดิมถูกตั้งค่าเฉพาะตอนเปิดหน้า "ห้องเรียนของฉัน" เท่านั้น ถ้าเข้าห้องเรียนทางลัดอื่นที่ข้ามหน้านั้นไป (เช่นกด "← กลับ" ใน Smart Classroom) แท็บ "นักเรียน" (ค่าเริ่มต้น) จะพังทันทีเพราะฟังก์ชันยังไม่เคยถูกตั้งค่า — ย้ายไปเป็นฟังก์ชันกลางที่ทุกทางเข้าเรียกใช้ได้เอง',
+  ],
   '10.22.594': [
     '⚡ Smart Classroom โหลดเร็วขึ้น: ตัด getMyDonationRequests ที่ยิงซ้ำ 2 รอบออก และเปลี่ยน getMyClasses จากรอให้เสร็จก่อน (sequential) เป็นยิงพร้อมกับ query อื่นๆ ทั้งหมด (parallel) ตัด round-trip ที่ไม่จำเป็นออกจากเส้นทางวิกฤตก่อนหน้าจะแสดงผล',
     '🎓 การ์ดห้องเรียนในหน้า "ห้องเรียนของฉัน": เพิ่มป้ายหน่วยกิตของวิชา',
