@@ -332,6 +332,10 @@ async function renderStudent() {
 
   content.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => { student.categoryTab = btn.dataset.tab; renderStudent() }))
   content.querySelectorAll('[data-declare]').forEach(btn => btn.addEventListener('click', () => handleDeclare(btn)))
+  content.querySelectorAll('[data-print-slip]').forEach(btn => btn.addEventListener('click', () => {
+    const row = s.find(x => x.id === Number(btn.dataset.printSlip))
+    if (row) printRegradeSlip(row)
+  }))
   content.querySelectorAll('[data-deadline-cta]').forEach(btn => btn.addEventListener('click', () => { student.subView = btn.dataset.deadlineCta; renderStudent() }))
   document.getElementById('regrade-student-fab')?.addEventListener('click', () => { student.subView = 'catalog'; renderStudent() })
 
@@ -381,7 +385,8 @@ function studentSubjectCard(x) {
       <div class="mt-3 rounded-xl p-3" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
         <p class="text-xs font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
         <p class="text-xs mt-1" style="color:var(--info)">กำหนด: ${escHtml(x.due_text || '-')}</p>
-      </div>` : ''}
+      </div>
+      <button data-print-slip="${x.id}" class="mt-2 w-full py-2 rounded-xl border border-[var(--line)] text-[var(--ink-2)] text-xs font-bold">🖨️ ใบสั้น</button>` : ''}
   </div>`
 }
 
