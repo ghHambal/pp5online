@@ -1,4 +1,4 @@
-// js/student-certificates-modal.js — "บัตรของฉัน" รวบรวมเกียรติบัตรของนักเรียนจากทุกแหล่งมาไว้ที่เดียว
+// js/student-certificates-modal.js — "เกียรติบัตรของฉัน" รวบรวมเกียรติบัตรของนักเรียนจากทุกแหล่งมาไว้ที่เดียว
 // แหล่งที่ 1 (ระบบกลาง) ครอบคลุมทุกใบที่ครูออกผ่านระบบเกียรติบัตรกลาง รวมถึงกิจกรรมสภานักเรียนที่ย้าย
 // เข้ามาแล้ว ส่วนอีก 3 แหล่ง (หัวหน้าห้อง/กีฬาสี/ฟุตซอล) ยังเป็นระบบเดิมที่ไม่ได้ย้ายเข้าระบบกลาง
 // (ลิงก์ไฟล์ตรงๆ ไม่มีเอนจินเทมเพลต) จึงรวมแบบ adapter อ่านอย่างเดียวไว้ก่อน
@@ -22,7 +22,7 @@ export async function openMyCertificatesModal(student) {
   modal.innerHTML = `
     <div class="h-14 flex items-center gap-3 px-4 border-b border-gray-200 bg-white shadow-sm flex-shrink-0">
       <span class="text-xl">🎖️</span>
-      <h2 class="text-sm font-bold text-gray-800 flex-1">บัตรของฉัน</h2>
+      <h2 class="text-sm font-bold text-gray-800 flex-1">เกียรติบัตรของฉัน</h2>
       <button type="button" data-mycert-close class="h-9 w-9 inline-flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 text-lg">✕</button>
     </div>
     <div id="my-certificates-body" class="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50">
