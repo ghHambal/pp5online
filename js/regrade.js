@@ -153,11 +153,13 @@ function wireActionToggles(content, ids) {
 }
 const isToggleOn = (content, id) => content.querySelector('#' + id)?.dataset.on === '1'
 
-function tab(active) {
+function tab(active, variant = 'primary') {
+  const grad = variant === 'secondary' ? 'var(--secondary),var(--secondary-dark)' : 'var(--primary),var(--primary-dark)'
   return active
-    ? 'padding:8px 16px;border-radius:12px;font-size:.72rem;font-weight:700;color:#fff;background:linear-gradient(135deg,var(--primary),var(--primary-dark));'
-    : 'padding:8px 16px;border-radius:12px;font-size:.72rem;font-weight:700;color:var(--muted);background:var(--surface-2);'
+    ? `padding:8px 18px;border-radius:9999px;font-size:.72rem;font-weight:800;color:#fff;background:linear-gradient(135deg,${grad});box-shadow:0 2px 8px rgba(0,0,0,.15);white-space:nowrap;transition:background .15s ease,box-shadow .15s ease;`
+    : `padding:8px 18px;border-radius:9999px;font-size:.72rem;font-weight:700;color:var(--muted);background:transparent;white-space:nowrap;transition:background .15s ease,box-shadow .15s ease;`
 }
+const TAB_TRACK_CLASS = 'inline-flex gap-1 p-1 rounded-full bg-[var(--surface-2)] flex-wrap'
 
 // แถบเมนูล่าง (มือถือ) — 3 ปุ่ม ใช้ร่วมกันทั้งฝั่งนักเรียน/ครู
 function renderBottomNav(items, active, onPick) {
@@ -747,7 +749,7 @@ async function renderRegistrar() {
   setHeaderTitle('ฝ่ายทะเบียน', 'แก้ค้างเก่า — ฝ่ายทะเบียน')
   const content = document.getElementById('regrade-content')
   content.innerHTML = `<div class="max-w-3xl mx-auto p-4">
-    <div class="flex gap-2 mb-4">
+    <div class="${TAB_TRACK_CLASS} mb-4">
       <button data-rview="close" style="${tab(registrar.view === 'close')}">📋 รอปิดงาน</button>
       <button data-rview="grade" style="${tab(registrar.view === 'grade')}">🎓 เกรดที่ต้องอัปเดต</button>
     </div>
@@ -872,8 +874,8 @@ async function renderDashboard() {
   setHeaderTitle('ผู้บริหาร', 'ภาพรวมทั้งโรงเรียน — บอร์ดผู้บริหาร')
   const content = document.getElementById('regrade-content')
   content.innerHTML = `
-    <div class="max-w-4xl mx-auto p-4">
-      <div class="flex gap-2 mb-4">
+    <div class="w-full p-4 md:p-6">
+      <div class="${TAB_TRACK_CLASS} mb-4">
         <button data-dview="overview" style="${tab(dashboard.view === 'overview')}">📊 ภาพรวม</button>
         <button data-dview="students" style="${tab(dashboard.view === 'students')}">🎓 รายชื่อนักเรียน</button>
       </div>
@@ -913,22 +915,26 @@ async function renderDashboardOverview(content) {
   const relTotal = sumCnt(rows.filter(r => r.category === 'ศาสนา'))
 
   const subTabsHtml = `
-    <div class="flex gap-2 mb-4 flex-wrap">
+    <div class="${TAB_TRACK_CLASS}">
       <button data-otab="summary" style="${tab(dashboard.overviewTab === 'summary')}">📊 สรุปตัวเลข</button>
       <button data-otab="teachers" style="${tab(dashboard.overviewTab === 'teachers')}">👩‍🏫 รายครูผู้สอน</button>
       <button data-otab="attention" style="${tab(dashboard.overviewTab === 'attention')}">🎯 นักเรียนที่ต้องติดตาม</button>
     </div>`
   const categoryTabsHtml = `
-    <div class="flex gap-2 mb-4 flex-wrap">
+    <div class="${TAB_TRACK_CLASS}">
       <button data-dcat="all" style="${tab(dashboard.categoryTab === 'all')}">📊 ทั้งหมด (${rows.length})</button>
       <button data-dcat="สามัญ" style="${tab(dashboard.categoryTab === 'สามัญ')}">📘 สามัญ (${genTotal})</button>
-      <button data-dcat="ศาสนา" style="${tab(dashboard.categoryTab === 'ศาสนา')}">🕌 ศาสนา (${relTotal})</button>
+      <button data-dcat="ศาสนา" style="${tab(dashboard.categoryTab === 'ศาสนา', 'secondary')}">🕌 ศาสนา (${relTotal})</button>
+    </div>`
+  const headerRowHtml = `
+    <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+      ${subTabsHtml}
+      ${dashboard.overviewTab !== 'attention' ? categoryTabsHtml : ''}
     </div>`
 
   let sectionHtml = ''
   if (dashboard.overviewTab === 'teachers') {
     sectionHtml = `
-      ${categoryTabsHtml}
       <div class="rg-card p-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-1">ความคืบหน้าแยกรายครูผู้สอน</p>
         <p class="text-[10px] text-[var(--muted-2)] mb-3">เรียงจากครูที่มีคำร้องรอตอบรับมากที่สุดก่อน</p>
@@ -968,7 +974,6 @@ async function renderDashboardOverview(content) {
   } else {
     const donePercent = total ? Math.round(done / total * 100) : 0
     sectionHtml = `
-      ${categoryTabsHtml}
       <div class="rg-card p-4 mb-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-3">สัดส่วนสถานะ</p>
         ${total ? donutChartHtml([
@@ -987,7 +992,7 @@ async function renderDashboardOverview(content) {
       <div id="regrade-drilldown"></div>`
   }
 
-  content.innerHTML = subTabsHtml + sectionHtml
+  content.innerHTML = headerRowHtml + sectionHtml
 
   content.querySelectorAll('[data-otab]').forEach(btn => btn.addEventListener('click', () => { dashboard.overviewTab = btn.dataset.otab; renderDashboardOverview(content) }))
   content.querySelectorAll('[data-dcat]').forEach(btn => btn.addEventListener('click', () => { dashboard.categoryTab = btn.dataset.dcat; dashboard.drilldown = null; renderDashboard() }))
@@ -1276,7 +1281,7 @@ function renderDashboardDrilldown(scoped) {
 const settingsUi = { activeTab: 'general' }
 
 function settingsTabBtnHtml(key, label, active) {
-  return `<button type="button" data-settings-tab="${key}" class="px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap flex-shrink-0" style="${active ? 'background:var(--primary);color:#fff;' : 'background:var(--surface-2);color:var(--muted)'}">${escHtml(label)}</button>`
+  return `<button type="button" data-settings-tab="${key}" class="flex-shrink-0" style="${tab(active)}">${escHtml(label)}</button>`
 }
 
 function levelChipHtml(key, label, selected) {
@@ -1287,8 +1292,7 @@ function showSettingsTab(content, key) {
   settingsUi.activeTab = key
   content.querySelectorAll('[data-settings-group]').forEach(el => el.classList.toggle('hidden', el.dataset.settingsGroup !== key))
   content.querySelectorAll('[data-settings-tab]').forEach(btn => {
-    const active = btn.dataset.settingsTab === key
-    btn.style.cssText = active ? 'background:var(--primary);color:#fff;' : 'background:var(--surface-2);color:var(--muted)'
+    btn.style.cssText = tab(btn.dataset.settingsTab === key) + 'flex-shrink:0;'
   })
 }
 
@@ -1308,7 +1312,7 @@ async function renderSettings() {
   content.innerHTML = `
     <div class="max-w-2xl mx-auto p-4 flex flex-col gap-4">
 
-      <div class="flex gap-2 overflow-x-auto pb-1">
+      <div class="flex gap-1 p-1 rounded-full bg-[var(--surface-2)] overflow-x-auto">
         ${settingsTabBtnHtml('general', '⚙️ ทั่วไป', settingsUi.activeTab === 'general')}
         ${settingsTabBtnHtml('intent', '📝 การแจ้งจำนง', settingsUi.activeTab === 'intent')}
         ${settingsTabBtnHtml('theme', '🎨 ดีไซน์', settingsUi.activeTab === 'theme')}
