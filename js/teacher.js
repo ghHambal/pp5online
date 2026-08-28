@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.592'
+import { APP_VERSION } from './version.js?v=10.22.593'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -27,16 +27,6 @@ import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
 import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.590'
-import {
-  renderTeacherOverview, renderMyCourses, renderCourseForm, renderAnnouncementsView,
-  renderMyClasses, renderAttendance, renderGrades,
-  renderRequests, renderSchedule, renderProfile, renderClassForm,
-  renderLifeSkillScore, renderReadingScore, renderPrayerScore,
-  renderPrayerRoomMonitor,
-  renderProfileSetup, renderScheduleBuilder, openCourseDocPage2Modal,
-  renderClassDetail, renderCourseDocLangConfig,
-} from './teacher-views.js'
-import { renderSupervisorDashboard } from './supervisor.js'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -196,7 +186,13 @@ function _pickRoom(rooms, onPick) {
 }
 
 const ROUTES = {
-  'announcements-view': () => renderAnnouncementsView(_teacher),
+  // ทุกฟังก์ชันที่มาจาก teacher-views.js (รวมของที่ re-export ต่อจาก teacher-views-classes.js/
+  // teacher-class-forms.js/teacher-score-columns.js) เปลี่ยนจาก static import เป็น dynamic import()
+  // ที่นี่ทั้งหมด — เดิม static import ทำให้ Rollup รวมทุกไฟล์เหล่านี้เป็น chunk เดียวขนาด ~1.15MB
+  // (gzip ~307KB) ที่ต้องโหลด+parse ก่อนหน้าภาพรวมจะเริ่มแสดงผลได้เสมอ ไม่ว่าครูจะเข้าหน้าไหนก่อน
+  // ทำให้แอปเปิดช้าทุกครั้ง — เปลี่ยนเป็น dynamic import ตาม pattern เดียวกับ 'flashcards'/'certificates'
+  // ด้านล่างที่มีอยู่แล้ว ให้ Rollup แยก chunk ได้จริงและโหลดเฉพาะหน้าที่ครูเปิดจริงเท่านั้น
+  'announcements-view': () => import('./teacher-views.js').then(m => m.renderAnnouncementsView(_teacher)),
   // Teachers with the 'work_calendar' position permission granted (via the
   // admin Roles/Permissions page) get the full create/edit/delete view from
   // this same familiar sidebar link — previously this always opened the
@@ -205,40 +201,42 @@ const ROUTES = {
   'work-calendar-view': () => import('./views.js').then(({ renderWorkCalendarView, renderWorkCalendar }) =>
     _positionPerms.work_calendar ? renderWorkCalendar(_teacher) : renderWorkCalendarView()
   ),
-  'overview':    () => renderTeacherOverview(_teacher, _homeroomRooms),
-  'my-courses':  () => renderMyCourses(_teacher),
-  'my-classes':  () => renderMyClasses(_teacher),
-  'attendance':       () => renderAttendance(_teacher),
-  'life-skill-score': () => {
+  'overview':    () => import('./teacher-views.js').then(m => m.renderTeacherOverview(_teacher, _homeroomRooms)),
+  'my-courses':  () => import('./teacher-views.js').then(m => m.renderMyCourses(_teacher)),
+  'my-classes':  () => import('./teacher-views.js').then(m => m.renderMyClasses(_teacher)),
+  'attendance':       () => import('./teacher-views.js').then(m => m.renderAttendance(_teacher)),
+  'life-skill-score': () => import('./teacher-views.js').then(m => {
     const rooms = _homeroomRooms.filter(r => r.category === 'สามัญ')
-    _pickRoom(rooms, picked => renderLifeSkillScore(_teacher, rooms.filter(r => r.main_room === picked)))
-  },
-  'reading-score':    () => { const r = window._pendingReadingRoom; window._pendingReadingRoom = null; renderReadingScore(_teacher, r) },
-  'prayer-score':     () => {
+    _pickRoom(rooms, picked => m.renderLifeSkillScore(_teacher, rooms.filter(r => r.main_room === picked)))
+  }),
+  'reading-score':    () => import('./teacher-views.js').then(m => {
+    const r = window._pendingReadingRoom; window._pendingReadingRoom = null; m.renderReadingScore(_teacher, r)
+  }),
+  'prayer-score':     () => import('./teacher-views.js').then(m => {
     const rooms = _homeroomRooms.filter(r => r.category === 'ศาสนา')
     if (rooms.length === 0) {
-      renderPrayerScore(_teacher, [])
+      m.renderPrayerScore(_teacher, [])
     } else {
-      _pickRoom(rooms, picked => renderPrayerScore(_teacher, rooms.filter(r => r.main_room === picked)))
+      _pickRoom(rooms, picked => m.renderPrayerScore(_teacher, rooms.filter(r => r.main_room === picked)))
     }
-  },
-  'prayer-monitor':   () => {
+  }),
+  'prayer-monitor':   () => import('./teacher-views.js').then(m => {
     const rooms = _homeroomRooms.filter(r => r.category === 'ศาสนา')
     const preferredRoom = window._pendingPrayerMonitorRoom || null
     window._pendingPrayerMonitorRoom = null
     if (rooms.length === 0) {
-      renderPrayerRoomMonitor(_teacher, [])
+      m.renderPrayerRoomMonitor(_teacher, [])
     } else if (preferredRoom && rooms.some(r => r.main_room === preferredRoom)) {
-      renderPrayerRoomMonitor(_teacher, rooms, preferredRoom)
+      m.renderPrayerRoomMonitor(_teacher, rooms, preferredRoom)
     } else if (rooms.length === 1) {
-      renderPrayerRoomMonitor(_teacher, rooms, rooms[0].main_room)
+      m.renderPrayerRoomMonitor(_teacher, rooms, rooms[0].main_room)
     } else {
-      _pickRoom(rooms, picked => renderPrayerRoomMonitor(_teacher, rooms, picked))
+      _pickRoom(rooms, picked => m.renderPrayerRoomMonitor(_teacher, rooms, picked))
     }
-  },
-  'grades':      () => renderGrades(),
-  'requests':    () => renderRequests(_teacher),
-  'schedule':    () => renderSchedule(_teacher),
+  }),
+  'grades':      () => import('./teacher-views.js').then(m => m.renderGrades()),
+  'requests':    () => import('./teacher-views.js').then(m => m.renderRequests(_teacher)),
+  'schedule':    () => import('./teacher-views.js').then(m => m.renderSchedule(_teacher)),
   'tutorial':    () => renderTutorial(),
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
   'certificates': () => import('./teacher-views-certificates.js').then(m => m.renderCertificateManager(_teacher)),
@@ -273,9 +271,9 @@ const ROUTES = {
     window._pendingSmartClassroomId = null
     import('./teacher-views-smart-classroom.js').then(m => m.renderSmartClassroom(_teacher, classId))
   },
-  'schedule-builder': () => renderScheduleBuilder(_teacher, () => navigate('overview')),
-  'profile':     () => renderProfile(_teacher, _homeroomRooms, _refreshProfile),
-  'setup':       () => renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete),
+  'schedule-builder': () => import('./teacher-views.js').then(m => m.renderScheduleBuilder(_teacher, () => navigate('overview'))),
+  'profile':     () => import('./teacher-views.js').then(m => m.renderProfile(_teacher, _homeroomRooms, _refreshProfile)),
+  'setup':       () => import('./teacher-views.js').then(m => m.renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete)),
 }
 
 let _currentView = 'overview'
@@ -731,7 +729,8 @@ async function _onSetupComplete(userId) {
   navigate('schedule-builder')
 }
 
-window._openCourseForm = () => {
+window._openCourseForm = async () => {
+  const { renderCourseForm } = await import('./teacher-views.js')
   renderCourseForm(_teacher, async (payload, coTeacherIds = []) => {
     await createSubject(payload, coTeacherIds)
   })
@@ -743,6 +742,7 @@ window._editCourse = async (id) => {
     : await getMasterSubjects().catch(()=>[])
   const editData = subjects.find(s => s.id === id)
   if (!editData) { showToast('ไม่พบข้อมูลคอร์ส', 'error'); return }
+  const { renderCourseForm } = await import('./teacher-views.js')
   renderCourseForm(_teacher, async (payload, coTeacherIds = []) => {
     await updateSubject(id, payload, coTeacherIds)
   }, editData)
@@ -755,6 +755,7 @@ window._copyCourse = async (id) => {
   const sourceSubject = subjects.find(s => s.id === id)
   if (!sourceSubject) { showToast('ไม่พบข้อมูลคอร์สต้นฉบับ', 'error'); return }
 
+  const { renderCourseForm } = await import('./teacher-views.js')
   renderCourseForm(_teacher, async (payload, coTeacherIds = []) => {
     const newSubject = await createSubject(payload, coTeacherIds)
     try {
@@ -834,6 +835,7 @@ window._openRegisterClass = async (courseId) => {
     _showQuotaPopup(myClasses.length, course, cfg); return
   }
 
+  const { renderClassForm } = await import('./teacher-views.js')
   renderClassForm(_teacher, course)
 }
 
@@ -843,6 +845,7 @@ window._openCourseDocPage2 = async (courseId) => {
     : await getMasterSubjects().catch(()=>[])
   const course = subjects.find(s => s.id === courseId)
   if (!course) { showToast('ไม่พบข้อมูลคอร์ส', 'error'); return }
+  const { openCourseDocPage2Modal } = await import('./teacher-views.js')
   await openCourseDocPage2Modal(_teacher, course)
 }
 
@@ -2167,6 +2170,7 @@ async function _enterSupervisorMode() {
   if (nav) _savedNavHTML = nav.innerHTML
   await _loadSportsVisibility()
   _renderSupervisorNav(nav, main, _isAlsoAdmin)
+  const { renderSupervisorDashboard } = await import('./supervisor.js')
   renderSupervisorDashboard(main, _teacher, _isAlsoAdmin)
 }
 window._enterSupervisorMode = _enterSupervisorMode
@@ -2205,7 +2209,7 @@ async function _checkTerangganuSurveyNudge() {
 const _SV_MENU_ITEMS = [
   { key:'announce_create',  icon:'📢', label:'จัดการประกาศ',   fn: (t, isAdmin) => { import('./views.js').then(({renderSupervisorAnnouncements}) => renderSupervisorAnnouncements(t, isAdmin)) }},
   { key:'work_calendar',    icon:'📅', label:'ปฏิทินปฏิบัติงาน', fn: (t) => { import('./views.js').then(({renderWorkCalendar}) => renderWorkCalendar(t)) }},
-  { key:'lang_config',      icon:'⚙️', label:'ตั้งค่าคำอธิบายฯ',fn: (t,a) => renderCourseDocLangConfig(t, a) },
+  { key:'lang_config',      icon:'⚙️', label:'ตั้งค่าคำอธิบายฯ',fn: async (t,a) => { const {renderCourseDocLangConfig} = await import('./teacher-views.js'); renderCourseDocLangConfig(t, a) } },
   { key:'menu_holidays',    icon:'📅', label:'วันหยุด',        fn: async () => { const {renderHolidays}     = await import('./views.js'); renderHolidays() }},
   { key:'menu_periods',     icon:'🕐', label:'คาบเรียน',       fn: async () => { const {renderPeriods}      = await import('./views.js'); renderPeriods() }},
   { key:'menu_curriculum',  icon:'📘', label:'หลักสูตรแกนกลาง',fn: async () => { const {renderCurriculum}   = await import('./views.js'); renderCurriculum() }},
@@ -2272,7 +2276,7 @@ function _renderSupervisorNav(nav, main, isAdmin = false) {
     ${allowedItems.map(m => _btn(m.key, m.icon, m.label)).join('')}`
 
   nav.querySelector('[data-sv="back"]').onclick = _exitSupervisorMode
-  nav.querySelector('[data-sv="dashboard"]').onclick = () => renderSupervisorDashboard(main, _teacher, _isAlsoAdmin)
+  nav.querySelector('[data-sv="dashboard"]').onclick = () => import('./supervisor.js').then(m => m.renderSupervisorDashboard(main, _teacher, _isAlsoAdmin))
   allowedItems.forEach(m => {
     nav.querySelector(`[data-sv="${m.key}"]`)?.addEventListener('click', () => m.fn(_teacher, isAdmin))
   })
@@ -3148,6 +3152,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           window._openCombinedEditModal = () => {}
           window._classCache = { [cls.id]: cls }
 
+          const { renderClassDetail } = await import('./teacher-views.js')
           await renderClassDetail(_teacher, classId, {
             supervisorMode: true,
             classes: [cls],

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.592'
+import { APP_VERSION } from './version.js?v=10.22.593'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -781,6 +781,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.593': [
+    '⚡ แก้แอปโหลดช้า (หน้าครู): เดิม teacher.js ดึงฟังก์ชันจาก teacher-views.js แบบ static import ทำให้ Rollup รวมทุกไฟล์ที่เกี่ยวข้อง (รวม teacher-views-classes/pp5-doc/supervisor) เป็นไฟล์เดียวกว่า 1.15MB ที่ต้องโหลดก่อนหน้าภาพรวมจะแสดงผลได้เสมอ — เปลี่ยนเป็น dynamic import ทั้งหมดตาม pattern ที่มีอยู่แล้วในระบบ ลดขนาดไฟล์ที่ต้องโหลดตอนเปิดแอปลงกว่า 1.2MB',
+  ],
   '10.22.592': [
     '🚨 แก้ด่วน: ครูล็อกอินไม่ได้/ค้างหน้าโหลดตลอดถ้ายังไม่ได้รัน patch_teacher_overview_prefs.sql — getMyTeacherProfile ลอง select ไม่มีคอลัมน์นี้ได้แล้ว แทนที่จะพังทั้งระบบ',
   ],
