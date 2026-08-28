@@ -429,30 +429,17 @@ function showShirtRequestSubmittedModal(size) {
   overlay.addEventListener('mousedown',e=>{if(e.target===overlay)close()})
 }
 
-// ปุ่ม "แจ้งไซซ์เสื้อวันกีฬาสี2026" บนหน้าภาพรวมของครู — เรียกจาก js/teacher-views.js
-// (renderTeacherOverview) ทุกครั้งที่เข้าหน้านี้ ต่อ card ใหม่ไว้บนสุดของ #main-content เสมอ
-// ซ่อนปุ่มถ้าแอดมินปิดรับแจ้งไว้ ยกเว้นครูที่เคยแจ้งไว้แล้ว — ยังให้เห็นปุ่มไว้ดูประวัติของตัวเองได้เสมอ
-export async function injectTeacherShirtButton(teacher) {
-  document.getElementById('teacher-shirt-btn-card')?.remove()
+// เช็คว่าควรโชว์ไอคอน "แจ้งไซซ์เสื้อ" ให้ครูคนนี้ไหม + สถานะเปิด/ปิดรับแจ้ง — ใช้จากกริดไอคอน
+// "ระบบอื่นๆ" ในหน้าภาพรวม (renderTeacherOverview) ที่ต้องรู้ผลลัพธ์ก่อนตัดสินใจสร้าง tile ในกริด
+export async function getTeacherShirtButtonState(teacher) {
   let enabled = false, existing = false
   try {
     const {event,cfg} = await context()
     const {data:row} = await supabase.from('sports_shirt_teacher_requests').select('id').eq('event_id',event.id).eq('teacher_id',teacher.id).maybeSingle()
     enabled = !!cfg?.teacher_shirt_request_enabled
     existing = !!row
-    if (!enabled && !existing) return
-  } catch (e) { console.error(e); return }
-  const container = document.getElementById('main-content')
-  if (!container) return
-  document.getElementById('teacher-shirt-btn-card')?.remove()
-  const card = document.createElement('div')
-  card.id = 'teacher-shirt-btn-card'
-  card.className = 'mb-4'
-  card.innerHTML = enabled
-    ? `<button id="teacher-shirt-btn" class="w-full sm:w-auto inline-flex items-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 text-white font-bold shadow-lg hover:shadow-xl transition">👕 แจ้งไซซ์เสื้อวันกีฬาสี2026</button>`
-    : `<button id="teacher-shirt-btn" title="ปิดรับแจ้งไซซ์ใหม่แล้ว — กดดูไซซ์ที่เคยแจ้งไว้ได้" class="w-full sm:w-auto inline-flex items-center gap-2 px-4 py-3 rounded-2xl bg-gray-100 border border-gray-200 text-gray-500 font-bold hover:bg-gray-200 transition">🕘 ดูไซซ์เสื้อที่เคยแจ้งไว้ (ปิดรับแจ้งใหม่แล้ว)</button>`
-  container.insertAdjacentElement('afterbegin', card)
-  card.querySelector('#teacher-shirt-btn').onclick = () => openTeacherShirtSizeModal(teacher)
+  } catch (e) { console.error(e); return { visible: false, enabled: false } }
+  return { visible: enabled || existing, enabled }
 }
 
 // ป๊อปอัพแจ้ง/แก้ไขไซซ์เสื้อของครู — ขั้นตอน: เลือกไซซ์ (form) → ยืนยัน (confirm) → เสร็จสิ้น (done)

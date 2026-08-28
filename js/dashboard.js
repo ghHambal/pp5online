@@ -21,12 +21,12 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.585'
+import { APP_VERSION } from './version.js?v=10.22.587'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { openRegradeModal } from './regrade-modal.js'
-import { renderShirtSummary, renderSportsFundAdmin, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.586'
+import { renderShirtSummary, renderSportsFundAdmin, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.587'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {

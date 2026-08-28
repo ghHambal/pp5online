@@ -1,7 +1,7 @@
 import {
   getMySubjects, getMasterSubjects, getMyClasses, getDepartments, getTeachers,
   getSystemConfig, getMySchedule, getClassScheduleLinks, getPeriods, getClassrooms,
-  getTeacherPackageAccess, getWorkCalendarEvents,
+  getWorkCalendarEvents,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { copySheetTemplate } from './sync.js'
@@ -76,16 +76,11 @@ export function _renderWorkCalendarUpcoming(events, semesterStart) {
     .sort((a, b) => a.ev.event_date.localeCompare(b.ev.event_date))
     .slice(0, 5)
 
-  if (!upcoming.length) {
-    return `
-    <div class="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3">
-      <div class="w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">📅</div>
-      <p class="text-sm text-gray-400">ไม่มีกิจกรรมใกล้ถึงใน 14 วันนี้</p>
-    </div>`
-  }
+  // ไม่มีกำหนดการใกล้ถึงเลย — ซ่อนทั้งบล็อก (เดิมโชว์การ์ดเทาๆ "ไม่มีกิจกรรม" ตลอด)
+  if (!upcoming.length) return ''
 
   return `
-  <div class="mb-4 space-y-2">
+  <div class="mb-3 space-y-2 max-h-64 overflow-y-auto pr-0.5">
     ${upcoming.map(({ ev, cd }) => {
       const isRed = cd.status === 'ongoing' || cd.urgency === 'red'
       const isAmber = cd.urgency === 'amber'
@@ -124,15 +119,10 @@ export function _renderWenDutyCard(todayDuty, teacherCode, gradeInfo = null) {
        </div>`
     : ''
 
-  if (!todayDuty.length) {
-    return `
-    <div onclick="window._openWenDuty('${teacherCode}')"
-      class="relative overflow-hidden mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 flex items-center gap-3 cursor-pointer hover:shadow-lg hover:border-gray-300 active:scale-[0.99] transition-all duration-150">
-      <div class="w-11 h-11 rounded-xl bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">🛡️</div>
-      <p class="text-sm text-gray-400">วันนี้ไม่มีเวร</p>
-      ${_gradeOverlay('0.13')}
-    </div>`
-  }
+  // วันไม่มีเวร — ซ่อนการ์ดนี้ไปเลย (เดิมโชว์การ์ดเทาๆ "วันนี้ไม่มีเวร" ตลอด ตอนนี้ตัดออกให้เหลือ
+  // เฉพาะวันที่มีเวรจริงเท่านั้น ลดความรกของหน้าภาพรวม — เข้าระบบเวรทั่วไปได้จากไอคอน "เวร" ในกริด
+  // "ระบบอื่น ๆ" แทน)
+  if (!todayDuty.length) return ''
 
   const info = todayDuty
     .map(p => ({ ...p, cd: _dutyCountdownInfo(p.start_time, p.end_time) }))
@@ -142,14 +132,18 @@ export function _renderWenDutyCard(todayDuty, teacherCode, gradeInfo = null) {
     })
   const hasActive = info.some(p => p.cd.status === 'active')
 
+  // ขยายให้เด่นขึ้น (padding/ไอคอนใหญ่ขึ้น + ป้ายกำกับ "เวรวันนี้" ชัดเจน) เพราะตอนนี้โผล่เฉพาะวันที่
+  // มีเวรจริงเท่านั้น ควรสะดุดตาทันทีเมื่อปรากฏ ไม่ใช่การ์ดเล็กปนไปกับการ์ดอื่น
   return `
   <div onclick="window._openWenDuty('${teacherCode}')"
-    class="relative overflow-hidden mb-4 border rounded-2xl p-4 flex items-start gap-3 cursor-pointer hover:shadow-lg active:scale-[0.99] transition-all duration-150
-           ${hasActive ? 'bg-red-50 border-red-300 ring-2 ring-red-200' : 'bg-amber-50 border-amber-200'}">
-    <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0
-                ${hasActive ? 'bg-red-100 animate-pulse' : 'bg-amber-100'}">${hasActive ? '🚨' : '🔔'}</div>
+    class="relative overflow-hidden mb-3 border-2 rounded-2xl p-5 flex items-start gap-4 cursor-pointer hover:shadow-xl active:scale-[0.99] transition-all duration-150
+           ${hasActive ? 'bg-red-50 border-red-300 ring-4 ring-red-100' : 'bg-amber-50 border-amber-300 ring-4 ring-amber-100'}">
+    <div class="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0
+                ${hasActive ? 'bg-red-100 animate-pulse' : 'bg-amber-100'}">${hasActive ? '🚨' : '🛡️'}</div>
     <div class="flex-1 min-w-0">
-      <p class="font-bold text-sm mb-1 ${hasActive ? 'text-red-800' : 'text-amber-800'}">
+      <span class="inline-block text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full mb-1
+        ${hasActive ? 'bg-red-200 text-red-800' : 'bg-amber-200 text-amber-800'}">เวรวันนี้</span>
+      <p class="font-extrabold text-base mb-1 ${hasActive ? 'text-red-800' : 'text-amber-800'}">
         ${hasActive ? '🔴 ถึงเวลาเวรแล้ว!' : `วันนี้คุณมีเวร ${info.length} จุด`}
       </p>
       <div class="space-y-1">
@@ -168,7 +162,7 @@ export function _renderWenDutyCard(todayDuty, teacherCode, gradeInfo = null) {
           <span class="text-[11px] font-medium flex-shrink-0 ${p.cd.cls}">${p.cd.label}</span>
         </div>`).join('')}
       </div>
-      <p class="text-[11px] mt-1.5 ${hasActive ? 'text-red-400' : 'text-amber-400'}">แตะเพื่อเปิดระบบเวร →</p>
+      <p class="text-[11px] mt-2 font-semibold ${hasActive ? 'text-red-400' : 'text-amber-500'}">ดูรายละเอียด →</p>
     </div>
     ${_gradeOverlay()}
   </div>`
@@ -214,18 +208,17 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const { getPendingExamRequestCount } = await import('./api.js')
   const { getMyDonationRequests } = await import('./api.js')
   const { getUnreadNotifications } = await import('./api.js')
-  const [subjects, classes, cfg, pendingRequests, packageAccess, donationRequests, svNotifs, todayDuty, dutyGrade] = await Promise.all([
+  const [subjects, classes, cfg, pendingRequests, donationRequests, svNotifs, todayDuty, dutyGrade, shirtBtnState] = await Promise.all([
     teacher ? getMySubjects(teacher.id).catch(()=>[]) : getMasterSubjects().catch(()=>[]),
     getMyClasses(teacher?.id ?? null).catch(()=>[]),
     getSystemConfig().catch(()=>({})),
     teacher ? getPendingExamRequestCount(teacher.id).catch(()=>0) : Promise.resolve(0),
-    teacher ? getTeacherPackageAccess(teacher.id).catch(()=>({ hasSemester: false, paidRoomCount: 0 })) : Promise.resolve({ hasSemester: false, paidRoomCount: 0 }),
     teacher ? getMyDonationRequests(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getUnreadNotifications(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDuty(teacher.teacher_code).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDutyGrade(teacher.teacher_code).catch(()=>null) : Promise.resolve(null),
+    teacher ? import('./sports-portals.js?v=10.22.587').then(m => m.getTeacherShirtButtonState(teacher)).catch(() => ({ visible: false, enabled: false })) : Promise.resolve({ visible: false, enabled: false }),
   ])
-  const FREE_LIMIT  = parseInt(cfg.freeClassQuota ?? 2)
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
   const curWeek      = _currentWeek(cfg.semester_start)
@@ -280,20 +273,12 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     .filter(e => e !== activeEntry)
     .sort((a, b) => _entryStatus(a) - _entryStatus(b) || a.period_no - b.period_no)
 
-  const quota        = teacher?.teachers_quota
-  const legacyUnlimited = quota?.is_paid && !quota?.package_type && !packageAccess.hasSemester && !packageAccess.paidRoomCount
-  const hasSemester = packageAccess.hasSemester || quota?.package_type === 'semester' || legacyUnlimited
-  const paidRoomCount = packageAccess.paidRoomCount
-  const classLimit = hasSemester ? Infinity : FREE_LIMIT + paidRoomCount
-  const usedSlots  = classes.length
-  const freeLeft   = hasSemester ? '∞' : Math.max(0, classLimit - usedSlots)
-  const quotaColor = hasSemester ? 'text-emerald-700' : usedSlots >= classLimit ? 'text-red-600' : 'text-amber-600'
-  const quotaLabel = hasSemester ? 'ไม่จำกัด ✅' : usedSlots >= classLimit ? 'ครบโควตาแล้ว 🔒' : `เหลืออีก ${freeLeft} ห้อง`
-  const packageText = hasSemester
-    ? 'เหมาทั้งเทอม — สร้างได้ไม่จำกัด'
-    : paidRoomCount > 0
-      ? `รายห้อง ${paidRoomCount} ห้อง — ใช้แล้ว ${usedSlots}/${classLimit} ห้อง`
-      : `ยังไม่เลือกแพ็กเกจ — ใช้โควตาฟรี ${usedSlots}/${FREE_LIMIT} ห้อง`
+  // สรุปโควตาห้องเรียนแบบเต็ม (bar/แพ็กเกจ/ราคา) ย้ายไปอยู่ใน popup ของ window._showQuotaFromOverview()
+  // ทั้งหมดแล้ว (ดึงข้อมูลของตัวเองสดๆ ไม่ต้องพึ่งตัวแปรที่นี่เลย) จึงตัด hasSemester/quotaLabel/ฯลฯ
+  // ที่เคยคำนวณไว้เฉพาะสำหรับการ์ดโควตาเดิมทิ้งไป — ไอคอน "โควตาห้องเรียน" ในกริดเรียก popup นี้ตรงๆ
+
+  // ห้องที่ปรึกษาประเภทสามัญ — ใช้ตัดสินว่าจะโชว์ไอคอน "ทักษะชีวิต" ในกริด "ระบบอื่น ๆ" ไหม
+  const samaiHomeroomRooms = homeroomRooms.filter(r => r.category === 'สามัญ')
 
   // ─── Donation sticker + tier glow ─────────────────────────────────────────
   const approvedDonation = donationRequests.find(r => r.package_type === 'donation' && r.status === 'approved')
@@ -403,57 +388,100 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     openSmartClassroomLanding(teacher)
   }
 
-  // แบนเนอร์สัปดาห์ปัจจุบันของภาคเรียน
-  const weekBannerHtml = curWeek > 0 ? (() => {
+  // ติ๊กเกอร์สัปดาห์ปัจจุบันของภาคเรียน — วิ่งขวา→ซ้าย แคบกว่าแบนเนอร์เดิมมาก (เดิมเป็นการ์ดเต็มแถวสูงสูบ
+  // ความสนใจพอๆ กับการ์ดอื่น ทั้งที่เป็นแค่ข้อมูลอ้างอิงเบาๆ ไม่ต้องเรียกร้องความสนใจขนาดนั้น)
+  const weekTickerHtml = curWeek > 0 ? (() => {
     const wkStart = new Date(cfg.semester_start)
     wkStart.setDate(wkStart.getDate() + (curWeek - 1) * 7)
     const wkEnd = new Date(wkStart)
     wkEnd.setDate(wkEnd.getDate() + 6)
     const fmt = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`
+    const text = `📅 สัปดาห์ที่ ${curWeek} (${fmt(wkStart)} – ${fmt(wkEnd)}) · ภาคเรียนที่ ${semester}/${academicYear}`
     return `
-    <div class="mb-5 rounded-2xl px-5 py-4 flex items-center gap-4"
-      style="background:linear-gradient(135deg,#059669,#0d9488);box-shadow:0 6px 20px -6px rgba(5,150,105,.5);">
-      <div class="w-12 h-12 rounded-xl bg-white/20 flex items-center justify-center text-2xl flex-shrink-0">📅</div>
-      <div class="flex-1 min-w-0">
-        <p class="text-white text-2xl font-extrabold leading-tight">สัปดาห์ที่ ${curWeek} <span class="text-sm font-medium text-white/80">(${fmt(wkStart)} – ${fmt(wkEnd)})</span></p>
+    <div class="mb-4 relative overflow-hidden rounded-full bg-emerald-950 py-2" style="mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);">
+      <div class="inline-block whitespace-nowrap text-emerald-100 text-xs font-bold" style="padding-left:100%;animation:teacher-week-ticker 18s linear infinite;">
+        <span class="mr-10">${text}</span><span class="mr-10">${text}</span>
       </div>
-      <div class="text-right text-white/80 text-xs flex-shrink-0">ภาคเรียนที่ ${semester}<br/>ปีการศึกษา ${academicYear}</div>
     </div>
+    <style>@keyframes teacher-week-ticker{from{transform:translateX(0)}to{transform:translateX(-100%)}}</style>
     `
   })() : ''
 
-  // ปุ่มลัด Dashboard ตามตำแหน่ง (หัวหน้ากลุ่ม/ฝ่ายต่างๆ) — ให้เข้าถึงได้ง่ายจากหน้าภาพรวม
+  // ปุ่มลัด Dashboard ตามตำแหน่ง (หัวหน้ากลุ่ม/ฝ่ายต่างๆ) — ย้ายจากแบนเนอร์เต็มแถวไปเป็น tile ในกริด
+  // "ระบบอื่น ๆ" แทน (โผล่เฉพาะคนมีตำแหน่งเพิ่มเติมเหมือนเดิม)
   const _svPositions = _teacherPositionList(teacher)
-  const svDashboardHtml = _svPositions.length ? `
-    <div onclick="window._enterSupervisorMode && window._enterSupervisorMode()"
-      class="mb-4 bg-white rounded-2xl border border-gray-200 shadow-md p-4 flex items-center gap-4
-             cursor-pointer hover:shadow-lg hover:border-blue-300 hover:bg-blue-50/30 transition group">
-      <div class="w-11 h-11 rounded-xl bg-blue-50 flex items-center justify-center text-xl flex-shrink-0">📊</div>
-      <div class="flex-1 min-w-0">
-        <p class="font-semibold text-gray-800 text-sm">Dashboard ${_teacherPositionLabel(teacher)}</p>
-        <p class="text-xs text-gray-400 mt-0.5">เมนูสำหรับบทบาทเพิ่มเติมของคุณ</p>
+
+  // ห้องที่ปรึกษา → popup รวมปุ่มต่อห้อง (ยกโค้ดเดิมของการ์ดเต็มมาไว้ใน popup แทน)
+  window._openHomeroomPopup = () => {
+    document.getElementById('homeroom-popup')?.remove()
+    const pop = document.createElement('div')
+    pop.id = 'homeroom-popup'
+    pop.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4'
+    pop.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[85vh] flex flex-col">
+      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+        <p class="font-bold text-gray-800 text-sm">🏠 ห้องที่ปรึกษาของฉัน</p>
+        <button class="text-gray-400 hover:text-gray-600 text-xl leading-none" onclick="this.closest('.fixed').remove()">×</button>
       </div>
-      <span class="text-gray-300 group-hover:text-blue-400 transition text-lg">→</span>
-    </div>` : ''
+      <div class="p-5 overflow-y-auto space-y-3">
+        ${homeroomRooms.map(r => `
+        <div class="border border-gray-100 rounded-xl p-3">
+          <p class="font-bold text-gray-800">${r.main_room}
+            <span class="ml-1 text-xs px-2 py-0.5 rounded-full ${r.category==='สามัญ'?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700'}">${r.category}</span>
+          </p>
+          <div class="mt-2 space-y-1.5">
+            ${r.category === 'สามัญ' ? `
+            <button onclick="window._openLifeSkillScore('${r.main_room}');this.closest('.fixed').remove()"
+              class="w-full text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 text-left">
+              📊 บันทึกคะแนนทักษะชีวิต
+            </button>` : `
+            <button onclick="window._openReligionScore('${r.main_room}');this.closest('.fixed').remove()"
+              class="w-full text-xs bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 text-left">
+              📊 บันทึกคะแนนศาสนา
+            </button>
+            <button onclick="window._openReligionPrayerMonitor('${r.main_room}');this.closest('.fixed').remove()"
+              class="w-full text-xs bg-white border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50 text-left">
+              👁️ Monitor สแกนละหมาด
+            </button>`}
+          </div>
+        </div>`).join('') || '<p class="text-sm text-gray-400 text-center py-4">ไม่มีห้องที่ปรึกษา</p>'}
+      </div>
+    </div>`
+    document.body.appendChild(pop)
+    pop.addEventListener('click', e => { if (e.target === pop) pop.remove() })
+  }
+
+  // ไซซ์เสื้อกีฬาสี (ครู) — เปิด modal เดิมของ sports-portals.js ตรงๆ
+  window._openTeacherShirtModal = async () => {
+    const { openTeacherShirtSizeModal } = await import('./sports-portals.js?v=10.22.587')
+    openTeacherShirtSizeModal(teacher)
+  }
+
+  // กริด "ระบบอื่น ๆ" — เลื่อนซ้าย-ขวาได้อิสระ, โผล่เฉพาะระบบที่มีสิทธิ์/เกี่ยวข้องกับครูคนนี้จริง
+  const readingRoomsForTeacher = [...new Set(classes.map(c => c.class_name).filter(Boolean))].sort()
+  const readingRoomsJson = JSON.stringify(readingRoomsForTeacher).replace(/"/g, '&quot;')
+  const iconTiles = [
+    { show: true, onclick: `window._openSmartClassroomLanding()`, emoji:'👑', label:'Smart<br>Classroom', from:'from-amber-400', to:'to-yellow-600' },
+    { show: _svPositions.length > 0, onclick: `window._enterSupervisorMode()`, emoji:'📊', label:'บอร์ด<br>บทบาท', from:'from-slate-400', to:'to-slate-600' },
+    { show: !!teacher, onclick: `window._openWenDuty('${teacher?.teacher_code}')`, emoji:'🛡️', label:'ระบบเวร', from:'from-rose-400', to:'to-rose-600' },
+    { show: true, onclick: `window._showClassQuickPicker('attendance')`, emoji:'✅', label:'เช็คชื่อ', from:'from-teal-400', to:'to-teal-600' },
+    { show: true, onclick: `window._showClassQuickPicker('grades')`, emoji:'📝', label:'บันทึก<br>คะแนน', from:'from-indigo-400', to:'to-indigo-600' },
+    { show: samaiHomeroomRooms.length > 0, onclick: `window._openLifeSkillScore()`, emoji:'🌱', label:'ทักษะ<br>ชีวิต', from:'from-lime-400', to:'to-lime-600' },
+    { show: teacher?.dept === 'THAI', onclick: `window._openReadingScorePicker('${readingRoomsJson}')`, emoji:'📖', label:'คะแนน<br>การอ่าน', from:'from-orange-400', to:'to-orange-600' },
+    { show: true, onclick: `window._navTo('schedule')`, emoji:'🗓️', label:'ตารางสอน', from:'from-sky-400', to:'to-sky-600' },
+    { show: homeroomRooms.length > 0, onclick: `window._openHomeroomPopup()`, emoji:'🏠', label:'ห้องที่<br>ปรึกษา', from:'from-amber-400', to:'to-amber-700' },
+    { show: true, onclick: `window._showQuotaFromOverview()`, emoji:'🎯', label:'โควตา<br>ห้องเรียน', from:'from-purple-400', to:'to-purple-600' },
+    { show: shirtBtnState.visible, onclick: `window._openTeacherShirtModal()`, emoji:'👕', label:'ไซซ์เสื้อ<br>กีฬาสี', from:'from-pink-400', to:'to-pink-600' },
+  ].filter(t => t.show)
+  const iconGridHtml = iconTiles.map(t => `
+      <button type="button" onclick="${t.onclick}" class="flex-shrink-0 w-[4.6rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
+        <span class="w-14 h-14 rounded-2xl bg-gradient-to-br ${t.from} ${t.to} shadow-md flex items-center justify-center text-2xl">${t.emoji}</span>
+        <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">${t.label}</span>
+      </button>`).join('')
 
   setContent(`<div class="animate-fade">
 
-    <button type="button" onclick="window._openSmartClassroomLanding()" class="w-full text-left relative overflow-hidden rounded-2xl shadow-lg mb-4 px-5 py-4 flex items-center gap-4 group transition hover:shadow-xl"
-      style="background:linear-gradient(135deg,#7a5810,#a9781a,#e6c988)">
-      <div class="absolute inset-0 opacity-20" style="background:radial-gradient(circle at 85% 20%,#ffffff,transparent 55%)"></div>
-      <div class="relative text-4xl flex-shrink-0">👑</div>
-      <div class="relative flex-1 min-w-0">
-        <p class="text-white font-extrabold text-base leading-tight">Smart Classroom</p>
-        <p class="text-white/85 text-xs mt-0.5">หน้าควบคุมขณะสอนสด — เช็คชื่อ/Hall Pass/สุ่มชื่อ/ควิซสด/สั่งงาน ไว้จอเดียว</p>
-      </div>
-      <div class="relative flex-shrink-0 text-white/90 text-xl group-hover:translate-x-1 transition-transform">→</div>
-    </button>
-
-    ${svDashboardHtml}
-
-    ${weekBannerHtml}
-
-    <!-- แจ้งเตือนจากหัวหน้า -->
+    <!-- ส่วนเร่งด่วน: แจ้งเตือนจากหัวหน้า + กำลังสอนอยู่ (ย้ายมาไว้บนสุด เพราะเป็นสิ่งเดียวที่เปลี่ยนตามสถานะจริงเดี๋ยวนั้น) -->
     ${svNotifs.length ? (() => {
       const catLabel = {general:'ทั่วไป',profile:'โปรไฟล์',dates:'วันสอน',attendance:'เช็คชื่อ',scores:'คะแนน'}
       const catColor = {general:'#374151',profile:'#5b21b6',dates:'#1e40af',attendance:'#065f46',scores:'#713f12'}
@@ -482,6 +510,49 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>
     <script>window._markSvNotifsRead=async()=>{try{const{markNotificationsRead}=await import('./api.js');await markNotificationsRead(${teacher?.id});document.getElementById('sv-notif-banner')?.remove();document.querySelectorAll('#sv-notif-badge').forEach(el=>el.remove())}catch{}}<\/script>
     `})() : ''}
+
+    <!-- กำลังสอนอยู่ (ย้ายมาไว้ในโซนเร่งด่วนบนสุด) -->
+    ${activeEntry ? (() => {
+      const time = activeEntry.period
+        ? `${activeEntry.period.start_time.substring(0,5)}–${activeEntry.actualEndPeriod.end_time.substring(0,5)}`
+        : `คาบ ${activeEntry.period_no}`
+      const goToClassId = activeEntry.linkedClasses[0]?.id ?? null
+      return `
+    <div id="active-class-card" class="mb-4 bg-white rounded-2xl p-5 ${goToClassId ? 'cursor-pointer hover:shadow-lg active:scale-[0.99] transition-all duration-150' : ''}"
+      style="border:2px solid #059669;box-shadow:0 0 0 4px rgba(5,150,105,.12),0 0 24px rgba(5,150,105,.18);"
+      ${goToClassId ? `onclick="window._goToActiveClass(${goToClassId})"` : ''}>
+      <div class="flex items-center gap-2 mb-3">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0" style="animation:pulse 1.5s infinite"></span>
+        <span class="text-xs font-bold text-emerald-700 tracking-wide">🟢 กำลังสอนอยู่</span>
+        <span class="text-[11px] text-gray-400 ml-1">${time}</span>
+        ${goToClassId ? `<span class="text-[11px] text-emerald-500 ml-auto">เข้าห้องเรียน →</span>` : ''}
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-lg font-bold text-emerald-700 flex-shrink-0">
+          ${activeEntry.period_no}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="font-bold text-gray-800 text-sm truncate">
+            ${activeEntry.linkedClasses.map(c => c.master_subjects?.subject_name ?? c.class_name).join(', ')}
+          </p>
+          <p class="text-xs text-gray-500 mt-0.5">
+            ${activeEntry.linkedClasses.map(c => {
+              const cr = c.classroom_id ? _classroomMapGlobal[c.classroom_id] : null
+              return c.class_name + (cr ? ` · 📍${cr.building} ห้อง ${cr.room_number}` : '')
+            }).join(' · ')}
+          </p>
+        </div>
+        <div class="flex-shrink-0 text-right">
+          <div id="active-class-countdown" class="text-2xl font-bold text-emerald-600 tabular-nums">
+            ${_activeRemainingDisplay(activeEntry.actualEndPeriod?.end_time)}
+          </div>
+          <div class="text-[10px] text-gray-400 mt-0.5">เหลืออีก</div>
+        </div>
+      </div>
+    </div>`
+    })() : ''}
+
+    ${weekTickerHtml}
 
     <!-- การ์ดโปรไฟล์ครู -->
     <div class="bg-white rounded-2xl ${cardBorderCls} px-5 pt-5 pb-5 mb-5 flex items-center gap-5 overflow-hidden" style="${cardGlowStyle}">
@@ -520,13 +591,8 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       ${donorStickerHtml}
     </div>
 
-    <!-- เวรวันนี้ (ระบบเวร อาซิซสถาน) -->
-    ${teacher ? `<div id="wen-duty-card">${_renderWenDutyCard(todayDuty, teacher.teacher_code, dutyGrade)}</div>` : ''}
-
-    <!-- กิจกรรมใกล้ถึงจากปฏิทินปฏิบัติงาน (นับถอยหลังวัน/วินาที) -->
-    ${teacher ? `<div id="wcal-upcoming-card">${_renderWorkCalendarUpcoming(workCalEvents, cfg.semester_start)}</div>` : ''}
-
-    <div class="grid grid-cols-2 lg:grid-cols-3 gap-4">
+    <!-- สรุปของฉัน -->
+    <div class="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
       ${[
         { label:'คอร์สวิชาของฉัน', value: subjects.length, icon:'📖', color:'text-emerald-700', bg:'bg-emerald-50', nav:'my-courses' },
         { label:'ห้องเรียน', value: classes.length, icon:'🏫', color:'text-blue-700', bg:'bg-blue-50', nav:'my-classes' },
@@ -543,81 +609,19 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         </div>`).join('')}
     </div>
 
-    <!-- งานรายวัน: เช็คชื่อ / บันทึกคะแนน -->
-    <div class="mt-4 grid grid-cols-2 gap-3">
-      <div onclick="window._showClassQuickPicker('attendance')"
-        class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 flex items-center gap-3
-               cursor-pointer hover:shadow-lg hover:border-emerald-300 hover:bg-emerald-50/30 transition group">
-        <div class="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center text-xl flex-shrink-0">✅</div>
-        <div class="min-w-0">
-          <p class="font-semibold text-gray-800 text-sm">เช็คชื่อ</p>
-          <p class="text-xs text-gray-400 mt-0.5">เลือกห้องเรียน</p>
-        </div>
-      </div>
-      <div onclick="window._showClassQuickPicker('grades')"
-        class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 flex items-center gap-3
-               cursor-pointer hover:shadow-lg hover:border-indigo-300 hover:bg-indigo-50/30 transition group">
-        <div class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">📝</div>
-        <div class="min-w-0">
-          <p class="font-semibold text-gray-800 text-sm">บันทึกคะแนน</p>
-          <p class="text-xs text-gray-400 mt-0.5">เลือกห้องเรียน</p>
-        </div>
+    <!-- ระบบอื่น ๆ -->
+    <div class="mb-4">
+      <h4 class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">ระบบอื่น ๆ</h4>
+      <div class="flex gap-3 overflow-x-auto pb-1">
+        ${iconGridHtml}
       </div>
     </div>
 
-    <!-- ปุ่มตารางสอน -->
-    <div onclick="window._navTo('schedule')"
-      class="mt-4 bg-white rounded-2xl border border-gray-200 shadow-md p-4 flex items-center gap-4
-             cursor-pointer hover:shadow-lg hover:border-indigo-300 hover:bg-indigo-50/30 transition group">
-      <div class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">🗓️</div>
-      <div class="flex-1 min-w-0">
-        <p class="font-semibold text-gray-800 text-sm">ตารางสอนของฉัน</p>
-        <p class="text-xs text-gray-400 mt-0.5">ภาค ${semester} / ${academicYear} — คลิกเพื่อดูและแก้ไขตาราง</p>
-      </div>
-      <span class="text-gray-300 group-hover:text-indigo-400 transition text-lg">→</span>
-    </div>
+    <!-- เวรวันนี้ (ระบบเวร อาซิซสถาน) — ขยายแสดงเฉพาะวันมีเวร -->
+    ${teacher ? `<div id="wen-duty-card">${_renderWenDutyCard(todayDuty, teacher.teacher_code, dutyGrade)}</div>` : ''}
 
-    <!-- Active class featured card -->
-    ${activeEntry ? (() => {
-      const cr0 = activeEntry.linkedClasses[0]?.classroom_id ? _classroomMapGlobal[activeEntry.linkedClasses[0].classroom_id] : null
-      const time = activeEntry.period
-        ? `${activeEntry.period.start_time.substring(0,5)}–${activeEntry.actualEndPeriod.end_time.substring(0,5)}`
-        : `คาบ ${activeEntry.period_no}`
-      const goToClassId = activeEntry.linkedClasses[0]?.id ?? null
-      return `
-    <div id="active-class-card" class="mt-4 bg-white rounded-2xl p-5 ${goToClassId ? 'cursor-pointer hover:shadow-lg active:scale-[0.99] transition-all duration-150' : ''}"
-      style="border:2px solid #059669;box-shadow:0 0 0 4px rgba(5,150,105,.12),0 0 24px rgba(5,150,105,.18);"
-      ${goToClassId ? `onclick="window._goToActiveClass(${goToClassId})"` : ''}>
-      <div class="flex items-center gap-2 mb-3">
-        <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 flex-shrink-0" style="animation:pulse 1.5s infinite"></span>
-        <span class="text-xs font-bold text-emerald-700 tracking-wide">🟢 กำลังสอนอยู่</span>
-        <span class="text-[11px] text-gray-400 ml-1">${time}</span>
-        ${goToClassId ? `<span class="text-[11px] text-emerald-500 ml-auto">เข้าห้องเรียน →</span>` : ''}
-      </div>
-      <div class="flex items-center gap-4">
-        <div class="w-12 h-12 rounded-xl bg-emerald-100 flex items-center justify-center text-lg font-bold text-emerald-700 flex-shrink-0">
-          ${activeEntry.period_no}
-        </div>
-        <div class="flex-1 min-w-0">
-          <p class="font-bold text-gray-800 text-sm truncate">
-            ${activeEntry.linkedClasses.map(c => c.master_subjects?.subject_name ?? c.class_name).join(', ')}
-          </p>
-          <p class="text-xs text-gray-500 mt-0.5">
-            ${activeEntry.linkedClasses.map(c => {
-              const cr = c.classroom_id ? _classroomMapGlobal[c.classroom_id] : null
-              return c.class_name + (cr ? ` · 📍${cr.building} ห้อง ${cr.room_number}` : '')
-            }).join(' · ')}
-          </p>
-        </div>
-        <div class="flex-shrink-0 text-right">
-          <div id="active-class-countdown" class="text-2xl font-bold text-emerald-600 tabular-nums">
-            ${_activeRemainingDisplay(activeEntry.actualEndPeriod?.end_time)}
-          </div>
-          <div class="text-[10px] text-gray-400 mt-0.5">เหลืออีก</div>
-        </div>
-      </div>
-    </div>`
-    })() : ''}
+    <!-- กิจกรรมใกล้ถึงจากปฏิทินปฏิบัติงาน (นับถอยหลังวัน/วินาที, ซ่อนถ้าไม่มี) -->
+    ${teacher ? `<div id="wcal-upcoming-card">${_renderWorkCalendarUpcoming(workCalEvents, cfg.semester_start)}</div>` : ''}
 
     <!-- Today's Classes Widget -->
     <div id="today-widget" class="mt-4 bg-white rounded-2xl border border-gray-200 shadow-md hover:shadow-lg transition-shadow p-5">
@@ -676,114 +680,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
           }).join('')}
         </div>`}
     </div>
-
-    <!-- โควตาห้องเรียน -->
-    <div class="mt-4 bg-white rounded-2xl border border-gray-200 shadow-md hover:shadow-lg transition-shadow p-5">
-      <div class="flex items-center justify-between mb-3">
-        <h4 class="font-semibold text-gray-700">🎯 โควตาห้องเรียน</h4>
-        <span class="text-sm font-bold ${quotaColor}">${quotaLabel}</span>
-      </div>
-      ${!hasSemester ? `
-      <div class="w-full bg-gray-100 rounded-full h-2.5 mb-2">
-        <div class="bg-${usedSlots >= classLimit ? 'red' : 'emerald'}-500 h-2.5 rounded-full transition-all"
-          style="width:${Math.min(100, (usedSlots/classLimit)*100)}%"></div>
-      </div>
-      <div class="flex justify-between text-xs text-gray-400 mb-3">
-        <span>ใช้แล้ว ${usedSlots} ห้อง</span>
-        <span>${paidRoomCount > 0 ? `สิทธิ์รวม ${classLimit} ห้อง` : `ฟรี ${FREE_LIMIT} ห้อง`}</span>
-      </div>
-      ${usedSlots >= classLimit ? `
-      <div class="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-        <p class="text-xs text-amber-700 font-medium">🔒 ครบโควตาแล้ว — เลือกแพ็กเกจเพื่อเพิ่มห้องเรียนต่อ</p>
-        <div class="grid grid-cols-2 gap-2">
-          <div class="bg-white rounded-xl p-3 border border-amber-200 text-center">
-            <p class="text-xs text-gray-500 mb-1">รายห้อง</p>
-            <p class="text-lg font-extrabold text-indigo-600">${parseInt(cfg.pricePerClass ?? 49)} <span class="text-xs font-normal text-gray-400">บ./ห้อง</span></p>
-            <p class="text-[10px] text-gray-400">เพิ่มทีละห้อง</p>
-          </div>
-          <div class="bg-white rounded-xl p-3 border border-emerald-300 text-center relative">
-            <span class="absolute -top-2 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[9px] px-2 py-0.5 rounded-full">แนะนำ</span>
-            <p class="text-xs text-gray-500 mb-1">เหมาทั้งเทอม</p>
-            <p class="text-lg font-extrabold text-emerald-600">${parseInt(cfg.priceSemester ?? 299)} <span class="text-xs font-normal text-gray-400">บ./เทอม</span></p>
-            <p class="text-[10px] text-gray-400">ไม่จำกัดห้อง</p>
-          </div>
-        </div>
-        <button id="btn-upgrade-overview"
-          class="w-full py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition">
-          🚀 ดูแพ็กเกจและชำระเงิน
-        </button>
-        <button onclick="window._openStandaloneCopyFlow?.()"
-          class="w-full py-2.5 rounded-xl border border-amber-200 bg-white text-amber-700 text-sm font-semibold hover:bg-amber-50 transition">
-          🔗 ทำสำเนาไฟล์ ปพ.5 ใช้งานฟรี
-        </button>
-      </div>` : `
-      <p class="text-xs text-gray-400">เหลืออีก <b class="text-emerald-600">${freeLeft} ห้อง</b> ก่อนต้องอัปเกรด</p>`}
-      ` : `
-      <p class="text-sm text-emerald-600">✅ แพ็กเกจ${packageText}</p>
-      `}
-    </div>
-    <!-- Homeroom role buttons -->
-    ${homeroomRooms.length > 0 ? `
-    <div class="mt-5 bg-white rounded-2xl border border-gray-200 shadow-md hover:shadow-lg transition-shadow p-5">
-      <h4 class="font-semibold text-gray-700 mb-3">🏠 ห้องที่ปรึกษาของฉัน</h4>
-      <div class="flex flex-wrap gap-3">
-        ${homeroomRooms.map(r => `
-        <div class="border border-gray-100 rounded-xl p-3 flex-1 min-w-40">
-          <p class="font-bold text-gray-800">${r.main_room}
-            <span class="ml-1 text-xs px-2 py-0.5 rounded-full ${r.category==='สามัญ'?'bg-blue-50 text-blue-700':'bg-amber-50 text-amber-700'}">${r.category}</span>
-          </p>
-          <div class="mt-2 space-y-1.5">
-            ${r.category === 'สามัญ' ? `
-            <button onclick="window._openLifeSkillScore('${r.main_room}')"
-              class="w-full text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 text-left">
-              📊 บันทึกคะแนนทักษะชีวิต
-            </button>` : `
-            <button onclick="window._openReligionScore('${r.main_room}')"
-              class="w-full text-xs bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 text-left">
-              📊 บันทึกคะแนนศาสนา
-            </button>
-            <button onclick="window._openReligionPrayerMonitor('${r.main_room}')"
-              class="w-full text-xs bg-white border border-amber-200 text-amber-700 px-3 py-1.5 rounded-lg hover:bg-amber-50 text-left">
-              👁️ Monitor สแกนละหมาด
-            </button>`}
-          </div>
-        </div>`).join('')}
-      </div>
-    </div>` : ''}
-    <!-- ภาษาไทย → อ่านคิดวิเคราะห์ (ปุ่มเดียว + popup เลือกห้อง) -->
-    ${teacher?.dept === 'THAI' ? (() => {
-      const readingRooms = [...new Set(classes.map(c => c.class_name).filter(Boolean))].sort()
-      const roomsJson = JSON.stringify(readingRooms).replace(/"/g, '&quot;')
-      return `
-    <div onclick="window._openReadingScorePicker('${roomsJson}')"
-      class="mt-4 bg-white rounded-2xl border border-indigo-100 shadow-sm p-4 flex items-center gap-4
-             cursor-pointer hover:shadow-md hover:border-indigo-300 hover:bg-indigo-50/30 transition group">
-      <div class="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-xl flex-shrink-0">📖</div>
-      <div class="flex-1 min-w-0">
-        <p class="font-semibold text-gray-800 text-sm">บันทึกคะแนนอ่านคิดวิเคราะห์และเขียน</p>
-        <p class="text-xs text-gray-400 mt-0.5">${readingRooms.length > 0 ? `${readingRooms.length} ห้อง — คลิกเพื่อเลือกห้อง` : 'ยังไม่มีห้องเรียน'}</p>
-      </div>
-      <span class="text-gray-300 group-hover:text-indigo-400 transition text-lg">→</span>
-    </div>`
-    })() : ''}
-    ${subjects.length > 0 ? `
-    <div class="mt-6 bg-white rounded-2xl border border-gray-200 shadow-md hover:shadow-lg transition-shadow p-5">
-      <h4 class="font-semibold text-gray-700 mb-3">คอร์สวิชาล่าสุด</h4>
-      <div class="space-y-2">
-        ${subjects.slice(0,5).map(s=>`
-        <div class="flex items-center gap-3 py-2 border-b border-gray-50 last:border-0">
-          <span class="px-2 py-0.5 rounded-full text-xs bg-indigo-50 text-indigo-700 font-mono">${s.subject_code??'—'}</span>
-          <span class="font-medium text-gray-800 text-sm">${s.subject_name}</span>
-          <span class="ml-auto text-xs text-gray-400">${s.grade_level??'—'}</span>
-        </div>`).join('')}
-      </div>
-    </div>` : ''}
   </div>`)
-
-  // ผูกปุ่มอัปเกรดในภาพรวม → เปิด quota popup
-  document.getElementById('btn-upgrade-overview')?.addEventListener('click', () => {
-    window._showQuotaFromOverview?.()
-  })
 
   // donor sticker → features popup
   document.getElementById('donor-sticker-btn')?.addEventListener('click', () => {
@@ -898,11 +795,6 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     }, 1000)
   }
 
-  // ปุ่มแจ้งไซซ์เสื้อกีฬาสีของครู — inject แยกจาก template หลักด้านบน (ไม่แตะโครงสร้าง setContent เดิม)
-  // เพราะฟังก์ชันนี้ใหญ่/เปราะบางเกินกว่าจะแทรกเข้าไปในเทมเพลตตรงๆ อย่างปลอดภัย
-  if (teacher) {
-    import('./sports-portals.js?v=10.22.586').then(m => m.injectTeacherShirtButton?.(teacher)).catch(() => {})
-  }
 }
 
 // ─── Lesson Plan Approval Document ───────────────────────────────────────────
