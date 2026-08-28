@@ -73,7 +73,7 @@ export function openCertificateLayoutEditor(opts) {
     <div class="flex-1 min-h-0 flex flex-col lg:flex-row overflow-y-auto">
       <div class="flex-1 min-w-0 p-4 sm:p-6 flex flex-col gap-3 overflow-auto bg-slate-50">
         <div id="cce-canvas-wrap" class="relative w-full max-w-3xl mx-auto select-none drop-shadow-xl"></div>
-        <p class="text-[11px] text-gray-400 text-center">ลากเพื่อจัดตำแหน่ง • กดองค์ประกอบเพื่อแก้ไข • Shift/Ctrl + คลิก เพื่อเลือกหลายรายการ • Ctrl/⌘ + D เพื่อคัดลอก</p>
+        <p class="text-[11px] text-gray-400 text-center">ลากเพื่อจัดตำแหน่ง • กดองค์ประกอบเพื่อแก้ไข • Shift/Ctrl + คลิก หรือลากคลุมพื้นที่ว่าง เพื่อเลือกหลายรายการ • Ctrl/⌘ + D เพื่อคัดลอก</p>
         <div class="max-w-3xl w-full mx-auto grid sm:grid-cols-2 gap-3">
           <div class="bg-white border border-gray-200 rounded-xl p-3">
             <p class="text-[11px] font-bold text-gray-700 mb-2">📐 แนวกระดาษ</p>
@@ -122,7 +122,37 @@ export function openCertificateLayoutEditor(opts) {
     canvasWrap.innerHTML = renderCertificateCanvasHtml({ layout, variables: previewVars })
     const canvasEl = canvasWrap.querySelector('.cert-canvas')
     canvasEl?.addEventListener('pointerdown', event => {
-      if (!event.target.closest('[data-cert-el-id]') && selectedIds.size) { selectedIds.clear(); renderCanvas(); renderPanel() }
+      if (event.target.closest('[data-cert-el-id]')) return
+      event.preventDefault()
+      const additive = event.shiftKey || event.ctrlKey || event.metaKey
+      const baseSelection = additive ? new Set(selectedIds) : new Set()
+      const rect = canvasEl.getBoundingClientRect()
+      const startX = event.clientX, startY = event.clientY
+      const nodeEntries = [...canvasEl.querySelectorAll('[data-cert-el-id]')].map(node => ({ id: node.dataset.certElId, rect: node.getBoundingClientRect() }))
+      let dragged = false
+      const marquee = document.createElement('div')
+      marquee.style.cssText = 'position:absolute;border:1.5px dashed #6366f1;background:rgba(99,102,241,0.12);pointer-events:none;z-index:60;display:none;'
+      canvasEl.appendChild(marquee)
+      const move = pointer => {
+        const dx = pointer.clientX - startX, dy = pointer.clientY - startY
+        if (!dragged && Math.hypot(dx, dy) < 4) return
+        dragged = true
+        const x1 = Math.min(startX, pointer.clientX), x2 = Math.max(startX, pointer.clientX)
+        const y1 = Math.min(startY, pointer.clientY), y2 = Math.max(startY, pointer.clientY)
+        marquee.style.display = 'block'
+        marquee.style.left = (x1 - rect.left) + 'px'; marquee.style.top = (y1 - rect.top) + 'px'
+        marquee.style.width = (x2 - x1) + 'px'; marquee.style.height = (y2 - y1) + 'px'
+        const hits = nodeEntries.filter(entry => entry.rect.left < x2 && entry.rect.right > x1 && entry.rect.top < y2 && entry.rect.bottom > y1).map(entry => entry.id)
+        selectedIds = new Set([...baseSelection, ...hits])
+        canvasEl.querySelectorAll('[data-cert-el-id]').forEach(node => { node.style.outline = selectedIds.has(node.dataset.certElId) ? '2px dashed #0ea5e9' : 'none' })
+      }
+      const up = () => {
+        window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up)
+        marquee.remove()
+        if (!dragged && !additive) selectedIds.clear()
+        renderCanvas(); renderPanel()
+      }
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', up)
     })
     canvasWrap.querySelectorAll('[data-cert-el-id]').forEach(node => {
       const id = node.dataset.certElId
@@ -341,7 +371,7 @@ export function openCertificateLayoutEditor(opts) {
   function renderPanel() {
     const elements = selectedElements()
     if (!elements.length) {
-      panel.innerHTML = `<div class="text-center py-12"><div class="text-4xl mb-3">👆</div><p class="text-sm font-bold text-gray-600">เลือกองค์ประกอบบนเกียรติบัตร</p><p class="text-xs text-gray-400 mt-1">แล้วตั้งค่าจากแผงนี้ • กด Shift/Ctrl ค้างแล้วคลิกเพื่อเลือกหลายรายการ</p></div>`
+      panel.innerHTML = `<div class="text-center py-12"><div class="text-4xl mb-3">👆</div><p class="text-sm font-bold text-gray-600">เลือกองค์ประกอบบนเกียรติบัตร</p><p class="text-xs text-gray-400 mt-1">แล้วตั้งค่าจากแผงนี้ • กด Shift/Ctrl ค้างแล้วคลิก หรือลากคลุมพื้นที่ว่างเพื่อเลือกหลายรายการ</p></div>`
       return
     }
     if (elements.length > 1) { renderBulkPanel(elements); return }
