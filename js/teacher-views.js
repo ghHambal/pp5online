@@ -217,7 +217,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     teacher ? getUnreadNotifications(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDuty(teacher.teacher_code).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDutyGrade(teacher.teacher_code).catch(()=>null) : Promise.resolve(null),
-    teacher ? import('./sports-portals.js?v=10.22.587').then(m => m.getTeacherShirtButtonState(teacher)).catch(() => ({ visible: false, enabled: false })) : Promise.resolve({ visible: false, enabled: false }),
+    teacher ? import('./sports-portals.js?v=10.22.588').then(m => m.getTeacherShirtButtonState(teacher)).catch(() => ({ visible: false, enabled: false })) : Promise.resolve({ visible: false, enabled: false }),
   ])
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
@@ -398,9 +398,9 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     const fmt = d => `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`
     const text = `📅 สัปดาห์ที่ ${curWeek} (${fmt(wkStart)} – ${fmt(wkEnd)}) · ภาคเรียนที่ ${semester}/${academicYear}`
     return `
-    <div class="mb-4 relative overflow-hidden rounded-full bg-emerald-950 py-2" style="mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);">
-      <div class="inline-block whitespace-nowrap text-emerald-100 text-xs font-bold" style="padding-left:100%;animation:teacher-week-ticker 18s linear infinite;">
-        <span class="mr-10">${text}</span><span class="mr-10">${text}</span>
+    <div class="mb-4 relative overflow-hidden rounded-full bg-emerald-950 py-3 lg:py-5" style="mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent);">
+      <div class="inline-block whitespace-nowrap text-emerald-100 text-sm lg:text-xl font-bold" style="padding-left:100%;animation:teacher-week-ticker 18s linear infinite;">
+        <span class="mr-10 lg:mr-16">${text}</span><span class="mr-10 lg:mr-16">${text}</span>
       </div>
     </div>
     <style>@keyframes teacher-week-ticker{from{transform:translateX(0)}to{transform:translateX(-100%)}}</style>
@@ -453,7 +453,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
   // ไซซ์เสื้อกีฬาสี (ครู) — เปิด modal เดิมของ sports-portals.js ตรงๆ
   window._openTeacherShirtModal = async () => {
-    const { openTeacherShirtSizeModal } = await import('./sports-portals.js?v=10.22.587')
+    const { openTeacherShirtSizeModal } = await import('./sports-portals.js?v=10.22.588')
     openTeacherShirtSizeModal(teacher)
   }
 
@@ -474,9 +474,9 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     { show: shirtBtnState.visible, onclick: `window._openTeacherShirtModal()`, emoji:'👕', label:'ไซซ์เสื้อ<br>กีฬาสี', from:'from-pink-400', to:'to-pink-600' },
   ].filter(t => t.show)
   const iconGridHtml = iconTiles.map(t => `
-      <button type="button" onclick="${t.onclick}" class="flex-shrink-0 w-[4.6rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
-        <span class="w-14 h-14 rounded-2xl bg-gradient-to-br ${t.from} ${t.to} shadow-md flex items-center justify-center text-2xl">${t.emoji}</span>
-        <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">${t.label}</span>
+      <button type="button" onclick="${t.onclick}" class="flex-shrink-0 w-[4.6rem] lg:w-24 flex flex-col items-center gap-1.5 lg:gap-2 active:scale-95 transition-transform">
+        <span class="w-14 h-14 lg:w-20 lg:h-20 rounded-2xl bg-gradient-to-br ${t.from} ${t.to} shadow-md flex items-center justify-center text-2xl lg:text-4xl">${t.emoji}</span>
+        <span class="text-[10px] lg:text-sm font-bold text-gray-600 text-center leading-tight">${t.label}</span>
       </button>`).join('')
 
   setContent(`<div class="animate-fade">
