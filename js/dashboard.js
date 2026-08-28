@@ -172,7 +172,7 @@ async function handleTeacherFormSubmit(e) {
   }
   const checkedPositions = window._getPositionValues?.() ?? []
   // ตำแหน่งที่เก็บใน positions[] เท่านั้น ห้ามเขียนลงคอลัมน์ position (ติด check constraint)
-  const _ARRAY_ONLY_POSITIONS = ['religion_group_head', 'religion_subgroup_head', 'classroom_leaders_admin', 'regrade_executive']
+  const _ARRAY_ONLY_POSITIONS = ['religion_group_head', 'religion_subgroup_head', 'classroom_leaders_admin', 'regrade_executive', 'executive']
   const posVal = checkedPositions.find(p => !_ARRAY_ONLY_POSITIONS.includes(p)) || null  // primary position (backward compat)
   const payload  = {
     teacher_code:      document.getElementById('modal-code').value.trim()      || null,
@@ -686,6 +686,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       { value: 'academic_samai',    label: 'หัวหน้าวิชาการสามัญ' },
       { value: 'academic_religion', label: 'หัวหน้าวิชาการศาสนา' },
       { value: 'academic_pvch',     label: 'หัวหน้าวิชาการปวช' },
+    ] },
+    { label: '🎖️ ผู้บริหาร', options: [
+      { value: 'executive', label: 'ผู้บริหาร (ภาพรวมทั้งระบบ — สภานักเรียน ฯลฯ)' },
     ] },
     { label: '📊 ระบบแก้ค้างเก่า', options: [
       { value: 'regrade_executive', label: 'ผู้บริหาร (ดูบอร์ดผู้บริหารแก้ค้างเก่า)' },

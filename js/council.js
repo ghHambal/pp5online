@@ -37,7 +37,7 @@ import {
   getCouncilDocuments, createDocument, updateDocumentDraft, submitDocument,
   decideAsAdvisor, decideAsDeptHead, decideAsDirector,
   getTeachersByPosition, addTeacherPosition, removeTeacherPosition,
-  getAdvisorPositions, setAdvisorPositions,
+  getAdvisorPositions, setAdvisorPositions, getAllAdvisorPositions,
   updateMySignature, updateMyPhoto,
   searchStudentsForCouncil, addCouncilMemberManual, updateCouncilMember, removeCouncilMember,
 } from './council-api.js'
@@ -145,6 +145,7 @@ let appsAdvisorEndorseFilter = '' // '' | 'yes' | 'no'
 let appsPeerEndorseFilter = '' // '' | 'yes' | 'no'
 let ivTeachers = null // null = ยังไม่โหลด — รายชื่อครูสำหรับเลือกเป็นกรรมการสัมภาษณ์ (ใช้ร่วมกับหน้ามอบสิทธิ์ด้วย)
 let councilAdvisors = null // null = ยังไม่โหลด — ทำเนียบครูที่ปรึกษาสภานักเรียน (หน้า "มอบสิทธิ์")
+let execAdvisorPositions = null // null = ยังไม่โหลด — [{teacher_id, position_id}] ทั้งหมด ใช้จับคู่ครูที่ปรึกษากับฝ่ายที่ดูแลในหน้า "ภาพรวม" ผู้บริหาร
 const candidatesByGender = {} // { M: [...], W: [...] }
 let candidateProfileOpen = null // { gender, id } — การ์ดผู้สมัครที่กำลังเปิดดูโปรไฟล์เต็ม (สเปคข้อ 8.11)
 let candidateEditMode = false // สลับเป็นฟอร์มแก้ไขโปรไฟล์ผู้สมัคร (เฉพาะแอดมิน/ครูที่ปรึกษาสภา)
@@ -289,9 +290,14 @@ async function init() {
     (teacher.position === 'student_affairs_head' || (teacher.positions ?? []).includes('student_affairs_head'))
   const isSchoolDirector = role === 'teacher' && !!teacher &&
     (teacher.position === 'school_director' || (teacher.positions ?? []).includes('school_director'))
+  // ผู้บริหาร — บทบาทใหม่ทั้งระบบ (คนละอันกับ "regrade_executive" ที่ผูกกับระบบแก้ค้างเก่า
+  // เท่านั้น) เห็นหน้า "ภาพรวม" (สรุปสภานักเรียนวาระปัจจุบัน+ใบสมัคร+รายนามครูที่ปรึกษา)
+  // แบบอ่านอย่างเดียว ไม่มีสิทธิ์แก้ไข/อนุมัติอะไรในระบบสภาเลย ตรวจแบบเดียวกับตำแหน่งอื่นๆ
+  const isExecutive = role === 'teacher' && !!teacher &&
+    (teacher.position === 'executive' || (teacher.positions ?? []).includes('executive'))
 
   ctx = {
-    role, isAdmin, isChair, isCouncilAdvisor, isStudentAffairsHead, isSchoolDirector,
+    role, isAdmin, isChair, isCouncilAdvisor, isStudentAffairsHead, isSchoolDirector, isExecutive,
     student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
   }
@@ -376,7 +382,9 @@ function getNavItems() {
   if (isTeacherStaff || ctx.isChair || ctx.isStudentAffairsHead || ctx.isSchoolDirector) {
     items.push({ id: 'docs', icon: '📄', label: 'เอกสารโครงการ', group: 'teacherWork' })
   }
-  // ระบบ — ตั้งค่า (Phase 2, สเปคข้อ 8.18) — ภาพรวมยังไม่ได้สร้าง
+  // ระบบ — ภาพรวมผู้บริหาร (สเปคข้อ 8.17) อ่านอย่างเดียว เห็นได้ทั้งแอดมินและผู้บริหาร
+  if (ctx.isAdmin || ctx.isExecutive) items.push({ id: 'dashboard', icon: '📊', label: 'ภาพรวม', group: 'system' })
+  // ตั้งค่า (Phase 2, สเปคข้อ 8.18)
   if (isTeacherStaff) items.push({ id: 'settings', icon: '⚙️', label: 'ตั้งค่า', group: 'system' })
   // มอบสิทธิ์ — เห็นเฉพาะแอดมิน (ตามสเปคข้อ 4 "เกือบทุกหน้าเหมือนแอดมิน ยกเว้นมอบสิทธิ์")
   if (ctx.isAdmin) items.push({ id: 'perms', icon: '🔑', label: 'มอบสิทธิ์', group: 'system' })
@@ -1477,6 +1485,145 @@ function renderAppDetailModalBody(a, student, { closeId, backdropId, isOwner = f
         </div>
       </div>
     </div>`
+}
+
+async function loadExecAdvisorPositions() {
+  execAdvisorPositions = await getAllAdvisorPositions().catch(() => [])
+  render()
+}
+
+// ─── ภาพรวมผู้บริหาร (สเปคข้อ 8.17) — เฉพาะแอดมิน/ผู้บริหาร อ่านอย่างเดียว ─────────────
+// สรุป 3 อย่างที่ผู้บริหารต้องเห็น: (1) สภาวาระปัจจุบัน (2) ใบสมัคร — สมัครแล้วกี่คน/
+// รับรองแล้วกี่คน/กดดูใบสมัครได้ (3) รายนามครูที่ปรึกษา — reuse ข้อมูล/ฟังก์ชันเดิมทั้งหมด
+// (adminApps, appPipelineStage, councilAdvisors, renderAdminAppDetailModal ฯลฯ) ไม่มี query
+// ใหม่นอกจาก getAllAdvisorPositions — ไม่มีปุ่มแก้ไข/นัดสัมภาษณ์/อนุมัติใดๆ ในหน้านี้ตามที่ตั้งใจ
+// (ต่างจากหน้า "ใบสมัคร" ของแอดมิน/ครูที่ปรึกษาสภาที่มีฟอร์มจัดการเต็มรูปแบบ)
+function renderExecDashboardView() {
+  if (!ctx.isAdmin && !ctx.isExecutive) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะแอดมินหรือผู้บริหารเท่านั้น</p>`
+  if (adminApps === null) { loadAdminApps(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (councilAdvisors === null) { loadPermsRosters(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (execAdvisorPositions === null) { loadExecAdvisorPositions(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+
+  // ── สภานักเรียนวาระปัจจุบัน ──
+  const termText = (() => {
+    const s = ctx.cfg.council_term_start_semester, sy = ctx.cfg.council_term_start_year
+    const e = ctx.cfg.council_term_end_semester, ey = ctx.cfg.council_term_end_year
+    if (!sy && !ey) return 'ยังไม่ได้ตั้งค่าวาระ'
+    return `ภาคเรียนที่ ${s ?? '—'}/${sy ?? '—'} ถึง ภาคเรียนที่ ${e ?? '—'}/${ey ?? '—'}`
+  })()
+  const activeMembers = ctx.members // getCouncilMembers() ตอน init กรอง status='active' มาแล้ว
+  const memberCountByGender = {
+    M: activeMembers.filter(m => m.council_positions?.gender === 'M').length,
+    W: activeMembers.filter(m => m.council_positions?.gender === 'W').length,
+  }
+  const leaders = activeMembers.filter(m => m.council_positions?.is_elected)
+    .sort((a, b) => (a.council_positions?.sort_order ?? 0) - (b.council_positions?.sort_order ?? 0))
+
+  // ── การสมัครสภานักเรียน ──
+  const total = adminApps.length
+  const stageCounts = { all: total }
+  adminApps.forEach(a => { const s = appPipelineStage(a); stageCounts[s] = (stageCounts[s] ?? 0) + 1 })
+  const homeroomEndorsedCount = adminApps.filter(a => a.endorsed_at).length
+  const peerEndorsedCount = adminApps.filter(a => a.peer_endorsed_at || applicantIsCurrentMember(a)).length
+  const candidateCount = adminApps.filter(a => a.status === 'candidate').length
+  const appointedCount = adminApps.filter(a => a.status === 'appointed').length
+
+  // ── รายนามครูที่ปรึกษา ──
+  const positionNameById = Object.fromEntries(ctx.positions.map(p => [p.id, p.position_name]))
+  const advisorRows = councilAdvisors.map(t => ({
+    ...t,
+    posNames: execAdvisorPositions.filter(r => r.teacher_id === t.id).map(r => positionNameById[r.position_id]).filter(Boolean),
+  }))
+
+  const statTile = (n, label, color) => `
+    <div class="rounded-xl bg-[var(--surface-2)] p-3 text-center">
+      <p class="text-xl font-extrabold" style="color:${color}">${esc(n)}</p>
+      <p class="text-[0.6875rem] text-[var(--muted-2)] mt-0.5">${esc(label)}</p>
+    </div>`
+
+  return `
+    <div class="max-w-4xl mx-auto space-y-5">
+      <div>
+        <h2 class="text-lg font-bold text-[var(--ink)] mb-0.5">📊 ภาพรวมผู้บริหาร</h2>
+        <p class="text-xs text-[var(--muted-2)]">สรุปสภานักเรียนวาระปัจจุบัน สำหรับผู้บริหาร — ดูอย่างเดียว ไม่มีสิทธิ์แก้ไข</p>
+      </div>
+
+      <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4">
+        <p class="text-sm font-bold text-[var(--ink)] mb-1">🏛️ สภานักเรียนวาระปัจจุบัน</p>
+        <p class="text-xs text-[var(--muted)] mb-3">${esc(termText)}</p>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-3">
+          ${statTile(activeMembers.length, 'สมาชิกสภาทั้งหมด', 'var(--ink)')}
+          ${statTile(memberCountByGender.M, 'สภาชาย', '#14563b')}
+          ${statTile(memberCountByGender.W, 'สภาหญิง', '#a3134f')}
+          ${statTile(leaders.length, 'ตำแหน่งผู้นำ', 'var(--primary)')}
+        </div>
+        ${leaders.length ? `
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          ${leaders.map(m => `
+            <div class="flex items-center gap-2.5 rounded-xl border border-[var(--line-soft)] p-2">
+              ${studentPhoto(m.students, 'w-9 h-11')}
+              <div class="min-w-0">
+                <p class="text-xs font-bold text-[var(--ink)] truncate">${esc(m.students?.full_name ?? '—')}</p>
+                <p class="text-[0.6875rem] text-[var(--muted)] truncate">${esc(m.council_positions?.position_name ?? '—')}</p>
+              </div>
+            </div>`).join('')}
+        </div>` : `<p class="text-xs text-[var(--muted-2)]">ยังไม่มีตำแหน่งผู้นำที่เลือกตั้งแล้ว</p>`}
+      </div>
+
+      <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4">
+        <p class="text-sm font-bold text-[var(--ink)] mb-3">📋 การสมัครสภานักเรียน</p>
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-3">
+          ${statTile(total, 'สมัครแล้วทั้งหมด', 'var(--ink)')}
+          ${statTile(homeroomEndorsedCount, 'ครูที่ปรึกษาสามัญรับรองแล้ว', 'var(--ok)')}
+          ${peerEndorsementRequired()
+            ? statTile(peerEndorsedCount, 'สภาปัจจุบันรับรองแล้ว', 'var(--ok)')
+            : statTile('—', 'สภาปัจจุบันรับรอง (ปิดใช้งาน)', 'var(--muted-2)')}
+          ${statTile(candidateCount, 'ว่าที่สภานักเรียน (ผู้สมัครเลือกตั้ง)', 'var(--primary)')}
+          ${statTile(appointedCount, 'แต่งตั้งแล้ว', 'var(--teal)')}
+        </div>
+        <div class="flex gap-2 mb-3 overflow-x-auto pb-1">
+          ${APPS_FILTERS.map(f => `
+            <span class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-[var(--surface-2)] text-[var(--ink-2)]">
+              ${esc(f.label)} <span class="text-[var(--muted-2)]">${stageCounts[f.id] ?? 0}</span>
+            </span>`).join('')}
+        </div>
+        <p class="text-xs text-[var(--muted-2)] mb-2">รายชื่อล่าสุด — กดดูใบสมัครฉบับเต็มได้</p>
+        <div class="space-y-1.5 max-h-96 overflow-y-auto">
+          ${adminApps.slice(0, 30).map(a => {
+            const [label, cls] = PIPELINE_STATUS_BADGE[a.status] ?? ['—', 'bg-[var(--bg-2)] text-[var(--muted)]']
+            const homeroomMark = a.endorsed_at ? '✅' : '⬜'
+            const peerMark = peerEndorsementRequired() ? ((a.peer_endorsed_at || applicantIsCurrentMember(a)) ? ' · ✅สภา' : ' · ⬜สภา') : ''
+            return `
+            <div class="flex items-center gap-2.5 rounded-xl border border-[var(--line-soft)] p-2">
+              ${studentPhoto(a.students, 'w-8 h-10')}
+              <div class="min-w-0 flex-1">
+                <p class="text-xs font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p>
+                <p class="text-[0.6875rem] text-[var(--muted)] truncate">${esc(a.council_positions?.position_name ?? '—')} · ${homeroomMark}ครู${peerMark}</p>
+              </div>
+              <span class="flex-shrink-0 text-[0.625rem] font-bold px-2 py-0.5 rounded-full ${cls}">${esc(label)}</span>
+              <button type="button" class="btn-view-app-detail flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-lg border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${a.id}">ดู</button>
+            </div>`
+          }).join('') || `<p class="text-xs text-[var(--muted-2)] text-center py-6">ยังไม่มีใบสมัคร</p>`}
+        </div>
+        ${adminApps.length > 30 ? `<p class="text-[0.6875rem] text-[var(--muted-2)] mt-2 text-center">แสดง 30 รายการล่าสุดจากทั้งหมด ${adminApps.length} รายการ</p>` : ''}
+      </div>
+
+      <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4">
+        <p class="text-sm font-bold text-[var(--ink)] mb-3">👨‍🏫 รายนามครูที่ปรึกษาสภานักเรียน</p>
+        ${advisorRows.length ? `
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          ${advisorRows.map(t => `
+            <div class="flex items-center gap-2.5 rounded-xl border border-[var(--line-soft)] p-2.5">
+              <div class="w-9 h-9 rounded-full bg-[var(--surface-2)] flex-shrink-0 overflow-hidden flex items-center justify-center text-[var(--muted-2)]">${t.image_url ? `<img src="${esc(t.image_url)}" class="w-full h-full object-cover" />` : '👤'}</div>
+              <div class="min-w-0">
+                <p class="text-xs font-bold text-[var(--ink)] truncate">${esc(t.full_name)}</p>
+                <p class="text-[0.6875rem] text-[var(--muted)] truncate">${t.posNames.length ? esc(t.posNames.join(', ')) : 'ยังไม่ได้กำหนดฝ่ายที่ดูแล'}</p>
+              </div>
+            </div>`).join('')}
+        </div>` : `<p class="text-xs text-[var(--muted-2)]">ยังไม่มีครูที่ปรึกษาสภานักเรียน</p>`}
+      </div>
+    </div>
+    ${renderAdminAppDetailModal()}`
 }
 
 function renderApplicationsAdminView() {
@@ -3735,6 +3882,7 @@ const VIEW_RENDERERS = {
   peerEndorse: renderPeerEndorseView,
   perms: renderPermsView,
   myCouncilProfile: renderMyCouncilProfileView,
+  dashboard: renderExecDashboardView,
 }
 
 // เนื้อหาในแต่ละ subtab ของโฟลว์เต็มจอ ("สมัคร"/"เลือกตั้ง") — คนละชุดกับ VIEW_RENDERERS

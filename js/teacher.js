@@ -643,13 +643,17 @@ async function _applyRoleMenus() {
     el.classList.toggle('flex', show)
   }
   const hasAdvisorRoom = _homeroomRooms.length > 0
+  const teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
+  // ผู้บริหาร (บทบาทใหม่ทั้งระบบ) — เห็นเมนู "สภานักเรียน" เสมอแม้ปิด council_visible_to_all
+  // ไว้สำหรับครูทั่วไป เพราะต้องเข้าไปดูหน้า "ภาพรวม" ในนั้น (สิทธิ์จริงคุมที่ ctx.isExecutive ใน council.js)
+  const isExecutive = teacherPositions.includes('executive') || _isAlsoAdmin
 
   toggle('menu-life-skill', hasLifeSkill)
   toggle('menu-reading',    hasReading)
   toggle('menu-prayer',     hasPrayer)
   toggle('menu-advisor-students', hasAdvisorRoom)
-  // ปิดการแสดงผลได้จากหน้าตั้งค่าแอดมิน (council_visible_to_all) — ปิดแล้วเห็นเฉพาะครูที่ is_also_admin
-  toggle('menu-council', cfg.council_visible_to_all !== 'false' || _isAlsoAdmin)
+  // ปิดการแสดงผลได้จากหน้าตั้งค่าแอดมิน (council_visible_to_all) — ปิดแล้วเห็นเฉพาะครูที่ is_also_admin/ผู้บริหาร
+  toggle('menu-council', cfg.council_visible_to_all !== 'false' || _isAlsoAdmin || isExecutive)
 
   const campAccess = campAccessRes?.data
   toggle('menu-terangganu', campAccess?.is_manager === true || campAccess?.teacher_participant === true)
@@ -658,7 +662,6 @@ async function _applyRoleMenus() {
   const sportsMemberships = sportsMembershipsRes?.data || []
   toggle('menu-my-team', sportsMemberships.length > 0)
 
-  const teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
   const isSportsManager = _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
   const canViewSportsShirtSummary = isSportsManager || sportsMemberships.some(m => m.role === 'lead_teacher' || m.permissions?.shirt_summary === true)
   toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
