@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.577'
+import { APP_VERSION } from './version.js?v=10.22.578'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -742,6 +742,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.578': [
+    '👩‍🏫 ตารางรายชื่อกลางของระบบเกียรติบัตรรองรับทั้งนักเรียนและคุณครู เลือกประเภทผู้รับต่อหนึ่งตาราง กรอกรหัสแล้วเติมชื่ออัตโนมัติ และออกหลายใบพร้อมกันได้',
+  ],
   '10.22.577': [
     '🎚️ ตัวแก้ไขเกียรติบัตรเปลี่ยนค่าตัวเลขเป็น Slider พร้อมแสดงค่าปัจจุบัน และซ่อนรายละเอียดเงา สโตรก และการตัดบรรทัดจนกว่าจะเปิดใช้งาน',
   ],

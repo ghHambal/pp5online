@@ -1,7 +1,7 @@
 // ตารางรายชื่อกลางสำหรับออกเกียรติบัตรแบบหลายรายชื่อ
 import {
   getCertificateRecipientTables, createCertificateRecipientTable, updateCertificateRecipientTable,
-  deleteCertificateRecipientTable, getStudentByCodeForCertificateIssuance,
+  deleteCertificateRecipientTable, getStudentByCodeForCertificateIssuance, getTeacherByCodeForCertificateIssuance,
   issueCertificatesBatch, updateCertificateTemplateLayout,
 } from './certificates-api.js'
 import { openCertificateLayoutEditor } from './certificate-editor.js'
@@ -9,11 +9,21 @@ import { showToast, showDangerConfirm } from './ui.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const clone = value => JSON.parse(JSON.stringify(value))
-const defaultColumns = [
-  { key: 'student_code', label: 'รหัสนักเรียน', system: true, removable: false },
-  { key: 'name', label: 'ชื่อ-สกุลนักเรียน', system: true, removable: false },
-]
-const newRow = () => ({ id: `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, student_id: null, selected: true, lookup_status: 'idle', values: { student_code: '', name: '' } })
+const recipientConfig = {
+  student: { label: 'นักเรียน', codeKey: 'student_code', codeLabel: 'รหัสนักเรียน', nameLabel: 'ชื่อ-สกุลนักเรียน' },
+  teacher: { label: 'คุณครู', codeKey: 'teacher_code', codeLabel: 'รหัสครู', nameLabel: 'ชื่อ-สกุลคุณครู' },
+}
+const defaultColumnsFor = type => {
+  const config = recipientConfig[type] ?? recipientConfig.student
+  return [
+    { key: config.codeKey, label: config.codeLabel, system: true, removable: false },
+    { key: 'name', label: config.nameLabel, system: true, removable: false },
+  ]
+}
+const newRow = type => {
+  const codeKey = (recipientConfig[type] ?? recipientConfig.student).codeKey
+  return { id: `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`, student_id: null, teacher_id: null, selected: true, lookup_status: 'idle', values: { [codeKey]: '', name: '' } }
+}
 const safeKey = value => String(value ?? '').trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40)
 
 function fullThaiPrefix(value) {
@@ -28,12 +38,14 @@ function fullThaiPrefix(value) {
 
 function hydrateTable(table) {
   const next = clone(table)
-  next.columns = next.columns?.length ? next.columns : clone(defaultColumns)
-  next.rows = (next.rows?.length ? next.rows : [newRow()]).map(row => ({
+  next.recipient_type = next.recipient_type === 'teacher' || next.columns?.some(column => column.key === 'teacher_code') ? 'teacher' : 'student'
+  const config = recipientConfig[next.recipient_type]
+  next.columns = next.columns?.length ? next.columns : defaultColumnsFor(next.recipient_type)
+  next.rows = (next.rows?.length ? next.rows : [newRow(next.recipient_type)]).map(row => ({
     selected: true,
-    lookup_status: row.student_id ? 'found' : 'idle',
+    lookup_status: (next.recipient_type === 'teacher' ? row.teacher_id : row.student_id) ? 'found' : 'idle',
     ...row,
-    values: { student_code: '', name: '', ...(row.values ?? {}) },
+    values: { [config.codeKey]: '', name: '', ...(row.values ?? {}) },
   }))
   return next
 }
@@ -51,7 +63,7 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
   if (panel.dataset.certMode !== 'table') return
   if (!templates?.length) { panel.innerHTML = `<p class="text-sm text-gray-400 text-center py-12">กรุณาสร้างเทมเพลตก่อน</p>`; return }
 
-  const makeDraft = () => hydrateTable({ id: null, name: `ตารางรายชื่อ ${new Date().toLocaleDateString('th-TH')}`, title: '', template_id: templates[0].id, columns: defaultColumns, rows: [newRow()] })
+  const makeDraft = (type = 'student') => hydrateTable({ id: null, recipient_type: type, name: `ตารางรายชื่อ${recipientConfig[type].label} ${new Date().toLocaleDateString('th-TH')}`, title: '', template_id: templates[0].id, columns: defaultColumnsFor(type), rows: [newRow(type)] })
   let current = savedTables[0] ? hydrateTable(savedTables[0]) : makeDraft()
 
   panel.innerHTML = `
@@ -67,6 +79,13 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
           <label class="text-xs font-bold text-gray-500">เทมเพลต<select id="crt-template" class="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">${templates.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></label>
           <label class="text-xs font-bold text-gray-500">ชื่อรายการในประวัติ<input id="crt-title" placeholder="เช่น รางวัลคนดีศรีอาซิซ" class="mt-1 w-full border border-gray-300 rounded-xl px-3 py-2 text-sm" /></label>
         </div>
+        <div>
+          <p class="text-[10px] font-bold text-gray-400 mb-1.5">ประเภทผู้รับในตารางนี้</p>
+          <div class="inline-flex gap-1.5 rounded-xl bg-gray-100 p-1">
+            <button id="crt-type-student" type="button" class="crt-recipient-type px-4 py-2 rounded-lg text-xs font-bold" data-type="student">🎓 นักเรียน</button>
+            <button id="crt-type-teacher" type="button" class="crt-recipient-type px-4 py-2 rounded-lg text-xs font-bold" data-type="teacher">👩‍🏫 คุณครู</button>
+          </div>
+        </div>
         <div class="flex flex-wrap gap-2">
           <button id="crt-save" type="button" class="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold">💾 บันทึกตาราง</button>
           <button id="crt-link" type="button" class="px-4 py-2 rounded-xl bg-violet-600 text-white text-xs font-bold">🔗 ออกแบบ / ผูกคอลัมน์กับเทมเพลต</button>
@@ -74,7 +93,7 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
       </div>
       <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
         <div class="p-3 border-b flex items-center gap-2 flex-wrap">
-          <div class="mr-auto"><p class="text-sm font-bold text-gray-800">📊 ตารางผู้รับ</p><p class="text-[10px] text-gray-400">กรอกรหัสแล้วออกจากช่อง ระบบจะเติมชื่อแบบเต็มอัตโนมัติ</p></div>
+          <div class="mr-auto"><p id="crt-grid-title" class="text-sm font-bold text-gray-800">📊 ตารางผู้รับ</p><p id="crt-grid-help" class="text-[10px] text-gray-400">กรอกรหัสแล้วออกจากช่อง ระบบจะเติมชื่อแบบเต็มอัตโนมัติ</p></div>
           <button id="crt-add-row" type="button" class="px-3 py-2 rounded-lg bg-gray-100 text-gray-700 text-xs font-bold">➕ เพิ่มแถว</button>
         </div>
         <div class="px-3 py-2 bg-indigo-50 border-b border-indigo-100 flex items-end gap-2 flex-wrap">
@@ -104,16 +123,25 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
     nameInput.value = current.name ?? ''; templateSelect.value = String(current.template_id ?? templates[0].id); titleInput.value = current.title ?? ''
     panel.querySelector('#crt-delete').disabled = !current.id
     panel.querySelector('#crt-delete').classList.toggle('opacity-40', !current.id)
+    panel.querySelectorAll('.crt-recipient-type').forEach(button => {
+      const active = button.dataset.type === current.recipient_type
+      button.className = `crt-recipient-type px-4 py-2 rounded-lg text-xs font-bold ${active ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500 hover:bg-white'}`
+    })
+    const config = recipientConfig[current.recipient_type]
+    panel.querySelector('#crt-grid-title').textContent = `📊 ตารางผู้รับ: ${config.label}`
+    panel.querySelector('#crt-grid-help').textContent = `กรอก${config.codeLabel}แล้วออกจากช่อง ระบบจะเติม${config.nameLabel}อัตโนมัติ`
   }
   function renderGrid() {
+    const config = recipientConfig[current.recipient_type]
+    const recipientId = row => current.recipient_type === 'teacher' ? row.teacher_id : row.student_id
     grid.innerHTML = `<table class="min-w-full text-xs border-collapse"><thead><tr class="bg-gray-50 text-gray-600">
       <th class="p-2 border-b"><input id="crt-all" type="checkbox" ${current.rows.every(r => r.selected !== false) ? 'checked' : ''}></th><th class="p-2 border-b">#</th>
       ${current.columns.map(column => `<th class="p-2 border-b text-left min-w-[170px]"><div class="flex gap-1"><span>${esc(column.label)}</span>${column.removable === false ? '' : `<button data-key="${esc(column.key)}" class="crt-remove-col ml-auto text-red-400">×</button>`}</div><code class="text-[9px] text-indigo-500">{{${esc(column.key)}}}</code></th>`).join('')}<th class="p-2 border-b"></th></tr></thead>
       <tbody>${current.rows.map((row, index) => `<tr class="${row.lookup_status === 'missing' ? 'bg-red-50' : 'bg-white'}"><td class="p-2 border-b text-center"><input type="checkbox" class="crt-row-check" data-row="${row.id}" ${row.selected !== false ? 'checked' : ''}></td><td class="p-2 border-b text-gray-400">${index + 1}</td>
-        ${current.columns.map(column => column.key === 'student_code'
-          ? `<td class="p-2 border-b"><input class="crt-cell w-full border ${row.lookup_status === 'missing' ? 'border-red-400' : 'border-gray-300'} rounded-lg px-2.5 py-2 font-mono" data-row="${row.id}" data-key="student_code" value="${esc(row.values.student_code)}" placeholder="กรอกรหัส">${row.lookup_status === 'loading' ? '<p class="text-[9px] text-indigo-500 mt-1">กำลังค้นหา...</p>' : row.lookup_status === 'missing' ? '<p class="text-[9px] text-red-500 mt-1">ไม่พบรหัสนี้</p>' : ''}</td>`
+        ${current.columns.map(column => column.key === config.codeKey
+          ? `<td class="p-2 border-b"><input class="crt-cell w-full border ${row.lookup_status === 'missing' ? 'border-red-400' : 'border-gray-300'} rounded-lg px-2.5 py-2 font-mono" data-row="${row.id}" data-key="${config.codeKey}" value="${esc(row.values[config.codeKey])}" placeholder="กรอก${config.codeLabel}">${row.lookup_status === 'loading' ? '<p class="text-[9px] text-indigo-500 mt-1">กำลังค้นหา...</p>' : row.lookup_status === 'missing' ? `<p class="text-[9px] text-red-500 mt-1">ไม่พบ${config.codeLabel}</p>` : ''}</td>`
           : column.key === 'name'
-            ? `<td class="p-2 border-b"><div class="min-h-[36px] rounded-lg border bg-gray-50 px-2.5 py-2 font-bold ${row.student_id ? 'text-gray-800' : 'text-gray-400'}">${esc(row.values.name || 'รอกรอกรหัส')}</div></td>`
+            ? `<td class="p-2 border-b"><div class="min-h-[36px] rounded-lg border bg-gray-50 px-2.5 py-2 font-bold ${recipientId(row) ? 'text-gray-800' : 'text-gray-400'}">${esc(row.values.name || `รอกรอก${config.codeLabel}`)}</div></td>`
             : `<td class="p-2 border-b"><input class="crt-cell w-full border border-gray-300 rounded-lg px-2.5 py-2" data-row="${row.id}" data-key="${esc(column.key)}" value="${esc(row.values[column.key] ?? '')}"></td>`).join('')}
         <td class="p-2 border-b"><button class="crt-remove-row text-red-400" data-row="${row.id}">🗑️</button></td></tr>`).join('')}</tbody></table>`
     grid.querySelector('#crt-all').addEventListener('change', e => { current.rows.forEach(r => { r.selected = e.target.checked }); renderGrid() })
@@ -121,25 +149,35 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
     grid.querySelectorAll('.crt-cell').forEach(input => {
       input.addEventListener('input', () => {
         const row = current.rows.find(r => r.id === input.dataset.row); row.values[input.dataset.key] = input.value
-        if (input.dataset.key === 'student_code') { row.student_id = null; row.values.name = ''; row.lookup_status = 'idle' }
+        if (input.dataset.key === config.codeKey) { row.student_id = null; row.teacher_id = null; row.values.name = ''; row.lookup_status = 'idle' }
       })
-      if (input.dataset.key === 'student_code') input.addEventListener('change', () => lookup(input.dataset.row))
+      if (input.dataset.key === config.codeKey) input.addEventListener('change', () => lookup(input.dataset.row))
     })
-    grid.querySelectorAll('.crt-remove-row').forEach(button => button.addEventListener('click', () => { current.rows = current.rows.filter(r => r.id !== button.dataset.row); if (!current.rows.length) current.rows.push(newRow()); renderGrid() }))
+    grid.querySelectorAll('.crt-remove-row').forEach(button => button.addEventListener('click', () => { current.rows = current.rows.filter(r => r.id !== button.dataset.row); if (!current.rows.length) current.rows.push(newRow(current.recipient_type)); renderGrid() }))
     grid.querySelectorAll('.crt-remove-col').forEach(button => button.addEventListener('click', () => { current.columns = current.columns.filter(c => c.key !== button.dataset.key); current.rows.forEach(r => { delete r.values[button.dataset.key] }); renderGrid() }))
     updateIssueLabel()
   }
   function updateIssueLabel() { issueButton.textContent = `🏅 ออกเกียรติบัตรแถวที่เลือก (${current.rows.filter(r => r.selected !== false).length})` }
   async function lookup(rowId) {
-    const row = current.rows.find(r => r.id === rowId); const code = row.values.student_code.trim()
-    if (!code) { row.student_id = null; row.values.name = ''; row.lookup_status = 'idle'; renderGrid(); return }
+    const config = recipientConfig[current.recipient_type]
+    const row = current.rows.find(r => r.id === rowId); const code = String(row.values[config.codeKey] ?? '').trim()
+    if (!code) { row.student_id = null; row.teacher_id = null; row.values.name = ''; row.lookup_status = 'idle'; renderGrid(); return }
     row.lookup_status = 'loading'; renderGrid()
     try {
-      const student = await getStudentByCodeForCertificateIssuance(code)
-      if (String(row.values.student_code).trim() !== code) return
-      if (!student) { row.student_id = null; row.values.name = ''; row.lookup_status = 'missing' }
-      else { row.student_id = student.id; row.values.student_code = student.student_code; row.values.name = fullThaiPrefix(student.full_name); row.values.main_room = student.main_room ?? ''; row.lookup_status = 'found' }
-    } catch (error) { row.student_id = null; row.values.name = ''; row.lookup_status = 'missing'; showToast('ค้นหาไม่สำเร็จ: ' + error.message, 'error') }
+      const recipient = current.recipient_type === 'teacher'
+        ? await getTeacherByCodeForCertificateIssuance(code)
+        : await getStudentByCodeForCertificateIssuance(code)
+      if (String(row.values[config.codeKey] ?? '').trim() !== code) return
+      if (!recipient) { row.student_id = null; row.teacher_id = null; row.values.name = ''; row.lookup_status = 'missing' }
+      else {
+        row.student_id = current.recipient_type === 'student' ? recipient.id : null
+        row.teacher_id = current.recipient_type === 'teacher' ? recipient.id : null
+        row.values[config.codeKey] = recipient[config.codeKey]
+        row.values.name = fullThaiPrefix(recipient.full_name)
+        if (current.recipient_type === 'student') row.values.main_room = recipient.main_room ?? ''
+        row.lookup_status = 'found'
+      }
+    } catch (error) { row.student_id = null; row.teacher_id = null; row.values.name = ''; row.lookup_status = 'missing'; showToast('ค้นหาไม่สำเร็จ: ' + error.message, 'error') }
     renderGrid()
   }
   function syncMeta() { current.name = nameInput.value.trim(); current.template_id = Number(templateSelect.value) || null; current.title = titleInput.value.trim() }
@@ -147,8 +185,8 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
     syncMeta(); if (!current.name) { showToast('กรุณาตั้งชื่อตาราง', 'warning'); return null }
     saveButton.disabled = true
     try {
-      const persistedRows = current.rows.map(row => ({ id: row.id, student_id: row.student_id ?? null, values: row.values ?? {} }))
-      const args = { id: current.id, name: current.name, templateId: current.template_id, title: current.title, columns: current.columns, rows: persistedRows, createdByTeacherId: teacher.id }
+      const persistedRows = current.rows.map(row => ({ id: row.id, student_id: row.student_id ?? null, teacher_id: row.teacher_id ?? null, values: row.values ?? {} }))
+      const args = { id: current.id, name: current.name, recipientType: current.recipient_type, templateId: current.template_id, title: current.title, columns: current.columns, rows: persistedRows, createdByTeacherId: teacher.id }
       const result = current.id ? await updateCertificateRecipientTable(args) : await createCertificateRecipientTable(args)
       current = hydrateTable(result); savedTables = await getCertificateRecipientTables(teacher.id); renderOptions(); renderMeta(); renderGrid()
       if (!quiet) showToast('บันทึกตารางแล้ว ✅', 'success')
@@ -160,7 +198,17 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
   renderOptions(); renderMeta(); renderGrid()
   select.addEventListener('change', () => { const found = savedTables.find(t => t.id === Number(select.value)); current = found ? hydrateTable(found) : makeDraft(); renderMeta(); renderGrid() })
   panel.querySelector('#crt-new').addEventListener('click', () => { current = makeDraft(); renderOptions(); renderMeta(); renderGrid() })
-  panel.querySelector('#crt-add-row').addEventListener('click', () => { current.rows.push(newRow()); renderGrid() })
+  panel.querySelectorAll('.crt-recipient-type').forEach(button => button.addEventListener('click', () => {
+    const nextType = button.dataset.type
+    if (nextType === current.recipient_type) return
+    const customColumns = current.columns.filter(column => !column.system)
+    current.recipient_type = nextType
+    current.columns = [...defaultColumnsFor(nextType), ...customColumns]
+    current.rows = current.rows.map(row => ({ ...newRow(nextType), id: row.id, selected: row.selected, values: { ...Object.fromEntries(customColumns.map(column => [column.key, row.values?.[column.key] ?? ''])), [(recipientConfig[nextType]).codeKey]: '', name: '' } }))
+    renderMeta(); renderGrid()
+    showToast(`เปลี่ยนเป็นตาราง${recipientConfig[nextType].label}แล้ว กรุณากรอกรหัสใหม่`, 'info')
+  }))
+  panel.querySelector('#crt-add-row').addEventListener('click', () => { current.rows.push(newRow(current.recipient_type)); renderGrid() })
   panel.querySelector('#crt-add-column').addEventListener('click', () => {
     const labelInput = panel.querySelector('#crt-col-label'); const keyInput = panel.querySelector('#crt-col-key'); const label = labelInput.value.trim()
     let key = safeKey(keyInput.value) || `field_${current.columns.filter(c => !c.system).length + 1}`
@@ -177,7 +225,7 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
   panel.querySelector('#crt-link').addEventListener('click', () => {
     syncMeta(); const template = templates.find(t => t.id === current.template_id)
     if (!template) { showToast('กรุณาเลือกเทมเพลต', 'warning'); return }
-    const sample = current.rows.find(r => r.student_id)?.values ?? {}
+    const sample = current.rows.find(r => current.recipient_type === 'teacher' ? r.teacher_id : r.student_id)?.values ?? {}
     openCertificateLayoutEditor({ template, previewVariables: sample, placeholderTokens: tokensFor(current.columns), onSave: async (layout, backgroundImageUrl) => {
       await updateCertificateTemplateLayout({ id: template.id, layout, backgroundImageUrl }); template.layout = layout; if (backgroundImageUrl) template.background_image_url = backgroundImageUrl; showToast('บันทึกดีไซน์และการผูกคอลัมน์แล้ว ✅', 'success')
     } })
@@ -185,13 +233,18 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
   issueButton.addEventListener('click', async () => {
     syncMeta(); const rows = current.rows.filter(r => r.selected !== false)
     if (!rows.length) { showToast('กรุณาเลือกอย่างน้อย 1 แถว', 'warning'); return }
-    const invalid = rows.filter(r => !r.student_id || !r.values.name)
-    if (invalid.length) { showToast(`มี ${invalid.length} แถวที่ยังไม่พบข้อมูลนักเรียน`, 'warning'); return }
+    const invalid = rows.filter(r => !(current.recipient_type === 'teacher' ? r.teacher_id : r.student_id) || !r.values.name)
+    if (invalid.length) { showToast(`มี ${invalid.length} แถวที่ยังไม่พบข้อมูล${recipientConfig[current.recipient_type].label}`, 'warning'); return }
     issueButton.disabled = true
     try {
       if (!await save(true)) return
-      const recipients = rows.map(r => ({ studentId: r.student_id, recipientName: fullThaiPrefix(r.values.name), variables: { ...r.values, name: fullThaiPrefix(r.values.name) } }))
-      const result = await issueCertificatesBatch({ templateId: current.template_id, recipients, title: current.title, issuedByTeacherId: teacher.id })
+      const recipients = rows.map(r => ({
+        studentId: current.recipient_type === 'student' ? r.student_id : null,
+        teacherId: current.recipient_type === 'teacher' ? r.teacher_id : null,
+        recipientName: fullThaiPrefix(r.values.name),
+        variables: { ...r.values, name: fullThaiPrefix(r.values.name) },
+      }))
+      const result = await issueCertificatesBatch({ templateId: current.template_id, recipientType: current.recipient_type, recipients, title: current.title, issuedByTeacherId: teacher.id })
       showToast(`ออกเกียรติบัตรสำเร็จ ${result.length} ใบ ✅`, 'success')
     } catch (error) { showToast('ออกเกียรติบัตรไม่สำเร็จ: ' + error.message, 'error') }
     finally { issueButton.disabled = false; updateIssueLabel() }

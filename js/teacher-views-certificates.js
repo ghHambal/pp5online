@@ -20,15 +20,11 @@ let _templates = null
 let _issuedHistory = null
 let _recipientTables = null
 
-const DEFAULT_RECIPIENT_COLUMNS = [
-  { key: 'student_code', label: 'รหัสนักเรียน', system: true, removable: false },
-  { key: 'name', label: 'ชื่อ-สกุลนักเรียน', system: true, removable: false },
-]
-
 function _templateColumnTokens(columns = null) {
   const sourceColumns = columns ?? (_recipientTables ?? []).flatMap(table => table.columns ?? [])
   const tokens = new Map([
     ['{{student_code}}', { token: '{{student_code}}', label: 'รหัสนักเรียน' }],
+    ['{{teacher_code}}', { token: '{{teacher_code}}', label: 'รหัสครู' }],
     ['{{reason}}', { token: '{{reason}}', label: 'เหตุผล/รายละเอียด' }],
   ])
   sourceColumns.forEach(column => {
@@ -220,7 +216,7 @@ function _renderIssueTab(teacher) {
   panel.innerHTML = `
     <div class="space-y-3">
       <div class="inline-flex gap-1.5 p-1 bg-gray-100 rounded-xl">
-        <button type="button" id="cert-issue-mode-table" class="px-3 py-2 rounded-lg text-xs font-bold bg-white text-indigo-600 shadow-sm">📊 ตารางรายชื่อนักเรียน</button>
+        <button type="button" id="cert-issue-mode-table" class="px-3 py-2 rounded-lg text-xs font-bold bg-white text-indigo-600 shadow-sm">📊 ตารางรายชื่อผู้รับ</button>
         <button type="button" id="cert-issue-mode-quick" class="px-3 py-2 rounded-lg text-xs font-bold text-gray-500">⚡ ค้นหาด่วน / ออกให้ครู</button>
       </div>
       <div id="cert-issue-mode-panel"></div>
