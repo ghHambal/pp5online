@@ -13,6 +13,7 @@ import {
   previewRegradeCsvRows, importRegradeSubjectsCsv,
   getUnassignedRegradeSubjects, assignSubjectTeacherBulk, getRegradeDistinctClassLevels,
   getDepartmentById,
+  getClassroomSummary, getClassroomStudents, getStudentSubjectsForExec, getTopStudentsNeedingAttention,
 } from './regrade-api.js'
 
 // ตัวหน้ารหัสวิชา -> กลุ่มสาระ (เฉพาะฝั่งสามัญ) — ตรวจสอบแล้วว่าตรง 1:1 กับข้อมูลค้างเก่าจริง
@@ -850,13 +851,41 @@ async function renderGradeTable() {
 // ============================================================================
 // บอร์ดผู้บริหาร
 // ============================================================================
-const dashboard = { categoryTab: 'all', drilldown: null }
+const dashboard = {
+  categoryTab: 'all', drilldown: null,
+  view: 'overview',
+  classLevels: null,
+  attnLevelKey: '', attnRoom: '', attnRooms: [],
+  browseCategory: 'สามัญ', browseLevel: '', browseRoomsCache: [],
+  expandedRooms: new Set(), roomStudents: {},
+  expandedStudents: new Set(), studentSubjects: {},
+}
 
 const sumCnt = (list) => list.reduce((s, r) => s + Number(r.cnt), 0)
+
+async function ensureClassLevels() {
+  if (!dashboard.classLevels) dashboard.classLevels = await getRegradeDistinctClassLevels()
+  return dashboard.classLevels
+}
 
 async function renderDashboard() {
   setHeaderTitle('ผู้บริหาร', 'ภาพรวมทั้งโรงเรียน — บอร์ดผู้บริหาร')
   const content = document.getElementById('regrade-content')
+  content.innerHTML = `
+    <div class="max-w-4xl mx-auto p-4">
+      <div class="flex gap-2 mb-4">
+        <button data-dview="overview" style="${tab(dashboard.view === 'overview')}">📊 ภาพรวม</button>
+        <button data-dview="students" style="${tab(dashboard.view === 'students')}">🎓 รายชื่อนักเรียน</button>
+      </div>
+      <div id="regrade-dashboard-body"></div>
+    </div>`
+  content.querySelectorAll('[data-dview]').forEach(btn => btn.addEventListener('click', () => { dashboard.view = btn.dataset.dview; renderDashboard() }))
+  const body = document.getElementById('regrade-dashboard-body')
+  if (dashboard.view === 'students') await renderDashboardStudentBrowse(body)
+  else await renderDashboardOverview(body)
+}
+
+async function renderDashboardOverview(content) {
   let rows
   try { rows = await getAllRegradeSubjectsForDashboard() } catch (err) {
     content.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${escHtml(err.message)}</div>`
@@ -883,8 +912,16 @@ async function renderDashboard() {
   const genTotal = sumCnt(rows.filter(r => r.category === 'สามัญ'))
   const relTotal = sumCnt(rows.filter(r => r.category === 'ศาสนา'))
 
+  let classLevels
+  try { classLevels = await ensureClassLevels() } catch { classLevels = [] }
+  const attnLevelOptHtml = () => `<option value="">ทุกระดับชั้น</option>` +
+    ['สามัญ', 'ศาสนา'].map(cat => {
+      const levels = classLevels.filter(l => l.category === cat)
+      if (!levels.length) return ''
+      return `<optgroup label="${cat}">${levels.map(l => `<option value="${cat}|${escHtml(l.class_level)}" ${dashboard.attnLevelKey === `${cat}|${l.class_level}` ? 'selected' : ''}>${escHtml(l.class_level)}</option>`).join('')}</optgroup>`
+    }).join('')
+
   content.innerHTML = `
-    <div class="max-w-4xl mx-auto p-4">
       <div class="flex gap-2 mb-4 flex-wrap">
         <button data-dcat="all" style="${tab(dashboard.categoryTab === 'all')}">📊 ทั้งหมด (${rows.length})</button>
         <button data-dcat="สามัญ" style="${tab(dashboard.categoryTab === 'สามัญ')}">📘 สามัญ (${genTotal})</button>
@@ -897,7 +934,7 @@ async function renderDashboard() {
         <button data-drill="done" class="rg-card p-4 text-center">${statNum(done, 'ปรับแก้สำเร็จ', 'var(--ok)')}</button>
       </div>
       <div id="regrade-drilldown"></div>
-      <div class="rg-card p-4">
+      <div class="rg-card p-4 mb-4">
         <p class="text-xs font-bold text-[var(--ink-2)] mb-1">ความคืบหน้าแยกรายครูผู้สอน</p>
         <p class="text-[10px] text-[var(--muted-2)] mb-3">เรียงจากครูที่มีคำร้องรอตอบรับมากที่สุดก่อน</p>
         <div class="overflow-x-auto"><table class="w-full text-xs">
@@ -911,14 +948,271 @@ async function renderDashboard() {
           </tr>`).join('')}</tbody>
         </table></div>
       </div>
-    </div>`
+      <div class="rg-card p-4">
+        <p class="text-xs font-bold text-[var(--ink-2)] mb-1">นักเรียนที่จำเป็นต้องติดตาม</p>
+        <p class="text-[10px] text-[var(--muted-2)] mb-3">เรียงจากคนที่มีรายวิชาค้างมากที่สุดก่อน (สูงสุด 20 คน)</p>
+        <div class="flex gap-2 mb-3 flex-wrap">
+          <select id="regrade-attn-level" class="px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">${attnLevelOptHtml()}</select>
+          <select id="regrade-attn-room" class="px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]" ${dashboard.attnLevelKey ? '' : 'disabled'}>
+            <option value="">ทุกห้อง</option>
+            ${dashboard.attnRooms.map(r => `<option value="${escHtml(r)}" ${dashboard.attnRoom === r ? 'selected' : ''}>${escHtml(r)}</option>`).join('')}
+          </select>
+        </div>
+        <div id="regrade-attn-list" class="overflow-x-auto"></div>
+      </div>`
 
   content.querySelectorAll('[data-dcat]').forEach(btn => btn.addEventListener('click', () => { dashboard.categoryTab = btn.dataset.dcat; dashboard.drilldown = null; renderDashboard() }))
   content.querySelectorAll('[data-drill]').forEach(btn => btn.addEventListener('click', () => { dashboard.drilldown = btn.dataset.drill; renderDashboardDrilldown(scoped) }))
   if (dashboard.drilldown) renderDashboardDrilldown(scoped)
+
+  document.getElementById('regrade-attn-level').addEventListener('change', async (e) => {
+    dashboard.attnLevelKey = e.target.value
+    dashboard.attnRoom = ''
+    dashboard.attnRooms = []
+    if (dashboard.attnLevelKey) {
+      const [cat, level] = dashboard.attnLevelKey.split('|')
+      try { dashboard.attnRooms = (await getClassroomSummary(cat, level)).map(r => r.room) } catch { dashboard.attnRooms = [] }
+    }
+    renderDashboardOverview(content)
+  })
+  document.getElementById('regrade-attn-room').addEventListener('change', (e) => { dashboard.attnRoom = e.target.value; renderAttentionTable() })
+  renderAttentionTable()
+}
+
+async function renderAttentionTable() {
+  const el = document.getElementById('regrade-attn-list')
+  if (!el) return
+  el.innerHTML = `<p class="text-xs text-[var(--muted-2)] py-4 text-center">กำลังโหลด...</p>`
+  const [cat, level] = dashboard.attnLevelKey ? dashboard.attnLevelKey.split('|') : [null, null]
+  let rows
+  try {
+    rows = await getTopStudentsNeedingAttention({ category: cat, classLevel: level, room: dashboard.attnRoom || null, limit: 20 })
+  } catch (err) {
+    el.innerHTML = `<p class="text-xs text-red-500 py-4 text-center">โหลดไม่สำเร็จ: ${escHtml(err.message)}</p>`
+    return
+  }
+  if (!rows.length) { el.innerHTML = `<p class="text-xs text-[var(--muted-2)] py-8 text-center">ไม่มีนักเรียนที่ต้องติดตามในเงื่อนไขนี้ 🎉</p>`; return }
+  el.innerHTML = `<table class="w-full text-xs">
+    <thead><tr class="border-b-2 border-[var(--line)] text-left text-[var(--muted-2)]">
+      <th class="py-2 px-2">นักเรียน</th><th class="py-2 px-2">ห้อง</th>
+      <th class="py-2 px-2 text-center">ค้าง</th><th class="py-2 px-2 text-center">จำนงแล้ว</th><th class="py-2 px-2 text-center">สำเร็จ</th>
+    </tr></thead>
+    <tbody>${rows.map(r => `<tr class="border-b border-[var(--line-soft)]">
+      <td class="py-2 px-2"><div class="flex items-center gap-2">${personAvatarHtml(r, false)}<div><p class="font-bold text-[var(--ink)]">${escHtml(r.full_name)}</p><p class="text-[10px] text-[var(--muted-2)]">${escHtml(r.student_code || '')}</p></div></div></td>
+      <td class="py-2 px-2 text-[var(--muted)]">${escHtml((r.category === 'ศาสนา' ? r.religion_room : r.main_room) || '-')}</td>
+      <td class="py-2 px-2 text-center font-bold" style="color:var(--bad)">${r.not_yet}</td>
+      <td class="py-2 px-2 text-center" style="color:var(--gold-ink)">${r.requested}</td>
+      <td class="py-2 px-2 text-center" style="color:var(--ok)">${r.done}</td>
+    </tr>`).join('')}</tbody>
+  </table>`
 }
 
 function statNum(v, label, color) { return `<p class="text-2xl font-extrabold" style="color:${color}">${v}</p><p class="text-[10px] text-[var(--muted-2)] mt-1">${escHtml(label)}</p>` }
+
+// ============================================================================
+// ผู้บริหาร — เจาะลึกรายชื่อนักเรียน: ระดับชั้น -> ห้อง -> นักเรียน -> รายวิชา
+// ============================================================================
+async function renderDashboardStudentBrowse(content) {
+  let classLevels
+  try { classLevels = await ensureClassLevels() } catch { classLevels = [] }
+  const levels = classLevels.filter(l => l.category === dashboard.browseCategory)
+
+  content.innerHTML = `
+    <div class="flex gap-2 mb-4">
+      <button data-bcat="สามัญ" style="${pill(dashboard.browseCategory === 'สามัญ')}">📘 สามัญ</button>
+      <button data-bcat="ศาสนา" style="${pill(dashboard.browseCategory === 'ศาสนา', 'secondary')}">🕌 ศาสนา</button>
+    </div>
+    <select id="regrade-browse-level" class="w-full max-w-xs px-3 py-2 rounded-lg border border-[var(--line)] text-sm bg-[var(--surface)] mb-4">
+      <option value="">— เลือกระดับชั้น —</option>
+      ${levels.map(l => `<option value="${escHtml(l.class_level)}" ${dashboard.browseLevel === l.class_level ? 'selected' : ''}>${escHtml(l.class_level)}</option>`).join('')}
+    </select>
+    <div id="regrade-browse-rooms" class="flex flex-col gap-3"></div>`
+
+  content.querySelectorAll('[data-bcat]').forEach(btn => btn.addEventListener('click', () => {
+    dashboard.browseCategory = btn.dataset.bcat
+    dashboard.browseLevel = ''
+    dashboard.browseRoomsCache = []
+    dashboard.expandedRooms.clear(); dashboard.roomStudents = {}
+    dashboard.expandedStudents.clear(); dashboard.studentSubjects = {}
+    renderDashboardStudentBrowse(content)
+  }))
+  document.getElementById('regrade-browse-level').addEventListener('change', (e) => {
+    dashboard.browseLevel = e.target.value
+    dashboard.expandedRooms.clear(); dashboard.roomStudents = {}
+    dashboard.expandedStudents.clear(); dashboard.studentSubjects = {}
+    loadAndRenderBrowseRooms()
+  })
+  loadAndRenderBrowseRooms()
+}
+
+async function loadAndRenderBrowseRooms() {
+  const el = document.getElementById('regrade-browse-rooms')
+  if (!el) return
+  if (!dashboard.browseLevel) {
+    dashboard.browseRoomsCache = []
+    el.innerHTML = `<div class="text-center py-12 text-[var(--muted-2)] text-sm">เลือกระดับชั้นเพื่อดูรายชื่อห้องเรียน</div>`
+    return
+  }
+  el.innerHTML = `<p class="text-xs text-[var(--muted-2)] py-4 text-center">กำลังโหลด...</p>`
+  try {
+    dashboard.browseRoomsCache = await getClassroomSummary(dashboard.browseCategory, dashboard.browseLevel)
+  } catch (err) {
+    el.innerHTML = `<p class="text-xs text-red-500 py-4 text-center">โหลดไม่สำเร็จ: ${escHtml(err.message)}</p>`
+    return
+  }
+  renderBrowseRoomsList()
+}
+
+function renderBrowseRoomsList() {
+  const el = document.getElementById('regrade-browse-rooms')
+  if (!el) return
+  el.innerHTML = dashboard.browseRoomsCache.length
+    ? dashboard.browseRoomsCache.map(r => classroomCard(r)).join('')
+    : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ไม่พบห้องเรียนที่มีวิชาค้างในระดับชั้นนี้ 🎉</div>`
+  wireBrowseHandlers(el)
+}
+
+function classroomCard(r) {
+  const isOpen = dashboard.expandedRooms.has(r.room)
+  const students = dashboard.roomStudents[r.room]
+  return `
+  <div class="rg-card p-4">
+    <div class="flex justify-between items-start gap-2">
+      <div class="min-w-0">
+        <p class="font-bold text-sm text-[var(--ink)]">${escHtml(r.room)}</p>
+        <p class="text-[10px] text-[var(--muted-2)] mt-0.5">${r.student_count} คนมีวิชาค้าง</p>
+      </div>
+      <div class="flex items-center gap-1.5 flex-shrink-0 flex-wrap justify-end">
+        <span class="px-2 py-1 rounded-full text-[10px] font-bold" style="background:var(--bad-soft);color:var(--bad)">ค้าง ${r.not_yet}</span>
+        <span class="px-2 py-1 rounded-full text-[10px] font-bold" style="background:var(--gold-soft);color:var(--gold-ink)">จำนง ${r.requested}</span>
+        <span class="px-2 py-1 rounded-full text-[10px] font-bold" style="background:var(--ok-soft);color:var(--ok)">สำเร็จ ${r.done}</span>
+      </div>
+    </div>
+    <div class="flex gap-2 mt-3">
+      <button data-toggle-room="${escHtml(r.room)}" class="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-[var(--surface-2)] text-[var(--muted)]">${isOpen ? '▲ ย่อ' : '▾ ดูรายชื่อนักเรียน'}</button>
+      <button data-print-room="${escHtml(r.room)}" class="px-3 py-1.5 rounded-lg text-[10px] font-bold" style="background:var(--primary-soft);color:var(--primary-dark)">🖨 พิมพ์รายชื่อห้อง</button>
+    </div>
+    ${isOpen ? `<div class="mt-3 pt-3 border-t border-dashed border-[var(--line-soft)] flex flex-col gap-2">
+      ${students ? (students.length ? students.map(s => studentBrowseRow(s)).join('') : `<p class="text-center text-xs text-[var(--muted-2)] py-4">ไม่มีข้อมูลนักเรียน</p>`) : `<p class="text-center text-xs text-[var(--muted-2)] py-4">กำลังโหลด...</p>`}
+    </div>` : ''}
+  </div>`
+}
+
+function studentBrowseRow(s) {
+  const isOpen = dashboard.expandedStudents.has(s.student_id)
+  const subjects = dashboard.studentSubjects[s.student_id]
+  return `
+  <div class="rounded-xl bg-[var(--surface-2)] overflow-hidden">
+    <button data-toggle-student="${s.student_id}" class="w-full flex items-center gap-2.5 p-2.5 text-left">
+      ${personAvatarHtml(s, false)}
+      <div class="min-w-0 flex-1">
+        <p class="text-xs font-bold text-[var(--ink)] truncate">${escHtml(s.full_name)}</p>
+        <p class="text-[10px] text-[var(--muted-2)]">${escHtml(s.student_code || '')}</p>
+      </div>
+      <div class="flex items-center gap-1 flex-shrink-0 text-[10px] font-bold">
+        <span style="color:var(--bad)">${s.not_yet}</span>/<span style="color:var(--gold-ink)">${s.requested}</span>/<span style="color:var(--ok)">${s.done}</span>
+      </div>
+    </button>
+    ${isOpen ? `<div class="px-2.5 pb-2.5 flex flex-col gap-1.5">
+      ${subjects ? (subjects.length ? subjects.map(x => `
+      <div class="flex justify-between items-center gap-2 bg-[var(--surface)] rounded-lg px-2.5 py-1.5">
+        <div class="min-w-0"><p class="text-[11px] font-bold text-[var(--ink)] truncate">${escHtml(x.subject_name)}</p><p class="text-[9px] text-[var(--muted-2)]">${escHtml(x.subject_code)} · ${escHtml(x.semester)} · ${escHtml(x.teacher_name)}</p></div>
+        <span class="flex-shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${badgeStyle(x.status)}">${statusMeta(x.status).label}</span>
+      </div>`).join('') : `<p class="text-center text-[11px] text-[var(--muted-2)] py-2">ไม่มีรายวิชา</p>`)
+        : `<p class="text-center text-[11px] text-[var(--muted-2)] py-2">กำลังโหลด...</p>`}
+      <button data-print-student="${s.student_id}" class="mt-1 py-1.5 rounded-lg text-[10px] font-bold" style="background:var(--primary-soft);color:var(--primary-dark)">🖨 พิมพ์รายบุคคล</button>
+    </div>` : ''}
+  </div>`
+}
+
+function wireBrowseHandlers(el) {
+  el.querySelectorAll('[data-toggle-room]').forEach(btn => btn.addEventListener('click', async () => {
+    const room = btn.dataset.toggleRoom
+    if (dashboard.expandedRooms.has(room)) {
+      dashboard.expandedRooms.delete(room)
+      renderBrowseRoomsList()
+    } else {
+      dashboard.expandedRooms.add(room)
+      renderBrowseRoomsList()
+      if (!dashboard.roomStudents[room]) {
+        try { dashboard.roomStudents[room] = await getClassroomStudents(dashboard.browseCategory, room) } catch { dashboard.roomStudents[room] = [] }
+        renderBrowseRoomsList()
+      }
+    }
+  }))
+  el.querySelectorAll('[data-toggle-student]').forEach(btn => btn.addEventListener('click', async () => {
+    const id = Number(btn.dataset.toggleStudent)
+    if (dashboard.expandedStudents.has(id)) {
+      dashboard.expandedStudents.delete(id)
+      renderBrowseRoomsList()
+    } else {
+      dashboard.expandedStudents.add(id)
+      renderBrowseRoomsList()
+      if (!dashboard.studentSubjects[id]) {
+        try { dashboard.studentSubjects[id] = await getStudentSubjectsForExec(id) } catch { dashboard.studentSubjects[id] = [] }
+        renderBrowseRoomsList()
+      }
+    }
+  }))
+  el.querySelectorAll('[data-print-room]').forEach(btn => btn.addEventListener('click', () => printClassroomRoster(btn.dataset.printRoom)))
+  el.querySelectorAll('[data-print-student]').forEach(btn => btn.addEventListener('click', () => printStudentReport(Number(btn.dataset.printStudent))))
+}
+
+const PRINT_STYLE = `
+  body{font-family:'Sarabun',sans-serif;padding:24px;color:#1f2937;}
+  h1{font-size:18px;margin-bottom:4px;}
+  p.sub{color:#666;font-size:12px;margin-bottom:16px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;}
+  th{background:#f3f4f6;}
+  @media print { body{padding:0;} }`
+
+function openPrintWindow(title, bodyHtml) {
+  const win = window.open('', '_blank')
+  if (!win) { showToast('เบราว์เซอร์บล็อกป๊อปอัพ กรุณาอนุญาตแล้วลองใหม่', 'warning'); return }
+  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title><style>${PRINT_STYLE}</style></head><body>${bodyHtml}</body></html>`)
+  win.document.close()
+  win.focus()
+  win.print()
+}
+
+async function printClassroomRoster(room) {
+  let students = dashboard.roomStudents[room]
+  if (!students) {
+    try { students = await getClassroomStudents(dashboard.browseCategory, room) } catch (err) { showToast('โหลดข้อมูลไม่สำเร็จ: ' + err.message, 'error'); return }
+  }
+  const rowsHtml = students.map((s, i) => `<tr>
+    <td>${i + 1}</td><td>${escHtml(s.full_name)}</td><td>${escHtml(s.student_code || '')}</td>
+    <td style="text-align:center">${s.not_yet}</td><td style="text-align:center">${s.requested}</td><td style="text-align:center">${s.done}</td>
+  </tr>`).join('')
+  openPrintWindow(`รายชื่อห้อง ${room}`, `
+    <h1>รายชื่อนักเรียนที่มีวิชาค้าง — ห้อง ${escHtml(room)}</h1>
+    <p class="sub">พิมพ์เมื่อ ${new Date().toLocaleString('th-TH')} · ทั้งหมด ${students.length} คน</p>
+    <table><thead><tr><th>#</th><th>ชื่อ-สกุล</th><th>เลขประจำตัว</th><th>ค้าง</th><th>จำนงแล้ว</th><th>สำเร็จ</th></tr></thead>
+    <tbody>${rowsHtml}</tbody></table>`)
+}
+
+async function printStudentReport(studentId) {
+  let subjects = dashboard.studentSubjects[studentId]
+  let student = null
+  for (const room in dashboard.roomStudents) {
+    const found = dashboard.roomStudents[room]?.find(s => s.student_id === studentId)
+    if (found) { student = found; break }
+  }
+  if (!subjects) {
+    try { subjects = await getStudentSubjectsForExec(studentId) } catch (err) { showToast('โหลดข้อมูลไม่สำเร็จ: ' + err.message, 'error'); return }
+  }
+  const rowsHtml = subjects.map((x, i) => `<tr>
+    <td>${i + 1}</td><td>${escHtml(x.subject_name)}</td><td>${escHtml(x.subject_code)}</td>
+    <td>${escHtml(x.category)}</td><td>${escHtml(x.semester)}</td><td>${escHtml(x.teacher_name)}</td><td>${escHtml(statusMeta(x.status).label)}</td>
+  </tr>`).join('')
+  const name = student?.full_name || '-'
+  openPrintWindow(`รายวิชาค้าง ${name}`, `
+    <h1>รายวิชาที่ค้างของ ${escHtml(name)}${student?.student_code ? ` (${escHtml(student.student_code)})` : ''}</h1>
+    <p class="sub">พิมพ์เมื่อ ${new Date().toLocaleString('th-TH')} · ทั้งหมด ${subjects.length} วิชา</p>
+    <table><thead><tr><th>#</th><th>รายวิชา</th><th>รหัสวิชา</th><th>หมวด</th><th>ภาคเรียน</th><th>ครูผู้สอน</th><th>สถานะ</th></tr></thead>
+    <tbody>${rowsHtml}</tbody></table>`)
+}
 
 function renderDashboardDrilldown(scoped) {
   const el = document.getElementById('regrade-drilldown')

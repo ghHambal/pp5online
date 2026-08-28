@@ -223,6 +223,33 @@ export async function getDepartmentById(id) {
   return data
 }
 
+// ─── ผู้บริหาร: เจาะลึกดูรายชื่อนักเรียนตามระดับชั้น -> ห้อง -> รายวิชา ─────────
+export async function getClassroomSummary(category, classLevel) {
+  const { data, error } = await supabase.rpc('regrade_classroom_summary', { p_category: category, p_class_level: classLevel })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getClassroomStudents(category, room) {
+  const { data, error } = await supabase.rpc('regrade_classroom_students', { p_category: category, p_room: room })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getStudentSubjectsForExec(studentId) {
+  const { data, error } = await supabase.rpc('regrade_student_subjects_for_exec', { p_student_id: studentId })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getTopStudentsNeedingAttention({ category = null, classLevel = null, room = null, limit = 20 } = {}) {
+  const { data, error } = await supabase.rpc('regrade_top_students_needing_attention', {
+    p_category: category, p_class_level: classLevel, p_room: room, p_limit: limit,
+  })
+  if (error) throw error
+  return data ?? []
+}
+
 // ─── สิทธิ์ของฉันเอง (ใช้แค่ตัดสินใจโชว์/ซ่อนเมนูฝั่ง client — ของจริงคุมที่ RLS) ──
 export async function checkMyRegradePermissions() {
   const [{ data: isAdmin }, { data: isRegistrar }, { data: isExecutive }] = await Promise.all([
