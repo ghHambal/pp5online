@@ -80,32 +80,45 @@ export function openCertificateLayoutEditor(opts) {
   function renderPanel() {
     const el = layout.elements.find(e => e.id === selectedId)
     if (!el) { panel.innerHTML = `<p class="text-xs text-[var(--muted-2)] text-center py-8">คลิกข้อความบนเกียรติบัตรเพื่อแก้ไข</p>`; return }
+    const sectionLabel = t => `<p class="text-[10px] font-bold text-[var(--muted-2)] uppercase tracking-wider mb-2">${t}</p>`
     panel.innerHTML = `
-      <div class="space-y-3">
+      <div class="space-y-5">
         <div>
-          <label class="text-[11px] font-bold text-[var(--muted)] block mb-1">ข้อความ</label>
-          <textarea id="cce-f-text" rows="3" class="w-full border border-[var(--line)] rounded-lg px-2 py-1.5 text-xs bg-[var(--surface)]">${_esc(el.text)}</textarea>
-          <div class="flex flex-wrap gap-1 mt-1.5">
-            ${allTokens.map(t => `<button type="button" class="cce-insert-token px-1.5 py-0.5 rounded bg-[var(--primary-soft)] text-[var(--primary-dark)] text-[10px] font-bold" data-token="${_esc(t.token)}">${_esc(t.label)}</button>`).join('')}
+          ${sectionLabel('ข้อความ')}
+          <textarea id="cce-f-text" rows="3" class="w-full border border-[var(--line)] rounded-lg px-2.5 py-2 text-xs bg-[var(--surface)] leading-relaxed">${_esc(el.text)}</textarea>
+          <p class="text-[10px] text-[var(--muted-2)] mt-2 mb-1">แทรกข้อมูลอัตโนมัติ:</p>
+          <div class="flex flex-wrap gap-1.5">
+            ${allTokens.map(t => `<button type="button" class="cce-insert-token px-2.5 py-1 rounded-full bg-[var(--primary-soft)] text-[var(--primary-dark)] text-[10px] font-bold hover:opacity-80 transition" data-token="${_esc(t.token)}">${_esc(t.label)}</button>`).join('')}
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div><label class="text-[11px] font-bold text-[var(--muted)] block mb-1">ขนาดตัวอักษร</label><input id="cce-f-size" type="number" min="8" max="72" value="${el.fontSize}" class="w-full border border-[var(--line)] rounded-lg px-2 py-1.5 text-xs bg-[var(--surface)]" /></div>
-          <div><label class="text-[11px] font-bold text-[var(--muted)] block mb-1">สี</label><input id="cce-f-color" type="color" value="${_esc(el.color)}" class="w-full h-[30px] border border-[var(--line)] rounded-lg bg-[var(--surface)]" /></div>
+
+        <div class="pt-4 border-t border-[var(--line-soft)]">
+          ${sectionLabel('รูปแบบตัวอักษร')}
+          <div class="grid grid-cols-2 gap-2.5">
+            <div><label class="text-[11px] text-[var(--muted)] block mb-1">ขนาด</label><input id="cce-f-size" type="number" min="8" max="72" value="${el.fontSize}" class="w-full border border-[var(--line)] rounded-lg px-2.5 py-1.5 text-xs bg-[var(--surface)]" /></div>
+            <div><label class="text-[11px] text-[var(--muted)] block mb-1">สี</label><input id="cce-f-color" type="color" value="${_esc(el.color)}" class="w-full h-[31px] border border-[var(--line)] rounded-lg bg-[var(--surface)] cursor-pointer" /></div>
+          </div>
+          <div class="mt-2.5">
+            <label class="text-[11px] text-[var(--muted)] block mb-1">การจัดวาง</label>
+            <select id="cce-f-align" class="w-full border border-[var(--line)] rounded-lg px-2.5 py-1.5 text-xs bg-[var(--surface)]">
+              ${['left', 'center', 'right'].map(a => `<option value="${a}" ${el.align === a ? 'selected' : ''}>${a === 'left' ? 'ชิดซ้าย' : a === 'right' ? 'ชิดขวา' : 'กึ่งกลาง'}</option>`).join('')}
+            </select>
+          </div>
+          <label class="flex items-center gap-2 text-xs mt-2.5 cursor-pointer"><input id="cce-f-bold" type="checkbox" ${el.bold ? 'checked' : ''} class="rounded" /> ตัวหนา</label>
         </div>
-        <div>
-          <label class="text-[11px] font-bold text-[var(--muted)] block mb-1">การจัดวาง</label>
-          <select id="cce-f-align" class="w-full border border-[var(--line)] rounded-lg px-2 py-1.5 text-xs bg-[var(--surface)]">
-            ${['left', 'center', 'right'].map(a => `<option value="${a}" ${el.align === a ? 'selected' : ''}>${a === 'left' ? 'ชิดซ้าย' : a === 'right' ? 'ชิดขวา' : 'กึ่งกลาง'}</option>`).join('')}
-          </select>
+
+        <div class="pt-4 border-t border-[var(--line-soft)]">
+          ${sectionLabel('ตัวเลือกเพิ่มเติม')}
+          <label class="flex items-center gap-2 text-xs cursor-pointer"><input id="cce-f-bordertop" type="checkbox" ${el.borderTop ? 'checked' : ''} class="rounded" /> เส้นคั่นด้านบน (สำหรับช่องลงนาม)</label>
+          <div class="mt-2.5">
+            <label class="text-[11px] text-[var(--muted)] block mb-1">ตัดบรรทัด (% ความกว้าง, เว้นว่าง = บรรทัดเดียว)</label>
+            <input id="cce-f-maxwidth" type="number" min="10" max="100" value="${el.maxWidth ?? ''}" class="w-full border border-[var(--line)] rounded-lg px-2.5 py-1.5 text-xs bg-[var(--surface)]" />
+          </div>
         </div>
-        <label class="flex items-center gap-1.5 text-xs"><input id="cce-f-bold" type="checkbox" ${el.bold ? 'checked' : ''} /> ตัวหนา</label>
-        <label class="flex items-center gap-1.5 text-xs"><input id="cce-f-bordertop" type="checkbox" ${el.borderTop ? 'checked' : ''} /> เส้นคั่นด้านบน (สำหรับช่องลงนาม)</label>
-        <div>
-          <label class="text-[11px] font-bold text-[var(--muted)] block mb-1">ตัดบรรทัด (% ความกว้าง, เว้นว่าง = บรรทัดเดียว)</label>
-          <input id="cce-f-maxwidth" type="number" min="10" max="100" value="${el.maxWidth ?? ''}" class="w-full border border-[var(--line)] rounded-lg px-2 py-1.5 text-xs bg-[var(--surface)]" />
+
+        <div class="pt-4 border-t border-[var(--line-soft)]">
+          <button id="cce-f-delete" type="button" class="w-full py-2 rounded-lg border border-[var(--bad)] text-[var(--bad)] text-xs font-bold hover:bg-[var(--bad)]/5 transition">🗑️ ลบข้อความนี้</button>
         </div>
-        <button id="cce-f-delete" type="button" class="w-full py-1.5 rounded-lg border border-[var(--bad)] text-[var(--bad)] text-xs font-bold">🗑️ ลบข้อความนี้</button>
       </div>`
 
     const commit = (patch) => { Object.assign(el, patch); renderCanvas() }
@@ -130,19 +143,42 @@ export function openCertificateLayoutEditor(opts) {
     })
   }
 
+  const SNAP_THRESHOLD = 1.2 // % — ระยะที่ถือว่า "เข้าใกล้กึ่งกลาง" พอจะ snap ให้อัตโนมัติ
+
   function startDrag(ev, id) {
     ev.preventDefault()
     selectedId = id
     renderCanvas(); renderPanel()
-    const rect = canvasWrap.querySelector('.cert-canvas').getBoundingClientRect()
+    const canvasEl = canvasWrap.querySelector('.cert-canvas')
+    const rect = canvasEl.getBoundingClientRect()
     const el = layout.elements.find(e => e.id === id)
+    const elDiv = canvasEl.querySelector(`[data-cert-el-id="${id}"]`)
+
+    // เส้นไกด์กึ่งกลาง (แนวตั้ง = กึ่งกลางซ้าย-ขวา, แนวนอน = กึ่งกลางบน-ล่าง) — โผล่เฉพาะตอน snap เท่านั้น
+    const vGuide = document.createElement('div')
+    vGuide.style.cssText = 'position:absolute;top:0;bottom:0;left:50%;width:0;border-left:1.5px dashed #ec4899;pointer-events:none;z-index:50;display:none;'
+    const hGuide = document.createElement('div')
+    hGuide.style.cssText = 'position:absolute;left:0;right:0;top:50%;height:0;border-top:1.5px dashed #ec4899;pointer-events:none;z-index:50;display:none;'
+    canvasEl.appendChild(vGuide)
+    canvasEl.appendChild(hGuide)
+
     const move = mv => {
-      const x = clamp(((mv.clientX - rect.left) / rect.width) * 100, 0, 100)
-      const y = clamp(((mv.clientY - rect.top) / rect.height) * 100, 0, 100)
+      let x = clamp(((mv.clientX - rect.left) / rect.width) * 100, 0, 100)
+      let y = clamp(((mv.clientY - rect.top) / rect.height) * 100, 0, 100)
+      const snapX = Math.abs(x - 50) < SNAP_THRESHOLD
+      const snapY = Math.abs(y - 50) < SNAP_THRESHOLD
+      if (snapX) x = 50
+      if (snapY) y = 50
+      vGuide.style.display = snapX ? 'block' : 'none'
+      hGuide.style.display = snapY ? 'block' : 'none'
       el.x = Math.round(x * 10) / 10; el.y = Math.round(y * 10) / 10
-      renderCanvas()
+      if (elDiv) { elDiv.style.left = el.x + '%'; elDiv.style.top = el.y + '%' }
     }
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up) }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      renderCanvas() // เรนเดอร์สะอาดอีกครั้งตอนปล่อยเมาส์ (ล้างเส้นไกด์ไปในตัว)
+    }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }

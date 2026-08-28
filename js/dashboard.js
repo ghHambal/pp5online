@@ -21,7 +21,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.556'
+import { APP_VERSION } from './version.js?v=10.22.560'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
@@ -837,6 +837,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     'donor-chat-admin': () => import('./teacher-views-donor-chat.js').then(m => m.renderDonorChatAdmin()),
     'student-qr-print': () => import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(null, null)),
     'classroom-leaders': () => renderClassroomLeaders(),
+    'certificates': () => import('./teacher-views-certificates.js').then(async m => {
+      const { getMyTeacherProfile } = await import('./api.js')
+      const teacher = await getMyTeacherProfile(session.user.id).catch(() => null)
+      return m.renderCertificateManager(teacher)
+    }),
   }
 
   document.querySelectorAll('[data-nav]').forEach(link => {
