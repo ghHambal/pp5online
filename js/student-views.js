@@ -15,11 +15,11 @@ import {
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig, submitQrReissueRequest, notifyQrReissueManagers } from './api.js'
-import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputValue } from './teacher-views-utils.js'
+import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputValue, renderIconTile } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.595'
+import { APP_VERSION } from './version.js?v=10.22.597'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -517,40 +517,13 @@ export async function renderStudentOverview(student) {
       ${[sportsVisible, futsalVisible, councilVisible, terangganuVisible, regradeVisible, student.can_scan_prayer].filter(Boolean).length + 1 > 5
         ? `<p class="text-[10px] text-gray-400 mb-1.5 px-0.5">👉 เลื่อนซ้าย-ขวาเพื่อดูระบบทั้งหมด</p>` : ''}
       <div class="flex gap-3 overflow-x-auto pb-1">
-        <button type="button" id="btn-stu-my-certificates" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
-          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-500 shadow-md flex items-center justify-center text-2xl">🎖️</span>
-          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">เกียรติบัตร<br>ของฉัน</span>
-        </button>
-        ${sportsVisible ? `
-        <button type="button" onclick="window._stuNav('sports')" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
-          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500 to-red-500 shadow-md flex items-center justify-center text-2xl">🏆</span>
-          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">กีฬาสี</span>
-        </button>` : ''}
-        ${futsalVisible ? `
-        <button type="button" onclick="window._stuNav('futsal')" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
-          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-600 to-blue-700 shadow-md flex items-center justify-center text-2xl">⚽</span>
-          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">ฟุตซอล</span>
-        </button>` : ''}
-        ${councilVisible ? `
-        <a href="council.html" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
-          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-600 to-purple-600 shadow-md flex items-center justify-center text-2xl">🏛️</span>
-          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">สภา<br>นักเรียน</span>
-        </a>` : ''}
-        ${terangganuVisible ? `
-        <a href="terangganu.html" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
-          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-700 to-emerald-600 shadow-md flex items-center justify-center text-2xl">⚜️</span>
-          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">ค่าย<br>TERANGGANU</span>
-        </a>` : ''}
-        ${regradeVisible ? `
-        <a href="regrade.html" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
-          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-800 to-pink-700 shadow-md flex items-center justify-center text-2xl">📋</span>
-          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">แก้ค้างเก่า</span>
-        </a>` : ''}
-        ${student.can_scan_prayer ? `
-        <button type="button" onclick="window._stuNav('prayer_scan_history')" class="flex-shrink-0 w-[4.5rem] flex flex-col items-center gap-1.5 active:scale-95 transition-transform">
-          <span class="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-600 shadow-md flex items-center justify-center text-2xl">🗂️</span>
-          <span class="text-[10px] font-bold text-gray-600 text-center leading-tight">ประวัติ<br>การสแกน</span>
-        </button>` : ''}
+        ${renderIconTile({ id:'btn-stu-my-certificates', emoji:'🎖️', label:'เกียรติบัตร<br>ของฉัน', from:'#FCE7A8', to:'#E3B657' }, cfg.iconTileStyle)}
+        ${sportsVisible ? renderIconTile({ emoji:'🏆', label:'กีฬาสี', from:'#FDD9B5', to:'#E8865C', onclick:`window._stuNav('sports')` }, cfg.iconTileStyle) : ''}
+        ${futsalVisible ? renderIconTile({ emoji:'⚽', label:'ฟุตซอล', from:'#C6E6FA', to:'#4F9BD6', onclick:`window._stuNav('futsal')` }, cfg.iconTileStyle) : ''}
+        ${councilVisible ? renderIconTile({ emoji:'🏛️', label:'สภา<br>นักเรียน', from:'#E2D3F5', to:'#9663D1', onclick:`window.location.href='council.html'` }, cfg.iconTileStyle) : ''}
+        ${terangganuVisible ? renderIconTile({ emoji:'⚜️', label:'ค่าย<br>TERANGGANU', from:'#B7ECDB', to:'#3F9C7E', onclick:`window.location.href='terangganu.html'` }, cfg.iconTileStyle) : ''}
+        ${regradeVisible ? renderIconTile({ emoji:'📋', label:'แก้ค้างเก่า', from:'#FBD0D6', to:'#E0616F', onclick:`window.location.href='regrade.html'` }, cfg.iconTileStyle) : ''}
+        ${student.can_scan_prayer ? renderIconTile({ emoji:'🗂️', label:'ประวัติ<br>การสแกน', from:'#B7ECDB', to:'#5FBFA3', onclick:`window._stuNav('prayer_scan_history')` }, cfg.iconTileStyle) : ''}
       </div>
     </div>
 

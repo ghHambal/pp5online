@@ -2430,6 +2430,13 @@ export async function renderSettings() {
         ]),
         section('เบ็ดเตล็ด', [
           { key:'developerCreditText', label:'ข้อความเครดิตผู้พัฒนา', type:'text', placeholder:'พัฒนาโดย...' },
+          { key:'iconTileStyle', label:'รูปแบบไอคอน "ระบบอื่นๆ" ในหน้าภาพรวม', type:'select',
+            options:[
+              { value:'shadow', label:'เงาสีเข้ม (แนะนำ)' },
+              { value:'glossy', label:'เงามันแบบ 3D' },
+              { value:'glass',  label:'กระจกฝ้า' },
+            ],
+            hint:'กำหนดรูปแบบไอคอนกริด "ระบบอื่นๆ" ในหน้าภาพรวมทั้งฝั่งครูและนักเรียนพร้อมกัน' },
         ]),
       ].join('')
 

@@ -13,7 +13,7 @@ import {
   _DAYS_TH_SHORT, _DAYS_TH_FULL,
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
   _dutyCountdownInfo,
-  _currentWeek, _teacherPositionList, _teacherPositionLabel,
+  _currentWeek, _teacherPositionList, _teacherPositionLabel, renderIconTile,
 } from './teacher-views-utils.js'
 import { getTodayDuty, getTodayDutyGrade } from './wen-duty.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
@@ -461,33 +461,35 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   // ทุก tile ต้องมี key คงที่ (อ้างอิงจาก teacher.overview_prefs ได้เสมอ แม้เพิ่ม/ย้ายตำแหน่งทีหลัง)
   const readingRoomsForTeacher = [...new Set(classes.map(c => c.class_name).filter(Boolean))].sort()
   const readingRoomsJson = JSON.stringify(readingRoomsForTeacher).replace(/"/g, '&quot;')
+  // from/to เป็นสี hex พาสเทลจริง (ไม่ใช่ Tailwind class) — จำเป็นสำหรับสไตล์ "กระจกฝ้า" ที่ใช้
+  // color-mix() ต้องการค่าสีจริง ดู renderIconTile() ใน teacher-views-utils.js
   const localTiles = [
-    { key:'smart-classroom', show: true, onclick: `window._openSmartClassroomLanding()`, emoji:'👑', label:'Smart<br>Classroom', from:'from-amber-400', to:'to-yellow-600' },
-    { key:'sv-board',        show: _svPositions.length > 0, onclick: `window._enterSupervisorMode()`, emoji:'📊', label:'บอร์ด<br>บทบาท', from:'from-slate-400', to:'to-slate-600' },
-    { key:'wen',             show: !!teacher, onclick: `window._openWenDuty('${teacher?.teacher_code}')`, emoji:'🛡️', label:'ระบบเวร', from:'from-rose-400', to:'to-rose-600' },
-    { key:'attendance',      show: true, onclick: `window._showClassQuickPicker('attendance')`, emoji:'✅', label:'เช็คชื่อ', from:'from-teal-400', to:'to-teal-600' },
-    { key:'grades',          show: true, onclick: `window._showClassQuickPicker('grades')`, emoji:'📝', label:'บันทึก<br>คะแนน', from:'from-indigo-400', to:'to-indigo-600' },
-    { key:'life-skill',      show: samaiHomeroomRooms.length > 0, onclick: `window._openLifeSkillScore()`, emoji:'🌱', label:'ทักษะ<br>ชีวิต', from:'from-lime-400', to:'to-lime-600' },
-    { key:'reading-score',   show: teacher?.dept === 'THAI', onclick: `window._openReadingScorePicker('${readingRoomsJson}')`, emoji:'📖', label:'คะแนน<br>การอ่าน', from:'from-orange-400', to:'to-orange-600' },
-    { key:'schedule',        show: true, onclick: `window._navTo('schedule')`, emoji:'🗓️', label:'ตารางสอน', from:'from-sky-400', to:'to-sky-600' },
-    { key:'homeroom',        show: homeroomRooms.length > 0, onclick: `window._openHomeroomPopup()`, emoji:'🏠', label:'ห้องที่<br>ปรึกษา', from:'from-amber-400', to:'to-amber-700' },
-    { key:'quota',           show: true, onclick: `window._showQuotaFromOverview()`, emoji:'🎯', label:'โควตา<br>ห้องเรียน', from:'from-purple-400', to:'to-purple-600' },
-    { key:'shirt-size',      show: shirtBtnState.visible, onclick: `window._openTeacherShirtModal()`, emoji:'👕', label:'ไซซ์เสื้อ<br>กีฬาสี', from:'from-pink-400', to:'to-pink-600' },
+    { key:'smart-classroom', show: true, onclick: `window._openSmartClassroomLanding()`, emoji:'👑', label:'Smart<br>Classroom', from:'#FCE7A8', to:'#E3B657' },
+    { key:'sv-board',        show: _svPositions.length > 0, onclick: `window._enterSupervisorMode()`, emoji:'📊', label:'บอร์ด<br>บทบาท', from:'#DCE1E8', to:'#9AA6B5' },
+    { key:'wen',             show: !!teacher, onclick: `window._openWenDuty('${teacher?.teacher_code}')`, emoji:'🛡️', label:'ระบบเวร', from:'#FBD0D6', to:'#EC93A1' },
+    { key:'attendance',      show: true, onclick: `window._showClassQuickPicker('attendance')`, emoji:'✅', label:'เช็คชื่อ', from:'#B7ECDB', to:'#5FBFA3' },
+    { key:'grades',          show: true, onclick: `window._showClassQuickPicker('grades')`, emoji:'📝', label:'บันทึก<br>คะแนน', from:'#CDD3F8', to:'#8F9AE8' },
+    { key:'life-skill',      show: samaiHomeroomRooms.length > 0, onclick: `window._openLifeSkillScore()`, emoji:'🌱', label:'ทักษะ<br>ชีวิต', from:'#DCF2B0', to:'#A3D65C' },
+    { key:'reading-score',   show: teacher?.dept === 'THAI', onclick: `window._openReadingScorePicker('${readingRoomsJson}')`, emoji:'📖', label:'คะแนน<br>การอ่าน', from:'#FCDCB0', to:'#EFA85C' },
+    { key:'schedule',        show: true, onclick: `window._navTo('schedule')`, emoji:'🗓️', label:'ตารางสอน', from:'#C6E6FA', to:'#6FB8E8' },
+    { key:'homeroom',        show: homeroomRooms.length > 0, onclick: `window._openHomeroomPopup()`, emoji:'🏠', label:'ห้องที่<br>ปรึกษา', from:'#F5DFA8', to:'#D6A94A' },
+    { key:'quota',           show: true, onclick: `window._showQuotaFromOverview()`, emoji:'🎯', label:'โควตา<br>ห้องเรียน', from:'#E2D3F5', to:'#AF8AE0' },
+    { key:'shirt-size',      show: shirtBtnState.visible, onclick: `window._openTeacherShirtModal()`, emoji:'👕', label:'ไซซ์เสื้อ<br>กีฬาสี', from:'#FBD5E8', to:'#EA8FC0' },
   ]
   // มิเรอร์รายการเดียวกับเมนูไซด์บาร์ (คำนวณสิทธิ์ไว้แล้วครั้งเดียวใน _applyRoleMenus, js/teacher.js)
-  // แต่ละ key คู่กับชุดสี gradient ของตัวเอง ไม่ซ้ำกับ 11 อันด้านบน
+  // แต่ละ key คู่กับชุดสี hex พาสเทลของตัวเอง ไม่ซ้ำกับ 11 อันด้านบน
   const sidebarTileColors = {
-    council: ['from-indigo-400', 'to-indigo-700'], terangganu: ['from-fuchsia-400', 'to-fuchsia-700'],
-    regrade: ['from-stone-400', 'to-stone-600'], sports: ['from-orange-500', 'to-red-500'],
-    certificates: ['from-yellow-400', 'to-amber-600'], 'advisor-students': ['from-cyan-400', 'to-cyan-700'],
-    'my-team': ['from-red-400', 'to-red-700'], 'shirt-summary': ['from-zinc-400', 'to-zinc-600'],
-    'sports-fund': ['from-green-400', 'to-green-700'], 'shirt-vote': ['from-violet-400', 'to-violet-700'],
-    'qr-print': ['from-blue-400', 'to-blue-700'], 'prayer-score': ['from-emerald-400', 'to-emerald-700'],
+    council: ['#CDD3F8', '#7783E0'], terangganu: ['#F6D6F0', '#D68AC7'],
+    regrade: ['#E5E1DA', '#B3A990'], sports: ['#FDD9B5', '#E8865C'],
+    certificates: ['#FCE7A8', '#DDAE3F'], 'advisor-students': ['#B9EAF0', '#5CB8C4'],
+    'my-team': ['#FBD0D6', '#E0616F'], 'shirt-summary': ['#E4E4E7', '#9C9CA3'],
+    'sports-fund': ['#C8ECC9', '#67B96A'], 'shirt-vote': ['#E2D3F5', '#9663D1'],
+    'qr-print': ['#C6E6FA', '#4F9BD6'], 'prayer-score': ['#B7ECDB', '#3F9C7E'],
   }
   const sidebarTiles = (window._teacherOverviewSystems || [])
     .filter(s => s.show)
     .map(s => {
-      const [from, to] = sidebarTileColors[s.key] || ['from-gray-400', 'to-gray-600']
+      const [from, to] = sidebarTileColors[s.key] || ['#E4E4E7', '#9C9CA3']
       return {
         key: s.key, show: true, emoji: s.emoji, label: s.label, from, to,
         onclick: s.href ? `window.location.href='${s.href}'` : `window._navTo('${s.nav}')`,
@@ -508,11 +510,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
           return ia - ib
         })
     : allTiles
-  const iconGridHtml = iconTiles.map(t => `
-      <button type="button" onclick="${t.onclick}" class="flex-shrink-0 w-[4.6rem] lg:w-24 flex flex-col items-center gap-1.5 lg:gap-2 active:scale-95 transition-transform">
-        <span class="w-14 h-14 lg:w-20 lg:h-20 rounded-2xl bg-gradient-to-br ${t.from} ${t.to} shadow-md flex items-center justify-center text-2xl lg:text-4xl">${t.emoji}</span>
-        <span class="text-[10px] lg:text-sm font-bold text-gray-600 text-center leading-tight">${t.label}</span>
-      </button>`).join('')
+  const iconGridHtml = iconTiles.map(t => renderIconTile(t, cfg.iconTileStyle)).join('')
 
   // ปุ่ม "ปรับหน้าภาพรวมแบบรวดเร็ว" — เปิดโมดัลซ่อน/แสดง+เรียงลำดับไอคอนกริดด้านบน บันทึกเข้าบัญชีครู
   window._openOverviewCustomizer = () => _openOverviewCustomizerModal(teacher, allTiles, homeroomRooms)
@@ -871,7 +869,7 @@ function _openOverviewCustomizerModal(teacher, allTiles, homeroomRooms) {
     const plainLabel = t.label.replace(/<br\s*\/?>/gi, ' ')
     return `
     <div class="flex items-center gap-3 py-2 px-1 border-b border-gray-50 last:border-0 ${isHidden ? 'opacity-40' : ''}">
-      <span class="w-9 h-9 rounded-xl bg-gradient-to-br ${t.from} ${t.to} flex items-center justify-center text-base flex-shrink-0">${t.emoji}</span>
+      <span class="w-9 h-9 rounded-xl flex items-center justify-center text-base flex-shrink-0" style="background:linear-gradient(135deg,${t.from},${t.to})">${t.emoji}</span>
       <span class="flex-1 text-sm font-semibold text-gray-700 truncate">${plainLabel}</span>
       <button type="button" data-oc-up="${key}" ${i === 0 ? 'disabled' : ''}
         class="w-7 h-7 rounded-lg border border-gray-200 text-gray-400 flex items-center justify-center disabled:opacity-30 hover:bg-gray-50">▲</button>

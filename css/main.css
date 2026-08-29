@@ -185,3 +185,72 @@ img[src*="student-photos"],
   aspect-ratio: auto !important;
 }
 
+/* ─── ไอคอนกริด "ระบบอื่น ๆ" (หน้าภาพรวมครู/นักเรียน) — 3 สไตล์ สลับได้จาก
+   ตั้งค่า > ทั่วไป > เบ็ดเตล็ด > "รูปแบบไอคอน" (system_config.iconTileStyle)
+   ใช้ผ่าน renderIconTile() ใน js/teacher-views-utils.js เท่านั้น ────────────── */
+
+/* shadow (ค่าเริ่มต้น) — เงาโทนสีเดียวกับไอคอน (ambient shadow) + เส้นไฮไลต์บนบาง ๆ */
+.icon-tile-shadow {
+  width: 3.55rem; height: 3.55rem; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.8rem;
+  box-shadow:
+    0 1px 0 0 rgba(255,255,255,.55) inset,
+    0 5px 12px -6px color-mix(in srgb, var(--tile-tint) 55%, transparent),
+    0 2px 4px -1px color-mix(in srgb, var(--tile-tint) 30%, transparent);
+  transition: transform .15s ease;
+}
+.icon-tile-shadow:active { transform: scale(.93); }
+
+/* glossy — แสงสะท้อนมุมบนซ้าย + เงาโค้งด้านล่างในตัวไอคอนเอง (คล้ายไอคอนแอปมือถือ) */
+.icon-tile-glossy {
+  width: 3.55rem; height: 3.55rem; border-radius: 8px;
+  position: relative; display: flex; align-items: center; justify-content: center;
+  font-size: 1.85rem; overflow: hidden;
+}
+.icon-tile-glossy::before {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(155deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 40%);
+}
+.icon-tile-glossy::after {
+  content: ''; position: absolute; left: 8%; right: 8%; bottom: -30%; height: 55%;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,.18), transparent 70%);
+  filter: blur(4px);
+}
+.icon-tile-glossy-emoji { position: relative; z-index: 1; filter: drop-shadow(0 1px 1px rgba(0,0,0,.08)); }
+
+/* glass — การ์ดกระจกฝ้าโปร่งแสงสีอ่อน + ไอคอนสี่เหลี่ยมมนเล็กลอยตรงกลาง + เงาสะท้อนใต้การ์ด */
+.icon-tile-glass-outer {
+  width: 3.55rem; height: 3.55rem; border-radius: 8px;
+  background: color-mix(in srgb, var(--tile-tint) 16%, var(--icon-tile-surface, #fff));
+  border: 1px solid color-mix(in srgb, var(--tile-tint) 28%, var(--icon-tile-border, #e5e7eb));
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  box-shadow: 0 10px 16px -9px color-mix(in srgb, var(--tile-tint) 60%, transparent);
+}
+.icon-tile-glass-dot {
+  width: 2.5rem; height: 2.5rem; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.35rem;
+  box-shadow: 0 3px 8px -2px color-mix(in srgb, var(--tile-tint) 45%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --icon-tile-surface: #1a1d24;
+    --icon-tile-border: #2a2e37;
+  }
+}
+:root[data-theme="dark"] {
+  --icon-tile-surface: #1a1d24;
+  --icon-tile-border: #2a2e37;
+}
+
+/* จอใหญ่ (คอมพิวเตอร์/แท็บเล็ต) — ขยายไอคอนให้เด่นสมกับหน้าจอกว้าง เหมือนที่ v10.22.588 เคยทำไว้ */
+@media (min-width: 1024px) {
+  .icon-tile-shadow, .icon-tile-glossy, .icon-tile-glass-outer {
+    width: 5rem; height: 5rem;
+  }
+  .icon-tile-shadow, .icon-tile-glossy { font-size: 2.25rem; }
+  .icon-tile-glass-dot { width: 3.2rem; height: 3.2rem; font-size: 1.7rem; }
+}
+
