@@ -439,6 +439,11 @@ function renderShell() {
     <header class="flex flex-col xl:flex-row xl:items-center justify-between gap-4 mb-4">
       <div>
         <div class="flex items-center gap-3">
+          ${window.self === window.top ? `
+          <button type="button" onclick="if (history.length > 1) { history.back(); } else { location.href = '/teacher.html'; }"
+            class="flex-shrink-0 text-sm font-semibold text-slate-500 hover:text-emerald-700 flex items-center gap-1 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition">
+            <span>←</span><span class="hidden sm:inline">กลับ</span>
+          </button>` : ''}
           <span class="w-11 h-11 rounded-2xl bg-emerald-100 text-2xl flex items-center justify-center">🕌</span>
           <div>
             <h1 class="text-xl sm:text-2xl font-extrabold text-slate-900">แดชบอร์ดแนวโน้มละหมาด</h1>
