@@ -473,6 +473,30 @@ export async function getStats() {
   }
 }
 
+// สถิติหน้าภาพรวมผู้บริหาร (renderExecutiveOverview, teacher-views.js) — ต่างจาก getStats() ตรงที่
+// (1) นับครูเฉพาะ is_active=true (getStats นับทุกคนรวมที่ปิดการใช้งานแล้ว) (2) คืนแถวดิบของ classes/
+// master_subjects แทนแค่ count เพื่อให้ฝั่งเรียกไปจัดหมวด (สามัญมัธยม ม.ต้น/ม.ปลาย/สามัญปวช/ศาสนามัธยม/
+// ศาสนาปวช) และนับ "รายวิชาไม่ซ้ำที่เปิดสอนจริง" เองได้
+export async function getExecutiveOverviewStats() {
+  const [
+    { count: teacherCount },
+    { count: studentCount },
+    { data: classRows },
+    { data: subjectRows },
+  ] = await Promise.all([
+    supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('is_active', true),
+    supabase.from('students').select('*', { count: 'exact', head: true }).eq('is_active', true),
+    supabase.from('classes').select('id, course_id'),
+    supabase.from('master_subjects').select('id, subject_name, subject_group, grade_level'),
+  ])
+  return {
+    teacherCount: teacherCount ?? 0,
+    studentCount: studentCount ?? 0,
+    classRows: classRows ?? [],
+    subjectRows: subjectRows ?? [],
+  }
+}
+
 // ─── Teachers ─────────────────────────────────────────────────────────────────
 export async function getTeachers() {
   const { data, error } = await supabase

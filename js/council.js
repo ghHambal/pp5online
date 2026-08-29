@@ -1549,28 +1549,6 @@ function renderExecDashboardView() {
       </div>
 
       <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4">
-        <p class="text-sm font-bold text-[var(--ink)] mb-1">🏛️ สภานักเรียนวาระปัจจุบัน</p>
-        <p class="text-xs text-[var(--muted)] mb-3">${esc(termText)}</p>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-3">
-          ${statTile(activeMembers.length, 'สมาชิกสภาทั้งหมด', 'var(--ink)')}
-          ${statTile(memberCountByGender.M, 'สภาชาย', '#14563b')}
-          ${statTile(memberCountByGender.W, 'สภาหญิง', '#a3134f')}
-          ${statTile(leaders.length, 'ตำแหน่งผู้นำ', 'var(--primary)')}
-        </div>
-        ${leaders.length ? `
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          ${leaders.map(m => `
-            <div class="flex items-center gap-2.5 rounded-xl border border-[var(--line-soft)] p-2">
-              ${studentPhoto(m.students, 'w-9 h-11')}
-              <div class="min-w-0">
-                <p class="text-xs font-bold text-[var(--ink)] truncate">${esc(m.students?.full_name ?? '—')}</p>
-                <p class="text-[0.6875rem] text-[var(--muted)] truncate">${esc(m.council_positions?.position_name ?? '—')}</p>
-              </div>
-            </div>`).join('')}
-        </div>` : `<p class="text-xs text-[var(--muted-2)]">ยังไม่มีตำแหน่งผู้นำที่เลือกตั้งแล้ว</p>`}
-      </div>
-
-      <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4">
         <p class="text-sm font-bold text-[var(--ink)] mb-3">📋 การสมัครสภานักเรียน</p>
         <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-3">
           ${statTile(total, 'สมัครแล้วทั้งหมด', 'var(--ink)')}
@@ -1606,6 +1584,28 @@ function renderExecDashboardView() {
           }).join('') || `<p class="text-xs text-[var(--muted-2)] text-center py-6">ยังไม่มีใบสมัคร</p>`}
         </div>
         ${adminApps.length > 30 ? `<p class="text-[0.6875rem] text-[var(--muted-2)] mt-2 text-center">แสดง 30 รายการล่าสุดจากทั้งหมด ${adminApps.length} รายการ</p>` : ''}
+      </div>
+
+      <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4">
+        <p class="text-sm font-bold text-[var(--ink)] mb-1">🏛️ สภานักเรียนวาระปัจจุบัน</p>
+        <p class="text-xs text-[var(--muted)] mb-3">${esc(termText)}</p>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-3">
+          ${statTile(activeMembers.length, 'สมาชิกสภาทั้งหมด', 'var(--ink)')}
+          ${statTile(memberCountByGender.M, 'สภาชาย', '#14563b')}
+          ${statTile(memberCountByGender.W, 'สภาหญิง', '#a3134f')}
+          ${statTile(leaders.length, 'ตำแหน่งผู้นำ', 'var(--primary)')}
+        </div>
+        ${leaders.length ? `
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          ${leaders.map(m => `
+            <div class="flex items-center gap-2.5 rounded-xl border border-[var(--line-soft)] p-2">
+              ${studentPhoto(m.students, 'w-9 h-11')}
+              <div class="min-w-0">
+                <p class="text-xs font-bold text-[var(--ink)] truncate">${esc(m.students?.full_name ?? '—')}</p>
+                <p class="text-[0.6875rem] text-[var(--muted)] truncate">${esc(m.council_positions?.position_name ?? '—')}</p>
+              </div>
+            </div>`).join('')}
+        </div>` : `<p class="text-xs text-[var(--muted-2)]">ยังไม่มีตำแหน่งผู้นำที่เลือกตั้งแล้ว</p>`}
       </div>
 
       <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4">

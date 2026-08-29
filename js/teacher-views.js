@@ -1,7 +1,7 @@
 import {
   getMySubjects, getMasterSubjects, getMyClasses, getDepartments, getTeachers,
   getSystemConfig, getMySchedule, getClassScheduleLinks, getPeriods, getClassrooms,
-  getWorkCalendarEvents, updateTeacher,
+  getWorkCalendarEvents, updateTeacher, getExecutiveOverviewStats,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { copySheetTemplate } from './sync.js'
@@ -171,28 +171,175 @@ export function _renderWenDutyCard(todayDuty, teacherCode, gradeInfo = null) {
 // ภาพรวมแบบย่อสำหรับบัญชี "ผู้บริหาร" ล้วนๆ (ไม่มีภาระสอน) — แดชบอร์ดครูเต็มรูปแบบด้านล่าง
 // (คอร์สวิชา/ตารางสอน/โควตาห้องเรียน/งานรายวัน ฯลฯ) ไม่มีความหมายกับบัญชีนี้เลย จึงแยกเป็น
 // เนื้อหาของตัวเอง ไม่พยายามแทรกเงื่อนไขเข้าไปในฟังก์ชันเดิมที่ใหญ่และพึ่งพากันสูงอยู่แล้ว (v10.22.560)
-function renderExecutiveOverview(teacher) {
+// 5 หมวดวิชา/คอร์สตามที่ผู้บริหารขอให้แยกชัดเจน — subject_group ยืนยันค่าจริงจาก GRADE_OPTS
+// (teacher-views-utils.js): ACDM=สามัญมัธยม, ACDMVOC=สามัญปวช, AGM=ศาสนามัธยม, AGMVOC=ศาสนาปวช
+// grade_level เป็น string ("ม.1".."ม.6") ต้องแยก ม.ต้น(1-3)/ม.ปลาย(4-6) เองสำหรับ ACDM เท่านั้น
+const _EXEC_SUBJECT_CATS = ['สามัญมัธยม ม.ต้น', 'สามัญมัธยม ม.ปลาย', 'สามัญปวช', 'ศาสนามัธยม', 'ศาสนาปวช']
+let _execActiveStat = null // key ของการ์ดสถิติที่กำลังกางรายละเอียดอยู่ในหน้าภาพรวมผู้บริหาร
+function _subjectCategory5(subjectGroup, gradeLevel) {
+  if (subjectGroup === 'AGMVOC') return 'ศาสนาปวช'
+  if (subjectGroup === 'AGM') return 'ศาสนามัธยม'
+  if (subjectGroup === 'ACDMVOC') return 'สามัญปวช'
+  const num = parseInt(String(gradeLevel ?? '').replace(/[^0-9]/g, ''), 10)
+  if (num >= 4 && num <= 6) return 'สามัญมัธยม ม.ปลาย'
+  if (num >= 1 && num <= 3) return 'สามัญมัธยม ม.ต้น'
+  return null // grade_level ไม่ตรงรูปแบบที่คาด — กันพังด้วยเก็บเป็น "ไม่ระบุ" แยกต่างหาก ไม่เดามั่ว
+}
+
+async function renderExecutiveOverview(teacher) {
+  setActiveNav('overview')
+  setTitle('ภาพรวม')
+  setContent(`<div class="flex justify-center py-16 text-gray-300">
+    <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
+  </div>`)
+
+  const [stats, cfg] = await Promise.all([
+    getExecutiveOverviewStats().catch(() => ({ teacherCount: 0, studentCount: 0, classRows: [], subjectRows: [] })),
+    getSystemConfig().catch(() => ({})),
+  ])
+  const subjectById = Object.fromEntries(stats.subjectRows.map(s => [s.id, s]))
+
+  // จัดหมวดคอร์ส (ห้องเรียนที่เปิดจริง) ตามวิชาที่ผูกอยู่
+  const courseCatCounts = Object.fromEntries(_EXEC_SUBJECT_CATS.map(c => [c, 0]))
+  let courseUncategorized = 0
+  stats.classRows.forEach(c => {
+    const subj = subjectById[c.course_id]
+    const cat = subj ? _subjectCategory5(subj.subject_group, subj.grade_level) : null
+    if (cat) courseCatCounts[cat]++
+    else courseUncategorized++
+  })
+
+  // จัดหมวดรายวิชา (ชื่อไม่ซ้ำ เฉพาะที่มีคอร์สเปิดจริงอย่างน้อย 1 ห้อง)
+  const openSubjectIds = new Set(stats.classRows.map(c => c.course_id).filter(Boolean))
+  const openSubjects = stats.subjectRows.filter(s => openSubjectIds.has(s.id))
+  const subjectNamesByCat = Object.fromEntries(_EXEC_SUBJECT_CATS.map(c => [c, new Set()]))
+  const subjectNamesUncategorized = new Set()
+  openSubjects.forEach(s => {
+    const cat = _subjectCategory5(s.subject_group, s.grade_level)
+    if (cat) subjectNamesByCat[cat].add(s.subject_name)
+    else subjectNamesUncategorized.add(s.subject_name)
+  })
+  const subjectCatCounts = Object.fromEntries(_EXEC_SUBJECT_CATS.map(c => [c, subjectNamesByCat[c].size]))
+  const totalDistinctSubjects = new Set(openSubjects.map(s => s.subject_name)).size
+
+  const STAT_CARDS = [
+    { key: 'teachers', icon: '👩‍🏫', label: 'จำนวนคุณครู', value: stats.teacherCount, hint: 'นับเฉพาะครูที่ยัง active' },
+    { key: 'students', icon: '🎒', label: 'จำนวนนักเรียน', value: stats.studentCount, hint: 'นับเฉพาะนักเรียนที่ยัง active' },
+    { key: 'courses',  icon: '🏫', label: 'จำนวนคอร์ส', value: stats.classRows.length, hint: 'ห้องเรียนที่เปิดจริง' },
+    { key: 'subjects', icon: '📖', label: 'จำนวนรายวิชาที่เปิดสอน', value: totalDistinctSubjects, hint: 'นับชื่อวิชาไม่ซ้ำ' },
+  ]
+
+  const renderStatCards = () => STAT_CARDS.map(c => `
+    <button type="button" data-exec-stat="${c.key}"
+      class="text-left bg-white rounded-2xl border ${_execActiveStat === c.key ? 'border-indigo-400 ring-2 ring-indigo-100' : 'border-gray-200'} shadow-sm p-4 hover:shadow-md hover:border-indigo-300 transition">
+      <div class="flex items-center gap-2 mb-1">
+        <span class="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center text-lg flex-shrink-0">${c.icon}</span>
+        <p class="text-xs font-semibold text-gray-500 leading-tight">${c.label}</p>
+      </div>
+      <p class="text-2xl font-extrabold text-gray-800">${c.value.toLocaleString('th-TH')}</p>
+      <p class="text-[10px] text-gray-400 mt-0.5">${c.hint}</p>
+      <p class="text-[10px] text-indigo-400 mt-1">${_execActiveStat === c.key ? '🔽 กำลังดูรายละเอียด — กดซ้ำเพื่อปิด' : 'กดเพื่อดูรายละเอียด ▸'}</p>
+    </button>`).join('')
+
+  const _catRow = (label, count) => `
+    <div class="flex items-center justify-between py-2 border-b border-gray-50 last:border-0">
+      <span class="text-sm text-gray-600">${label}</span>
+      <span class="text-sm font-bold text-gray-800">${count.toLocaleString('th-TH')}</span>
+    </div>`
+
+  const renderStatDetail = () => {
+    if (!_execActiveStat) return ''
+    let bodyHtml = ''
+    if (_execActiveStat === 'teachers' || _execActiveStat === 'students') {
+      const card = STAT_CARDS.find(c => c.key === _execActiveStat)
+      bodyHtml = `<p class="text-sm text-gray-500">${card.icon} ${card.label}ทั้งหมด <b class="text-gray-800">${card.value.toLocaleString('th-TH')}</b> คน (${card.hint})</p>`
+    } else if (_execActiveStat === 'courses') {
+      bodyHtml = _EXEC_SUBJECT_CATS.map(c => _catRow(c, courseCatCounts[c])).join('')
+        + (courseUncategorized > 0 ? _catRow('ไม่ระบุหมวด/ยังไม่ผูกวิชา', courseUncategorized) : '')
+    } else if (_execActiveStat === 'subjects') {
+      bodyHtml = _EXEC_SUBJECT_CATS.map(c => _catRow(c, subjectCatCounts[c])).join('')
+        + (subjectNamesUncategorized.size > 0 ? _catRow('ไม่ระบุหมวด', subjectNamesUncategorized.size) : '')
+    }
+    return `
+    <div id="exec-stat-detail-inner" class="mt-3 bg-white rounded-2xl border border-gray-200 shadow-sm p-4 animate-fade">
+      ${bodyHtml}
+    </div>`
+  }
+
+  // ไอคอนลัด "ระบบอื่นๆ" — ประกาศ/ปฏิทินปฏิบัติงาน (ทุกบัญชีเข้าได้เสมอ) + สภา/TERANGGANU/แก้ค้างเก่า
+  // (ใช้ window._teacherOverviewSystems ที่ _applyRoleMenus คำนวณสิทธิ์ไว้แล้ว ไม่ query ซ้ำ)
+  const sidebarTileColors = { council: ['#B7ECDB', '#3F9C7E'], terangganu: ['#F6D6F0', '#D68AC7'], regrade: ['#E5E1DA', '#B3A990'] }
+  const execSystemTiles = [
+    { key: 'announcements', emoji: '📢', label: 'ประกาศ', from: '#CDD3F8', to: '#8F9AE8', onclick: `window._navTo('announcements-view')` },
+    { key: 'work-calendar', emoji: '📅', label: 'ปฏิทิน<br>ปฏิบัติงาน', from: '#FCE7A8', to: '#E3B657', onclick: `window._navTo('work-calendar-view')` },
+    ...(window._teacherOverviewSystems || [])
+      .filter(s => s.show && ['council', 'terangganu', 'regrade'].includes(s.key))
+      .map(s => {
+        const [from, to] = sidebarTileColors[s.key] || ['#E4E4E7', '#9C9CA3']
+        return { key: s.key, emoji: s.emoji, label: s.label, from, to, onclick: s.href ? `window.location.href='${s.href}'` : `window._navTo('${s.nav}')` }
+      }),
+  ]
+  const execIconGridHtml = execSystemTiles.map(t => renderIconTile(t, cfg.iconTileStyle)).join('')
+
+  // ปุ่มลัดจอมอนิเตอร์ — ทุกหน้าเป็น standalone HTML ใส่รหัสผ่านเข้าดูเอง ไม่ผูกกับบัญชีล็อกอิน
+  const MONITOR_LINKS = [
+    { icon: '📡', label: 'ศูนย์ติดตามรวม (จอเดียว)', href: 'public-monitor.html' },
+    { icon: '📊', label: 'แดชบอร์ดแนวโน้มละหมาด', href: 'prayer-dashboard.html?days=14' },
+    { icon: '🖥️', label: 'จอมอนิเตอร์ละหมาดเรียลไทม์', href: 'prayer-monitor.html' },
+    { icon: '🚪', label: 'จอติดตามการออกนอกห้องเรียน', href: 'leave-monitor.html' },
+    { icon: '📋', label: 'ข้อมูลเช็คชื่อกีฬาสี', href: 'sports-attendance-monitor.html' },
+    { icon: '💰', label: 'ข้อมูลค่าบำรุงสี', href: 'sports-dues-monitor.html' },
+    { icon: '👕', label: 'ไซซ์เสื้อ/ค่าเสื้อกีฬาสี', href: 'sports-shirt-monitor.html' },
+    { icon: '📊', label: 'บัญชีเงินทุกสีกีฬาสี', href: 'sports-fund-monitor.html' },
+  ]
+  const monitorLinksHtml = MONITOR_LINKS.map(m => `
+    <a href="${m.href}" target="_blank" rel="noopener"
+      class="flex items-center gap-2.5 bg-white rounded-xl border border-gray-200 shadow-sm p-3 hover:shadow-md hover:border-slate-300 transition">
+      <span class="text-lg flex-shrink-0">${m.icon}</span>
+      <span class="text-xs font-semibold text-gray-600 leading-tight">${m.label}</span>
+    </a>`).join('')
+
   setContent(`<div class="animate-fade max-w-2xl">
     <div class="mb-4 bg-white rounded-2xl border border-gray-200 shadow-sm p-5">
       <p class="text-lg font-bold text-gray-800">👔 ${_htmlEsc(teacher?.full_name ?? 'ผู้บริหาร')}</p>
-      <p class="text-xs text-gray-400 mt-1">บัญชีนี้ตั้งค่าเป็นบทบาท "ผู้บริหาร" — ไม่มีภาระการสอนในระบบ เมนูจึงถูกย่อให้เหลือเฉพาะส่วนที่เกี่ยวข้อง</p>
     </div>
 
-    <a href="council.html" class="mb-4 rounded-2xl shadow-lg px-5 py-4 flex items-center gap-4 group transition hover:shadow-xl"
-      style="background:linear-gradient(135deg,#0f766e,#0d9488,#5eead4)">
-      <div class="text-4xl flex-shrink-0">🏛️</div>
-      <div class="flex-1 min-w-0">
-        <p class="text-white font-extrabold text-base leading-tight">ระบบสภานักเรียน</p>
-        <p class="text-white/85 text-xs mt-0.5">ดูภาพรวมสภานักเรียนวาระปัจจุบัน + ภาพรวมการสมัคร + รายนามครูที่ปรึกษา ที่แท็บ "ภาพรวม"</p>
-      </div>
-      <span class="text-white/70 group-hover:text-white transition text-lg flex-shrink-0">→</span>
-    </a>
+    <div class="grid grid-cols-2 gap-3 mb-1" id="exec-stat-cards">
+      ${renderStatCards()}
+    </div>
+    <div id="exec-stat-detail">${renderStatDetail()}</div>
 
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4">
-      <p class="text-sm font-semibold text-gray-700 mb-1">📢 ประกาศ / ปฏิทินปฏิบัติงาน</p>
-      <p class="text-xs text-gray-400">ดูได้จากเมนูด้านซ้าย</p>
+    <div class="mt-5 mb-1">
+      <h4 class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">ระบบอื่น ๆ</h4>
+      <div class="flex gap-3 overflow-x-auto pb-1" id="exec-icon-grid">
+        ${execIconGridHtml}
+      </div>
+    </div>
+
+    <div class="mt-5">
+      <h4 class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">🖥️ จอมอนิเตอร์</h4>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+        ${monitorLinksHtml}
+      </div>
     </div>
   </div>`)
+
+  function _wireExecStatCards() {
+    document.querySelectorAll('[data-exec-stat]').forEach(b => {
+      b.onclick = () => {
+        const key = b.dataset.execStat
+        _execActiveStat = _execActiveStat === key ? null : key
+        document.getElementById('exec-stat-cards').innerHTML = renderStatCards()
+        document.getElementById('exec-stat-detail').innerHTML = renderStatDetail()
+        _wireExecStatCards()
+        document.getElementById('exec-stat-detail-inner')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }
+    })
+  }
+  _wireExecStatCards()
 }
 
 export async function renderTeacherOverview(teacher, homeroomRooms = []) {
