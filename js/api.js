@@ -478,16 +478,21 @@ export async function getStats() {
 // master_subjects แทนแค่ count เพื่อให้ฝั่งเรียกไปจัดหมวด (สามัญมัธยม ม.ต้น/ม.ปลาย/สามัญปวช/ศาสนามัธยม/
 // ศาสนาปวช) และนับ "รายวิชาไม่ซ้ำที่เปิดสอนจริง" เองได้
 export async function getExecutiveOverviewStats() {
+  // teachers.is_active มีคอลัมน์จริงแต่ไม่เคยถูกตั้งค่าใช้งานจริง (query .eq('is_active',true) คืน 0
+  // แถวเสมอ ทั้งที่มีครู 186 คน) — นับแบบไม่กรอง ให้ตรงกับตัวเลข "ครูผู้สอน" ในหน้าภาพรวมแอดมิน
+  // (getStats()) ที่ใช้กันอยู่แล้วทั่วระบบแทน จนกว่าจะมีการตั้งค่า is_active ใช้งานจริง
   const [
     { count: teacherCount },
     { count: studentCount },
-    { data: classRows },
-    { data: subjectRows },
+    classRows,
+    subjectRows,
   ] = await Promise.all([
-    supabase.from('teachers').select('*', { count: 'exact', head: true }).eq('is_active', true),
+    supabase.from('teachers').select('*', { count: 'exact', head: true }),
     supabase.from('students').select('*', { count: 'exact', head: true }).eq('is_active', true),
-    supabase.from('classes').select('id, course_id'),
-    supabase.from('master_subjects').select('id, subject_name, subject_group, grade_level'),
+    // classes/master_subjects อาจมีเกิน 1,000 แถว (PostgREST ตัดคืนแค่ 1,000 แถวต่อคำขอโดยไม่แจ้งเตือน)
+    // ต้องไล่ดึงทีละหน้าด้วย _fetchAllRows ไม่งั้นตัวเลขคอร์ส/รายวิชาจะขาดหายอย่างเงียบๆ
+    _fetchAllRows(() => supabase.from('classes').select('id, course_id').order('id')),
+    _fetchAllRows(() => supabase.from('master_subjects').select('id, subject_name, subject_group, grade_level').order('id')),
   ])
   return {
     teacherCount: teacherCount ?? 0,

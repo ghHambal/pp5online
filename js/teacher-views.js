@@ -226,7 +226,7 @@ async function renderExecutiveOverview(teacher) {
   const totalDistinctSubjects = new Set(openSubjects.map(s => s.subject_name)).size
 
   const STAT_CARDS = [
-    { key: 'teachers', icon: '👩‍🏫', label: 'จำนวนคุณครู', value: stats.teacherCount, hint: 'นับเฉพาะครูที่ยัง active' },
+    { key: 'teachers', icon: '👩‍🏫', label: 'จำนวนคุณครู', value: stats.teacherCount, hint: 'ครูทั้งหมดในระบบ' },
     { key: 'students', icon: '🎒', label: 'จำนวนนักเรียน', value: stats.studentCount, hint: 'นับเฉพาะนักเรียนที่ยัง active' },
     { key: 'courses',  icon: '🏫', label: 'จำนวนคอร์ส', value: stats.classRows.length, hint: 'ห้องเรียนที่เปิดจริง' },
     { key: 'subjects', icon: '📖', label: 'จำนวนรายวิชาที่เปิดสอน', value: totalDistinctSubjects, hint: 'นับชื่อวิชาไม่ซ้ำ' },
