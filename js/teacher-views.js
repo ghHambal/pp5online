@@ -294,6 +294,9 @@ async function renderExecutiveOverview(teacher) {
     { icon: '💰', label: 'ข้อมูลค่าบำรุงสี', href: 'sports-dues-monitor.html' },
     { icon: '👕', label: 'ไซซ์เสื้อ/ค่าเสื้อกีฬาสี', href: 'sports-shirt-monitor.html' },
     { icon: '📊', label: 'บัญชีเงินทุกสีกีฬาสี', href: 'sports-fund-monitor.html' },
+    // ระบบเวร (Wen) เป็นแอปแยกคนละโปรเจกต์/โดเมน (ghhambal.github.io/wen) — tv.html เป็นหน้า
+    // TV Monitor สาธารณะของระบบนั้น ไม่มีการเช็ค login/รหัสผ่านใดๆ เปิดดูได้ทันที
+    { icon: '🛡️', label: 'ระบบเวร — ติดตามการปฏิบัติเวร Real-time', href: 'https://ghhambal.github.io/wen/tv.html' },
   ]
   const monitorLinksHtml = MONITOR_LINKS.map(m => `
     <a href="${m.href}" target="_blank" rel="noopener"
