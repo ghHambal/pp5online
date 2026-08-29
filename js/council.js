@@ -648,6 +648,37 @@ function renderHomeCouncilPreview() {
   return cardShell('🏛️ สภานักเรียนชุดปัจจุบัน', body, 'roster', 'ดูโครงสร้าง')
 }
 
+// พรีวิวสถิติการสมัครสภานักเรียนสำหรับแอดมิน/ผู้บริหาร — โชว์ตรงหน้าหลักทันที ไม่ต้องกดเข้าแท็บ
+// "ระบบ" (ไอคอนเฟือง) > "ภาพรวม" ก่อนถึงจะเห็นแบบเดิม (ผู้ใช้ขอ 2026-08-29) ใช้ adminApps ชุด
+// เดียวกับ renderExecDashboardView, โหลดผ่าน loadAdminApps() เดิม — render() หลังโหลดเสร็จจะ
+// dispatch กลับมาหน้านี้เองเพราะ activeView ยังเป็น 'overview' อยู่ ไม่ต้องเขียน loader ใหม่
+function renderHomeApplicationsPreview() {
+  if (!ctx.isAdmin && !ctx.isExecutive) return ''
+  if (adminApps === null) {
+    loadAdminApps()
+    return cardShell('📋 การสมัครสภานักเรียน', `<p class="text-xs text-[var(--muted-2)] text-center py-4">⏳ กำลังโหลด...</p>`)
+  }
+  const total = adminApps.length
+  const homeroomEndorsedCount = adminApps.filter(a => a.endorsed_at).length
+  const peerEndorsedCount = adminApps.filter(a => a.peer_endorsed_at || applicantIsCurrentMember(a)).length
+  const candidateCount = adminApps.filter(a => a.status === 'candidate').length
+  const statTile = (n, label, color) => `
+    <div class="rounded-xl bg-[var(--surface-2)] p-3 text-center">
+      <p class="text-xl font-extrabold" style="color:${color}">${esc(n)}</p>
+      <p class="text-[0.6875rem] text-[var(--muted-2)] mt-0.5">${esc(label)}</p>
+    </div>`
+  const body = `
+    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+      ${statTile(total, 'สมัครแล้วทั้งหมด', 'var(--ink)')}
+      ${statTile(homeroomEndorsedCount, 'ครูที่ปรึกษาสามัญรับรองแล้ว', 'var(--ok)')}
+      ${peerEndorsementRequired()
+        ? statTile(peerEndorsedCount, 'สภาปัจจุบันรับรองแล้ว', 'var(--ok)')
+        : statTile('—', 'สภาปัจจุบันรับรอง (ปิดใช้งาน)', 'var(--muted-2)')}
+      ${statTile(candidateCount, 'ว่าที่สภานักเรียน', 'var(--primary)')}
+    </div>`
+  return cardShell('📋 การสมัครสภานักเรียน', body, 'dashboard', 'ดูรายละเอียด')
+}
+
 function renderOverviewView() {
   const hero = renderHomeHero()
   const personal = renderPersonalCard()
@@ -697,6 +728,7 @@ function renderOverviewView() {
   return `<div class="space-y-4">
     ${hero}
     ${personal}
+    ${renderHomeApplicationsPreview()}
     ${entryCards}
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       ${renderHomeActivitySummary()}

@@ -281,6 +281,9 @@ async function renderExecutiveOverview(teacher) {
         const [from, to] = sidebarTileColors[s.key] || ['#E4E4E7', '#9C9CA3']
         return { key: s.key, emoji: s.emoji, label: s.label, from, to, onclick: s.href ? `window.location.href='${s.href}'` : `window._navTo('${s.nav}')` }
       }),
+    // ระบบเวร (Wen) เป็นแอปแยกคนละโปรเจกต์/โดเมน — ลิงก์เดียวกับที่อยู่ในกลุ่ม "จอมอนิเตอร์"
+    // ด้านล่าง แค่เพิ่มทางลัดซ้ำไว้ตรงนี้ด้วยตามที่ขอ ให้เข้าถึงเร็วขึ้นจากกริดบนสุด
+    { key: 'wen-duty', emoji: '🛡️', label: 'ระบบเวร', from: '#FBD0D6', to: '#EC93A1', onclick: `window.location.href='https://ghhambal.github.io/wen/tv.html'` },
   ]
   const execIconGridHtml = execSystemTiles.map(t => renderIconTile(t, cfg.iconTileStyle)).join('')
 
