@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.606'
+import { APP_VERSION } from './version.js?v=10.22.607'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -304,6 +304,7 @@ async function navigate(view) {
   }
   const fn = ROUTES[view]
   if (fn) { _currentView = view; fn() }
+  _toggleFloatingFabsForView(view)
 }
 
 // expose to window for onclick in views
@@ -1435,6 +1436,21 @@ async function _addDonateToSidebar(approvedRequest = null) {
   nav.appendChild(item)
 }
 
+// บัญชี "ผู้บริหาร" ล้วนๆ (ไม่มีภาระสอน/is_also_admin) — ซ่อนปุ่มลอยทั้งหมด (โดเนท/ฟีดแบ็ก/แชทผู้สนับสนุน)
+// เฉพาะตอนอยู่หน้าภาพรวมผู้บริหาร (renderExecutiveOverview) เพราะบังรายการจอมอนิเตอร์ — หน้าอื่นยังโชว์ปกติ
+function _isExecutiveOnlyAccount() {
+  const positions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
+  return positions.includes('executive')
+}
+
+function _toggleFloatingFabsForView(view) {
+  const hide = view === 'overview' && _isExecutiveOnlyAccount()
+  ;['donate-float-btn', 'feedback-fab', 'donor-chat-fab'].forEach(id => {
+    const el = document.getElementById(id)
+    if (el) el.style.display = hide ? 'none' : ''
+  })
+}
+
 function _initDonateFloatingBtn(hasPendingDonation = false) {
   document.getElementById('donate-float-btn')?.remove()
   const btn = document.createElement('button')
@@ -1453,6 +1469,7 @@ function _initDonateFloatingBtn(hasPendingDonation = false) {
     _showDonateModal(null, cfg)
   })
   document.body.appendChild(btn)
+  _toggleFloatingFabsForView(_currentView)
 }
 
 // ── Promo Popup (ครูที่ยังไม่โดเนท) ─────────────────────────────────────────
@@ -3121,7 +3138,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   _loadAnnouncementBanners()
   _checkTerangganuSurveyNudge()
   if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
-  if (_teacher?.id) import('./teacher-views-donor-chat.js').then(m => m.injectDonorChatWidget(_teacher))
+  if (_teacher?.id) import('./teacher-views-donor-chat.js').then(m => { m.injectDonorChatWidget(_teacher); _toggleFloatingFabsForView(_currentView) })
+  _toggleFloatingFabsForView(_currentView)
 
   const verEl = document.getElementById('app-version')
   if (verEl) {
