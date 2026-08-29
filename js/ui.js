@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.599'
+import { APP_VERSION } from './version.js?v=10.22.600'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -781,6 +781,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.600': [
+    '🖼️ แก้สัดส่วนรูปโปรไฟล์ครูในการ์ดหน้าภาพรวมที่แคบเกินไปหลังปรับให้สูงขึ้น (96×112px แทน 64×112px)',
+  ],
   '10.22.599': [
     '🖼️ การ์ดโปรไฟล์ครูในหน้าภาพรวม: รูปสูงขึ้น (64×112px) และปุ่ม "แก้ไขโปรไฟล์" เล็กลงให้เข้ากับสัดส่วนใหม่',
   ],

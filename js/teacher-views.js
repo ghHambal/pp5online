@@ -594,7 +594,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     <div class="bg-white rounded-2xl ${cardBorderCls} px-5 pt-5 pb-5 mb-5 flex items-center gap-5 overflow-hidden" style="${cardGlowStyle}">
       <!-- รูปโปรไฟล์ + ปุ่มแก้ไข -->
       <div class="flex flex-col items-center gap-2 flex-shrink-0">
-        <div class="w-16 h-28 rounded-xl overflow-hidden border-2 border-emerald-100 shadow-md
+        <div class="w-24 h-28 rounded-xl overflow-hidden border-2 border-emerald-100 shadow-md
                     bg-gradient-to-tr from-emerald-400 to-teal-400 flex items-center justify-center
                     text-white text-3xl font-bold">
           ${teacher?.image_url
