@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.608'
+import { APP_VERSION } from './version.js?v=10.22.609'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -1449,6 +1449,29 @@ function _toggleFloatingFabsForView(view) {
     const el = document.getElementById(id)
     if (el) el.style.display = hide ? 'none' : ''
   })
+  _updateHomeFabVisibility(view)
+}
+
+// ปุ่มลอย "🏠 หน้าภาพรวม" มุมซ้ายล่าง — โชว์เฉพาะตอนอยู่หน้าอื่นที่ไม่ใช่ภาพรวม เพราะเดิมกลับ
+// หน้าภาพรวมได้ทางเดียวคือเปิดเมนูซ้ายเท่านั้น (ผู้ใช้แจ้งว่าลำบากโดยเฉพาะบนมือถือ)
+function _initHomeFab() {
+  if (document.getElementById('home-fab')) return
+  const fab = document.createElement('button')
+  fab.id = 'home-fab'
+  fab.title = 'กลับหน้าภาพรวม'
+  fab.className = 'hidden fixed z-40 items-center gap-2 pl-3 pr-4 py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-lg shadow-emerald-600/30 transition-transform hover:scale-105'
+  fab.style.cssText = 'position:fixed;left:max(0.75rem, env(safe-area-inset-left));bottom:max(0.75rem, env(safe-area-inset-bottom));right:auto;top:auto;'
+  fab.innerHTML = `<span class="text-lg">🏠</span><span>หน้าภาพรวม</span>`
+  fab.addEventListener('click', () => navigate('overview'))
+  document.body.appendChild(fab)
+}
+
+function _updateHomeFabVisibility(view) {
+  const fab = document.getElementById('home-fab')
+  if (!fab) return
+  const show = view !== 'overview'
+  fab.classList.toggle('hidden', !show)
+  fab.classList.toggle('flex', show)
 }
 
 function _initDonateFloatingBtn(hasPendingDonation = false) {
@@ -3139,6 +3162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _checkTerangganuSurveyNudge()
   if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
   if (_teacher?.id) import('./teacher-views-donor-chat.js').then(m => { m.injectDonorChatWidget(_teacher); _toggleFloatingFabsForView(_currentView) })
+  _initHomeFab()
   _toggleFloatingFabsForView(_currentView)
 
   const verEl = document.getElementById('app-version')
