@@ -188,7 +188,7 @@ function _subjectCategory5(subjectGroup, gradeLevel) {
 
 async function renderExecutiveOverview(teacher) {
   setActiveNav('overview')
-  setTitle('ภาพรวม')
+  setTitle('ภาพรวมผู้บริหาร')
   setContent(`<div class="flex justify-center py-16 text-gray-300">
     <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>

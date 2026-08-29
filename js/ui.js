@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.607'
+import { APP_VERSION } from './version.js?v=10.22.608'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -781,6 +781,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.608': [
+    '🏷️ หน้าภาพรวมผู้บริหาร: เปลี่ยนหัวข้อบนแถบด้านบนจาก "ภาพรวม" เป็น "ภาพรวมผู้บริหาร" ให้ตรงกับหน้าจริงมากขึ้น',
+  ],
   '10.22.607': [
     '🙈 หน้าภาพรวมผู้บริหาร: ซ่อนปุ่มลอย (โดเนท/ฟีดแบ็ก/แชทผู้สนับสนุน) เฉพาะตอนอยู่หน้านี้ กันบังรายการจอมอนิเตอร์ — หน้าอื่นยังเห็นปุ่มลอยตามปกติ',
   ],
