@@ -7,6 +7,7 @@ import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCou
 import { openCouncilCheckinScanner } from './council-checkin-scanner.js'
 import { CERT_PRESET_LABELS, defaultLayoutFor, openCertificatePrint as openCentralCertificatePrint } from './certificate-engine.js'
 import { openCertificateLayoutEditor } from './certificate-editor.js'
+import { openHtmlPrintOverlay } from './print-overlay.js'
 import {
   getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate, updateCertificateTemplateLayout,
   issueCertificate as issueCentralCertificate, getCertificatesBySource,
@@ -2573,9 +2574,9 @@ function buildCertificateHtml({ member, evaluation, cfg }) {
     <style>
       * { box-sizing: border-box; }
       body { font-family: 'Sarabun', sans-serif; background: #fdfaf3; padding: 40px; }
-      .cert { max-width: 900px; margin: 0 auto; border: 6px double var(--gold); padding: 50px 40px; text-align: center; background: #fffdf8; }
-      .badge { width: 74px; height: 74px; border-radius: 50%; border: 2px solid #e2d4ae; background: var(--gold-soft); display: grid; place-items: center; margin: 0 auto 14px; font-size: 24px; color: var(--gold-ink); font-weight: 700; }
-      h1 { color: var(--gold-ink); font-size: 34px; margin: 6px 0 18px; }
+      .cert { max-width: 900px; margin: 0 auto; border: 6px double #b5892b; padding: 50px 40px; text-align: center; background: #fffdf8; }
+      .badge { width: 74px; height: 74px; border-radius: 50%; border: 2px solid #e2d4ae; background: #fdf7e9; display: grid; place-items: center; margin: 0 auto 14px; font-size: 24px; color: #8a6a1f; font-weight: 700; }
+      h1 { color: #8a6a1f; font-size: 34px; margin: 6px 0 18px; }
       .name { font-size: 26px; font-weight: 700; border-bottom: 1px solid #e2d4ae; display: inline-block; padding: 0 24px 8px; margin: 10px 0 18px; }
       .sign { display: flex; justify-content: space-around; margin-top: 60px; }
       .sign div { width: 220px; border-top: 1px solid #999; padding-top: 6px; font-size: 13px; color: #555; }
@@ -2584,29 +2585,22 @@ function buildCertificateHtml({ member, evaluation, cfg }) {
     <body>
       <div class="cert">
         <div class="badge">🏛️</div>
-        <p style="color:var(--muted);font-size:13px;letter-spacing:1px;">${councilName}</p>
+        <p style="color:#6e5f65;font-size:13px;letter-spacing:1px;">${councilName}</p>
         <h1>เกียรติบัตร</h1>
-        <p style="color:var(--ink-2);">มอบเพื่อแสดงว่า</p>
+        <p style="color:#4a3b41;">มอบเพื่อแสดงว่า</p>
         <p class="name">${name}</p>
-        <p style="color:var(--ink);line-height:1.9;max-width:560px;margin:0 auto;">ได้ปฏิบัติหน้าที่ <b>${position}</b> ของ${councilName} ด้วยความรับผิดชอบ ทุ่มเท และเป็นแบบอย่างที่ดี จึงมอบเกียรติบัตรฉบับนี้ไว้เป็นเกียรติประวัติสืบไป</p>
-        <p style="color:var(--muted-2);font-size:12px;margin-top:16px;">ให้ไว้ ณ วันที่ ${issuedAt} ${no ? '· เลขที่ ' + no : ''}</p>
+        <p style="color:#1d1519;line-height:1.9;max-width:560px;margin:0 auto;">ได้ปฏิบัติหน้าที่ <b>${position}</b> ของ${councilName} ด้วยความรับผิดชอบ ทุ่มเท และเป็นแบบอย่างที่ดี จึงมอบเกียรติบัตรฉบับนี้ไว้เป็นเกียรติประวัติสืบไป</p>
+        <p style="color:#90828a;font-size:12px;margin-top:16px;">ให้ไว้ ณ วันที่ ${issuedAt} ${no ? '· เลขที่ ' + no : ''}</p>
         <div class="sign">
           <div>ครูที่ปรึกษาสภานักเรียน</div>
           <div>ผู้อำนวยการโรงเรียน</div>
         </div>
       </div>
-      <div style="text-align:center;margin-top:20px;display:flex;gap:8px;justify-content:center;">
-        <button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid var(--gold);background:#fff;color:var(--gold-ink);cursor:pointer;">← ปิดหน้าต่างนี้</button>
-        <button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid var(--gold);background:#fff;color:var(--gold-ink);cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
-      </div>
     </body></html>`
 }
 
 function openCertificatePrint(member, evaluation) {
-  const win = window.open('', '_blank', 'width=900,height=700')
-  if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์', 'warning'); return }
-  win.document.open(); win.document.write(buildCertificateHtml({ member, evaluation, cfg: ctx.cfg })); win.document.close()
-  setTimeout(() => win.print(), 600)
+  openHtmlPrintOverlay(buildCertificateHtml({ member, evaluation, cfg: ctx.cfg }))
 }
 
 // ─── เอกสารขออนุมัติโครงการ/กิจกรรม — อนุมัติ 3 ระดับตามแบบฟอร์มโรงเรียนจริง (2026-08-17) ──
@@ -3062,18 +3056,11 @@ function buildDocumentHtml(d, cfg) {
       @media print { body { padding: 0; } }
     </style></head><body>
       ${renderDocumentPreviewBody(d, cfg)}
-      <div style="text-align:center;margin-top:24px;display:flex;gap:8px;justify-content:center;">
-        <button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #b5892b;background:#fff;color:#8a6a1f;cursor:pointer;">← ปิดหน้าต่างนี้</button>
-        <button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #b5892b;background:#fff;color:#8a6a1f;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
-      </div>
     </body></html>`
 }
 
 function openDocumentPrint(d) {
-  const win = window.open('', '_blank', 'width=900,height=700')
-  if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์', 'warning'); return }
-  win.document.open(); win.document.write(buildDocumentHtml(d, ctx.cfg)); win.document.close()
-  setTimeout(() => win.print(), 600)
+  openHtmlPrintOverlay(buildDocumentHtml(d, ctx.cfg))
 }
 
 // ─── หน้าตั้งค่า (Phase 2) — 4 แท็บ: ทั่วไป / ตำแหน่ง / เกณฑ์และข้อความ / โมดูล ────────────

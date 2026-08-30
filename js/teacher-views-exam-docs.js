@@ -1,5 +1,6 @@
 import { getClassStudents, getMyClasses, getSystemConfig, getTeachers } from './api.js'
 import { showToast } from './ui.js'
+import { openHtmlPrintOverlay } from './print-overlay.js'
 import {
   INPUT_CLS, SELECT_CLS,
   setActiveNav, setContent, setTitle, _htmlEsc,
@@ -758,26 +759,12 @@ const _openExamPrintWindow = () => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>เอกสารช่วงสอบ</title>
-  <style>@media print { .no-print { display:none } }</style>
 </head>
 <body style="margin:0;background:#fff;">
   ${_buildPrintHtml('all')}
-  <div class="no-print" style="text-align:center;margin:16px 0;">
-    <button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">← ปิดหน้าต่างนี้</button>
-  </div>
-  <script>
-    window.addEventListener('load', () => setTimeout(() => window.print(), 150));
-  </script>
 </body>
 </html>`
-  const win = window.open('', '_blank')
-  if (!win) {
-    showToast('เบราว์เซอร์บล็อกหน้าพิมพ์ กรุณาอนุญาต popup แล้วลองใหม่', 'warning')
-    return
-  }
-  win.document.open()
-  win.document.write(html)
-  win.document.close()
+  openHtmlPrintOverlay(html, { autoprint: true })
 }
 
 const _selectedClassMeta = () => {

@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.611'
+import { APP_VERSION } from './version.js?v=10.22.612'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -26,7 +26,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.610'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.612'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -241,7 +241,7 @@ const ROUTES = {
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
   'certificates': () => import('./teacher-views-certificates.js').then(m => m.renderCertificateManager(_teacher)),
   'quiz-system': () => import('./teacher-views-quiz-banks.js').then(m => m.renderQuizBanks(_teacher)),
-  'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.18.25').then(m => m.renderExamDocuments(_teacher)),
+  'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.22.612').then(m => m.renderExamDocuments(_teacher)),
   'sports':      () => {
     // ครูตำแหน่ง house_color_admin (หรือได้รับสิทธิ์ menu_sports_admin/เป็นแอดมิน) ที่กด
     // ทางลัด "ระบบกีฬาสี" จากเมนูปกตินี้ ต้องเข้าเป็นแอดมิน AZIZGAMES ทันทีเหมือนกับที่เข้าทาง
@@ -2792,7 +2792,7 @@ function _showShirtSizeReminderPopup() {
   document.body.appendChild(wrap)
   wrap.querySelector('#ssrp-go').addEventListener('click', () => {
     wrap.remove()
-    import('./sports-portals.js?v=10.22.610').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+    import('./sports-portals.js?v=10.22.612').then(m => m.openTeacherShirtSizeModal?.(_teacher))
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
 }

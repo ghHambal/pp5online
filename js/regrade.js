@@ -18,6 +18,7 @@ import {
 import { getCertificateTemplates, getCertificateTemplate, createCertificateTemplate, updateCertificateTemplateLayout } from './certificates-api.js'
 import { openCertificatePrint } from './certificate-engine.js'
 import { openCertificateLayoutEditor } from './certificate-editor.js'
+import { openHtmlPrintOverlay } from './print-overlay.js'
 
 // ─── ใบสั้นแก้ค้างเก่า — ใช้เอนจิน/ตัวแก้ไขเทมเพลตเดียวกับระบบเกียรติบัตรกลาง (certificate-engine.js/
 // certificate-editor.js) แต่ไม่ผ่านตารางออกใบ (certificates) ของระบบนั้นเลย เพราะนี่เป็นเอกสารทำงาน
@@ -1310,16 +1311,11 @@ const PRINT_STYLE = `
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;}
   th{background:#f3f4f6;}
-  @media print { body{padding:0;} .no-print{display:none;} }`
+  @media print { body{padding:0;} }`
 
 function openPrintWindow(title, bodyHtml) {
-  const win = window.open('', '_blank')
-  if (!win) { showToast('เบราว์เซอร์บล็อกป๊อปอัพ กรุณาอนุญาตแล้วลองใหม่', 'warning'); return }
-  const closeBtnHtml = `<div class="no-print" style="text-align:center;margin-bottom:16px;"><button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">← ปิดหน้าต่างนี้</button></div>`
-  win.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title><style>${PRINT_STYLE}</style></head><body>${closeBtnHtml}${bodyHtml}</body></html>`)
-  win.document.close()
-  win.focus()
-  win.print()
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escHtml(title)}</title><style>${PRINT_STYLE}</style></head><body>${bodyHtml}</body></html>`
+  openHtmlPrintOverlay(html, { autoprint: true })
 }
 
 async function printClassroomRoster(room) {

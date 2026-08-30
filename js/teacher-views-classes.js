@@ -30,6 +30,7 @@ import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { supabase } from './supabase.js'
 import { showToast, showDangerConfirm } from './ui.js'
 import { openPP5Doc } from './pp5-doc.js'
+import { openHtmlPrintOverlay } from './print-overlay.js'
 import { uploadQrIssuerSignature } from './storage.js'
 import { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 import { renderScoreColumns } from './teacher-score-columns.js'
@@ -713,12 +714,6 @@ export async function renderMyClasses(teacher) {
     }
 
     const _openPrintableRoster = async (cls, type, orientation = 'landscape', gender = 'all') => {
-      const win = window.open('', '_blank')
-      if (!win) {
-        showToast('เบราว์เซอร์บล็อก popup กรุณาอนุญาต popup ก่อน', 'warning')
-        return
-      }
-      win.document.write('<p style="font-family:sans-serif;padding:24px">กำลังสร้างเอกสาร...</p>')
       try {
         const [cfg, allStudents, scoreColumns] = await Promise.all([
           getSystemConfig().catch(() => ({})),
@@ -730,7 +725,6 @@ export async function renderMyClasses(teacher) {
           ? allStudents
           : allStudents.filter(s => String(s.gender || '').trim() === genderLabel)
         if (!students.length) {
-          win.close()
           showToast(`ไม่พบนักเรียน${genderLabel === 'ทั้งหมด' ? '' : genderLabel}ในห้องนี้`, 'warning')
           return
         }
@@ -775,9 +769,6 @@ export async function renderMyClasses(teacher) {
     @page { size: A4 ${isLandscape ? 'landscape' : 'portrait'}; margin: 10mm; }
     * { box-sizing: border-box; }
     body { font-family: "Sarabun", "TH Sarabun New", Arial, sans-serif; color: #111827; margin: 0; background: #f3f4f6; }
-    .toolbar { position: sticky; top: 0; display: flex; gap: 8px; justify-content: flex-end; padding: 10px; background: white; border-bottom: 1px solid #e5e7eb; }
-    .toolbar button { border: 1px solid #d1d5db; background: white; border-radius: 8px; padding: 8px 14px; font-weight: 700; cursor: pointer; }
-    .toolbar .primary { background: #4f46e5; color: white; border-color: #4f46e5; }
     .page { width: ${pageWidth}; min-height: ${pageHeight}; margin: 12px auto; padding: 10mm; background: white; }
     .header { display: grid; grid-template-columns: 70px 1fr 150px; align-items: center; gap: 12px; margin-bottom: 10px; }
     .logo-wrap { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; background: transparent; }
@@ -814,16 +805,11 @@ export async function renderMyClasses(teacher) {
     .signature div { width: 220px; text-align: center; line-height: 2; }
     @media print {
       body { background: white; }
-      .toolbar { display: none; }
       .page { margin: 0; box-shadow: none; width: auto; min-height: auto; padding: 0; }
     }
   </style>
 </head>
 <body>
-  <div class="toolbar">
-    <button onclick="window.close()">ปิด</button>
-    <button class="primary" onclick="window.print()">พิมพ์</button>
-  </div>
   <main class="page">
     <section class="header">
       <div class="logo-wrap">${printLogoUrl ? `<img class="logo" src="${_htmlEsc(printLogoUrl)}" />` : ''}</div>
@@ -864,11 +850,8 @@ export async function renderMyClasses(teacher) {
   </main>
 </body>
 </html>`
-        win.document.open()
-        win.document.write(doc)
-        win.document.close()
+        openHtmlPrintOverlay(doc)
       } catch (err) {
-        win.close()
         showToast('สร้างใบรายชื่อไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       }
     }

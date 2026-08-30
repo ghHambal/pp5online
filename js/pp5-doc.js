@@ -8,6 +8,7 @@ import {
 } from './api.js'
 import { showToast } from './ui.js'
 import { supabase } from './supabase.js'
+import { openHtmlPrintOverlay } from './print-overlay.js'
 import { _readingGrade, applyReadingGradesFromConfig } from './teacher-views-utils.js'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -2127,16 +2128,6 @@ function _buildFullDoc(d, title, pagesHTML = null) {
 </head>
 <body>
   ${parts.join('\n')}
-  <div class="no-print" style="text-align:center;margin:10mm;font-size:9pt;color:#666;display:flex;gap:8px;justify-content:center;">
-    <button onclick="window.close()" style="padding:8px 24px;font-size:11pt;font-family:Sarabun,sans-serif;
-      background:#fff;color:#333;border:1px solid #999;border-radius:8px;cursor:pointer;">
-      ← ปิดหน้าต่างนี้
-    </button>
-    <button onclick="window.print()" style="padding:8px 24px;font-size:11pt;font-family:Sarabun,sans-serif;
-      background:#1d4ed8;color:#fff;border:none;border-radius:8px;cursor:pointer;">
-      🖨️ พิมพ์ / บันทึก PDF
-    </button>
-  </div>
 </body>
 </html>`
 }
@@ -2286,10 +2277,7 @@ function _openViewer(d) {
     // ถ้า tab ดูทั้งหมด → print ผ่าน window ใหม่ ไม่ใช้ iframe
     if (pages[curIdx].all) {
       const title = `ปพ5_${d.ms.subject_code??''}_${_shortRoom(d.cls.class_name)}`
-      const win = window.open('', '_blank', 'width=900,height=700')
-      if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์','warning'); return }
-      win.document.open(); win.document.write(_buildFullDoc(d, title, pageIdxRange.map(getPageHTML))); win.document.close()
-      setTimeout(() => win.print(), 600)
+      openHtmlPrintOverlay(_buildFullDoc(d, title, pageIdxRange.map(getPageHTML)), { autoprint: true })
       return
     }
     iframe.contentWindow.focus()
@@ -2300,10 +2288,7 @@ function _openViewer(d) {
     captureCurrentEdits()
     const title = `ปพ5_${d.ms.subject_code??''}_${_shortRoom(d.cls.class_name)}`
     const html  = _buildFullDoc(d, title, pageIdxRange.map(getPageHTML))
-    const win   = window.open('', '_blank', 'width=900,height=700')
-    if (!win) { showToast('กรุณาอนุญาต Popup ในเบราว์เซอร์','warning'); return }
-    win.document.open(); win.document.write(html); win.document.close()
-    setTimeout(() => win.print(), 600)
+    openHtmlPrintOverlay(html, { autoprint: true })
   })
 }
 

@@ -9,6 +9,8 @@
 // ซึ่งจะถูกแทนที่ด้วยข้อมูลจริงตอนเรนเดอร์ — ทำให้แก้ข้อความ/ตำแหน่ง/สไตล์ได้อิสระจากหน้าตั้งค่าล้วนๆ
 // ไม่ต้องแตะโค้ดเลย ส่วนเทมเพลตเก่าก่อนมีฟีเจอร์นี้ (layout เป็น null) จะ fallback ไปใช้
 // defaultLayoutFor(preset_key/custom) ซึ่งเรนเดอร์ออกมาหน้าตาเดิมเป๊ะ ไม่กระทบเทมเพลตที่มีอยู่แล้ว
+import { openHtmlPrintOverlay } from './print-overlay.js'
+
 const _esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 export const CERT_PRESETS = {
@@ -136,27 +138,6 @@ export function buildCertificateHtml({ layout, variables, docTitle }) {
     </body></html>`
 }
 
-// เดิมใช้ window.open('', '_blank') + document.write เปิดหน้าต่างแยก แต่บน iOS/Android ที่ติดตั้งเป็น
-// PWA (Add to Home Screen) window.open แบบไม่มี URL จริงมักไม่เปิดหน้าต่างใหม่จริง กลับไปเขียนทับหน้าแอป
-// เดิมทั้งหมด (document.write ล้าง JS state ทิ้ง) กด "ปิด" แล้วดูเหมือนเด้งกลับหน้าภาพรวม —
-// เปลี่ยนมาใช้ overlay + iframe ในหน้าเดิมแทน ไม่พึ่ง window.open เลย ทำงานเหมือนกันทุกอุปกรณ์/บริบท
 export function openCertificatePrint({ layout, variables, docTitle }) {
-  document.getElementById('cert-print-overlay')?.remove()
-  const overlay = document.createElement('div')
-  overlay.id = 'cert-print-overlay'
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#e5e7eb;display:flex;flex-direction:column;'
-  overlay.innerHTML = `
-    <div style="flex-shrink:0;display:flex;gap:8px;justify-content:center;padding:10px;background:#fff;border-bottom:1px solid #ddd;">
-      <button id="cert-print-close-btn" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">← ปิด</button>
-      <button id="cert-print-go-btn" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
-    </div>
-    <iframe id="cert-print-iframe" style="flex:1;border:0;width:100%;background:#e5e7eb;"></iframe>`
-  document.body.appendChild(overlay)
-  overlay.querySelector('#cert-print-iframe').srcdoc = buildCertificateHtml({ layout, variables, docTitle })
-  overlay.querySelector('#cert-print-close-btn').addEventListener('click', () => overlay.remove())
-  overlay.querySelector('#cert-print-go-btn').addEventListener('click', () => {
-    const frameWin = overlay.querySelector('#cert-print-iframe').contentWindow
-    frameWin?.focus()
-    frameWin?.print()
-  })
+  openHtmlPrintOverlay(buildCertificateHtml({ layout, variables, docTitle }))
 }

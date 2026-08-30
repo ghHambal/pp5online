@@ -3,6 +3,7 @@ import { promptpayQRDataURL } from './promptpay.js'
 import { uploadAzfutsalPlayerPhoto, compressImage } from './storage.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
 import { openFutsalCertificatePrint, buildFutsalCertificateFragment } from './azfutsal-certificate.js'
+import { openHtmlPrintOverlay } from './print-overlay.js'
 
 // ข้อความรางวัลเกียรติบัตรแยกตามประเภท แก้ไขได้จากหน้าตั้งค่า (คีย์ CERT_TEXT_<type>) — นี่คือค่าเริ่มต้น
 // {event} จะถูกแทนที่ด้วยชื่อกิจกรรม (EVENT_NAME) อัตโนมัติ
@@ -1167,8 +1168,8 @@ function buildRefundReceiptDocument(team, refund, isPreview) {
   const methodLabel = refund.payment_method === 'transfer' ? 'โอนเงิน' : refund.payment_method === 'cash' ? 'เงินสด' : ''
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(isPreview ? `ตัวอย่างใบเสร็จ · ${team.name}` : refund.receipt_no)}</title>
   <style>
-    @page{size:A4;margin:16mm}*{box-sizing:border-box}body{font-family:Tahoma,"Noto Sans Thai",sans-serif;color:#111827;margin:0;font-size:13px}.sheet{max-width:760px;margin:auto;border:1px solid #d1d5db;padding:28px;position:relative}${isPreview ? '.sheet::before{content:"ตัวอย่าง";position:absolute;top:40%;left:0;right:0;text-align:center;font-size:80px;font-weight:900;color:rgba(217,119,6,.14);transform:rotate(-18deg);pointer-events:none}' : ''}.head{display:flex;align-items:center;gap:18px;border-bottom:2px solid #111827;padding-bottom:16px}.logo{width:82px;height:82px;object-fit:contain}.head h1{font-size:22px;margin:0 0 4px}.muted{color:#6b7280}.meta{display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;margin:18px 0}.meta b{display:inline-block;min-width:105px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #d1d5db;padding:9px;vertical-align:top}th{background:#f3f4f6;text-align:left}.num{text-align:right;white-space:nowrap}td span{color:#4b5563;font-size:12px}.empty{text-align:center;color:#6b7280}.summary{margin-left:auto;width:340px}.summary div{display:flex;justify-content:space-between;padding:5px 0}.summary .total{border-top:2px solid #111827;margin-top:5px;padding-top:10px;font-size:17px;font-weight:800}.note{margin-top:22px;padding:10px 12px;background:${isPreview ? '#fffbeb' : '#f9fafb'};color:${isPreview ? '#92400e' : '#4b5563'};font-size:11.5px}.signatures{display:flex;justify-content:space-around;gap:30px;margin-top:44px}.sig-box{flex:1;max-width:230px;text-align:center}.sig-img-wrap{height:60px;display:flex;align-items:flex-end;justify-content:center}.sig-img-wrap img{max-height:60px;max-width:100%;object-fit:contain}.sig-rule{border-top:1px solid #111827;margin-top:4px;padding-top:6px}.sig-label{font-weight:700}.sig-name{color:#4b5563;margin-top:2px;font-size:12px}.actions{text-align:center;margin:20px;display:flex;gap:10px;justify-content:center}.actions button{padding:10px 22px;border:0;border-radius:8px;background:#111827;color:white;font-weight:700;cursor:pointer}.actions button.secondary{background:#fff;color:#111827;border:1px solid #9ca3af}@media print{.actions{display:none}.sheet{border:0;padding:0}}
-  </style></head><body><div class="actions"><button class="secondary" onclick="window.close()">← ปิดหน้าต่างนี้</button><button onclick="window.print()">พิมพ์ / บันทึกเป็น PDF</button></div><main class="sheet">
+    @page{size:A4;margin:16mm}*{box-sizing:border-box}body{font-family:Tahoma,"Noto Sans Thai",sans-serif;color:#111827;margin:0;font-size:13px}.sheet{max-width:760px;margin:auto;border:1px solid #d1d5db;padding:28px;position:relative}${isPreview ? '.sheet::before{content:"ตัวอย่าง";position:absolute;top:40%;left:0;right:0;text-align:center;font-size:80px;font-weight:900;color:rgba(217,119,6,.14);transform:rotate(-18deg);pointer-events:none}' : ''}.head{display:flex;align-items:center;gap:18px;border-bottom:2px solid #111827;padding-bottom:16px}.logo{width:82px;height:82px;object-fit:contain}.head h1{font-size:22px;margin:0 0 4px}.muted{color:#6b7280}.meta{display:grid;grid-template-columns:1fr 1fr;gap:7px 22px;margin:18px 0}.meta b{display:inline-block;min-width:105px}table{width:100%;border-collapse:collapse;margin:12px 0}th,td{border:1px solid #d1d5db;padding:9px;vertical-align:top}th{background:#f3f4f6;text-align:left}.num{text-align:right;white-space:nowrap}td span{color:#4b5563;font-size:12px}.empty{text-align:center;color:#6b7280}.summary{margin-left:auto;width:340px}.summary div{display:flex;justify-content:space-between;padding:5px 0}.summary .total{border-top:2px solid #111827;margin-top:5px;padding-top:10px;font-size:17px;font-weight:800}.note{margin-top:22px;padding:10px 12px;background:${isPreview ? '#fffbeb' : '#f9fafb'};color:${isPreview ? '#92400e' : '#4b5563'};font-size:11.5px}.signatures{display:flex;justify-content:space-around;gap:30px;margin-top:44px}.sig-box{flex:1;max-width:230px;text-align:center}.sig-img-wrap{height:60px;display:flex;align-items:flex-end;justify-content:center}.sig-img-wrap img{max-height:60px;max-width:100%;object-fit:contain}.sig-rule{border-top:1px solid #111827;margin-top:4px;padding-top:6px}.sig-label{font-weight:700}.sig-name{color:#4b5563;margin-top:2px;font-size:12px}@media print{.sheet{border:0;padding:0}}
+  </style></head><body><main class="sheet">
     <header class="head"><img class="logo" src="${esc(refund.logo_url || refundReceiptLogoUrl())}" alt="โลโก้โรงเรียน"><div><h1>${esc(title)}</h1><div>${esc(cfg('EVENT_NAME', 'AZFUTSALCUP'))}</div><div class="muted">${esc(cfg('INFO_VENUE', ''))}</div></div></header>
     <section class="meta">${metaRow}<div><b>ทีม</b> ${esc(team.name)}</div><div><b>ระดับ</b> ${esc(T[team.level]?.label || team.level)}</div>${methodLabel ? `<div><b>วิธีคืนเงิน</b> ${esc(methodLabel)}</div>` : ''}</section>
     <div><b>รายละเอียดการหักจากใบเหลืองและใบแดง</b> <span class="muted">(แสดงเฉพาะนัดและคู่แข่งขัน ไม่ระบุผู้ได้รับใบ)</span></div>
@@ -1204,10 +1205,7 @@ function openRefundReceipt(teamId) {
   const team = S.teams.find(item => item.id === teamId)
   const refund = refundForTeam(teamId)
   if (!team || !refund) { azToast('ยังไม่มีใบเสร็จรับเงินคืนของทีมนี้'); return }
-  const popup = window.open('', '_blank', 'width=860,height=760')
-  if (!popup) { azToast('เบราว์เซอร์บล็อกหน้าต่างใบเสร็จ กรุณาอนุญาตป๊อปอัป'); return }
-  popup.document.write(buildRefundReceiptDocument(team, refund, false))
-  popup.document.close()
+  openHtmlPrintOverlay(buildRefundReceiptDocument(team, refund, false))
 }
 
 // ดูตัวอย่างใบเสร็จก่อนผู้จัดยืนยันจริง — คำนวณสดจากใบเหลือง/ใบแดงปัจจุบัน ไม่ต้องรอยืนยันก่อน
@@ -1215,10 +1213,7 @@ function openRefundReceiptPreview(teamId) {
   const team = S.teams.find(item => item.id === teamId)
   if (!team) return
   const draft = teamRefundDraft(team)
-  const popup = window.open('', '_blank', 'width=860,height=760')
-  if (!popup) { azToast('เบราว์เซอร์บล็อกหน้าต่างใบเสร็จ กรุณาอนุญาตป๊อปอัป'); return }
-  popup.document.write(buildRefundReceiptDocument(team, draft, true))
-  popup.document.close()
+  openHtmlPrintOverlay(buildRefundReceiptDocument(team, draft, true))
 }
 
 // สรุปผู้ทำประตู/ใบเหลือง-แดงรายคนของทีมหนึ่งๆ จากเหตุการณ์จริงที่บันทึกไว้ (matchEvents) — ไม่ต้องนับเองจากรายนัด
@@ -2779,18 +2774,14 @@ function attendanceFormHtml(options = {}) {
     return `<table class="level-document ${sectionClass}">${tableHead}<tbody>${body}</tbody></table>`
   }).join('')
   return `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${systemNames ? 'รายชื่อยืนยันจากระบบ' : 'ใบรายชื่อเปล่า'} · นักกีฬาฟุตซอล ปีงบประมาณ 2569</title>${systemNames ? '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Itim&family=Mali:wght@400;500&family=Sriracha&display=swap" rel="stylesheet">' : ''}<style>
-    @page{size:A4 portrait;margin:10mm 9mm 12mm}*{box-sizing:border-box}body{margin:0;color:#111;background:#fff;font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;font-size:11pt}.level-document{width:100%;border-collapse:collapse;table-layout:fixed}.hs-document{break-before:page;page-break-before:always;margin-top:10mm}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.doc-head{border:none!important;padding:0 0 7mm!important;background:#fff!important}.head-wrap{min-height:${systemNames ? '48' : '42'}mm;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;background:#fff}.logo-ring{width:24.5mm;height:24.5mm;border:0;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff;margin:0 auto 3mm}.logo{width:92%;height:92%;max-width:none;object-fit:contain;display:block}.title{font-size:16pt;font-weight:700;line-height:1.45}.subtitle{font-size:13pt;font-weight:700;margin-top:1mm}.system-notice{margin-top:2mm;padding:1.2mm 4mm;border:1px solid #1d4ed8;border-radius:999px;color:#1d4ed8;font-size:9.5pt;font-weight:700;background:#fff}th,td{border:1px solid #111;padding:2.1mm 2mm;vertical-align:middle;height:8mm}th{font-weight:700;text-align:center;background:#fff}.center{text-align:center}.code{font-variant-numeric:tabular-nums}.level-row td{font-weight:700;background:#e8eef7;padding:2mm 3mm}.system-name-cell{position:relative;text-align:center;height:11mm;padding:1mm!important;overflow:hidden}.system-name{display:block;line-height:1.05;overflow-wrap:anywhere}.col-no{width:11mm}.col-code{width:28mm}.col-date{width:31mm}.col-note{width:28mm}.screen-actions{position:sticky;top:0;z-index:5;display:flex;gap:8px;justify-content:center;padding:10px;background:#111827}.screen-actions button{border:0;border-radius:8px;padding:9px 16px;color:#fff;font-weight:700;cursor:pointer}.print{background:#16a34a}.close{background:#475569}@media print{.screen-actions{display:none}.hs-document{margin-top:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style></head><body><div class="screen-actions"><button class="print" onclick="window.print()">🖨️ พิมพ์ / บันทึกเป็น PDF</button><button class="close" onclick="window.close()">✕ ปิด</button></div>${sections}</body></html>`
+    @page{size:A4 portrait;margin:10mm 9mm 12mm}*{box-sizing:border-box}body{margin:0;color:#111;background:#fff;font-family:"Sarabun","Noto Sans Thai",Tahoma,sans-serif;font-size:11pt}.level-document{width:100%;border-collapse:collapse;table-layout:fixed}.hs-document{break-before:page;page-break-before:always;margin-top:10mm}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.doc-head{border:none!important;padding:0 0 7mm!important;background:#fff!important}.head-wrap{min-height:${systemNames ? '48' : '42'}mm;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;text-align:center;background:#fff}.logo-ring{width:24.5mm;height:24.5mm;border:0;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#fff;margin:0 auto 3mm}.logo{width:92%;height:92%;max-width:none;object-fit:contain;display:block}.title{font-size:16pt;font-weight:700;line-height:1.45}.subtitle{font-size:13pt;font-weight:700;margin-top:1mm}.system-notice{margin-top:2mm;padding:1.2mm 4mm;border:1px solid #1d4ed8;border-radius:999px;color:#1d4ed8;font-size:9.5pt;font-weight:700;background:#fff}th,td{border:1px solid #111;padding:2.1mm 2mm;vertical-align:middle;height:8mm}th{font-weight:700;text-align:center;background:#fff}.center{text-align:center}.code{font-variant-numeric:tabular-nums}.level-row td{font-weight:700;background:#e8eef7;padding:2mm 3mm}.system-name-cell{position:relative;text-align:center;height:11mm;padding:1mm!important;overflow:hidden}.system-name{display:block;line-height:1.05;overflow-wrap:anywhere}.col-no{width:11mm}.col-code{width:28mm}.col-date{width:31mm}.col-note{width:28mm}@media print{.hs-document{margin-top:0}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style></head><body>${sections}</body></html>`
 }
 
 function openAttendanceFormPrint(systemNames = false) {
   const rows = attendanceFormRows()
   if (!rows.length) { azToast('ยังไม่มีรายชื่อนักเรียนที่เช็กอินหรือรายงานตัว'); return }
-  const win = window.open('', '_blank')
-  if (!win) { azToast('เบราว์เซอร์ปิดกั้นหน้าต่างพิมพ์ กรุณาอนุญาตป๊อปอัพ'); return }
-  win.document.open()
-  win.document.write(attendanceFormHtml({ systemNames }))
-  win.document.close()
+  openHtmlPrintOverlay(attendanceFormHtml({ systemNames }))
 }
 
 function downloadAttendanceForm(systemNames = false) {

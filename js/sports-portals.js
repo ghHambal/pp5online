@@ -1,5 +1,6 @@
 import { supabase } from './supabase.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
+import { openHtmlPrintOverlay } from './print-overlay.js'
 import { uploadShirtDesignColorImage, uploadShirtDesignHtml, uploadGalleryPhoto } from './storage.js'
 import { getEffectiveProfileId, getEffectiveUser } from './impersonation.js'
 
@@ -3466,12 +3467,9 @@ function printColorRoster(color,members,{academicYear,schoolName,schoolName2}){
     .cls-column{width:18%}
     .sn-column{width:9%}
     .wide-column{width:4%}
-    .no-print{text-align:center;margin:10px 0}
-    @media print{body{width:210mm;height:297mm}thead{display:table-header-group}tr{page-break-inside:avoid}.no-print{display:none}}
-  </style></head><body><div class="no-print"><button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">← ปิดหน้าต่างนี้</button></div>${body}</body></html>`
-  const w=window.open('','_blank')
-  w.document.write(html);w.document.close();w.focus()
-  setTimeout(()=>w.print(),500)
+    @media print{body{width:210mm;height:297mm}thead{display:table-header-group}tr{page-break-inside:avoid}}
+  </style></head><body>${body}</body></html>`
+  openHtmlPrintOverlay(html, { autoprint: true })
 }
 function printTeamList(title,c,rows,{mode='table'}={}){
   const cards=rows.map((r,i)=>`<div class="print-card"><div class="print-photo">${r.photo?`<img src="${esc(r.photo)}">`:i+1}</div><div><b>${esc(r.name)}</b><p>${esc(r.code)} · ${esc(r.room)}</p><p>${esc(r.detail)} ${esc(r.extra||'')}</p></div></div>`).join('')

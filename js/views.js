@@ -44,6 +44,7 @@ import { parseCSV, importTeachers, importStudents, buildPreviewHTML } from './im
 import { uploadSystemAsset, uploadStickerPng, compressImage, uploadAnnouncementImage } from './storage.js'
 import { applyThemeForRole } from './theme.js'
 import { supabase } from './supabase.js'
+import { openHtmlPrintOverlay } from './print-overlay.js'
 import {
   DEFAULT_SUBJECT_SYNC_COLUMNS,
   DEFAULT_SUBJECT_SYNC_KEY_FIELD,
@@ -919,9 +920,7 @@ function _printMonitor(cfg, tab) {
   clone.querySelectorAll('button, select, input').forEach(el => el.remove())
   const content = clone.innerHTML
 
-  const w = window.open('', '_blank')
-  if (!w) { showToast('กรุณาอนุญาต popup ในเบราว์เซอร์','error'); return }
-  w.document.write(`<!DOCTYPE html><html lang="th"><head>
+  const html = `<!DOCTYPE html><html lang="th"><head>
     <meta charset="UTF-8"/>
     <title>ติดตามความคืบหน้า — ${tabLabel}</title>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet"/>
@@ -940,17 +939,14 @@ function _printMonitor(cfg, tab) {
       .bg-indigo-50 { background: #e0e7ff !important; }
       .bg-gray-50,.bg-gray-100 { background: #f9fafb !important; }
       .hidden { display: none !important; }
-      .no-print { text-align: center; margin-bottom: 12px; }
-      @media print { @page { margin: 10mm; } body { margin: 0; } .no-print { display: none !important; } }
+      @media print { @page { margin: 10mm; } body { margin: 0; } }
     </style>
   </head><body>
-    <div class="no-print"><button onclick="window.close()" style="padding:8px 24px;font-size:12px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">← ปิดหน้าต่างนี้</button></div>
     <h2>ติดตามความคืบหน้า — ${tabLabel}</h2>
     <p>โรงเรียน: ${cfg.samaiSchoolName ?? cfg.schoolName ?? ''} &nbsp;·&nbsp; ภาค ${cfg.semester ?? '—'}/${cfg.academicYear ?? '—'} &nbsp;·&nbsp; พิมพ์: ${new Date().toLocaleDateString('th-TH')}</p>
     ${content}
-  </body></html>`)
-  w.document.close()
-  setTimeout(() => w.print(), 600)
+  </body></html>`
+  openHtmlPrintOverlay(html, { autoprint: true })
 }
 
 // สร้างตารางสรุป "ค้างดำเนินการ" สำหรับ memo จาก raw data
