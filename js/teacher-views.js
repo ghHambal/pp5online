@@ -370,7 +370,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     teacher ? getUnreadNotifications(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDuty(teacher.teacher_code).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDutyGrade(teacher.teacher_code).catch(()=>null) : Promise.resolve(null),
-    teacher ? import('./sports-portals.js?v=10.22.590').then(m => m.getTeacherShirtButtonState(teacher)).catch(() => ({ visible: false, enabled: false })) : Promise.resolve({ visible: false, enabled: false }),
+    teacher ? import('./sports-portals.js?v=10.22.610').then(m => m.getTeacherShirtButtonState(teacher)).catch(() => ({ visible: false, enabled: false })) : Promise.resolve({ visible: false, enabled: false }),
   ])
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
@@ -606,7 +606,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
   // ไซซ์เสื้อกีฬาสี (ครู) — เปิด modal เดิมของ sports-portals.js ตรงๆ
   window._openTeacherShirtModal = async () => {
-    const { openTeacherShirtSizeModal } = await import('./sports-portals.js?v=10.22.590')
+    const { openTeacherShirtSizeModal } = await import('./sports-portals.js?v=10.22.610')
     openTeacherShirtSizeModal(teacher)
   }
 
@@ -1179,7 +1179,10 @@ export function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg
   .small  { font-size:21px; }
   .print-btn { position:fixed; bottom:24px; right:24px; padding:12px 28px; background:#1d4ed8;
     color:#fff; border:none; border-radius:10px; font-size:15px; cursor:pointer; font-family:inherit; z-index:999; }
+  .close-btn { position:fixed; bottom:24px; left:24px; padding:12px 28px; background:#fff;
+    color:#333; border:1px solid #999; border-radius:10px; font-size:15px; cursor:pointer; font-family:inherit; z-index:999; }
 </style></head><body>
+<button class="close-btn no-print" onclick="window.close()">← ปิดหน้าต่างนี้</button>
 <button class="print-btn no-print" onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button>
 <div class="page">
 

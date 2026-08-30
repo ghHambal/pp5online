@@ -133,7 +133,10 @@ export function buildCertificateHtml({ layout, variables, docTitle }) {
     </style></head>
     <body>
       ${canvasHtml}
-      <div style="text-align:center;margin-top:20px;" class="no-print"><button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div>
+      <div style="text-align:center;margin-top:20px;display:flex;gap:8px;justify-content:center;" class="no-print">
+        <button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">← ปิดหน้าต่างนี้</button>
+        <button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
+      </div>
       <style>@media print { .no-print { display:none } }</style>
     </body></html>`
 }

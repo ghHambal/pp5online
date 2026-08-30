@@ -2127,7 +2127,11 @@ function _buildFullDoc(d, title, pagesHTML = null) {
 </head>
 <body>
   ${parts.join('\n')}
-  <div class="no-print" style="text-align:center;margin:10mm;font-size:9pt;color:#666;">
+  <div class="no-print" style="text-align:center;margin:10mm;font-size:9pt;color:#666;display:flex;gap:8px;justify-content:center;">
+    <button onclick="window.close()" style="padding:8px 24px;font-size:11pt;font-family:Sarabun,sans-serif;
+      background:#fff;color:#333;border:1px solid #999;border-radius:8px;cursor:pointer;">
+      ← ปิดหน้าต่างนี้
+    </button>
     <button onclick="window.print()" style="padding:8px 24px;font-size:11pt;font-family:Sarabun,sans-serif;
       background:#1d4ed8;color:#fff;border:none;border-radius:8px;cursor:pointer;">
       🖨️ พิมพ์ / บันทึก PDF

@@ -758,9 +758,13 @@ const _openExamPrintWindow = () => {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>เอกสารช่วงสอบ</title>
+  <style>@media print { .no-print { display:none } }</style>
 </head>
 <body style="margin:0;background:#fff;">
   ${_buildPrintHtml('all')}
+  <div class="no-print" style="text-align:center;margin:16px 0;">
+    <button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">← ปิดหน้าต่างนี้</button>
+  </div>
   <script>
     window.addEventListener('load', () => setTimeout(() => window.print(), 150));
   </script>

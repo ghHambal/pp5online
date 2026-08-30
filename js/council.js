@@ -2595,7 +2595,10 @@ function buildCertificateHtml({ member, evaluation, cfg }) {
           <div>ผู้อำนวยการโรงเรียน</div>
         </div>
       </div>
-      <div style="text-align:center;margin-top:20px;"><button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid var(--gold);background:#fff;color:var(--gold-ink);cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div>
+      <div style="text-align:center;margin-top:20px;display:flex;gap:8px;justify-content:center;">
+        <button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid var(--gold);background:#fff;color:var(--gold-ink);cursor:pointer;">← ปิดหน้าต่างนี้</button>
+        <button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid var(--gold);background:#fff;color:var(--gold-ink);cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
+      </div>
     </body></html>`
 }
 
@@ -3059,7 +3062,10 @@ function buildDocumentHtml(d, cfg) {
       @media print { body { padding: 0; } }
     </style></head><body>
       ${renderDocumentPreviewBody(d, cfg)}
-      <div style="text-align:center;margin-top:24px;"><button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #b5892b;background:#fff;color:#8a6a1f;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div>
+      <div style="text-align:center;margin-top:24px;display:flex;gap:8px;justify-content:center;">
+        <button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #b5892b;background:#fff;color:#8a6a1f;cursor:pointer;">← ปิดหน้าต่างนี้</button>
+        <button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #b5892b;background:#fff;color:#8a6a1f;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
+      </div>
     </body></html>`
 }
 

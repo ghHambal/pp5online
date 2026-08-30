@@ -25,7 +25,10 @@ export function buildFutsalCertificateHtml({ name, award, templateUrl }) {
         <div class="field-name"><span>${safeName}</span></div>
         <div class="field-award"><span>${safeAward}</span></div>
       </div>
-      <div class="no-print"><button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer">🖨️ พิมพ์ / บันทึกเป็น PDF</button></div>
+      <div class="no-print" style="display:flex;gap:8px;justify-content:center;">
+        <button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer">← ปิดหน้าต่างนี้</button>
+        <button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
+      </div>
     </body></html>`
 }
 
