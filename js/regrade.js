@@ -53,9 +53,17 @@ const REGRADE_SLIP_DEFAULT_LAYOUT = {
   ],
 }
 
+// เทมเพลตใบสั้นแยกกันคนละแบบระหว่างสามัญ/ศาสนา (เช่น ฉบับภาษาไทย vs ฉบับภาษายาวี) — ผูกกับ
+// regrade_config คีย์ regrade_slip_template_ids: { 'สามัญ': id, 'ศาสนา': id }
+const SLIP_TEMPLATE_CATEGORIES = [
+  { key: 'สามัญ', suffix: 'samai', emoji: '📘', label: 'สามัญ' },
+  { key: 'ศาสนา', suffix: 'religion', emoji: '🕌', label: 'ศาสนา' },
+]
+
 async function printRegradeSlip(row, teacherNameOverride) {
-  const templateId = Number(ctx.cfg?.regrade_slip_template_id)
-  if (!templateId) { showToast('ยังไม่ได้ตั้งค่าเทมเพลตใบสั้น — ไปตั้งค่าที่แท็บ "เอกสาร" ก่อนครับ', 'warning'); return }
+  const category = row.category === 'ศาสนา' ? 'ศาสนา' : 'สามัญ'
+  const templateId = Number(ctx.cfg?.regrade_slip_template_ids?.[category])
+  if (!templateId) { showToast(`ยังไม่ได้ตั้งค่าเทมเพลตใบสั้นสำหรับหมวด "${category}" — ไปตั้งค่าที่แท็บ "เอกสาร" ก่อนครับ`, 'warning'); return }
   const template = await getCertificateTemplate(templateId).catch(() => null)
   if (!template) { showToast('ไม่พบเทมเพลตที่ตั้งค่าไว้ อาจถูกลบไปแล้ว', 'error'); return }
   const room = row.students?.main_room || row.students?.religion_room || ''
@@ -1549,23 +1557,27 @@ async function renderSettings() {
       </div>
 
       <div data-settings-group="document" class="flex flex-col gap-4">
+        <p class="text-xs text-[var(--muted-2)] -mb-1 px-1">ใช้ตอนครูมอบหมายงานให้นักเรียน และฝ่ายทะเบียนเปิดดูก่อนปิดงาน — ออกแบบตำแหน่งได้อิสระด้วยตัวแก้ไขลากวางเดียวกับระบบเกียรติบัตรกลาง แยกเทมเพลตกันคนละแบบระหว่างสามัญกับศาสนาได้ (เช่น ฉบับภาษาไทย/ฉบับภาษายาวี)</p>
+        ${SLIP_TEMPLATE_CATEGORIES.map(({ key, suffix, emoji, label }) => {
+          const selectedId = c.regrade_slip_template_ids?.[key]
+          return `
         <div class="rg-card p-5">
-          <p class="text-sm font-bold text-[var(--ink)] mb-1">เทมเพลตใบสั้นแก้ค้างเก่า</p>
-          <p class="text-xs text-[var(--muted-2)] mb-3">ใช้ตอนครูมอบหมายงานให้นักเรียน และฝ่ายทะเบียนเปิดดูก่อนปิดงาน — ออกแบบตำแหน่งได้อิสระด้วยตัวแก้ไขลากวางเดียวกับระบบเกียรติบัตรกลาง</p>
+          <p class="text-sm font-bold text-[var(--ink)] mb-3">${emoji} เทมเพลตใบสั้น — ${label}</p>
           <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">เทมเพลตที่ใช้อยู่</label>
-          <select id="regrade-set-slip-template" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm mb-3">
+          <select id="regrade-set-slip-template-${suffix}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm mb-3">
             <option value="">— ยังไม่เลือก —</option>
-            ${slipTemplates.map(t => `<option value="${t.id}" ${String(c.regrade_slip_template_id ?? '') === String(t.id) ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('')}
+            ${slipTemplates.map(t => `<option value="${t.id}" ${String(selectedId ?? '') === String(t.id) ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('')}
           </select>
-          <button id="regrade-slip-design-edit" type="button" class="w-full mb-3 py-2 rounded-lg border border-[var(--line)] text-xs font-bold text-[var(--ink-2)]">🎨 แก้ไขดีไซน์เทมเพลตที่เลือก</button>
+          <button id="regrade-slip-design-edit-${suffix}" type="button" class="w-full mb-3 py-2 rounded-lg border border-[var(--line)] text-xs font-bold text-[var(--ink-2)]">🎨 แก้ไขดีไซน์เทมเพลตที่เลือก</button>
           <div class="pt-3 border-t border-dashed border-[var(--line-soft)]">
             <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">หรือสร้างเทมเพลตใหม่</label>
             <div class="flex gap-2">
-              <input id="regrade-slip-new-name" placeholder="ชื่อเทมเพลต เช่น ใบสั้นแก้ค้างเก่า" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-xs">
-              <button id="regrade-slip-design-new" type="button" class="px-4 py-2 rounded-lg text-white text-xs font-bold flex-shrink-0" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">+ ออกแบบใหม่</button>
+              <input id="regrade-slip-new-name-${suffix}" placeholder="ชื่อเทมเพลต เช่น ใบสั้น${label}" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-xs">
+              <button id="regrade-slip-design-new-${suffix}" type="button" class="px-4 py-2 rounded-lg text-white text-xs font-bold flex-shrink-0" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">+ ออกแบบใหม่</button>
             </div>
           </div>
-        </div>
+        </div>`
+        }).join('')}
       </div>
 
       <div data-settings-group="access" class="flex flex-col gap-4">
@@ -1673,7 +1685,8 @@ async function renderSettings() {
         student_announcement: document.getElementById('regrade-set-ann-student').value,
         teacher_announcement: document.getElementById('regrade-set-ann-teacher').value,
         system_name: document.getElementById('regrade-set-name').value.trim() || 'แก้ค้างเก่า',
-        regrade_slip_template_id: document.getElementById('regrade-set-slip-template').value || null,
+        regrade_slip_template_ids: Object.fromEntries(SLIP_TEMPLATE_CATEGORIES.map(({ key, suffix }) =>
+          [key, document.getElementById(`regrade-set-slip-template-${suffix}`).value || null])),
       })
       showToast('บันทึกการตั้งค่าเรียบร้อย ✅', 'success')
       ctx.cfg = await getRegradeConfig()
@@ -1682,35 +1695,38 @@ async function renderSettings() {
     } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error') }
   })
 
-  document.getElementById('regrade-slip-design-new').addEventListener('click', () => {
-    const name = document.getElementById('regrade-slip-new-name').value.trim() || 'ใบสั้นแก้ค้างเก่า'
-    openCertificateLayoutEditor({
-      template: { name, type: 'custom', layout: REGRADE_SLIP_DEFAULT_LAYOUT },
-      previewVariables: REGRADE_SLIP_PREVIEW_VARS,
-      placeholderTokens: REGRADE_SLIP_TOKENS,
-      onSave: async (layout, backgroundImageUrl) => {
-        const created = await createCertificateTemplate({
-          name, type: 'custom', presetKey: null, backgroundImageUrl, layout,
-          createdByTeacherId: ctx.teacherRow?.id ?? null,
-        })
-        await updateRegradeConfig({ regrade_slip_template_id: created.id })
-        showToast('สร้างเทมเพลตและตั้งเป็นค่าที่ใช้แล้ว ✅', 'success')
-        ctx.cfg = await getRegradeConfig()
-        renderSettings()
-      },
+  SLIP_TEMPLATE_CATEGORIES.forEach(({ key, suffix, label }) => {
+    document.getElementById(`regrade-slip-design-new-${suffix}`).addEventListener('click', () => {
+      const name = document.getElementById(`regrade-slip-new-name-${suffix}`).value.trim() || `ใบสั้นแก้ค้างเก่า (${label})`
+      openCertificateLayoutEditor({
+        template: { name, type: 'custom', layout: REGRADE_SLIP_DEFAULT_LAYOUT },
+        previewVariables: REGRADE_SLIP_PREVIEW_VARS,
+        placeholderTokens: REGRADE_SLIP_TOKENS,
+        onSave: async (layout, backgroundImageUrl) => {
+          const created = await createCertificateTemplate({
+            name, type: 'custom', presetKey: null, backgroundImageUrl, layout,
+            createdByTeacherId: ctx.teacherRow?.id ?? null,
+          })
+          const nextIds = { ...(ctx.cfg?.regrade_slip_template_ids || {}), [key]: created.id }
+          await updateRegradeConfig({ regrade_slip_template_ids: nextIds })
+          showToast(`สร้างเทมเพลต "${label}" และตั้งเป็นค่าที่ใช้แล้ว ✅`, 'success')
+          ctx.cfg = await getRegradeConfig()
+          renderSettings()
+        },
+      })
     })
-  })
-  document.getElementById('regrade-slip-design-edit').addEventListener('click', () => {
-    const id = Number(document.getElementById('regrade-set-slip-template').value)
-    if (!id) { showToast('กรุณาเลือกเทมเพลตก่อน', 'warning'); return }
-    const template = slipTemplates.find(t => t.id === id)
-    if (!template) return
-    openCertificateLayoutEditor({
-      template, previewVariables: REGRADE_SLIP_PREVIEW_VARS, placeholderTokens: REGRADE_SLIP_TOKENS,
-      onSave: async (layout, backgroundImageUrl) => {
-        await updateCertificateTemplateLayout({ id: template.id, layout, backgroundImageUrl })
-        showToast('บันทึกดีไซน์แล้ว ✅', 'success')
-      },
+    document.getElementById(`regrade-slip-design-edit-${suffix}`).addEventListener('click', () => {
+      const id = Number(document.getElementById(`regrade-set-slip-template-${suffix}`).value)
+      if (!id) { showToast('กรุณาเลือกเทมเพลตก่อน', 'warning'); return }
+      const template = slipTemplates.find(t => t.id === id)
+      if (!template) return
+      openCertificateLayoutEditor({
+        template, previewVariables: REGRADE_SLIP_PREVIEW_VARS, placeholderTokens: REGRADE_SLIP_TOKENS,
+        onSave: async (layout, backgroundImageUrl) => {
+          await updateCertificateTemplateLayout({ id: template.id, layout, backgroundImageUrl })
+          showToast('บันทึกดีไซน์แล้ว ✅', 'success')
+        },
+      })
     })
   })
 
