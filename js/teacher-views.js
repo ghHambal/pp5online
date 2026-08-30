@@ -319,7 +319,7 @@ async function renderExecutiveOverview(teacher) {
     </div>
     <div id="exec-stat-detail">${renderStatDetail()}</div>
 
-    <div class="mt-5 mb-1">
+    <div class="mt-5 mb-1 md:hidden">
       <h4 class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">ระบบอื่น ๆ</h4>
       <div class="flex gap-3 overflow-x-auto pb-1" id="exec-icon-grid">
         ${execIconGridHtml}
@@ -799,8 +799,8 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         </div>`).join('')}
     </div>
 
-    <!-- ระบบอื่น ๆ -->
-    <div class="mb-4">
+    <!-- ระบบอื่น ๆ — ซ่อนบนจอใหญ่ (md ขึ้นไป) เพราะมีเมนูซ้ายแบบเปิดค้างอยู่แล้ว ไม่ต้องมีปุ่มซ้ำ -->
+    <div class="mb-4 md:hidden">
       <div class="flex items-center justify-between mb-2 px-0.5">
         <h4 class="text-[11px] font-bold text-gray-400 uppercase tracking-wide">ระบบอื่น ๆ</h4>
         <button type="button" onclick="window._openOverviewCustomizer()"
