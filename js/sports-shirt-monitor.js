@@ -166,6 +166,7 @@ function renderDashboard(snapshot) {
         <div class="inline-flex p-1 rounded-xl bg-slate-100 gap-1">
           <button type="button" data-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👦 ชาย</button>
           <button type="button" data-gender="W" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👧 หญิง</button>
+          <button type="button" data-gender="UNKNOWN" class="px-4 py-2 rounded-lg text-xs font-bold transition-all hidden">❔ ไม่ระบุเพศ</button>
           <button type="button" data-gender="ALL" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👥 ทั้งหมด</button>
         </div>
       </div>
@@ -418,7 +419,15 @@ function renderDashboard(snapshot) {
   // #size-grid-wrap/#shirt-list ร่วมกับฝั่งนักเรียน (คนละเนื้อหา สลับตามแท็บ) — มีอีกชั้นแยก
   // ครู (มีรายชื่อล่วงหน้า รู้ว่าใคร "ยังไม่แจ้ง" ได้) กับบุคลากร (พิมพ์ชื่อเองอิสระ ไม่มีรายชื่อ
   // ล่วงหน้า จึงมีแต่คนที่แจ้งแล้วเท่านั้น ไม่มีแนวคิด "ยังไม่แจ้ง")
-  const personnelOf = g => g === 'ALL' ? personnel : personnel.filter(p => p.gender === g)
+  // เพศ 'UNKNOWN' = เดาจากคำนำหน้าชื่อไม่ได้ (t.gender/p.gender เป็น null) — บุคลากรจริงๆ ไม่มีเคสนี้
+  // (บังคับเลือกตอนแจ้งไซซ์) แต่รองรับไว้ให้ครบเผื่อข้อมูลแปลกๆ ในอนาคต
+  const personnelOf = g => g === 'ALL' ? personnel : (g === 'UNKNOWN' ? personnel.filter(p => !p.gender) : personnel.filter(p => p.gender === g))
+  const teachersOf = g => g === 'ALL' ? teachers : (g === 'UNKNOWN' ? teachers.filter(t => !t.gender) : teachers.filter(t => t.gender === g))
+  // กุญแจสำหรับติ๊กเลือก "เพื่อพิมพ์" — ต้องเป็น string เทียบกันได้ตรงๆ เสมอ บุคลากรไม่มีคอลัมน์ id
+  // เลยตกลงมาใช้ full_name (คีย์ระบุตัวตนจริงของบุคลากรอยู่แล้วตามดีไซน์เดิม — ไม่มีรายชื่อล่วงหน้า
+  // ใช้ full_name ทำ unique key ต่อ event) ส่วนครูมี id เป็นตัวเลข ต้อง String() ก่อนเทียบกับ dataset
+  // (แต่ก่อนเทียบเลขดิบกับ dataset.selectId ที่เป็น string เสมอ เลยไม่ตรงกันสักที ติ๊กแล้วดูเหมือนไม่ติด)
+  const rowKey = r => String(r.id ?? r.full_name)
   const teacherRows = () => {
     const q = searchQuery.trim().toLowerCase()
     if (roleFilter === 'personnel') {
@@ -427,7 +436,7 @@ function renderDashboard(snapshot) {
       if (q) list = list.filter(p => (p.full_name || '').toLowerCase().includes(q))
       return list
     }
-    let list = gender === 'ALL' ? teachers : teachers.filter(t => t.gender === gender)
+    let list = teachersOf(gender)
     if (selectedSize) list = list.filter(t => teacherRequestOf(t.id)?.size === selectedSize)
     if (statusFilter === 'not_reported') list = list.filter(t => !teacherRequestOf(t.id))
     if (statusFilter === 'reported') list = list.filter(t => !!teacherRequestOf(t.id))
@@ -437,7 +446,7 @@ function renderDashboard(snapshot) {
   const renderTeacherView = () => {
     root.querySelector('#color-cards').innerHTML = ''
     const isPersonnel = roleFilter === 'personnel'
-    const genderLabel = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : 'ทั้งหมด'
+    const genderLabel = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : gender === 'UNKNOWN' ? 'ที่ไม่ระบุเพศ' : 'ทั้งหมด'
 
     const roleEl = root.querySelector('#role-filter-row')
     roleEl.innerHTML = `<div class="inline-flex p-1 rounded-xl bg-slate-100 gap-1 mb-1">
@@ -460,7 +469,7 @@ function renderDashboard(snapshot) {
       total = scope.length
       scopeText = `บุคลากร${genderLabel} แจ้งไซซ์แล้ว ${scope.length} คน (ไม่มีรายชื่อล่วงหน้า — พิมพ์ชื่อเองอิสระ)`
     } else {
-      const scope = gender === 'ALL' ? teachers : teachers.filter(t => t.gender === gender)
+      const scope = teachersOf(gender)
       countOf = sz => scope.filter(t => teacherRequestOf(t.id)?.size === sz).length
       total = scope.filter(t => teacherRequestOf(t.id)).length
       scopeText = `คุณครู${genderLabel} ${scope.length} คน — แจ้งไซซ์แล้ว ${total} คน`
@@ -468,13 +477,11 @@ function renderDashboard(snapshot) {
     root.querySelector('#scope-line').textContent = scopeText
 
     // ---- ตารางสรุปแยกชาย/หญิงเสมอ (ไม่ผูกกับปุ่มกรองเพศด้านบน) — เพศครูบางคนเดาจากคำนำหน้า
-    // ชื่อไม่ได้ (ไม่มีคำนำหน้า เช่น "ทีมผู้บริหาร") จึงมีแถว "ไม่ระบุเพศ" เพิ่มเติมแบบดูอย่างเดียว
-    // กดตัวเลขในแถวชาย/หญิงจะตั้งทั้งตัวกรองเพศ+ไซซ์ให้ตรงกันเพื่อกรองรายชื่อด้านล่างไปเลย
+    // ชื่อไม่ได้ (ไม่มีคำนำหน้า เช่น "ทีมผู้บริหาร") จึงมีแถว "ไม่ระบุเพศ" เพิ่มเติม กดกรองได้เหมือนแถวอื่น
+    // กดตัวเลขในแถวไหนจะตั้งทั้งตัวกรองเพศ+ไซซ์ให้ตรงกันเพื่อกรองรายชื่อด้านล่างไปเลย
     const genderRows = [['M', '👦 ชาย'], ['W', '👧 หญิง']]
     if (!isPersonnel && teachers.some(t => !t.gender)) genderRows.push(['UNKNOWN', '❔ ไม่ระบุเพศ'])
-    const scopeOfGender = g => isPersonnel
-      ? personnelOf(g)
-      : (g === 'UNKNOWN' ? teachers.filter(t => !t.gender) : teachers.filter(t => t.gender === g))
+    const scopeOfGender = g => isPersonnel ? personnelOf(g) : teachersOf(g)
     const countOfGender = (g, sz) => isPersonnel
       ? scopeOfGender(g).filter(p => p.size === sz).length
       : scopeOfGender(g).filter(t => teacherRequestOf(t.id)?.size === sz).length
@@ -495,13 +502,10 @@ function renderDashboard(snapshot) {
             <td class="p-2 font-bold text-slate-600 whitespace-nowrap">${esc(label)}</td>
             ${teacherAllowedSizes.map(sz => {
               const n = countOfGender(g, sz)
-              if (g === 'UNKNOWN') return `<td class="p-1 text-center text-slate-500">${n || '·'}</td>`
               const on = gender === g && selectedSize === sz
               return `<td class="p-1 text-center"><button type="button" data-tsize-cell data-tsize-gender="${esc(g)}" data-tsize-size="${esc(sz)}" class="w-9 h-8 rounded-lg text-xs font-bold ${on ? 'bg-pink-600 text-white' : n > 0 ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'text-slate-300'}">${n || '·'}</button></td>`
             }).join('')}
-            ${g === 'UNKNOWN'
-              ? `<td class="p-1 text-center font-bold text-slate-500">${totalOfGender(g)}</td>`
-              : `<td class="p-1 text-center"><button type="button" data-tgender-total="${esc(g)}" class="w-10 h-8 rounded-lg text-xs font-bold ${gender === g && !selectedSize ? 'bg-pink-600 text-white' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'}">${totalOfGender(g)}</button></td>`}
+            <td class="p-1 text-center"><button type="button" data-tgender-total="${esc(g)}" class="w-10 h-8 rounded-lg text-xs font-bold ${gender === g && !selectedSize ? 'bg-pink-600 text-white' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'}">${totalOfGender(g)}</button></td>
           </tr>`).join('')}
           <tr>
             <td class="p-2 font-bold text-slate-600">รวม</td>
@@ -545,14 +549,14 @@ function renderDashboard(snapshot) {
             ${selectMode ? '<th class="p-2 w-8"></th>' : ''}${isPersonnel ? '' : '<th class="p-2 font-bold">รหัส</th>'}<th class="p-2 font-bold">ชื่อ-สกุล</th><th class="p-2 font-bold text-center">ไซซ์ที่แจ้ง</th><th class="p-2 font-bold text-center">วันที่แจ้ง</th>
           </tr></thead>
           <tbody>${isPersonnel ? rows.map(p => `<tr class="border-t border-slate-100">
-              ${selectMode ? `<td class="p-2"><input type="checkbox" data-select-id="${esc(p.id)}" ${selectedIds.has(p.id) ? 'checked' : ''}></td>` : ''}
+              ${selectMode ? `<td class="p-2"><input type="checkbox" data-select-id="${esc(rowKey(p))}" ${selectedIds.has(rowKey(p)) ? 'checked' : ''}></td>` : ''}
               <td class="p-2">${esc(p.full_name)}</td>
               <td class="p-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">${esc(p.size)}</span></td>
               <td class="p-2 text-center text-slate-400">${p.updated_at ? new Date(p.updated_at).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : '—'}</td>
             </tr>`).join('') : rows.map(t => {
             const r = teacherRequestOf(t.id)
             return `<tr class="border-t border-slate-100">
-              ${selectMode ? `<td class="p-2"><input type="checkbox" data-select-id="${esc(t.id)}" ${selectedIds.has(t.id) ? 'checked' : ''}></td>` : ''}
+              ${selectMode ? `<td class="p-2"><input type="checkbox" data-select-id="${esc(rowKey(t))}" ${selectedIds.has(rowKey(t)) ? 'checked' : ''}></td>` : ''}
               <td class="p-2 w-24 text-slate-500">${esc(t.teacher_code)}</td>
               <td class="p-2">${esc(t.full_name)}</td>
               <td class="p-2 text-center">${r ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">${esc(r.size)}</span>` : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">ยังไม่แจ้ง</span>`}</td>
@@ -572,10 +576,10 @@ function renderDashboard(snapshot) {
 
   // ---- เอกสารพิมพ์รายชื่อครู/บุคลากร — ถ้าอยู่ในโหมด "เลือกเพื่อพิมพ์" และมีติ๊กไว้ พิมพ์เฉพาะที่เลือก ----
   const buildTeacherDocument = (rows, isPersonnel) => {
-    const printRows = (selectMode && selectedIds.size) ? rows.filter(r => selectedIds.has(r.id)) : rows
+    const printRows = (selectMode && selectedIds.size) ? rows.filter(r => selectedIds.has(rowKey(r))) : rows
     if (!printRows.length) return ''
     const logoRow = `<div style="display:flex;justify-content:center;gap:10px;margin-bottom:8px">${LOGO_URLS.map(u => `<img src="${u}" style="height:56px">`).join('')}</div>`
-    const genderLabel = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : ''
+    const genderLabel = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : gender === 'UNKNOWN' ? 'ไม่ระบุเพศ' : ''
     const title = `รายชื่อ${isPersonnel ? 'บุคลากร' : 'ครู'} — ไซซ์เสื้อกีฬาสี`
     return `<div style="padding-top:12px">
       ${logoRow}
@@ -644,6 +648,8 @@ function renderDashboard(snapshot) {
 
   const render = () => {
     root.querySelectorAll('[data-tab]').forEach(b => { const on = b.dataset.tab === activeTab; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
+    // ตัวเลือกเพศ "ไม่ระบุเพศ" มีความหมายเฉพาะแท็บครู/บุคลากร (นักเรียนรู้เพศจากสีเสมอ) โผล่เฉพาะแท็บนั้น
+    root.querySelector('[data-gender="UNKNOWN"]').classList.toggle('hidden', activeTab !== 'teacher')
     root.querySelectorAll('[data-gender]').forEach(b => { const on = b.dataset.gender === gender; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
 
     // ช่องค้นหาเป็น element เดียวที่มีอยู่แล้วในเทมเพลตหลัก (ไม่สร้างใหม่ทุกครั้ง กัน cursor กระโดด
@@ -726,6 +732,9 @@ function renderDashboard(snapshot) {
 
   root.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
     activeTab = b.dataset.tab
+    // "ไม่ระบุเพศ" มีความหมายเฉพาะแท็บครู/บุคลากร — ออกจากแท็บนั้นแล้วเหลือค้างไว้จะทำให้แท็บนักเรียน
+    // กรองไม่เจอใครเลย (นักเรียนไม่มีเพศไม่ระบุ) จึงรีเซ็ตกลับ "ทั้งหมด" ให้เสมอ
+    if (activeTab !== 'teacher' && gender === 'UNKNOWN') gender = 'ALL'
     selectedSize = null
     statusFilter = 'all'
     selectMode = false
@@ -740,7 +749,7 @@ function renderDashboard(snapshot) {
 
   root.querySelector('#btn-export-csv').onclick = () => {
     const q = x => `"${String(x || '').replaceAll('"', '""')}"`
-    const genderTag = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : 'ทั้งหมด'
+    const genderTag = gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : gender === 'UNKNOWN' ? 'ไม่ระบุเพศ' : 'ทั้งหมด'
     const sizeTag = selectedSize ? `-${selectedSize}` : ''
     if (activeTab === 'teacher') {
       const rows = teacherRows().sort((a, b) => a.full_name.localeCompare(b.full_name, 'th'))
