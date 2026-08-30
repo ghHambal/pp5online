@@ -5884,7 +5884,7 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
           t.panel.classList.toggle('hidden', key !== name)
         })
         if (name === 'history') _initReissueHistoryPanel(_tabs.history.panel, { cols, showCode, showSeat, showRoom, qrReissueFee, qrIssuer, isAdmin: !teacher })
-        if (name === 'requests' && isQrManager) _initQrRequestsPanel(_tabs.requests.panel, { teacher, cols, showCode, showSeat, showRoom, qrReissueDoneMessage })
+        if (name === 'requests' && isQrManager) _initQrRequestsPanel(_tabs.requests.panel, { teacher, cols, showCode, showSeat, showRoom, qrReissueDoneMessage, qrReissueFee, qrIssuer })
       }
       _tabs.print.btn.addEventListener('click', () => _selectTab('print'))
       _tabs.history.btn.addEventListener('click', () => _selectTab('history'))
@@ -6874,7 +6874,7 @@ function _openQrIssuerSignatureModal(current, onSaved) {
   })
 }
 
-async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, showSeat, showRoom, qrReissueDoneMessage }) {
+async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, showSeat, showRoom, qrReissueDoneMessage, qrReissueFee = '5', qrIssuer = null }) {
   if (!containerEl || containerEl.dataset.loaded) return
   containerEl.dataset.loaded = '1'
   const isRealAdmin = !teacher
@@ -6883,11 +6883,19 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
     <div class="bg-white border border-gray-200 rounded-3xl p-5 shadow-sm space-y-3">
       <div>
         <h4 class="font-bold text-gray-800 text-sm">🙋 คำขอทำบัตร QR Code ใหม่จากนักเรียน</h4>
-        <p class="text-xs text-gray-400 mt-0.5">กด "ทำเสร็จแล้ว" เพื่อพิมพ์บัตรและบันทึกเข้าประวัติ แล้วทำเครื่องหมายเมื่อนักเรียนมารับ/ชำระค่าปรับ</p>
+        <p class="text-xs text-gray-400 mt-0.5">กด "ทำเสร็จแล้ว" เพื่อพิมพ์บัตรและบันทึกเข้าประวัติ หรือติ๊กเลือกหลายคนแล้วทำพร้อมกันได้ แล้วทำเครื่องหมายเมื่อนักเรียนมารับ/ชำระค่าปรับ</p>
       </div>
       <input id="qr-requests-search" type="search"
         class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-indigo-500 transition"
         placeholder="ค้นหาชื่อ รหัส หรือห้อง..." />
+      <label class="flex items-center gap-2 text-xs text-gray-500 px-1 select-none">
+        <input type="checkbox" id="qr-requests-select-all" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+        เลือกทั้งหมด (ที่ยังไม่ทำ)
+      </label>
+      <div id="qr-requests-bulk-bar" class="hidden sticky top-0 z-10 flex items-center justify-between gap-2 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2">
+        <span id="qr-requests-bulk-count" class="text-xs font-bold text-indigo-700"></span>
+        <button type="button" id="qr-requests-bulk-fulfill" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px] flex-shrink-0">🖨️ ทำเสร็จแล้วพร้อมกัน</button>
+      </div>
       <div id="qr-requests-list" class="bg-gray-50/50 rounded-2xl px-3">
         <p class="text-xs text-gray-400 text-center py-6">กำลังโหลด...</p>
       </div>
@@ -6911,6 +6919,22 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
   // ── รายการคำขอ ──────────────────────────────────────────────────────────────
   let requests = []
   let requestsSearch = ''
+  const selectedIds = new Set()
+
+  const _updateBulkBar = () => {
+    const bar = containerEl.querySelector('#qr-requests-bulk-bar')
+    const countEl = containerEl.querySelector('#qr-requests-bulk-count')
+    if (!bar || !countEl) return
+    if (selectedIds.size > 0) {
+      bar.classList.remove('hidden')
+      countEl.textContent = `เลือกไว้ ${selectedIds.size} คน`
+    } else {
+      bar.classList.add('hidden')
+    }
+    const pendingIds = requests.filter(r => !r.printed_at).map(r => r.id)
+    const selectAll = containerEl.querySelector('#qr-requests-select-all')
+    if (selectAll) selectAll.checked = pendingIds.length > 0 && pendingIds.every(id => selectedIds.has(id))
+  }
 
   const _renderRequestsList = () => {
     const listEl = containerEl.querySelector('#qr-requests-list')
@@ -6924,27 +6948,35 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
     })
     const pending = filtered.filter(r => !r.printed_at)
     const done = filtered.filter(r => r.printed_at)
+    // เลือกไว้แต่ถูกกรองออกไปด้วยการค้นหา/ทำเสร็จไปแล้วจากที่อื่น (เช่นแท็บอื่นรีเฟรช) — เอาออกจากที่เลือกไว้
+    for (const id of [...selectedIds]) if (!pending.some(r => r.id === id)) selectedIds.delete(id)
 
     const card = (r, isPending) => `
-      <div class="py-3 ${isPending ? 'bg-amber-50/60 -mx-3 px-3 rounded-xl' : ''}">
-        <div class="flex items-center justify-between gap-3 flex-wrap">
-          <div class="min-w-0">
-            <p class="font-bold text-gray-700 text-xs truncate">${_htmlEsc(r.students?.full_name || '-')} <span class="font-normal text-gray-400">(${_htmlEsc(r.students?.student_code || '-')})</span></p>
-            <p class="text-gray-400 text-[11px] mt-0.5">ห้อง ${_htmlEsc(r.students?.main_room || '-')} · แจ้งเมื่อ ${new Date(r.requested_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+      <div class="py-3 flex items-start gap-2 ${isPending ? 'bg-amber-50/60 -mx-3 px-3 rounded-xl' : ''}">
+        ${isPending
+          ? `<input type="checkbox" data-select-id="${r.id}" class="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 flex-shrink-0" ${selectedIds.has(r.id) ? 'checked' : ''}>`
+          : `<span class="w-3.5 flex-shrink-0"></span>`}
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div class="min-w-0">
+              <p class="font-bold text-gray-700 text-xs truncate">${_htmlEsc(r.students?.full_name || '-')} <span class="font-normal text-gray-400">(${_htmlEsc(r.students?.student_code || '-')})</span></p>
+              <p class="text-gray-400 text-[11px] mt-0.5">ห้อง ${_htmlEsc(r.students?.main_room || '-')} · แจ้งเมื่อ ${new Date(r.requested_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
+            </div>
+            ${!isPending ? `<span class="text-[11px] font-bold text-emerald-600 flex-shrink-0">✅ ทำเสร็จแล้ว</span>` : ''}
           </div>
-          ${!isPending ? `<span class="text-[11px] font-bold text-emerald-600 flex-shrink-0">✅ ทำเสร็จแล้ว</span>` : ''}
-        </div>
-        <div class="flex flex-wrap gap-1.5 mt-2">
-          ${isPending ? `<button type="button" data-action="fulfill" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px]">🖨️ ทำเสร็จแล้ว (พิมพ์บัตร)</button>` : ''}
-          <button type="button" data-action="toggle-pickup" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg font-bold text-[11px] border ${r.picked_up_at ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}">🤝 ${r.picked_up_at ? 'มารับแล้ว' : 'มารับหรือยัง'}</button>
-          <button type="button" data-action="toggle-fine" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg font-bold text-[11px] border ${r.fine_paid_at ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}">💰 ${r.fine_paid_at ? 'ชำระค่าปรับแล้ว' : 'ชำระค่าปรับหรือยัง'}</button>
-          <button type="button" data-action="delete" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px]">🗑️ ลบ</button>
+          <div class="flex flex-wrap gap-1.5 mt-2">
+            ${isPending ? `<button type="button" data-action="fulfill" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[11px]">🖨️ ทำเสร็จแล้ว (พิมพ์บัตร)</button>` : ''}
+            <button type="button" data-action="toggle-pickup" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg font-bold text-[11px] border ${r.picked_up_at ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}">🤝 ${r.picked_up_at ? 'มารับแล้ว' : 'มารับหรือยัง'}</button>
+            <button type="button" data-action="toggle-fine" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg font-bold text-[11px] border ${r.fine_paid_at ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}">💰 ${r.fine_paid_at ? 'ชำระค่าปรับแล้ว' : 'ชำระค่าปรับหรือยัง'}</button>
+            <button type="button" data-action="delete" data-id="${r.id}" class="px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px]">🗑️ ลบ</button>
+          </div>
         </div>
       </div>`
 
     listEl.innerHTML = !filtered.length ? `
       <p class="text-xs text-gray-400 text-center py-6">${requests.length ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีคำขอจากนักเรียน'}</p>
     ` : `<div class="divide-y divide-gray-100">${[...pending, ...done].map(r => card(r, !r.printed_at)).join('')}</div>`
+    _updateBulkBar()
   }
 
   const _loadRequests = async () => {
@@ -7003,7 +7035,7 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
       const okBtn = m.querySelector('#qr-fulfill-ok')
       okBtn.disabled = true; okBtn.textContent = 'กำลังดำเนินการ...'
       try {
-        await markQrReissueRequestPrinted({ requestId: id, studentId: req.students.id, teacherId: teacher?.id ?? null, reason, feedbackId: req.feedback_id, message: qrReissueDoneMessage })
+        const log = await markQrReissueRequestPrinted({ requestId: id, studentId: req.students.id, teacherId: teacher?.id ?? null, reason, feedbackId: req.feedback_id, message: qrReissueDoneMessage })
         const repeated = Array.from({ length: repeat }, (_, idx) => ({
           id: req.students.id, full_name: req.students.full_name, student_code: req.students.student_code,
           seat_no: null, _roomName: req.students.main_room, _print_copy: idx + 1,
@@ -7012,8 +7044,82 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
         m.remove()
         showToast('ทำเสร็จแล้ว บันทึกเข้าประวัติ + แจ้งนักเรียนแล้ว ✅', 'success')
         await _loadRequests()
+        if (log) {
+          const wantsReceipt = await _promptPrintReceipt(1)
+          if (wantsReceipt) await _executePrint([], cols, showCode, showSeat, showRoom, [log], qrReissueFee, qrIssuer)
+        }
       } catch (err) {
         okBtn.disabled = false; okBtn.textContent = '🖨️ พิมพ์ + บันทึก'
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    })
+  }
+
+  // ── ทำเสร็จพร้อมกันหลายคน (bulk) ────────────────────────────────────────────
+  const _openBulkFulfillModal = () => {
+    const targets = requests.filter(r => selectedIds.has(r.id) && r.students?.id)
+    if (!targets.length) return
+    document.getElementById('qr-fulfill-modal')?.remove()
+    let savedRepeat = parseInt(localStorage.getItem('qr_print_individual_repeat') || '4')
+    if (!Number.isFinite(savedRepeat) || savedRepeat < 1) savedRepeat = 4
+    const m = document.createElement('div')
+    m.id = 'qr-fulfill-modal'
+    m.className = 'fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/50'
+    m.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-4">
+        <div>
+          <p class="font-bold text-gray-800 text-sm">🖨️ ทำบัตร QR Code ให้ ${targets.length} คนพร้อมกัน</p>
+          <p class="text-xs text-gray-400 mt-0.5">${targets.map(t => _htmlEsc(t.students.full_name || '-')).join(', ')}</p>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">เหตุผล (ใช้ร่วมกันทุกคน)</label>
+          <select id="qr-fulfill-reason" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-indigo-500">
+            <option value="ทำหาย" selected>ทำหาย</option>
+            <option value="ชำรุด">ชำรุด</option>
+            <option value="อื่นๆ">อื่นๆ</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">จำนวนซ้ำต่อคน (ใบ)</label>
+          <input id="qr-fulfill-repeat" type="number" min="1" max="40" value="${savedRepeat}" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-indigo-500" />
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button id="qr-fulfill-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+          <button id="qr-fulfill-ok" class="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold">🖨️ พิมพ์ + บันทึกทั้งหมด</button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    m.addEventListener('click', e => { if (e.target === m) m.remove() })
+    m.querySelector('#qr-fulfill-cancel').addEventListener('click', () => m.remove())
+    m.querySelector('#qr-fulfill-ok').addEventListener('click', async () => {
+      const reason = m.querySelector('#qr-fulfill-reason').value
+      const repeat = Math.max(1, Math.min(40, parseInt(m.querySelector('#qr-fulfill-repeat').value) || 1))
+      localStorage.setItem('qr_print_individual_repeat', String(repeat))
+      const okBtn = m.querySelector('#qr-fulfill-ok')
+      okBtn.disabled = true; okBtn.textContent = 'กำลังดำเนินการ...'
+      try {
+        const logs = await Promise.all(targets.map(req =>
+          markQrReissueRequestPrinted({ requestId: req.id, studentId: req.students.id, teacherId: teacher?.id ?? null, reason, feedbackId: req.feedback_id, message: qrReissueDoneMessage })
+        ))
+        const allCopies = targets.flatMap(req => Array.from({ length: repeat }, (_, idx) => ({
+          id: req.students.id, full_name: req.students.full_name, student_code: req.students.student_code,
+          seat_no: null, _roomName: req.students.main_room, _print_copy: idx + 1,
+        })))
+        await _executePrint([{
+          className: 'คำขอทำบัตรใหม่ (หลายคน)',
+          countLabel: `${targets.length} คน · ${allCopies.length} ใบ`,
+          students: allCopies, hideHeader: true,
+        }], cols, showCode, showSeat, showRoom, [])
+        m.remove()
+        selectedIds.clear()
+        showToast(`ทำเสร็จแล้ว ${targets.length} คน บันทึกเข้าประวัติ + แจ้งนักเรียนทุกคนแล้ว ✅`, 'success')
+        await _loadRequests()
+        if (logs.length) {
+          const wantsReceipt = await _promptPrintReceipt(logs.length)
+          if (wantsReceipt) await _executePrint([], cols, showCode, showSeat, showRoom, logs, qrReissueFee, qrIssuer)
+        }
+      } catch (err) {
+        okBtn.disabled = false; okBtn.textContent = '🖨️ พิมพ์ + บันทึกทั้งหมด'
         showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
       }
     })
@@ -7056,6 +7162,20 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
     else if (btn.dataset.action === 'toggle-fine') _toggleStatus(id, 'fine_paid_at')
     else if (btn.dataset.action === 'delete') _deleteRequest(id)
   })
+  containerEl.querySelector('#qr-requests-list')?.addEventListener('change', e => {
+    const cb = e.target.closest('[data-select-id]')
+    if (!cb) return
+    const id = parseInt(cb.dataset.selectId)
+    if (cb.checked) selectedIds.add(id); else selectedIds.delete(id)
+    _updateBulkBar()
+  })
+  containerEl.querySelector('#qr-requests-select-all')?.addEventListener('change', e => {
+    const pendingIds = requests.filter(r => !r.printed_at).map(r => r.id)
+    if (e.target.checked) pendingIds.forEach(id => selectedIds.add(id))
+    else pendingIds.forEach(id => selectedIds.delete(id))
+    _renderRequestsList()
+  })
+  containerEl.querySelector('#qr-requests-bulk-fulfill')?.addEventListener('click', () => _openBulkFulfillModal())
 
   _loadRequests()
 

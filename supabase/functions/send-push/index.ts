@@ -84,36 +84,50 @@ Deno.serve(async (req: Request) => {
         targetIds = (students ?? []).map((s: { profile_id: string }) => s.profile_id)
       }
     } else {
-      // ครูทั่วไป (ไม่ใช่แอดมิน) — ยิงได้เฉพาะนักเรียนในวิชาที่ตัวเองสอนเท่านั้น
+      // ไม่ใช่แอดมิน — ถ้าเป็นครูทั่วไป ยิงได้เฉพาะนักเรียนในวิชาที่ตัวเองสอน ถ้าไม่ใช่ครูเลย (เช่น
+      // นักเรียนแจ้งขอทำบัตร QR Code ใหม่) ยิงได้เฉพาะหาแอดมิน+ครูที่ได้รับสิทธิ์จัดการ QR Code เท่านั้น
       const { data: callerTeacher } = await admin.from('teachers').select('id').eq('profile_id', user.id).maybeSingle()
-      if (!callerTeacher) {
-        return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders })
-      }
       if (!targetIds || !targetIds.length) {
         return new Response(JSON.stringify({ error: 'ต้องระบุ profileIds' }), { status: 400, headers: corsHeaders })
       }
-      if (targetIds.length > MAX_TEACHER_TARGETS) {
-        return new Response(JSON.stringify({ error: `ส่งได้ครั้งละไม่เกิน ${MAX_TEACHER_TARGETS} คน` }), { status: 400, headers: corsHeaders })
-      }
 
-      const { data: mySubjects } = await admin.from('master_subjects').select('id').eq('teacher_id', callerTeacher.id)
-      const subjectIds = (mySubjects ?? []).map((s: { id: number }) => s.id)
-      const { data: myClasses } = subjectIds.length
-        ? await admin.from('classes').select('id').in('course_id', subjectIds)
-        : { data: [] }
-      const classIds = (myClasses ?? []).map((c: { id: number }) => c.id)
-      const { data: myStudentRows } = classIds.length
-        ? await admin.from('class_students').select('students(profile_id)').in('class_id', classIds)
-        : { data: [] }
-      const allowedProfileIds = new Set(
-        (myStudentRows ?? [])
-          .map((r: { students?: { profile_id?: string } | { profile_id?: string }[] }) =>
-            Array.isArray(r.students) ? r.students[0]?.profile_id : r.students?.profile_id)
-          .filter(Boolean)
-      )
-      const notAllowed = targetIds.filter(id => !allowedProfileIds.has(id))
-      if (notAllowed.length) {
-        return new Response(JSON.stringify({ error: 'มีผู้รับที่ไม่ได้อยู่ในความรับผิดชอบของคุณ' }), { status: 403, headers: corsHeaders })
+      if (!callerTeacher) {
+        const [{ data: adminIds }, { data: managers }] = await Promise.all([
+          admin.rpc('get_admin_profile_ids'),
+          admin.from('qr_reissue_managers').select('profile_id'),
+        ])
+        const allowedIds = new Set<string>([
+          ...(adminIds ?? []),
+          ...(managers ?? []).map((m: { profile_id: string }) => m.profile_id),
+        ])
+        const notAllowed = targetIds.filter(id => !allowedIds.has(id))
+        if (notAllowed.length) {
+          return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders })
+        }
+      } else {
+        if (targetIds.length > MAX_TEACHER_TARGETS) {
+          return new Response(JSON.stringify({ error: `ส่งได้ครั้งละไม่เกิน ${MAX_TEACHER_TARGETS} คน` }), { status: 400, headers: corsHeaders })
+        }
+
+        const { data: mySubjects } = await admin.from('master_subjects').select('id').eq('teacher_id', callerTeacher.id)
+        const subjectIds = (mySubjects ?? []).map((s: { id: number }) => s.id)
+        const { data: myClasses } = subjectIds.length
+          ? await admin.from('classes').select('id').in('course_id', subjectIds)
+          : { data: [] }
+        const classIds = (myClasses ?? []).map((c: { id: number }) => c.id)
+        const { data: myStudentRows } = classIds.length
+          ? await admin.from('class_students').select('students(profile_id)').in('class_id', classIds)
+          : { data: [] }
+        const allowedProfileIds = new Set(
+          (myStudentRows ?? [])
+            .map((r: { students?: { profile_id?: string } | { profile_id?: string }[] }) =>
+              Array.isArray(r.students) ? r.students[0]?.profile_id : r.students?.profile_id)
+            .filter(Boolean)
+        )
+        const notAllowed = targetIds.filter(id => !allowedProfileIds.has(id))
+        if (notAllowed.length) {
+          return new Response(JSON.stringify({ error: 'มีผู้รับที่ไม่ได้อยู่ในความรับผิดชอบของคุณ' }), { status: 403, headers: corsHeaders })
+        }
       }
     }
 
