@@ -467,21 +467,65 @@ function renderDashboard(snapshot) {
     }
     root.querySelector('#scope-line').textContent = scopeText
 
+    // ---- ตารางสรุปแยกชาย/หญิงเสมอ (ไม่ผูกกับปุ่มกรองเพศด้านบน) — เพศครูบางคนเดาจากคำนำหน้า
+    // ชื่อไม่ได้ (ไม่มีคำนำหน้า เช่น "ทีมผู้บริหาร") จึงมีแถว "ไม่ระบุเพศ" เพิ่มเติมแบบดูอย่างเดียว
+    // กดตัวเลขในแถวชาย/หญิงจะตั้งทั้งตัวกรองเพศ+ไซซ์ให้ตรงกันเพื่อกรองรายชื่อด้านล่างไปเลย
+    const genderRows = [['M', '👦 ชาย'], ['W', '👧 หญิง']]
+    if (!isPersonnel && teachers.some(t => !t.gender)) genderRows.push(['UNKNOWN', '❔ ไม่ระบุเพศ'])
+    const scopeOfGender = g => isPersonnel
+      ? personnelOf(g)
+      : (g === 'UNKNOWN' ? teachers.filter(t => !t.gender) : teachers.filter(t => t.gender === g))
+    const countOfGender = (g, sz) => isPersonnel
+      ? scopeOfGender(g).filter(p => p.size === sz).length
+      : scopeOfGender(g).filter(t => teacherRequestOf(t.id)?.size === sz).length
+    const totalOfGender = g => isPersonnel ? scopeOfGender(g).length : scopeOfGender(g).filter(t => teacherRequestOf(t.id)).length
+    const totalOfSize = sz => genderRows.reduce((sum, [g]) => sum + countOfGender(g, sz), 0)
+    const grandTotal = genderRows.reduce((sum, [g]) => sum + totalOfGender(g), 0)
+
     root.querySelector('#size-grid-wrap').innerHTML = `
-      <p class="text-xs font-bold text-slate-500 mb-2">สรุปจำนวนไซซ์เสื้อ${isPersonnel ? 'บุคลากร' : 'ครู'}ที่แจ้งแล้ว — กดตัวเลขเพื่อกรองรายชื่อด้านล่าง</p>
+      <p class="text-xs font-bold text-slate-500 mb-2">สรุปจำนวนไซซ์เสื้อ${isPersonnel ? 'บุคลากร' : 'ครู'}ที่แจ้งแล้ว แยกชาย/หญิง — กดตัวเลขเพื่อกรองรายชื่อด้านล่าง</p>
       <table class="w-full text-xs border-collapse">
         <thead><tr>
-          ${teacherAllowedSizes.map(sz => `<th class="p-2 text-center border-b border-slate-200 ${selectedSize === sz ? 'text-pink-600' : 'text-slate-500'}"><button type="button" data-tsize-col="${esc(sz)}" class="font-bold hover:underline">${esc(sz)}</button></th>`).join('')}
+          <th class="p-2 text-left border-b border-slate-200"></th>
+          ${teacherAllowedSizes.map(sz => `<th class="p-2 text-center border-b border-slate-200 text-slate-500 font-bold">${esc(sz)}</th>`).join('')}
           <th class="p-2 text-center border-b border-slate-200 text-slate-500 font-bold">รวม</th>
         </tr></thead>
-        <tbody><tr>
-          ${teacherAllowedSizes.map(sz => `<td class="p-1 text-center"><button type="button" data-tsize-col="${esc(sz)}" class="w-9 h-8 rounded-lg text-xs font-bold ${selectedSize === sz ? 'bg-pink-600 text-white' : countOf(sz) > 0 ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'text-slate-300'}">${countOf(sz) || '·'}</button></td>`).join('')}
-          <td class="p-1 text-center font-black text-slate-700">${total}</td>
-        </tr></tbody>
+        <tbody>
+          ${genderRows.map(([g, label]) => `<tr class="border-b border-slate-100">
+            <td class="p-2 font-bold text-slate-600 whitespace-nowrap">${esc(label)}</td>
+            ${teacherAllowedSizes.map(sz => {
+              const n = countOfGender(g, sz)
+              if (g === 'UNKNOWN') return `<td class="p-1 text-center text-slate-500">${n || '·'}</td>`
+              const on = gender === g && selectedSize === sz
+              return `<td class="p-1 text-center"><button type="button" data-tsize-cell data-tsize-gender="${esc(g)}" data-tsize-size="${esc(sz)}" class="w-9 h-8 rounded-lg text-xs font-bold ${on ? 'bg-pink-600 text-white' : n > 0 ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'text-slate-300'}">${n || '·'}</button></td>`
+            }).join('')}
+            ${g === 'UNKNOWN'
+              ? `<td class="p-1 text-center font-bold text-slate-500">${totalOfGender(g)}</td>`
+              : `<td class="p-1 text-center"><button type="button" data-tgender-total="${esc(g)}" class="w-10 h-8 rounded-lg text-xs font-bold ${gender === g && !selectedSize ? 'bg-pink-600 text-white' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'}">${totalOfGender(g)}</button></td>`}
+          </tr>`).join('')}
+          <tr>
+            <td class="p-2 font-bold text-slate-600">รวม</td>
+            ${teacherAllowedSizes.map(sz => `<td class="p-1 text-center"><button type="button" data-tsize-total="${esc(sz)}" class="w-9 h-8 rounded-lg text-xs font-bold ${gender === 'ALL' && selectedSize === sz ? 'bg-pink-600 text-white' : 'bg-slate-50 hover:bg-slate-100 text-slate-700'}">${totalOfSize(sz)}</button></td>`).join('')}
+            <td class="p-1 text-center font-black text-slate-700">${grandTotal}</td>
+          </tr>
+        </tbody>
       </table>`
-    root.querySelectorAll('[data-tsize-col]').forEach(b => b.onclick = () => {
-      const sz = b.dataset.tsizeCol
-      selectedSize = selectedSize === sz ? null : sz
+    root.querySelectorAll('[data-tsize-cell]').forEach(b => b.onclick = () => {
+      const g = b.dataset.tsizeGender, sz = b.dataset.tsizeSize
+      if (gender === g && selectedSize === sz) selectedSize = null
+      else { gender = g; selectedSize = sz }
+      render()
+    })
+    root.querySelectorAll('[data-tgender-total]').forEach(b => b.onclick = () => {
+      const g = b.dataset.tgenderTotal
+      if (gender === g && !selectedSize) gender = 'ALL'
+      else { gender = g; selectedSize = null }
+      render()
+    })
+    root.querySelectorAll('[data-tsize-total]').forEach(b => b.onclick = () => {
+      const sz = b.dataset.tsizeTotal
+      if (gender === 'ALL' && selectedSize === sz) selectedSize = null
+      else { gender = 'ALL'; selectedSize = sz }
       render()
     })
 
