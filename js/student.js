@@ -12,6 +12,7 @@ import {
   renderStudentPrayerScanHistory,
   renderStudentAllAssignments,
   openEmailLinkPrompt,
+  completeGoogleEmailLink,
 } from './student-views.js'
 import { getSystemConfig, updateLastSeen, logLogin, getActiveAnnouncements } from './api.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
@@ -202,10 +203,34 @@ async function init() {
   _loadAnnouncementBanners()
   _checkTerangganuSurveyNudge()
 
+  // เพิ่งเด้งกลับจาก Google (ux_mode:'redirect' ผ่าน supabase/functions/google-oauth-redirect)
+  // — จัดการก่อนเช็คเด้งป๊อปอัพขอเชื่อมอีเมลตามปกติ แล้วล้าง query param ทิ้งกันเด้งซ้ำตอนรีเฟรช
+  const googleRedirectResult = _consumeGoogleEmailRedirectParams()
+  if (googleRedirectResult?.email) {
+    await completeGoogleEmailLink(googleRedirectResult.email)
+  } else if (googleRedirectResult?.error) {
+    showToast('เชื่อมอีเมลผ่าน Google ไม่สำเร็จ กรุณาลองใหม่หรือพิมพ์อีเมลเอง', 'error')
+  }
+
   // เด้งขอเชื่อมอีเมลส่วนตัวทุกครั้งหลัง login จนกว่าจะเชื่อม (ยังเป็นอีเมลปลอมเริ่มต้นอยู่)
-  if (session.user.email?.endsWith('@student.pp5.local')) {
+  if (!googleRedirectResult?.email && session.user.email?.endsWith('@student.pp5.local')) {
     openEmailLinkPrompt()
   }
+}
+
+// อ่าน ?google_email=... หรือ ?google_email_error=... จาก URL (เด้งกลับจาก Google) แล้วล้างออก
+// จาก URL ทันทีด้วย history.replaceState กันรีเฟรชหน้าแล้วเด้งเชื่อมอีเมลซ้ำ
+function _consumeGoogleEmailRedirectParams() {
+  const params = new URLSearchParams(window.location.search)
+  const email = params.get('google_email')
+  const error = params.get('google_email_error')
+  if (!email && !error) return null
+  params.delete('google_email')
+  params.delete('google_email_error')
+  const query = params.toString()
+  const cleanUrl = window.location.pathname + (query ? `?${query}` : '') + window.location.hash
+  window.history.replaceState({}, '', cleanUrl)
+  return { email, error }
 }
 
 // ─── Load header info ─────────────────────────────────────────────────────────
@@ -216,7 +241,9 @@ async function _loadHeader() {
   // school logo by class/room: contains "ปวช." = ปวช, otherwise มัธยม
   const roomText = `${_student?.main_room ?? ''} ${_student?.religion_room ?? ''}`
   const isVocStudent = roomText.includes('ปวช.')
-  const logo = isVocStudent ? cfg.porworLogoUrl : cfg.samaiLogoUrl
+  const logo = isVocStudent
+    ? (cfg.porworLogoUrl || cfg.porworLogoBwUrl)
+    : (cfg.samaiLogoUrl || cfg.samaiLogoBwUrl)
   if (logo) {
     document.getElementById('stu-logo').src = logo
     document.getElementById('stu-logo').classList.remove('hidden')

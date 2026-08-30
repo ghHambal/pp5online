@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.613'
+import { APP_VERSION } from './version.js?v=10.22.617'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -3284,7 +3284,14 @@ async function loadHtml5Qrcode() {
 }
 
 // ─── Google Sign-In (เลือกบัญชีที่ล็อกอินอยู่ในเครื่อง แทนการพิมพ์อีเมลเอง) ──────
+// ใช้ ux_mode:'redirect' (เด้งออกจากหน้าจริงไปหน้า Google แล้วเด้งกลับ) แทน popup เดิม —
+// popup โดน Safari บล็อก third-party cookie ทำให้ Google จำบัญชีที่ล็อกอินอยู่ในเครื่องไม่ได้
+// เลยต้องพิมพ์อีเมล/รหัสผ่านเองทุกครั้ง ขัดจุดประสงค์ทั้งฟีเจอร์ — GitHub Pages รับ POST callback
+// ของ Google เองไม่ได้ (static site) เลยใช้ Supabase Edge Function เป็นตัวรับแทน
+// (ดู supabase/functions/google-oauth-redirect/) แล้ว redirect กลับมาที่หน้านี้พร้อม
+// ?google_email=... — จุดรับค่ากลับอยู่ที่ js/student.js (_checkGoogleEmailRedirect)
 const GOOGLE_CLIENT_ID = '311508971789-1uqrf0e36knhlp2epsdfk34e12820ef8.apps.googleusercontent.com'
+const GOOGLE_LOGIN_URI = 'https://isupghduywzqbmnjgtip.supabase.co/functions/v1/google-oauth-redirect'
 let _googleScriptPromise = null
 function _loadGoogleScript() {
   if (_googleScriptPromise) return _googleScriptPromise
@@ -3299,12 +3306,6 @@ function _loadGoogleScript() {
     document.head.appendChild(s)
   })
   return _googleScriptPromise
-}
-function _decodeGoogleEmail(idToken) {
-  try {
-    const payload = JSON.parse(atob(idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
-    return payload.email_verified ? payload.email : null
-  } catch { return null }
 }
 
 // ─── เชื่อมอีเมลส่วนตัว (สำหรับกู้คืนรหัสผ่านในอนาคต) — เด้งทุกครั้งหลัง login จนกว่าจะเชื่อม ──
@@ -3373,11 +3374,8 @@ export function openEmailLinkPrompt() {
   _loadGoogleScript().then(() => {
     window.google.accounts.id.initialize({
       client_id: GOOGLE_CLIENT_ID,
-      callback: resp => {
-        const email = _decodeGoogleEmail(resp.credential)
-        if (!email) { _showMsg('ไม่พบอีเมลที่ยืนยันแล้วจากบัญชี Google นี้', true); return }
-        _saveEmail(email, null)
-      },
+      ux_mode: 'redirect',
+      login_uri: GOOGLE_LOGIN_URI,
     })
     window.google.accounts.id.renderButton(modal.querySelector('#sel-google-btn'), {
       type: 'standard', theme: 'outline', size: 'large', text: 'continue_with', width: 300,
@@ -3402,6 +3400,17 @@ export function openEmailLinkPrompt() {
     btn.textContent = 'กำลังบันทึก...'
     await _saveEmail(email, btn, 'เชื่อมอีเมล')
   })
+}
+
+// เรียกจาก js/student.js หลังเด้งกลับจาก Google (ux_mode:'redirect') พร้อม ?google_email=...
+// แยกจาก openEmailLinkPrompt เพราะตอนนี้ไม่มี modal ให้ผูกอยู่แล้ว (หน้าโหลดใหม่ทั้งหน้า)
+export async function completeGoogleEmailLink(email) {
+  try {
+    await updateStudentEmail(email)
+    showToast(`เชื่อมอีเมล ${email} สำเร็จแล้ว ✅`, 'success')
+  } catch (err) {
+    showToast('เชื่อมอีเมลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+  }
 }
 
 // ─── Scanner Sound Player (เสียงพูดแทน beep: สแกนผ่าน=ALHAMDULILLAH, ไม่ผ่าน=ASTAHKFIRULLAH, สแกนซ้ำ=MASYAALLAH) ──

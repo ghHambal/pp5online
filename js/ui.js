@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.613'
+import { APP_VERSION } from './version.js?v=10.22.617'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -781,6 +781,10 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.617': [
+    '🖼️ หน้านักเรียน: มุมซ้ายบนใช้โลโก้ขาวดำสำรอง (samaiLogoBwUrl/porworLogoBwUrl) แทนไอคอน 🏫 เมื่อยังไม่ได้อัปโหลดโลโก้สีเข้าระบบ',
+    '🔐 ปุ่ม "ดำเนินการต่อโดยใช้ Google" ในป๊อปอัพเชื่อมอีเมลส่วนตัว เปลี่ยนจากป๊อปอัพเป็น redirect เต็มรูปแบบผ่าน Edge Function ใหม่ (google-oauth-redirect) แก้ปัญหา Safari บล็อก third-party cookie ทำให้จำบัญชี Google ที่ล็อกอินอยู่ในเครื่องไม่ได้ — ต้อง deploy edge function + ตั้งค่า Google Cloud Console เพิ่มก่อนใช้งานได้จริง',
+  ],
   '10.22.616': [
     '🎫 คำขอทำบัตร QR Code ใหม่จากนักเรียน: ติ๊กเลือกหลายคนแล้วกด "ทำเสร็จแล้วพร้อมกัน" ได้ในครั้งเดียว พิมพ์บัตรทุกคนพร้อมกัน แล้วถามพิมพ์ใบเสร็จรวมทีเดียวหลังพิมพ์เสร็จ (แบบเดิมทีละคนก็ถามใบเสร็จด้วยแล้วเช่นกัน)',
     '🔔 แก้บั๊ก: แจ้งเตือน push หาแอดมิน/ครูผู้ดูแล QR Code ตอนนักเรียนแจ้งขอทำบัตรใหม่ ไม่เคยส่งถึงจริงเลย (เซิร์ฟเวอร์บล็อกคำขอจากนักเรียนเพราะไม่ใช่ครู) — ต้องรอ deploy edge function send-push ใหม่ก่อนถึงจะใช้งานได้จริง',
