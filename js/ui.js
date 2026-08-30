@@ -781,6 +781,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.618': [
+    '🐛 แก้บั๊กจริง: หน้าตั้งค่าแก้ค้างเก่า กด "บันทึกการตั้งค่า" ไม่สำเร็จ ("null value in column value...") ถ้ายังไม่ได้เลือกเทมเพลตใบสั้นแก้ค้างเก่าไว้ก่อน',
+  ],
   '10.22.617': [
     '🖼️ หน้านักเรียน: มุมซ้ายบนใช้โลโก้ขาวดำสำรอง (samaiLogoBwUrl/porworLogoBwUrl) แทนไอคอน 🏫 เมื่อยังไม่ได้อัปโหลดโลโก้สีเข้าระบบ',
     '🔐 ปุ่ม "ดำเนินการต่อโดยใช้ Google" ในป๊อปอัพเชื่อมอีเมลส่วนตัว เปลี่ยนจากป๊อปอัพเป็น redirect เต็มรูปแบบผ่าน Edge Function ใหม่ (google-oauth-redirect) แก้ปัญหา Safari บล็อก third-party cookie ทำให้จำบัญชี Google ที่ล็อกอินอยู่ในเครื่องไม่ได้ — ต้อง deploy edge function + ตั้งค่า Google Cloud Console เพิ่มก่อนใช้งานได้จริง',

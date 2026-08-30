@@ -9,8 +9,11 @@ export async function getRegradeConfig() {
 
 export async function updateRegradeConfig(updates) {
   const { data: { session } } = await supabase.auth.getSession()
+  // value เป็นคอลัมน์ jsonb NOT NULL — ส่ง JS null ตรงๆ จะกลายเป็น SQL NULL (ไม่ใช่ jsonb 'null')
+  // แล้วชน constraint เสมอ (เจอบั๊กจริงกับ regrade_slip_template_id ตอนยังไม่เลือกเทมเพลต) กันไว้ที่นี่
+  // เผื่อคีย์อื่นในอนาคตพลาดส่ง null/undefined มาเหมือนกัน
   const rows = Object.entries(updates).map(([key, value]) => ({
-    key, value, updated_by: session?.user?.id ?? null, updated_at: new Date().toISOString(),
+    key, value: value ?? '', updated_by: session?.user?.id ?? null, updated_at: new Date().toISOString(),
   }))
   const { error } = await supabase.from('regrade_config').upsert(rows, { onConflict: 'key' })
   if (error) throw error
