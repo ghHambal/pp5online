@@ -133,16 +133,30 @@ export function buildCertificateHtml({ layout, variables, docTitle }) {
     </style></head>
     <body>
       ${canvasHtml}
-      <div style="text-align:center;margin-top:20px;display:flex;gap:8px;justify-content:center;" class="no-print">
-        <button onclick="window.close()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">← ปิดหน้าต่างนี้</button>
-        <button onclick="window.print()" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
-      </div>
-      <style>@media print { .no-print { display:none } }</style>
     </body></html>`
 }
 
-export function openCertificatePrint({ layout, variables, docTitle }, showToast) {
-  const win = window.open('', '_blank', 'width=900,height=700')
-  if (!win) { showToast?.('กรุณาอนุญาต Popup ในเบราว์เซอร์', 'warning'); return }
-  win.document.open(); win.document.write(buildCertificateHtml({ layout, variables, docTitle })); win.document.close()
+// เดิมใช้ window.open('', '_blank') + document.write เปิดหน้าต่างแยก แต่บน iOS/Android ที่ติดตั้งเป็น
+// PWA (Add to Home Screen) window.open แบบไม่มี URL จริงมักไม่เปิดหน้าต่างใหม่จริง กลับไปเขียนทับหน้าแอป
+// เดิมทั้งหมด (document.write ล้าง JS state ทิ้ง) กด "ปิด" แล้วดูเหมือนเด้งกลับหน้าภาพรวม —
+// เปลี่ยนมาใช้ overlay + iframe ในหน้าเดิมแทน ไม่พึ่ง window.open เลย ทำงานเหมือนกันทุกอุปกรณ์/บริบท
+export function openCertificatePrint({ layout, variables, docTitle }) {
+  document.getElementById('cert-print-overlay')?.remove()
+  const overlay = document.createElement('div')
+  overlay.id = 'cert-print-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;background:#e5e7eb;display:flex;flex-direction:column;'
+  overlay.innerHTML = `
+    <div style="flex-shrink:0;display:flex;gap:8px;justify-content:center;padding:10px;background:#fff;border-bottom:1px solid #ddd;">
+      <button id="cert-print-close-btn" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">← ปิด</button>
+      <button id="cert-print-go-btn" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
+    </div>
+    <iframe id="cert-print-iframe" style="flex:1;border:0;width:100%;background:#e5e7eb;"></iframe>`
+  document.body.appendChild(overlay)
+  overlay.querySelector('#cert-print-iframe').srcdoc = buildCertificateHtml({ layout, variables, docTitle })
+  overlay.querySelector('#cert-print-close-btn').addEventListener('click', () => overlay.remove())
+  overlay.querySelector('#cert-print-go-btn').addEventListener('click', () => {
+    const frameWin = overlay.querySelector('#cert-print-iframe').contentWindow
+    frameWin?.focus()
+    frameWin?.print()
+  })
 }
