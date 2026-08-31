@@ -74,6 +74,89 @@
     .sc-btn-gold:hover { filter: brightness(1.05); transform: translateY(-1px); box-shadow: 0 5px 14px rgba(138,106,20,0.35); }
     .sc-btn-gold:active { transform: translateY(0); }
 
+    /* Smart Classroom บนมือถือ: เมนูอ้างอิงต้องเข้าถึงได้ตลอด โดยไม่ต้องเลื่อนลงท้ายหน้า */
+    .sc-mobile-ref-nav, .sc-mobile-ref-head { display: none; }
+    @media (max-width: 1023px) {
+      body.sc-fullscreen #content { padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)); }
+      .sc-mobile-ref-nav {
+        position: fixed;
+        z-index: 90;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 2px;
+        padding: 7px 6px calc(7px + env(safe-area-inset-bottom));
+        background: rgba(255,255,255,.97);
+        border-top: 1px solid #eadfbe;
+        box-shadow: 0 -6px 22px rgba(62,48,13,.12);
+        backdrop-filter: blur(14px);
+      }
+      .sc-mobile-ref-btn {
+        position: relative;
+        min-height: 52px;
+        border: 0;
+        border-radius: 13px;
+        background: transparent;
+        color: #756b50;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .sc-mobile-ref-btn .sc-mobile-ref-icon { display: block; margin-bottom: 4px; font-size: 18px; line-height: 1; }
+      .sc-mobile-ref-btn.active { color: #6d4a08; background: #fff3ce; }
+      .sc-mobile-ref-count {
+        position: absolute;
+        top: 2px;
+        right: calc(50% - 22px);
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        border-radius: 9999px;
+        background: #dc2626;
+        color: #fff;
+        font-size: 10px;
+        line-height: 18px;
+        text-align: center;
+        box-shadow: 0 1px 5px rgba(220,38,38,.35);
+      }
+      .sc-reference-panel { display: none; }
+      .sc-reference-panel.mobile-open {
+        display: block;
+        position: fixed;
+        z-index: 80;
+        inset: 0;
+        overflow-y: auto;
+        margin: 0;
+        padding: 16px 14px calc(6.25rem + env(safe-area-inset-bottom));
+        border: 0;
+        border-radius: 0;
+        background: #f8fafc;
+      }
+      .sc-reference-panel.mobile-open .sc-mobile-ref-head {
+        position: sticky;
+        z-index: 2;
+        top: -16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: -16px -14px 16px;
+        padding: 14px;
+        background: rgba(255,255,255,.97);
+        border-bottom: 1px solid #eadfbe;
+        backdrop-filter: blur(14px);
+      }
+      .sc-desktop-ref-tabs { display: none !important; }
+      .sc-mobile-app-section { display: none; }
+      .sc-mobile-app-section.mobile-active { display: block; }
+      .sc-mobile-ref-subtabs { display: flex; gap: 6px; overflow-x: auto; margin: 0 0 14px; padding: 2px 0 4px; }
+      .sc-mobile-ref-subtabs button { min-height: 40px; padding: 0 12px; border: 1px solid #eadfbe; border-radius: 12px; background: #fff; color: #756b50; font-size: 11px; font-weight: 700; white-space: nowrap; }
+      .sc-mobile-ref-subtabs button.active { background: #fff3ce; color: #6d4a08; border-color: #dfc36e; }
+    }
+    @media (min-width: 1024px) { .sc-mobile-app-section { display: block; } }
+
     /* ─── Global CSS Tooltip (title attribute) ─── */
     /* ยกเว้น th/td/tr เพื่อไม่ทับ position:sticky ของตาราง */
     [title]:not(th):not(td):not(tr) { position: relative; }
@@ -381,7 +464,7 @@
   </div>
 
   <!-- Scripts -->
-  <script type="module" src="js/teacher.js?v=10.22.625"></script>
+  <script type="module" src="js/teacher.js?v=10.22.626"></script>
 
 </body>
 </html>

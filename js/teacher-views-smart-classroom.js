@@ -35,6 +35,7 @@ import { uploadAssignmentFile } from './storage.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek } from './teacher-views-utils.js'
 import { supabase } from './supabase.js'
 import { publishGradebookUpdate } from './gradebook-sync.js'
+import { evalFormula, assignBonusVars } from './teacher-score-columns.js'
 
 // ─── Tier gate ──────────────────────────────────────────────────────────────
 // ใช้ pattern เดียวกับ _dashboardMinTier ใน teacher-views-dashboard.js — อ่านจาก
@@ -484,6 +485,17 @@ export async function renderSmartClassroom(teacher, classId) {
     return r?.score != null ? parseFloat(r.score) : null
   }
 
+  // ── สถานะงานบนการ์ดรายชื่อนักเรียน ───────────────────────────────────────
+  // ตรวจแล้ว = reviewed_at มีค่า หรือบันทึกคะแนนงานแล้ว; ส่งแล้วแต่ยังไม่ตรวจ = มี submission;
+  // ยังไม่ส่ง = ไม่พบ submission ของงานนั้น
+  const _studentAssignmentStatus = (assignmentId, studentId) => {
+    const assignment = assignments.find(a => a.id === assignmentId)
+    const submission = assignment?.submissions?.find(sub => sub.student_id === studentId)
+    if (!submission) return { key: 'missing', rank: 1, icon: '○', label: 'ยังไม่ส่ง', cls: 'bg-gray-100 text-gray-500 border-gray-200' }
+    if (submission.reviewed_at || submission.hasScore) return { key: 'checked', rank: 2, icon: '✓', label: 'ตรวจแล้ว', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200' }
+    return { key: 'waiting', rank: 0, icon: '●', label: 'ส่งแล้ว รอตรวจ', cls: 'bg-amber-100 text-amber-700 border-amber-200' }
+  }
+
   // ── สถานะการเรียงลำดับการ์ดนักเรียน ──────────────────────────────────────────
   let _rosterSort = { key: 'seatno', label: 'เลขที่' }
   const _rosterSortValue = (s) => {
@@ -495,11 +507,23 @@ export async function renderSmartClassroom(teacher, classId) {
       const col = scoreColumns.find(c => c.id === colId)
       return v == null ? null : `${v}${col ? '/' + col.max_score : ''}`
     }
+    if (_rosterSort.key.startsWith('assignment:')) {
+      const assignmentId = parseInt(_rosterSort.key.slice('assignment:'.length), 10)
+      const status = _studentAssignmentStatus(assignmentId, s.id)
+      return `${status.icon} ${status.label}`
+    }
     return null
   }
   const _sortedStudents = () => {
     if (_rosterSort.key === 'seatno') return students
     if (_rosterSort.key === 'name') return [...students].sort((a, b) => (a.full_name ?? '').localeCompare(b.full_name ?? '', 'th'))
+    if (_rosterSort.key.startsWith('assignment:')) {
+      const assignmentId = parseInt(_rosterSort.key.slice('assignment:'.length), 10)
+      return [...students].sort((a, b) => {
+        const diff = _studentAssignmentStatus(assignmentId, a.id).rank - _studentAssignmentStatus(assignmentId, b.id).rank
+        return diff || seatNoByStudent.get(a.id) - seatNoByStudent.get(b.id)
+      })
+    }
     const getVal = _rosterSort.key === 'total' ? _studentTotalScorePct
       : _rosterSort.key === 'att' ? _studentAttendancePct
       : (s) => _studentColumnScore(s, parseInt(_rosterSort.key.slice(4), 10))
@@ -568,6 +592,9 @@ export async function renderSmartClassroom(teacher, classId) {
     const qa = quizAttemptByStudent[s.id]
     const qBadge = liveQuiz ? (QUIZ_STATUS_BADGE[qa?.status] ?? { icon: '⚪', cls: 'bg-gray-300' }) : null
     const sortVal = _rosterSortValue(s)
+    const assignmentStatus = _rosterSort.key.startsWith('assignment:')
+      ? _studentAssignmentStatus(parseInt(_rosterSort.key.slice('assignment:'.length), 10), s.id)
+      : null
     return `<button type="button" data-sid="${s.id}"
         class="sc-stu relative border rounded-xl px-2 py-2.5 text-center hover:border-indigo-300 hover:-translate-y-0.5 transition ${out ? 'border-amber-300 bg-amber-50' : 'border-gray-100 bg-gray-50'}">
       <span class="absolute top-1 left-1 text-[9px] font-bold text-gray-500 bg-white/80 border border-gray-200 rounded-full w-4 h-4 flex items-center justify-center" title="เลขที่ ${seatNoByStudent.get(s.id) ?? '—'}">${seatNoByStudent.get(s.id) ?? '—'}</span>
@@ -578,7 +605,9 @@ export async function renderSmartClassroom(teacher, classId) {
       </div>
       <div class="text-[9px] text-gray-400 font-mono">${_htmlEsc(s.student_code ?? '')}</div>
       <div class="text-[11px] font-semibold text-gray-700 leading-tight truncate">${_htmlEsc(s.full_name ?? '')}</div>
-      ${sortVal ? `<div class="text-[10px] font-bold text-amber-600 mt-0.5">${_htmlEsc(sortVal)}</div>` : ''}
+      ${assignmentStatus
+        ? `<div class="mt-1 px-1.5 py-0.5 rounded-lg border text-[9px] font-bold truncate ${assignmentStatus.cls}">${assignmentStatus.icon} ${assignmentStatus.label}</div>`
+        : sortVal ? `<div class="text-[10px] font-bold text-amber-600 mt-0.5">${_htmlEsc(sortVal)}</div>` : ''}
     </button>`
   }).join('')
 
@@ -841,6 +870,52 @@ export async function renderSmartClassroom(teacher, classId) {
 
   // ── งานที่มอบหมาย ────────────────────────────────────────────────────────
   const _fmtDueDate = iso => !iso ? 'ไม่กำหนดส่ง' : new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const _assignmentSubmittedCount = a => new Set((a.submissions ?? []).map(s => s.student_id)).size
+  const _assignmentDueState = a => {
+    const missingCount = Math.max(0, students.length - _assignmentSubmittedCount(a))
+    if (!a.due_at || missingCount === 0) return { key: 'normal', missingCount, urgent: false, label: _fmtDueDate(a.due_at) }
+    const diffMs = new Date(a.due_at).getTime() - Date.now()
+    const absHours = Math.max(1, Math.ceil(Math.abs(diffMs) / 3600000))
+    if (diffMs < 0) {
+      const label = absHours < 24 ? `เกินกำหนด ${absHours} ชม.` : `เกินกำหนด ${Math.ceil(absHours / 24)} วัน`
+      return { key: 'overdue', missingCount, urgent: true, label, diffMs }
+    }
+    if (diffMs <= 86400000) return { key: 'today', missingCount, urgent: true, label: `เหลือ ${absHours} ชม.`, diffMs }
+    if (diffMs <= 259200000) return { key: 'soon', missingCount, urgent: true, label: `เหลือ ${Math.ceil(absHours / 24)} วัน`, diffMs }
+    return { key: 'normal', missingCount, urgent: false, label: _fmtDueDate(a.due_at), diffMs }
+  }
+  const urgentAssignments = assignments
+    .map(a => ({ assignment: a, state: _assignmentDueState(a) }))
+    .filter(x => x.state.urgent)
+    .sort((a, b) => {
+      const aOverdue = a.state.key === 'overdue', bOverdue = b.state.key === 'overdue'
+      if (aOverdue !== bOverdue) return aOverdue ? -1 : 1
+      const aDue = new Date(a.assignment.due_at).getTime(), bDue = new Date(b.assignment.due_at).getTime()
+      return aOverdue ? bDue - aDue : aDue - bDue
+    })
+  const _urgentAssignmentsCardHTML = (surface = 'mobile') => {
+    if (!urgentAssignments.length) return ''
+    const { assignment: a, state } = urgentAssignments[0]
+    const submittedCount = _assignmentSubmittedCount(a)
+    const tone = state.key === 'overdue'
+      ? 'border-red-200 bg-red-50 text-red-800'
+      : state.key === 'today'
+        ? 'border-orange-200 bg-orange-50 text-orange-800'
+        : 'border-amber-200 bg-amber-50 text-amber-800'
+    return `<div class="rounded-2xl border ${tone} shadow-sm p-4 ${surface === 'mobile' ? 'mb-4 lg:hidden' : 'mb-4 hidden lg:block'}">
+      <div class="flex items-center justify-between gap-2">
+        <p class="text-xs font-extrabold">⏰ ${state.key === 'overdue' ? 'งานเกินกำหนด' : 'งานใกล้ครบกำหนด'}</p>
+        <span class="text-xs font-extrabold flex-shrink-0">${state.label}</span>
+      </div>
+      <p class="text-sm font-bold mt-2 truncate">${_htmlEsc(a.title)}</p>
+      <p class="text-[11px] mt-1 opacity-80">${submittedCount}/${students.length} ส่งแล้ว · <b>${state.missingCount} คนยังไม่ส่ง</b></p>
+      ${urgentAssignments.length > 1 ? `<p class="text-[10px] mt-1 opacity-70">และมีงานเร่งด่วนอีก ${urgentAssignments.length - 1} งาน</p>` : ''}
+      <div class="grid grid-cols-[1fr_auto] gap-2 mt-3">
+        <button type="button" data-sc-urgent-aid="${a.id}" class="sc-btn-dark min-h-[42px] rounded-xl px-3 text-xs font-bold">ดูและติดตามงาน</button>
+        <button type="button" class="sc-quick-add-assignment min-h-[42px] rounded-xl border border-current/20 bg-white/70 px-3 text-xs font-bold">＋ สั่งงาน</button>
+      </div>
+    </div>`
+  }
   const _isLate = (a, submittedAtIso) => a.due_at ? new Date(submittedAtIso).getTime() > new Date(a.due_at).getTime() : false
   const _lateDays = (a, submittedAtIso) => a.due_at ? Math.max(1, Math.ceil((new Date(submittedAtIso).getTime() - new Date(a.due_at).getTime()) / 86400000)) : 0
   const _latePenaltyPoints = (a, submittedAtIso) => {
@@ -853,19 +928,23 @@ export async function renderSmartClassroom(teacher, classId) {
   const _assignmentsHTML = () => {
     if (!assignments.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่มีงานที่มอบหมาย — กด "➕ สั่งงานใหม่" เพื่อเริ่ม</p>`
     return assignments.map(a => {
-      const submittedCount = a.submissions.length
+      const submittedCount = _assignmentSubmittedCount(a)
       const totalCount = students.length
       const pct = totalCount > 0 ? Math.round(submittedCount / totalCount * 100) : 0
       const lateCount = a.submissions.filter(s => _isLate(a, s.submitted_at)).length
-      return `<button class="sc-assignment-row w-full text-left px-3 py-2.5 rounded-xl border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition mb-2" data-aid="${a.id}">
+      const dueState = _assignmentDueState(a)
+      const dueTone = dueState.key === 'overdue' ? 'border-red-200 bg-red-50' : dueState.key === 'today' ? 'border-orange-200 bg-orange-50' : dueState.key === 'soon' ? 'border-amber-200 bg-amber-50' : 'border-gray-100'
+      const dueText = dueState.urgent ? (dueState.key === 'overdue' ? 'text-red-700' : 'text-amber-700') : 'text-gray-400'
+      return `<button class="sc-assignment-row w-full text-left px-3 py-3 rounded-xl border ${dueTone} hover:border-indigo-300 hover:bg-indigo-50 transition mb-2" data-aid="${a.id}">
         <div class="flex items-center justify-between gap-2">
           <p class="text-sm font-bold text-gray-700 truncate">${_htmlEsc(a.title)}</p>
-          <span class="text-[10px] text-gray-400 flex-shrink-0">${_fmtDueDate(a.due_at)}</span>
+          <span class="text-[11px] ${dueText} font-bold flex-shrink-0">${dueState.label}</span>
         </div>
         <div class="flex items-center gap-2 mt-1.5">
           <div class="flex-1 h-1.5 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-emerald-500" style="width:${pct}%"></div></div>
           <span class="text-[11px] font-bold text-gray-600 flex-shrink-0">${submittedCount}/${totalCount} ส่งแล้ว</span>
-          ${lateCount ? `<span class="text-[10px] font-bold text-amber-600 flex-shrink-0">⏰ ช้า ${lateCount}</span>` : ''}
+          ${dueState.missingCount ? `<span class="text-[10px] font-bold ${dueState.urgent ? dueText : 'text-gray-400'} flex-shrink-0">${dueState.missingCount} ยังไม่ส่ง</span>` : ''}
+          ${lateCount ? `<span class="text-[10px] font-bold text-amber-600 flex-shrink-0">ช้า ${lateCount}</span>` : ''}
         </div>
       </button>`
     }).join('')
@@ -899,13 +978,21 @@ export async function renderSmartClassroom(teacher, classId) {
 
   // ── โซนอ้างอิง — แท็บรวมข้อมูลที่ไม่ได้ใช้ระหว่างสอนสดทุกวินาที (เดิมแยกการ์ดเรียงยาว 3 แถว) ──
   const REF_TABS = [
-    { key: 'schedule',    label: '🗓️ ตารางเรียน' },
-    { key: 'examqueue',   label: '📋 คิวสอบ' },
-    { key: 'syllabus',    label: '📘 กำหนดการสอน' },
-    { key: 'plans',       label: '📝 แผนการสอน' },
-    { key: 'assignments', label: '📚 งานที่มอบหมาย' },
+    { key: 'schedule',    icon: '🗓️', label: 'ตารางเรียน',    mobileLabel: 'ตาราง' },
+    { key: 'examqueue',   icon: '📋', label: 'คิวสอบ',         mobileLabel: 'คิวสอบ' },
+    { key: 'syllabus',    icon: '📘', label: 'กำหนดการสอน',   mobileLabel: 'การสอน' },
+    { key: 'plans',       icon: '📝', label: 'แผนการสอน',      mobileLabel: 'แผน' },
+    { key: 'assignments', icon: '📚', label: 'งานที่มอบหมาย', mobileLabel: 'งาน' },
+  ]
+  const MOBILE_GROUPS = [
+    { key: 'room', icon: '👥', label: 'ห้อง' },
+    { key: 'live', icon: '🧠', label: 'สอนสด' },
+    { key: 'work', icon: '📚', label: 'งาน' },
+    { key: 'plan', icon: '📝', label: 'แผน' },
+    { key: 'more', icon: '•••', label: 'เพิ่ม' },
   ]
   let _refTab = 'schedule'
+  let _mobileGroup = 'room'
 
   const _refTabBodyHTML = (tab) => {
     if (tab === 'schedule') return `
@@ -962,9 +1049,11 @@ export async function renderSmartClassroom(teacher, classId) {
       <button id="sc-back" class="flex-shrink-0 text-xs text-gray-400 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50">← กลับ</button>
     </div>
 
+    ${_urgentAssignmentsCardHTML('mobile')}
+
     <div class="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
 
-      <div>
+      <div id="sc-mobile-room-section" class="sc-mobile-app-section mobile-active">
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
           <div class="flex items-center justify-between gap-2 flex-wrap mb-1">
             <h2 class="text-sm font-bold text-gray-700">👥 นักเรียน — แตะเพื่อดูข้อมูล/สั่งการ</h2>
@@ -993,7 +1082,9 @@ export async function renderSmartClassroom(teacher, classId) {
         </div>
       </div>
 
-      <div>
+      <div id="sc-mobile-live-section" class="sc-mobile-app-section">
+        ${_urgentAssignmentsCardHTML('desktop')}
+
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
           <div class="flex items-center justify-between mb-3">
             <h2 class="text-sm font-bold text-gray-700">🧠 เปิดควิซสด</h2>
@@ -1025,12 +1116,28 @@ export async function renderSmartClassroom(teacher, classId) {
 
     </div>
 
-    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mt-4">
-      <div id="sc-reftabs-bar" class="sc-tabbar mb-4">
-        ${REF_TABS.map(t => `<button data-reftab="${t.key}" class="sc-reftab-btn sc-tab-pill ${t.key === _refTab ? 'active' : ''}">${t.label}</button>`).join('')}
+    <div id="sc-reference-panel" class="sc-reference-panel bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mt-4">
+      <div class="sc-mobile-ref-head">
+        <div>
+          <p id="sc-mobile-ref-title" class="text-sm font-bold text-gray-800">${REF_TABS.find(t => t.key === _refTab)?.icon} ${REF_TABS.find(t => t.key === _refTab)?.label}</p>
+          <p class="text-[11px] text-gray-400">แตะเมนูด้านล่างเพื่อเปลี่ยนหัวข้อ</p>
+        </div>
+        <button id="sc-mobile-ref-close" type="button" class="min-w-[44px] min-h-[44px] rounded-xl border border-gray-200 bg-white text-gray-500 text-lg">✕</button>
+      </div>
+      <div id="sc-mobile-ref-subtabs" class="sc-mobile-ref-subtabs"></div>
+      <div id="sc-reftabs-bar" class="sc-desktop-ref-tabs sc-tabbar mb-4">
+        ${REF_TABS.map(t => `<button data-reftab="${t.key}" class="sc-reftab-btn sc-tab-pill ${t.key === _refTab ? 'active' : ''}">${t.icon} ${t.label}${t.key === 'assignments' && urgentAssignments.length ? ` (${urgentAssignments.length})` : ''}</button>`).join('')}
       </div>
       <div id="sc-reftab-body">${_refTabBodyHTML(_refTab)}</div>
     </div>
+
+    <nav id="sc-mobile-ref-nav" class="sc-mobile-ref-nav" aria-label="เมนู Smart Classroom">
+      ${MOBILE_GROUPS.map(group => `<button type="button" data-mobile-group="${group.key}" class="sc-mobile-group-btn sc-mobile-ref-btn ${group.key === _mobileGroup ? 'active' : ''}">
+        <span class="sc-mobile-ref-icon">${group.icon}</span>
+        <span>${group.label}</span>
+        ${group.key === 'work' && urgentAssignments.length ? `<span class="sc-mobile-ref-count">${urgentAssignments.length > 99 ? '99+' : urgentAssignments.length}</span>` : ''}
+      </button>`).join('')}
+    </nav>
   </div>`)
 
   // ── Wiring: fullscreen mode / back / switch class / attendance ──────────
@@ -1043,6 +1150,11 @@ export async function renderSmartClassroom(teacher, classId) {
   })
   document.getElementById('sc-switch-class').addEventListener('click', () => _openClassSwitcher())
   document.getElementById('sc-open-attendance').addEventListener('click', () => _openTodayAttendance())
+  document.querySelectorAll('[data-sc-urgent-aid]').forEach(btn => btn.addEventListener('click', () => {
+    const a = assignments.find(x => x.id === parseInt(btn.dataset.scUrgentAid, 10))
+    if (a) _openAssignmentTrackingModal(a)
+  }))
+  document.querySelectorAll('.sc-quick-add-assignment').forEach(btn => btn.addEventListener('click', () => _openAssignmentModal()))
 
   // ── นาฬิกา: กำลังสอนอยู่ (นับถอยหลังจนจบคาบ) หรือคาบถัดไปของห้องนี้ (นับถอยหลังจนเริ่ม) ──
   function _fmtCountdownParts(sec) {
@@ -1229,6 +1341,13 @@ export async function renderSmartClassroom(teacher, classId) {
         <div id="sc-sort-col-list" class="space-y-1">
           ${scoreColumns.length ? scoreColumns.map(c => `<button data-sortkey="col:${c.id}" data-sortlabel="${_htmlEsc(c.assignment_name ?? '')}" data-search="${_htmlEsc((c.assignment_name ?? '').toLowerCase())}" class="sc-sort-opt sc-sort-col-opt w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${_rosterSort.key === 'col:' + c.id ? 'bg-amber-100 text-amber-800' : 'text-gray-600 hover:bg-gray-50'}">${_htmlEsc(c.assignment_name ?? '')}</button>`).join('') : `<p class="text-xs text-gray-300 text-center py-3">ห้องนี้ยังไม่มีคอลัมน์คะแนน</p>`}
         </div>
+        <div class="mt-3 pt-3 border-t border-gray-100">
+          <p class="text-xs font-bold text-gray-500 mb-1">📚 งานที่มอบหมาย</p>
+          <p class="text-[10px] text-gray-400 mb-2">เรียง: รอตรวจ → ยังไม่ส่ง → ตรวจแล้ว พร้อมแสดงสถานะบนการ์ด</p>
+          <div class="space-y-1">
+            ${assignments.length ? assignments.map(a => `<button data-sortkey="assignment:${a.id}" data-sortlabel="งาน: ${_htmlEsc(a.title ?? '')}" class="sc-sort-opt w-full text-left px-2.5 py-2 rounded-lg text-xs font-semibold transition ${_rosterSort.key === 'assignment:' + a.id ? 'bg-amber-100 text-amber-800' : 'text-gray-600 hover:bg-gray-50'}">${_htmlEsc(a.title ?? '')}</button>`).join('') : `<p class="text-xs text-gray-300 text-center py-3">ห้องนี้ยังไม่มีงานที่มอบหมาย</p>`}
+          </div>
+        </div>
       </div>`
     document.body.appendChild(p)
     p.querySelectorAll('.sc-sort-opt').forEach(b => b.addEventListener('click', () => {
@@ -1287,52 +1406,80 @@ export async function renderSmartClassroom(teacher, classId) {
       </div>`
   }
 
-  // เกรดประมาณจาก % รวม — สูตรเดียวกับที่ใช้สร้างเอกสาร ปพ.5 (pp5-doc.js:_calcGrade)
-  // หมายเหตุ: ไม่รวมสูตรพิเศษ/บังคับเกรด/แยกกลางภาค-ปลายภาคแบบหน้าคะแนนหลัก (teacher-views-grades.js)
-  // ถ้าต้องการเลขที่ตรงกับหน้าคะแนนหลักเป๊ะ ต้องเปิดหน้านั้นแทน
-  function _estimateGrade(pct) {
-    if (pct >= 80) return '4'
-    if (pct >= 75) return '3.5'
-    if (pct >= 70) return '3'
-    if (pct >= 65) return '2.5'
-    if (pct >= 60) return '2'
-    if (pct >= 55) return '1.5'
-    if (pct >= 50) return '1'
-    return '0'
-  }
+  const _pctToGrade = pct => pct >= 80 ? 4 : pct >= 75 ? 3.5 : pct >= 70 ? 3 : pct >= 65 ? 2.5 : pct >= 60 ? 2 : pct >= 55 ? 1.5 : pct >= 50 ? 1 : 0
+  const _gradeToKhuna = grade => grade >= 3.5
+    ? { label: 'ดีเยี่ยม', cls: 'text-emerald-600' }
+    : grade >= 2.5 ? { label: 'ดี', cls: 'text-blue-600' }
+      : grade >= 1 ? { label: 'ผ่าน', cls: 'text-amber-600' }
+        : { label: 'ไม่ผ่าน', cls: 'text-red-600' }
+  const _fmtScore = value => Number.isFinite(value) ? String(Number(value.toFixed(2))) : '—'
 
   function _tabScoreHTML(s) {
     if (!scoreColumns.length) return `<p class="text-center py-6 text-xs text-gray-400">ห้องนี้ยังไม่มีคอลัมน์คะแนน</p>`
     const rows = scoresByStudent[s.id] ?? []
-    const totalMax = scoreColumns.reduce((sum, c) => sum + (parseFloat(c.max_score) || 0), 0)
-    const totalScore = scoreColumns.reduce((sum, c) => {
-      const r = rows.find(x => x.score_column_id === c.id)
-      return sum + (parseFloat(r?.score) || 0)
-    }, 0)
-    const pct = totalMax > 0 ? (totalScore / totalMax * 100) : 0
+    const bonusCols = scoreColumns.filter(c => c.column_type === 'bonus')
+    const derivedCols = scoreColumns.filter(c => c.column_type === 'derived')
+    const regularCols = scoreColumns.filter(c => (c.column_type ?? 'regular') === 'regular')
+    const midCols = regularCols.filter(c => c.assignment_type !== 'final' && c.assignment_type !== 'ปลายภาค')
+    const finalCols = regularCols.filter(c => c.assignment_type === 'final' || c.assignment_type === 'ปลายภาค')
+    const bonusWithVars = assignBonusVars(bonusCols)
+    const scoreValue = col => parseFloat(rows.find(x => x.score_column_id === col.id)?.score) || 0
+    const effectiveScore = col => {
+      const raw = scoreValue(col)
+      if (!col.bonus_formula) return raw
+      const vars = Object.fromEntries(bonusWithVars.map(b => [b.var, scoreValue(b)]))
+      const bonus = evalFormula(col.bonus_formula, vars) ?? 0
+      return col.max_score ? Math.min(raw + bonus, parseFloat(col.max_score)) : raw + bonus
+    }
+    const derivedScore = col => {
+      if (!col.formula) return 0
+      const vars = Object.fromEntries((col.formula_refs ?? []).map(ref => {
+        const refCol = scoreColumns.find(c => c.id === ref.col_id)
+        return [ref.var, refCol ? scoreValue(refCol) : 0]
+      }))
+      return evalFormula(col.formula, vars) ?? 0
+    }
+    const groupMax = cols => cols.reduce((sum, col) => sum + (parseFloat(col.max_score) || 0), 0)
+    const groupRaw = cols => cols.reduce((sum, col) => sum + effectiveScore(col), 0)
+    const midMax = groupMax(midCols), finalMax = groupMax(finalCols), derivedMax = groupMax(derivedCols)
+    const midRaw = groupRaw(midCols), finalRaw = groupRaw(finalCols), derivedRaw = derivedCols.reduce((sum, col) => sum + derivedScore(col), 0)
+    const allMax = midMax + finalMax + derivedMax
+    const allRaw = midRaw + finalRaw + derivedRaw
+    const total = Math.round(allRaw)
+    const pct = allMax > 0 ? allRaw / allMax * 100 : 0
+    const grade = _pctToGrade(pct)
+    const khuna = _gradeToKhuna(grade)
+    const scoreRow = (col, tone) => {
+      const row = rows.find(x => x.score_column_id === col.id)
+      const value = row?.score ?? ''
+      const rowPct = value !== '' && parseFloat(col.max_score) > 0 ? parseFloat(value) / parseFloat(col.max_score) * 100 : null
+      return `<tr class="border-b border-gray-50 last:border-0">
+        <td class="py-2 px-2 text-gray-700 text-[11px] font-semibold">${_htmlEsc(col.assignment_name ?? '—')}</td>
+        <td class="py-1 px-1 text-center"><input type="number" class="sc-score-input w-16 text-center border border-gray-200 rounded-lg px-1 py-1 font-mono font-bold ${tone} focus:outline-none focus:ring-2 focus:ring-indigo-300" data-col="${col.id}" value="${value}" max="${col.max_score ?? ''}" placeholder="—" /></td>
+        <td class="py-2 px-1 text-center text-[11px] text-gray-400">/${col.max_score ?? 0}</td>
+        <td class="py-2 px-1 text-center text-[11px] text-gray-500">${rowPct == null ? '—' : rowPct.toFixed(0) + '%'}</td>
+      </tr>`
+    }
+    const scoreGroup = (title, cols, raw, max, palette) => !cols.length ? '' : `<div>
+      <h4 class="font-bold ${palette.title} text-sm mb-2">${title}</h4>
+      <div class="overflow-hidden rounded-xl border ${palette.border}"><table class="w-full table-fixed">
+        <thead><tr class="${palette.head} text-gray-500"><th class="py-1.5 px-2 text-left text-[10px] w-[44%]">ชื่องาน</th><th class="py-1.5 text-center text-[10px]">คะแนน</th><th class="py-1.5 text-center text-[10px]">เต็ม</th><th class="py-1.5 text-center text-[10px]">%</th></tr></thead>
+        <tbody>${cols.map(col => scoreRow(col, palette.input)).join('')}</tbody>
+        <tfoot><tr class="${palette.head} font-bold"><td class="py-2 px-2 ${palette.title} text-xs">รวม</td><td class="py-2 text-center ${palette.title} text-xs">${_fmtScore(raw)}</td><td class="py-2 text-center text-gray-400 text-xs">/${_fmtScore(max)}</td><td class="py-2 text-center ${palette.title} text-xs">${max > 0 ? (raw / max * 100).toFixed(1) : 0}%</td></tr></tfoot>
+      </table></div>
+    </div>`
     return `
-      <div class="flex items-center justify-between px-3 py-2.5 rounded-xl bg-indigo-50 border border-indigo-100 mb-1">
-        <div>
-          <p class="text-[10px] text-indigo-400 font-semibold uppercase tracking-wide">รวมคะแนน</p>
-          <p class="text-sm font-bold text-indigo-700">${totalScore.toFixed(1).replace(/\.0$/, '')} / ${totalMax} · ${pct.toFixed(1)}%</p>
+      <div class="space-y-4">
+        ${scoreGroup('📘 กลางภาค', midCols, midRaw, midMax, { title:'text-blue-700', border:'border-blue-100', head:'bg-blue-50', input:'text-blue-600' })}
+        ${scoreGroup('📙 ปลายภาค', finalCols, finalRaw, finalMax, { title:'text-purple-700', border:'border-purple-100', head:'bg-purple-50', input:'text-purple-600' })}
+        ${derivedCols.length ? `<div class="rounded-xl border border-indigo-100 bg-indigo-50/50 px-3 py-2.5"><p class="text-xs font-bold text-indigo-700 mb-1">🧮 คะแนนคำนวณ</p>${derivedCols.map(col => `<div class="flex justify-between text-[11px] py-1"><span class="text-gray-600">${_htmlEsc(col.assignment_name ?? '')}</span><b class="text-indigo-700">${_fmtScore(derivedScore(col))}/${_fmtScore(parseFloat(col.max_score) || 0)}</b></div>`).join('')}</div>` : ''}
+        <div class="bg-gradient-to-br from-amber-50 to-purple-50 rounded-2xl p-4 text-center border border-amber-100">
+          <p class="text-xs text-gray-500 mb-1">คะแนนรวมทั้งภาค</p>
+          <p class="text-3xl font-extrabold text-amber-700">${_fmtScore(total)}<span class="text-sm font-normal text-gray-400">/${_fmtScore(allMax)}</span></p>
+          <p class="text-[11px] text-gray-400 mt-0.5">คะแนนจริง ${_fmtScore(allRaw)} · ${pct.toFixed(1)}%</p>
+          <p class="text-xl font-bold text-purple-700 mt-1">เกรด ${grade > 0 ? grade.toFixed(1) : '0'} <span class="text-sm ${khuna.cls}">— ${khuna.label}</span></p>
         </div>
-        <div class="text-right">
-          <p class="text-[10px] text-indigo-400 font-semibold uppercase tracking-wide">เกรดประมาณ</p>
-          <p class="text-lg font-extrabold text-indigo-700">${_estimateGrade(pct)}</p>
-        </div>
-      </div>
-      <p class="text-[10px] text-gray-400 mb-3">* รวมทุกคอลัมน์แบบตรงไปตรงมา ไม่รวมสูตร/บังคับเกรดจากหน้าคะแนนหลัก — แก้ตรงนี้บันทึกจริงเข้าระบบทันที</p>
-      <div class="space-y-1.5">
-        ${scoreColumns.map(col => {
-          const r = rows.find(x => x.score_column_id === col.id)
-          const val = r?.score ?? ''
-          return `<div class="flex items-center justify-between gap-2 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100 text-xs">
-            <span class="font-semibold text-gray-700 truncate flex-1">${_htmlEsc(col.assignment_name ?? '')}</span>
-            <input type="number" class="sc-score-input w-16 text-center border border-gray-200 rounded-lg px-1 py-1 font-mono font-bold text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              data-col="${col.id}" value="${val}" placeholder="—" />
-            <span class="text-gray-400 flex-shrink-0 w-10">/ ${col.max_score}</span>
-          </div>`
-        }).join('')}
+        <p class="text-[10px] text-gray-400 text-center">คำนวณด้วยกลุ่มกลางภาค/ปลายภาค สูตร และคะแนนโบนัสแบบเดียวกับหน้าคะแนนหลัก</p>
       </div>`
   }
 
@@ -1672,6 +1819,9 @@ export async function renderSmartClassroom(teacher, classId) {
     document.querySelectorAll('.sc-reftab-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.reftab === _refTab)
     })
+    const selected = REF_TABS.find(t => t.key === _refTab)
+    const title = document.getElementById('sc-mobile-ref-title')
+    if (title && selected) title.textContent = `${selected.icon} ${selected.label}`
   }
 
   function _wireRefTabBody() {
@@ -1712,13 +1862,81 @@ export async function renderSmartClassroom(teacher, classId) {
   }
   _wireRefTabBody()
 
-  document.getElementById('sc-reftabs-bar').addEventListener('click', e => {
-    const btn = e.target.closest('.sc-reftab-btn')
-    if (!btn || btn.dataset.reftab === _refTab) return
-    _refTab = btn.dataset.reftab
+  const _mobileMoreHTML = () => `
+    <div class="grid grid-cols-2 gap-2 mb-5">
+      <button id="sc-mobile-more-ann" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">📣<br>สร้างประกาศ</button>
+      <button id="sc-mobile-more-dashboard" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">📈<br>Dashboard</button>
+      <button id="sc-mobile-more-switch" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">🔀<br>สลับห้อง</button>
+      <button id="sc-mobile-more-exam" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">📋<br>คิวสอบ</button>
+    </div>
+    <div id="sc-mobile-exam-preview">
+      <p class="text-xs font-bold text-gray-600 mb-2">📋 คิวคำร้องสอบย้อนหลัง</p>
+      ${_examQueueHTML()}
+    </div>`
+
+  function _wireMobileMore() {
+    document.getElementById('sc-mobile-more-ann')?.addEventListener('click', () => document.getElementById('sc-add-announcement')?.click())
+    document.getElementById('sc-mobile-more-dashboard')?.addEventListener('click', () => document.getElementById('sc-dashboard')?.click())
+    document.getElementById('sc-mobile-more-switch')?.addEventListener('click', () => document.getElementById('sc-switch-class')?.click())
+    document.getElementById('sc-mobile-more-exam')?.addEventListener('click', () => document.getElementById('sc-mobile-exam-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+
+  function _paintMobileGroupNav() {
+    document.querySelectorAll('.sc-mobile-group-btn').forEach(btn => btn.classList.toggle('active', btn.dataset.mobileGroup === _mobileGroup))
+  }
+
+  function _paintMobileRefSubtabs() {
+    const wrap = document.getElementById('sc-mobile-ref-subtabs')
+    if (!wrap) return
+    const tabs = _mobileGroup === 'plan'
+      ? REF_TABS.filter(t => ['schedule', 'syllabus', 'plans'].includes(t.key))
+      : []
+    wrap.innerHTML = tabs.map(t => `<button type="button" data-mobile-ref-tab="${t.key}" class="${t.key === _refTab ? 'active' : ''}">${t.icon} ${t.label}</button>`).join('')
+    wrap.querySelectorAll('[data-mobile-ref-tab]').forEach(btn => btn.addEventListener('click', () => _openRefTab(btn.dataset.mobileRefTab)))
+  }
+
+  function _openRefTab(tabKey) {
+    if (!REF_TABS.some(t => t.key === tabKey)) return
+    _refTab = tabKey
     _paintRefTabs()
     document.getElementById('sc-reftab-body').innerHTML = _refTabBodyHTML(_refTab)
     _wireRefTabBody()
+    _paintMobileRefSubtabs()
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      document.getElementById('sc-reference-panel')?.classList.add('mobile-open')
+    }
+  }
+
+  function _setMobileGroup(groupKey) {
+    if (!MOBILE_GROUPS.some(group => group.key === groupKey)) return
+    _mobileGroup = groupKey
+    _paintMobileGroupNav()
+    const room = document.getElementById('sc-mobile-room-section')
+    const live = document.getElementById('sc-mobile-live-section')
+    room?.classList.toggle('mobile-active', groupKey === 'room')
+    live?.classList.toggle('mobile-active', groupKey === 'live')
+    const panel = document.getElementById('sc-reference-panel')
+    if (groupKey === 'room' || groupKey === 'live') {
+      panel?.classList.remove('mobile-open')
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    if (groupKey === 'work') _openRefTab('assignments')
+    else if (groupKey === 'plan') _openRefTab(['schedule', 'syllabus', 'plans'].includes(_refTab) ? _refTab : 'syllabus')
+    else {
+      const title = document.getElementById('sc-mobile-ref-title')
+      if (title) title.textContent = '••• เพิ่มเติม'
+      document.getElementById('sc-mobile-ref-subtabs').innerHTML = ''
+      document.getElementById('sc-reftab-body').innerHTML = _mobileMoreHTML()
+      _wireMobileMore()
+      panel?.classList.add('mobile-open')
+    }
+  }
+
+  document.querySelectorAll('.sc-reftab-btn').forEach(btn => btn.addEventListener('click', () => _openRefTab(btn.dataset.reftab)))
+  document.querySelectorAll('.sc-mobile-group-btn').forEach(btn => btn.addEventListener('click', () => _setMobileGroup(btn.dataset.mobileGroup)))
+  document.getElementById('sc-mobile-ref-close')?.addEventListener('click', () => {
+    _setMobileGroup('room')
   })
 
   function _openSyllabusItemModal(item) {
