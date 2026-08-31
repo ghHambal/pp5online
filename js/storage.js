@@ -171,6 +171,38 @@ export async function uploadQrIssuerSignature(fileOrBlob) {
   return uploadFile('system-assets', 'qr-issuer-signature.jpg', blob)
 }
 
+// ลายเซ็นเอกสารแผนการสอน — เก็บใน bucket private และคืนเฉพาะ object path
+// (หน้าจอจะขอ signed URL ชั่วคราวเมื่อต้องแสดง/พิมพ์ เพื่อไม่เปิดลายเซ็นเป็น public URL)
+export async function uploadLessonPlanSignature(planId, classId, role, fileOrBlob) {
+  const { data: { user }, error: userError } = await supabase.auth.getUser()
+  if (userError || !user) throw userError || new Error('กรุณาเข้าสู่ระบบใหม่')
+  const allowedRoles = new Set(['class-head', 'teacher', 'dept-head'])
+  if (!allowedRoles.has(role)) throw new Error('ประเภทลายเซ็นไม่ถูกต้อง')
+  if ((fileOrBlob?.size ?? 0) > 5 * 1024 * 1024) throw new Error('ไฟล์ลายเซ็นต้องไม่เกิน 5 MB')
+
+  let body = fileOrBlob
+  let contentType = fileOrBlob?.type || 'image/png'
+  let ext = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg'
+  if (!['image/png', 'image/jpeg', 'image/webp'].includes(contentType)) {
+    body = await compressImage(fileOrBlob, { maxWidth: 1200, quality: 0.92, background: '#fff' })
+    contentType = 'image/jpeg'
+    ext = 'jpg'
+  }
+  const key = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const path = `${user.id}/signatures/${planId}/${classId}/${role}-${key}.${ext}`
+  const { error } = await supabase.storage.from('lesson-plan-assets').upload(path, body, { contentType })
+  if (error) throw error
+  return path
+}
+
+export async function getLessonPlanAssetUrl(path, expiresIn = 3600) {
+  if (!path) return null
+  if (path.startsWith('data:') || /^https?:\/\//i.test(path)) return path
+  const { data, error } = await supabase.storage.from('lesson-plan-assets').createSignedUrl(path, expiresIn)
+  if (error) throw error
+  return data?.signedUrl ?? null
+}
+
 // รูปแนบประกาศ (เช่น อินโฟกราฟิก) → บีบ max 1600px คุณภาพสูงเพราะเป็นภาพนำเสนอ
 export async function uploadAnnouncementImage(file) {
   const blob = await compressImage(file, { maxWidth: 1600, quality: 0.88 })

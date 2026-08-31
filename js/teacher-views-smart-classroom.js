@@ -36,6 +36,7 @@ import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateI
 import { supabase } from './supabase.js'
 import { publishGradebookUpdate } from './gradebook-sync.js'
 import { evalFormula, assignBonusVars } from './teacher-score-columns.js'
+import { openLessonPlanAIWorkspace, openLessonPlanDocument } from './lesson-plan-ai-workspace.js'
 
 // ─── Tier gate ──────────────────────────────────────────────────────────────
 // ใช้ pattern เดียวกับ _dashboardMinTier ใน teacher-views-dashboard.js — อ่านจาก
@@ -972,7 +973,7 @@ export async function renderSmartClassroom(teacher, classId) {
           <p class="text-xs font-bold text-gray-700 truncate">${_htmlEsc(p.title)}</p>
           <p class="text-[10px] text-gray-400">สัปดาห์ ${p.week_start}${p.week_end !== p.week_start ? `-${p.week_end}` : ''}</p>
         </button>
-        <button class="sc-plan-reflect text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 flex-shrink-0" data-planid="${p.id}">🖊️ บันทึกหลังสอน</button>
+        <button class="sc-plan-reflect text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 flex-shrink-0" data-planid="${p.id}">✍️ ลงนาม/พิมพ์</button>
       </div>`).join('')}</div>`
   }
 
@@ -1018,9 +1019,12 @@ export async function renderSmartClassroom(teacher, classId) {
       </div>
       <div id="sc-syllabus-list">${_syllabusHTML()}</div>`
     if (tab === 'plans') return `
-      <div class="flex items-center justify-between mb-3">
-        <p class="text-xs text-gray-400">แผนหน้าเดียว ยืดหยุ่นจำนวน/ช่วงสัปดาห์ พร้อมบันทึกหลังสอน+เซ็นชื่อ</p>
-        <button id="sc-add-plan" class="sc-btn-gold text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0">➕ สร้างแผน</button>
+      <div class="flex items-start justify-between gap-2 mb-3">
+        <p class="text-xs text-gray-400">แผนหน้าเดียวรายครั้ง พร้อม Prompt สำหรับ AI, รับ JSON, บันทึกหลังสอน และลายเซ็น 3 ฝ่าย</p>
+        <div class="flex gap-2 flex-shrink-0">
+          <button id="sc-ai-plan" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white">🤖 สร้างด้วย AI</button>
+          <button id="sc-add-plan" class="sc-btn-gold text-xs font-bold px-3 py-1.5 rounded-lg">➕ สร้างเอง</button>
+        </div>
       </div>
       <div id="sc-plan-list">${_lessonPlansHTML()}</div>`
     return `
@@ -1841,12 +1845,15 @@ export async function renderSmartClassroom(teacher, classId) {
       if (it) _openSyllabusItemModal(it)
     })
     document.getElementById('sc-add-plan')?.addEventListener('click', () => _openLessonPlanModal())
+    document.getElementById('sc-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({
+      teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek: curWeek || 1, onSaved: () => _reload(),
+    }))
     document.getElementById('sc-plan-list')?.addEventListener('click', e => {
       const reflectBtn = e.target.closest('.sc-plan-reflect')
       const row = e.target.closest('.sc-plan-row')
       if (reflectBtn) {
         const p = lessonPlans.find(x => x.id === parseInt(reflectBtn.dataset.planid, 10))
-        if (p) _openReflectionModal(p)
+        if (p) openLessonPlanDocument({ plan: p, cls, teacher, classId, currentWeek: curWeek || p.week_start })
       } else if (row) {
         const p = lessonPlans.find(x => x.id === parseInt(row.dataset.planid, 10))
         if (p) _openLessonPlanModal(p)
@@ -2034,6 +2041,28 @@ export async function renderSmartClassroom(teacher, classId) {
             <input id="lp-week-end" type="number" min="1" value="${p.week_end ?? ''}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
           </div>
         </div>
+        <div class="grid grid-cols-3 gap-2">
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">ครั้งที่สอน</label>
+            <input id="lp-session-number" type="number" min="1" value="${p.session_number ?? 1}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">วันที่สอน</label>
+            <input id="lp-lesson-date" type="date" value="${_htmlEsc(p.lesson_date ?? '')}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-gray-500 mb-1">เวลา (นาที)</label>
+            <input id="lp-duration" type="number" min="1" value="${p.duration_minutes ?? 100}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">หน่วยการเรียนรู้</label>
+          <input id="lp-unit-title" type="text" value="${_htmlEsc(p.unit_title ?? '')}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" placeholder="เช่น หน่วยการเรียนรู้ที่ 1 เลขยกกำลัง" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">มาตรฐาน/ตัวชี้วัด (ผลการเรียนรู้)</label>
+          <textarea id="lp-standards" rows="3" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none">${_htmlEsc(p.standards ?? '')}</textarea>
+        </div>
         ${[
           ['objectives', 'จุดประสงค์การเรียนรู้'], ['key_concept', 'สาระสำคัญ'],
           ['activities_intro', 'นำเข้าสู่บทเรียน'], ['activities_main', 'กิจกรรมหลัก'], ['activities_wrap', 'สรุป'],
@@ -2065,6 +2094,11 @@ export async function renderSmartClassroom(teacher, classId) {
         course_id: courseId,
         teacher_id: teacher.id,
         title, week_start: weekStart, week_end: weekEnd,
+        session_number: parseInt(m.querySelector('#lp-session-number').value, 10) || 1,
+        lesson_date: m.querySelector('#lp-lesson-date').value || null,
+        duration_minutes: parseInt(m.querySelector('#lp-duration').value, 10) || null,
+        unit_title: m.querySelector('#lp-unit-title').value.trim() || null,
+        standards: m.querySelector('#lp-standards').value.trim() || null,
         objectives: m.querySelector('#lp-objectives').value.trim() || null,
         key_concept: m.querySelector('#lp-key_concept').value.trim() || null,
         activities_intro: m.querySelector('#lp-activities_intro').value.trim() || null,
