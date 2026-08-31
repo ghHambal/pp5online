@@ -19,7 +19,7 @@ const scheduleSchema = {
   course: { subject_code: 'ค32101', subject_name: 'คณิตศาสตร์พื้นฐาน', grade_level: 'ม.5', periods_per_week: 4 },
   weeks: [{
     week_start: 1, week_end: 1, date_start: '2026-05-11', date_end: '2026-05-14',
-    topic: 'ปฐมนิเทศและข้อตกลงในรายวิชา', description: '',
+    unit_title: 'หน่วยการเรียนรู้ที่ 1', topic: 'ปฐมนิเทศและข้อตกลงในรายวิชา', description: '',
     teaching_methods: 'พูดคุย ถาม-ตอบ และแสดงความคิดเห็น', notes: '',
   }],
 }
@@ -29,7 +29,7 @@ const lessonSchema = {
   type: 'lesson_plan',
   plans: [{
     title: 'แผนการสอนครั้งที่ 1', week_start: 1, week_end: 1, session_number: 1,
-    lesson_date: '2026-05-11', duration_minutes: 100, unit_title: 'หน่วยการเรียนรู้ที่ 1',
+    lesson_date: '2026-05-11', period_count: 2, minutes_per_period: 50, duration_minutes: 100, unit_title: 'หน่วยการเรียนรู้ที่ 1',
     topic: 'ความหมายของเลขยกกำลัง', standards: ['ค 1.1 ม.5/1'],
     objectives: ['อธิบายความหมายของเลขยกกำลังได้'], key_concept: '',
     activities: { intro: ['นำเข้าสู่บทเรียน'], main: ['กิจกรรมการเรียนรู้'], wrap: ['สรุปบทเรียน'] },
@@ -47,9 +47,10 @@ function courseMeta(cls) {
   }
 }
 
-function makePrompt({ mode, cls, teacher, syllabusItems, week, session, duration, topic, files }) {
+function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCount, minutesPerPeriod, topic, teachingUnits, files }) {
   const meta = courseMeta(cls)
   const schema = mode === 'schedule' ? scheduleSchema : lessonSchema
+  const duration = mode === 'schedule' ? null : periodCount * minutesPerPeriod
   const relevant = (syllabusItems ?? []).filter(it => !week || (week >= it.week_start && week <= it.week_end))
   const attachmentText = files.length
     ? files.map((f, i) => `${i + 1}. ${f.name} (${f.type || 'ไม่ทราบประเภท'})`).join('\n')
@@ -59,15 +60,15 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, duration
 งานที่ต้องทำ: ${mode === 'schedule' ? 'สร้างกำหนดการสอนทั้งภาคเรียน' : 'สร้างแผนการจัดการเรียนรู้หน้าเดียวรายครั้งสอน'}
 
 ข้อมูลจากระบบ PP5:
-${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_week: week, session_number: session, duration_minutes: duration, requested_topic: topic, existing_schedule: relevant }, null, 2)}
+${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_week: week, session_number: session, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: duration, requested_topic: topic, requested_teaching_units: teachingUnits, existing_schedule: relevant }, null, 2)}
 
 ไฟล์ที่ผู้ใช้จะอัปโหลดให้คุณอ่านประกอบ:
 ${attachmentText}
 
 ข้อกำหนดสำคัญ:
 1. อ่านหนังสือเรียน เอกสารหลักสูตร ตัวชี้วัด และแบบฟอร์มที่แนบก่อนตอบ
-2. ยึดกำหนดการสอนของสัปดาห์เป็นข้อมูลหลัก หากจำเป็นต้องเบี่ยงให้ระบุ schedule_alignment="deviated" และอธิบาย deviation_reason
-3. หนึ่งครั้งสอนเท่ากับหนึ่งแผน จำนวนแผนต่อสัปดาห์ต้องสัมพันธ์กับตารางสอนจริง
+2. ${mode === 'schedule' ? 'ต้องนำหน่วยการเรียนรู้ที่ผู้ใช้ระบุไปจัดลำดับและกระจายลงช่วงสัปดาห์ให้ครบทุกหน่วย โดยใช้คำอธิบายของแต่ละหน่วยประกอบ ห้ามละเว้นหรือเปลี่ยนสาระสำคัญ' : 'ยึดกำหนดการสอนของสัปดาห์เป็นข้อมูลหลัก หากจำเป็นต้องเบี่ยงให้ระบุ schedule_alignment="deviated" และอธิบาย deviation_reason'}
+3. ${mode === 'schedule' ? 'แต่ละช่วงสัปดาห์ต้องระบุ unit_title ให้เชื่อมกลับไปยังหน่วยการเรียนรู้ที่เกี่ยวข้อง' : `แผนนี้มี ${periodCount} คาบ คาบละ ${minutesPerPeriod} นาที รวม ${duration} นาที กิจกรรมทั้งหมดต้องจัดเวลาให้พอดีกับจำนวนคาบนี้`}
 4. กิจกรรมต้องใช้ได้จริง มีขั้นนำ ขั้นสอน ขั้นสรุป สื่อ และการวัดผลที่ตรวจสอบได้
 5. ห้ามแต่งรหัสมาตรฐาน/ตัวชี้วัดเมื่อเอกสารอ้างอิงไม่มีข้อมูล ให้ใช้ [] และระบุข้อสังเกตใน teacher_notes
 6. ตอบเป็น JSON ล้วนเท่านั้น ห้ามใช้ Markdown ห้ามใส่คำอธิบายก่อนหรือหลัง JSON
@@ -103,16 +104,23 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
   const mode = initialMode === 'schedule' ? 'schedule' : 'plan'
   const isSchedule = mode === 'schedule'
   let files = []
+  let teachingUnits = [{ title: '', description: '' }]
   m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
     <div class="flex items-start justify-between gap-3 mb-4">
       <div><span class="inline-flex px-2.5 py-1 rounded-full ${isSchedule ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'} text-[10px] font-extrabold mb-2">${isSchedule ? '📘 กำหนดการสอน' : '📝 แผนหน้าเดียว'}</span><h3 class="font-extrabold text-gray-800 text-lg">${isSchedule ? 'สร้างกำหนดการสอนด้วย AI' : 'สร้างแผนการสอนหน้าเดียวด้วย AI'}</h3><p class="text-xs text-gray-400 mt-1">สร้าง Prompt → ใช้กับ AI ที่ครูเลือก → นำ JSON กลับมาวาง → ระบบสร้าง${isSchedule ? 'กำหนดการสอน' : 'แผนการสอน'}</p></div>
       <button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button>
     </div>
-    ${isSchedule ? `<div class="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 mb-4"><p class="text-sm font-bold text-blue-800">สร้างโครงสร้างทั้งภาคเรียนในครั้งเดียว</p><p class="text-[11px] text-blue-600 mt-1">AI จะจัดช่วงสัปดาห์ หัวข้อ วิธีสอน และหมายเหตุตามเอกสารหลักสูตรหรือแบบฟอร์มที่แนบ</p></div>` : `<div class="grid sm:grid-cols-3 gap-2 mb-3">
+    ${isSchedule ? `<div class="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 mb-4"><p class="text-sm font-bold text-blue-800">สร้างโครงสร้างทั้งภาคเรียนในครั้งเดียว</p><p class="text-[11px] text-blue-600 mt-1">AI จะจัดช่วงสัปดาห์ หัวข้อ วิธีสอน และหมายเหตุตามหน่วยการเรียนรู้กับเอกสารที่แนบ</p></div>
+    <section class="rounded-2xl border border-gray-200 p-4 mb-4">
+      <div class="flex items-start justify-between gap-3 mb-3"><div><p class="text-sm font-extrabold text-gray-800">หน่วยการเรียนรู้ที่ต้องสอนในเทอมนี้</p><p class="text-[11px] text-gray-400 mt-0.5">เพิ่มได้หลายหน่วย ระบบจะส่งชื่อและคำอธิบายให้ AI ใช้จัดกำหนดการ</p></div><button id="lp-ai-add-unit" type="button" class="min-h-[40px] px-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold flex-shrink-0">＋ เพิ่มหน่วย</button></div>
+      <div id="lp-ai-units" class="space-y-2"></div>
+    </section>` : `<div class="grid sm:grid-cols-4 gap-2 mb-2">
       <label class="text-xs font-bold text-gray-500">สัปดาห์<input id="lp-ai-week" type="number" min="1" value="${currentWeek || 1}" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
       <label class="text-xs font-bold text-gray-500">ครั้งที่สอน<input id="lp-ai-session" type="number" min="1" value="1" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
-      <label class="text-xs font-bold text-gray-500">เวลา (นาที)<input id="lp-ai-duration" type="number" min="1" value="100" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
+      <label class="text-xs font-bold text-gray-500">จำนวนคาบ<input id="lp-ai-period-count" type="number" min="1" value="2" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
+      <label class="text-xs font-bold text-gray-500">นาทีต่อคาบ<input id="lp-ai-minutes-per-period" type="number" min="1" value="50" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
     </div>
+    <p id="lp-ai-duration-summary" class="text-[11px] text-violet-600 font-bold mb-3">รวมเวลา 100 นาที</p>
     <label class="block text-xs font-bold text-gray-500 mb-3">เรื่องที่ต้องการสร้าง<input id="lp-ai-topic" value="${esc((syllabusItems ?? []).find(x => currentWeek >= x.week_start && currentWeek <= x.week_end)?.topic ?? '')}" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal" placeholder="เว้นว่างเพื่อให้ AI ยึดจากกำหนดการสอน"></label>`}
     <div class="rounded-2xl border border-dashed ${isSchedule ? 'border-blue-200 bg-blue-50/50' : 'border-violet-200 bg-violet-50/50'} p-4 mb-3">
       <p class="text-xs font-bold ${isSchedule ? 'text-blue-700' : 'text-violet-700'}">📎 เอกสารประกอบสำหรับ AI</p>
@@ -120,24 +128,66 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
       <input id="lp-ai-files" type="file" multiple accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" class="mt-3 text-xs w-full">
       <div id="lp-ai-file-list" class="text-[11px] text-gray-500 mt-2"></div>
     </div>
-    <button id="lp-ai-generate" class="w-full min-h-[48px] rounded-xl ${isSchedule ? 'bg-blue-700' : 'bg-violet-700'} text-white font-bold text-sm">⚡ ${isSchedule ? 'สร้าง Prompt กำหนดการทั้งภาคเรียน' : 'สร้าง Prompt แผนครั้งสอนนี้'}</button>
     <div class="mt-4">
-      <div class="flex justify-between items-center mb-1"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><button id="lp-ai-copy" class="text-xs font-bold ${isSchedule ? 'text-blue-700' : 'text-violet-700'}">📋 คัดลอก Prompt</button></div>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><div class="grid grid-cols-2 gap-2 sm:flex sm:justify-end"><button id="lp-ai-generate" class="min-h-[40px] px-3 rounded-xl ${isSchedule ? 'bg-blue-700' : 'bg-violet-700'} text-white text-xs font-bold">⚡ สร้าง Prompt</button><button id="lp-ai-copy" class="min-h-[40px] px-3 rounded-xl border ${isSchedule ? 'border-blue-200 text-blue-700 bg-blue-50' : 'border-violet-200 text-violet-700 bg-violet-50'} text-xs font-bold">📋 คัดลอก Prompt</button></div></div>
       <textarea id="lp-ai-prompt" rows="8" class="w-full border rounded-xl p-3 text-[11px] font-mono"></textarea>
     </div>
     <div class="mt-4 pt-4 border-t">
-      <label class="text-xs font-bold text-gray-500">วาง JSON ที่ได้จาก AI</label>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">วาง JSON ที่ได้จาก AI</label><div class="grid grid-cols-2 gap-2 sm:flex sm:justify-end"><button id="lp-ai-validate" class="min-h-[40px] px-3 rounded-xl border ${isSchedule ? 'border-blue-200 text-blue-700' : 'border-violet-200 text-violet-700'} font-bold text-xs">🔎 ตรวจ JSON</button><button id="lp-ai-save" class="min-h-[40px] px-3 rounded-xl bg-emerald-600 text-white font-bold text-xs">💾 สร้างในระบบ</button></div></div>
       <textarea id="lp-ai-json" rows="8" class="mt-1 w-full border rounded-xl p-3 text-[11px] font-mono" placeholder='วาง { "schema_version": ... } ที่นี่'></textarea>
       <div id="lp-ai-result" class="hidden mt-2 rounded-xl px-3 py-2 text-xs"></div>
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3"><button id="lp-ai-validate" class="min-h-[46px] rounded-xl border ${isSchedule ? 'border-blue-200 text-blue-700' : 'border-violet-200 text-violet-700'} font-bold text-xs">🔎 ตรวจ JSON</button><button id="lp-ai-save" class="min-h-[46px] rounded-xl bg-emerald-600 text-white font-bold text-xs">💾 สร้าง${isSchedule ? 'กำหนดการสอน' : 'แผนการสอน'}ในระบบ</button></div>
     </div>
   </div>`
   document.body.appendChild(m)
 
+  const readTeachingUnits = () => [...m.querySelectorAll('[data-unit-row]')].map(row => ({
+    title: row.querySelector('[data-unit-title]').value.trim(),
+    description: row.querySelector('[data-unit-description]').value.trim(),
+  }))
+  const renderTeachingUnits = () => {
+    const wrap = m.querySelector('#lp-ai-units')
+    if (!wrap) return
+    wrap.innerHTML = teachingUnits.map((unit, index) => `<div data-unit-row class="rounded-xl border border-gray-200 bg-gray-50 p-3">
+      <div class="grid sm:grid-cols-[1fr_1.4fr_auto] gap-2 items-start">
+        <label class="text-[11px] font-bold text-gray-500">ชื่อหน่วยการเรียนรู้<input data-unit-title value="${esc(unit.title)}" class="mt-1 w-full min-h-[40px] border rounded-lg px-3 py-2 bg-white font-normal" placeholder="เช่น หน่วยที่ 1 เลขยกกำลัง"></label>
+        <label class="text-[11px] font-bold text-gray-500">อธิบายพอสังเขป<textarea data-unit-description rows="2" class="mt-1 w-full border rounded-lg px-3 py-2 bg-white font-normal" placeholder="สาระสำคัญ หัวข้อ หรือขอบเขตที่ต้องสอน">${esc(unit.description)}</textarea></label>
+        <button type="button" data-remove-unit="${index}" class="min-h-[40px] px-3 mt-5 rounded-lg border border-red-100 bg-white text-red-500 text-xs font-bold ${teachingUnits.length === 1 ? 'invisible' : ''}">ลบ</button>
+      </div>
+    </div>`).join('')
+    wrap.querySelectorAll('[data-remove-unit]').forEach(btn => btn.addEventListener('click', () => {
+      teachingUnits = readTeachingUnits()
+      teachingUnits.splice(asInt(btn.dataset.removeUnit, 0), 1)
+      if (!teachingUnits.length) teachingUnits.push({ title: '', description: '' })
+      renderTeachingUnits()
+    }))
+  }
+  if (isSchedule) {
+    renderTeachingUnits()
+    m.querySelector('#lp-ai-add-unit').addEventListener('click', () => {
+      teachingUnits = readTeachingUnits()
+      teachingUnits.push({ title: '', description: '' })
+      renderTeachingUnits()
+      m.querySelector('[data-unit-row]:last-child [data-unit-title]')?.focus()
+    })
+  }
+
+  const getPeriodCount = () => isSchedule ? null : Math.max(1, asInt(m.querySelector('#lp-ai-period-count').value, 1))
+  const getMinutesPerPeriod = () => isSchedule ? null : Math.max(1, asInt(m.querySelector('#lp-ai-minutes-per-period').value, 50))
+  const paintDurationSummary = () => {
+    if (isSchedule) return
+    m.querySelector('#lp-ai-duration-summary').textContent = `${getPeriodCount()} คาบ × ${getMinutesPerPeriod()} นาที = รวมเวลา ${getPeriodCount() * getMinutesPerPeriod()} นาที`
+  }
+  if (!isSchedule) {
+    m.querySelector('#lp-ai-period-count').addEventListener('input', paintDurationSummary)
+    m.querySelector('#lp-ai-minutes-per-period').addEventListener('input', paintDurationSummary)
+    paintDurationSummary()
+  }
+
   const prompt = () => makePrompt({
     mode, cls, teacher, syllabusItems,
     week: isSchedule ? null : asInt(m.querySelector('#lp-ai-week').value, 1), session: isSchedule ? null : asInt(m.querySelector('#lp-ai-session').value, 1),
-    duration: isSchedule ? null : asInt(m.querySelector('#lp-ai-duration').value, 100), topic: isSchedule ? '' : m.querySelector('#lp-ai-topic').value.trim(), files,
+    periodCount: getPeriodCount(), minutesPerPeriod: getMinutesPerPeriod(), topic: isSchedule ? '' : m.querySelector('#lp-ai-topic').value.trim(),
+    teachingUnits: isSchedule ? readTeachingUnits().filter(unit => unit.title || unit.description) : [], files,
   })
   const showResult = (message, ok) => {
     const box = m.querySelector('#lp-ai-result'); box.classList.remove('hidden')
@@ -153,7 +203,8 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
   })
   m.querySelector('#lp-ai-generate').addEventListener('click', () => { m.querySelector('#lp-ai-prompt').value = prompt(); showToast('สร้าง Prompt แล้ว', 'success') })
   m.querySelector('#lp-ai-copy').addEventListener('click', async () => {
-    const text = m.querySelector('#lp-ai-prompt').value || prompt()
+    const text = prompt()
+    m.querySelector('#lp-ai-prompt').value = text
     try { await navigator.clipboard.writeText(text); showToast('คัดลอก Prompt แล้ว', 'success') }
     catch { m.querySelector('#lp-ai-prompt').select(); document.execCommand('copy'); showToast('คัดลอก Prompt แล้ว', 'success') }
   })
@@ -182,17 +233,21 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
       } else {
         for (const p of data.plans) {
           const activities = p.activities ?? {}
+          const periodCount = Math.max(1, asInt(p.period_count, 1))
+          const minutesPerPeriod = Math.max(1, asInt(p.minutes_per_period, asInt(p.duration_minutes, 50)))
+          const durationMinutes = asInt(p.duration_minutes, periodCount * minutesPerPeriod)
           const payload = {
             course_id: courseId, teacher_id: teacher.id, title: String(p.title).trim(),
             week_start: asInt(p.week_start), week_end: asInt(p.week_end, asInt(p.week_start)), session_number: asInt(p.session_number, 1),
-            lesson_date: isoDate(p.lesson_date), duration_minutes: asInt(p.duration_minutes), unit_title: asText(p.unit_title) || null,
+            lesson_date: isoDate(p.lesson_date), duration_minutes: durationMinutes, unit_title: asText(p.unit_title) || null,
             standards: asText(p.standards) || null, objectives: asText(p.objectives) || null, key_concept: asText(p.key_concept || p.topic) || null,
             activities_intro: asText(activities.intro ?? p.activities_intro) || null,
             activities_main: asText(activities.main ?? p.activities_main) || null,
             activities_wrap: asText(activities.wrap ?? p.activities_wrap) || null,
             media: asText(p.media) || null, assessment: asText(p.assessment) || null, homework: asText(p.homework) || null,
             teacher_notes: asText(p.teacher_notes) || null, schedule_alignment: p.schedule_alignment || null,
-            deviation_reason: asText(p.deviation_reason) || null, source_json: p,
+            deviation_reason: asText(p.deviation_reason) || null,
+            source_json: { ...p, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: durationMinutes },
           }
           const existing = (lessonPlans ?? []).find(x => x.week_start === payload.week_start && (x.session_number ?? 1) === payload.session_number)
           if (existing) await updateLessonPlan(existing.id, payload); else await createLessonPlan(payload)
