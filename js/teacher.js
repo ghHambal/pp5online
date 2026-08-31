@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.622'
+import { APP_VERSION } from './version.js?v=10.22.623'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -2382,23 +2382,29 @@ function _toggleSupervisorMode() {
 // ─── Quick Class Picker ───────────────────────────────────────────────────────
 async function _showClassQuickPicker(mode) {
   if (!_teacher) return
-  const { supabase } = await import('./supabase.js')
   let classes = []
   try {
-    const subjects = await supabase.from('master_subjects').select('id').eq('teacher_id', _teacher.id)
-    const ids = (subjects.data ?? []).map(s => s.id)
-    if (ids.length) {
-      const { data } = await supabase
-        .from('classes')
-        .select('id, course_id, class_name, day1_date, day2_date, day3_date, day4_date, day5_date, day6_date, master_subjects(id, subject_name, subject_code, credit, grade_level, dept, subject_group, teacher_id), class_students(student_id)')
-        .in('course_id', ids)
-        .order('class_name')
-      classes = data ?? []
+    classes = await getMyClasses(_teacher.id)
+    const classIds = classes.map(cls => cls.id).filter(Boolean)
+    if (classIds.length) {
+      const { data: enrollments, error } = await supabase
+        .from('class_students')
+        .select('class_id')
+        .in('class_id', classIds)
+      if (error) console.warn('[quick-class-picker] โหลดจำนวนนักเรียนไม่สำเร็จ', error)
+      const countByClass = (enrollments ?? []).reduce((counts, row) => {
+        counts[row.class_id] = (counts[row.class_id] || 0) + 1
+        return counts
+      }, {})
+      classes = classes.map(cls => ({ ...cls, _studentCount: countByClass[cls.id] || 0 }))
     }
-  } catch { classes = [] }
+  } catch (err) {
+    console.error('[quick-class-picker] โหลดรายการห้องไม่สำเร็จ', err)
+    showToast('โหลดรายการห้องเรียนไม่สำเร็จ กรุณาลองใหม่', 'error')
+    return
+  }
 
   if (!classes.length) {
-    const { showToast } = await import('./ui.js')
     showToast('ยังไม่มีห้องเรียน', 'warning')
     return
   }
@@ -2419,7 +2425,7 @@ async function _showClassQuickPicker(mode) {
         ${classes.map(cls => `
           <button data-cid="${cls.id}" class="qcp-cls w-full text-left px-4 py-3 rounded-xl hover:bg-emerald-50 active:bg-emerald-100 transition border border-gray-100">
             <p class="font-semibold text-gray-800 text-sm">${cls.class_name}</p>
-            <p class="text-xs text-gray-400 mt-0.5">${cls.master_subjects?.subject_name ?? ''} · ${cls.class_students?.length ?? 0} คน</p>
+            <p class="text-xs text-gray-400 mt-0.5">${cls.master_subjects?.subject_name ?? ''} · ${cls._studentCount ?? 0} คน</p>
           </button>`).join('')}
       </div>
     </div>`
