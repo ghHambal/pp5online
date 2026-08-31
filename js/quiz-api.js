@@ -106,8 +106,8 @@ export async function startQuizLive(id) {
 
 export async function closeQuiz(id, { writeScores = false } = {}) {
   // Safe by default: closing and publishing scores are separate decisions.
-  // Both RPCs finalize still-in-progress attempts; only the explicit
-  // writeScores path is allowed to touch student_scores.
+  // The safe path freezes unfinished attempts without turning them into a
+  // score. Only the explicit writeScores path finalizes and publishes them.
   const rpcName = writeScores
     ? 'teacher_close_quiz_and_finalize'
     : 'teacher_close_quiz_without_gradebook'

@@ -129,9 +129,9 @@ $function$;
 revoke all on function public._write_quiz_score_to_gradebook(uuid,integer)
   from public,anon,authenticated;
 
--- Close and archive attempts/finalizations, but deliberately skip gradebook
--- writes. score_column_id is temporarily cleared so single-attempt quizzes
--- cannot write while their in-progress attempts are being finalized.
+-- Close the quiz but deliberately skip gradebook writes. In-progress attempts
+-- stay frozen as in_progress: their answers remain available for inspection,
+-- but an unfinished attempt must never become an eligible historical score.
 create or replace function public.teacher_close_quiz_without_gradebook(p_quiz_id uuid)
 returns void
 language plpgsql
@@ -141,7 +141,6 @@ as $function$
 declare
   v_owns boolean;
   v_score_column_id bigint;
-  v_attempt_id uuid;
 begin
   select exists (
     select 1
@@ -159,13 +158,6 @@ begin
   update public.quizzes
   set score_column_id=null,status='closed',closed_at=now()
   where id=p_quiz_id;
-
-  for v_attempt_id in
-    select id from public.quiz_attempts
-    where quiz_id=p_quiz_id and status='in_progress'
-  loop
-    perform public._finalize_quiz_attempt(v_attempt_id,'submitted');
-  end loop;
 
   update public.quizzes
   set score_column_id=v_score_column_id
@@ -221,6 +213,7 @@ begin
     from public.quiz_attempts
     where quiz_id=p_quiz_id
       and status in ('submitted','terminated_violation')
+      and score_pct is not null
   loop
     perform public._write_quiz_score_to_gradebook(p_quiz_id,v_sid);
     v_count := v_count+1;

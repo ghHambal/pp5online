@@ -200,6 +200,7 @@ export function showQuizCloseChoice({
           <button data-qcc-safe class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-sm">
             🔒 ปิดสอบอย่างเดียว ไม่ส่งคะแนน <span class="text-[10px] opacity-80">(แนะนำ)</span>
           </button>
+          <p class="text-[10px] text-center text-gray-400 -mt-1">ข้อสอบที่ยังทำค้างจะถูกเก็บไว้ตรวจสอบ แต่ไม่นับเป็นคะแนนย้อนหลัง</p>
           ${hasScoreColumn ? `
             <button data-qcc-write class="w-full py-3 rounded-2xl border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-bold">
               ⚠️ ปิดสอบและส่งคะแนนเข้าสมุดคะแนน

@@ -9,6 +9,27 @@
 
 begin;
 
+-- Protected attempt columns may only be repaired through the database's
+-- trusted-operation guard. The setting is transaction-local.
+select set_config('app.quiz_trusted_op','on',true);
+
+-- These four M5/2 attempts were still in progress when the old close flow was
+-- used. Keep their answers, but restore them as unfinished so the historical
+-- score-recovery action cannot publish partial work.
+update public.quiz_attempts
+set status='in_progress',score_pct=null,submitted_at=null
+where id in (
+  '2faef2e8-5aea-45d1-bbff-c400200aed71'::uuid,
+  '6abf87fd-4f1d-4259-a37d-9ad5fecea23c'::uuid,
+  'f93872b1-0af7-4a09-b9f0-0959cefa4c7c'::uuid,
+  'b9627c3a-7dee-4144-944e-1e5d60fa04a9'::uuid
+)
+  and submitted_at='2026-08-31 10:10:38.61014+00'::timestamptz;
+
+delete from public.quiz_student_finalizations
+where quiz_id='808c40aa-6867-47df-8949-816bd442144d'
+  and student_id in (2243,4855,2239,2236);
+
 do $block$
 declare
   v_sid integer;
