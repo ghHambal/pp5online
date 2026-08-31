@@ -4,7 +4,7 @@ import { parseCSV } from './import.js'
 import {
   getRegradeConfig, updateRegradeConfig, getMyStudentRow, getMyTeacherRow, checkMyRegradePermissions,
   getMyRegradeSubjects, declareIntent,
-  getMyTeachingRegradeSubjects, assignWork,
+  getMyTeachingRegradeSubjects, assignWork, cancelAssignedWork,
   getPendingCloseOut, closeOutSubject, getGradeTrackingRows, markGradeEntered,
   getAllRegradeSubjectsForDashboard,
   getRegradeAdmins, getRegradeRegistrarStaff, addRegradeAdmin, removeRegradeAdmin,
@@ -34,11 +34,15 @@ const REGRADE_SLIP_TOKENS = [
   { token: '{{semester}}', label: 'ภาคเรียน' },
   { token: '{{grade_failed_at}}', label: 'ผลการเรียนที่ติด (ร/มส/0)' },
   { token: '{{teacher_name}}', label: 'ชื่อครูผู้สอน' },
+  { token: '{{response_method}}', label: 'วิธีตอบรับ/วิธีแก้' },
+  { token: '{{due_date}}', label: 'วันนัดสอบ/กำหนดส่ง' },
+  { token: '{{file_url}}', label: 'ลิงก์ไฟล์งานแก้' },
 ]
 const REGRADE_SLIP_PREVIEW_VARS = {
   student_name: 'ตัวอย่าง ชื่อ-สกุล นักเรียน', student_code: '00000', room: 'ม.6/1', class_level: 'ม.6',
   category: 'สามัญ', subject_name: 'วิชาตัวอย่าง', subject_code: 'ว00000', semester: '1/2569',
-  grade_failed_at: 'ร', teacher_name: 'ครูตัวอย่าง',
+  grade_failed_at: 'ร', teacher_name: 'ครูตัวอย่าง', response_method: 'นัดสอบปรับ',
+  due_date: '12 ธ.ค. 2569 เวลา 09:00 น.', file_url: 'https://example.com/work',
 }
 const REGRADE_SLIP_DEFAULT_LAYOUT = {
   orientation: 'portrait',
@@ -75,6 +79,7 @@ async function printRegradeSlip(row, teacherNameOverride) {
       subject_name: row.subject_name ?? '', subject_code: row.subject_code ?? '', semester: row.semester ?? '',
       grade_failed_at: row.grade_failed_at ?? '',
       teacher_name: teacherNameOverride ?? row.teachers?.full_name ?? row.teacher_name_raw ?? '',
+      response_method: row.method ?? '', due_date: formatRegradeDue(row.due_text), file_url: row.file_url ?? '',
     },
     docTitle: `ใบแก้ค้างเก่า ${row.students?.full_name ?? ''}`,
   }, showToast)
@@ -110,6 +115,37 @@ function formatThaiDateTime(isoLocal) {
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
   return `${d.getDate()} ${TH_MONTHS[d.getMonth()]} ${d.getFullYear() + 543} เวลา ${hh}:${mm} น.`
+}
+
+function duePickerValue(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return { date: '', time: '' }
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/)
+  if (iso) return { date: `${iso[1]}-${iso[2]}-${iso[3]}`, time: iso[4] ? `${iso[4]}:${iso[5]}` : '' }
+  const thai = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})(?:\s+(\d{1,2}):(\d{2}))?/)
+  if (!thai) return { date: '', time: '' }
+  let year = Number(thai[3])
+  if (year < 100) year += 2500
+  if (year > 2400) year -= 543
+  const month = String(Number(thai[2])).padStart(2, '0')
+  const day = String(Number(thai[1])).padStart(2, '0')
+  return { date: `${year}-${month}-${day}`, time: thai[4] ? `${String(Number(thai[4])).padStart(2, '0')}:${thai[5]}` : '' }
+}
+
+function formatRegradeDue(value) {
+  const picked = duePickerValue(value)
+  if (!picked.date) return String(value || '-')
+  const [year, month, day] = picked.date.split('-').map(Number)
+  const dateText = `${day} ${TH_MONTHS[month - 1]} ${year + 543}`
+  return picked.time ? `${dateText} เวลา ${picked.time} น.` : dateText
+}
+
+function openTeacherResponseForm(row, method) {
+  const picked = duePickerValue(row.due_text)
+  teacher.form = {
+    id: Number(row.id), method, dueDate: picked.date, dueTime: picked.time,
+    fileUrl: method === 'ให้งานแก้' ? (row.file_url || '') : '', editing: row.status === 'กำลังดำเนินการปรับแก้',
+  }
 }
 function deadlineBannerHtml(startVal, endVal, title, colorVar, ctaLabel, ctaAction) {
   const start = formatThaiDateTime(startVal)
@@ -393,7 +429,7 @@ function studentSubjectCard(x) {
     ${x.status === 'กำลังดำเนินการปรับแก้' ? `
       <div class="mt-3 rounded-xl p-3" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
         <p class="text-xs font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
-        <p class="text-xs mt-1" style="color:var(--info)">กำหนด: ${escHtml(x.due_text || '-')}</p>
+        <p class="text-xs mt-1" style="color:var(--info)">กำหนด: ${escHtml(formatRegradeDue(x.due_text))}</p>
       </div>
       <button data-print-slip="${x.id}" class="mt-2 w-full py-2 rounded-xl border border-[var(--line)] text-[var(--ink-2)] text-xs font-bold">🖨️ ใบสั้น</button>` : ''}
   </div>`
@@ -540,12 +576,18 @@ async function renderTeacher() {
   document.getElementById('regrade-teacher-fab')?.addEventListener('click', () => { teacher.subView = 'respond'; renderTeacher() })
   document.getElementById('regrade-teacher-back')?.addEventListener('click', () => { teacher.subView = 'overview'; renderTeacher() })
   content.querySelectorAll('[data-deadline-cta]').forEach(btn => btn.addEventListener('click', () => { teacher.subView = btn.dataset.deadlineCta; renderTeacher() }))
-  content.querySelectorAll('[data-open-exam]').forEach(btn => btn.addEventListener('click', () => { teacher.form = { id: Number(btn.dataset.openExam), method: 'นัดสอบปรับ', dueText: '', fileUrl: '' }; renderTeacher() }))
-  content.querySelectorAll('[data-open-work]').forEach(btn => btn.addEventListener('click', () => { teacher.form = { id: Number(btn.dataset.openWork), method: 'ให้งานแก้', dueText: '', fileUrl: '' }; renderTeacher() }))
+  content.querySelectorAll('[data-open-exam]').forEach(btn => btn.addEventListener('click', () => {
+    const row = all.find(x => x.id === Number(btn.dataset.openExam)); if (row) openTeacherResponseForm(row, 'นัดสอบปรับ'); renderTeacher()
+  }))
+  content.querySelectorAll('[data-open-work]').forEach(btn => btn.addEventListener('click', () => {
+    const row = all.find(x => x.id === Number(btn.dataset.openWork)); if (row) openTeacherResponseForm(row, 'ให้งานแก้'); renderTeacher()
+  }))
   content.querySelectorAll('[data-cancel-form]').forEach(btn => btn.addEventListener('click', () => { teacher.form = null; renderTeacher() }))
-  content.querySelectorAll('[data-due-input]').forEach(el => el.addEventListener('input', () => { teacher.form.dueText = el.value }))
+  content.querySelectorAll('[data-due-date]').forEach(el => el.addEventListener('input', () => { teacher.form.dueDate = el.value }))
+  content.querySelectorAll('[data-due-time]').forEach(el => el.addEventListener('input', () => { teacher.form.dueTime = el.value }))
   content.querySelectorAll('[data-file-input]').forEach(el => el.addEventListener('input', () => { teacher.form.fileUrl = el.value }))
   content.querySelectorAll('[data-confirm-assign]').forEach(btn => btn.addEventListener('click', () => handleAssign(btn)))
+  content.querySelectorAll('[data-cancel-response]').forEach(btn => btn.addEventListener('click', () => handleCancelResponse(btn)))
   content.querySelectorAll('[data-print-slip]').forEach(btn => btn.addEventListener('click', () => {
     const row = all.find(x => x.id === Number(btn.dataset.printSlip))
     if (row) printRegradeSlip(row, ctx.teacherRow?.full_name)
@@ -646,8 +688,9 @@ function assignedStudentRow(x) {
     </div>
     <div class="mt-2 rounded-lg p-2" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
       <p class="text-[11px] font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
-      <p class="text-[11px] mt-0.5" style="color:var(--info)">กำหนด: ${escHtml(x.due_text || '-')}</p>
+      <p class="text-[11px] mt-0.5" style="color:var(--info)">กำหนด: ${escHtml(formatRegradeDue(x.due_text))}</p>
     </div>
+    ${teacherResponseActionsHtml(x)}
   </div>`
 }
 
@@ -768,50 +811,76 @@ function teacherRespondCard(x) {
         <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
       </div>
     </div>
-    ${!f || f.id !== x.id ? `
-    <div class="flex gap-2 mt-3">
+    ${teacherResponseActionsHtml(x)}
+    ${openExam ? teacherResponseFormHtml(x, f, true) : ''}
+    ${openWork ? teacherResponseFormHtml(x, f, false) : ''}
+  </div>`
+}
+
+function teacherResponseActionsHtml(x) {
+  const f = teacher.form
+  if (f && f.id === x.id) return ''
+  const editing = x.status === 'กำลังดำเนินการปรับแก้'
+  return `
+    ${editing ? `<p class="text-[10px] font-bold text-[var(--muted-2)] mt-3">แก้ไขหรือเปลี่ยนคำตอบ (ใบสั้นจะใช้ข้อมูลล่าสุดอัตโนมัติ)</p>` : ''}
+    <div class="flex gap-2 mt-${editing ? '1.5' : '3'}">
       <button data-open-exam="${x.id}" class="flex-1 py-2 rounded-xl text-xs font-bold" style="background:var(--info-soft);color:var(--info);border:1px solid var(--info-soft-line)">🗓 นัดสอบปรับ</button>
       <button data-open-work="${x.id}" class="flex-1 py-2 rounded-xl text-xs font-bold" style="background:var(--gold-soft);color:var(--gold-ink);border:1px solid var(--gold-soft-line)">📎 ให้งานแก้</button>
-    </div>` : ''}
-    ${openExam ? `
+    </div>
+    ${editing ? `<button data-cancel-response="${x.id}" class="mt-2 w-full py-2 rounded-xl text-xs font-bold" style="background:var(--bad-soft);color:var(--bad);border:1px solid var(--bad-soft-line)">✕ ยกเลิกคำตอบนี้</button>` : ''}`
+}
+
+function teacherResponseFormHtml(x, f, isExam) {
+  return `
     <div class="mt-3 rounded-xl p-3 bg-[var(--surface-2)]">
-      <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">วันเวลานัดสอบปรับ</label>
-      <input data-due-input class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs" placeholder="เช่น 15 ก.พ. 2569 09:00 น." value="${escHtml(f.dueText)}">
+      <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">${isExam ? 'วันที่นัดสอบปรับ' : 'กำหนดส่งงาน'}</label>
+      <input data-due-date type="date" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]" value="${escHtml(f.dueDate)}">
+      ${isExam ? `<label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">เวลานัดสอบ</label>
+      <input data-due-time type="time" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]" value="${escHtml(f.dueTime)}">` : `
+      <label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">ลิงก์ไฟล์งานแก้ (ถ้ามี)</label>
+      <input data-file-input type="url" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]" placeholder="https://..." value="${escHtml(f.fileUrl)}">`}
       <div class="flex gap-2 mt-2">
-        <button data-confirm-assign="${x.id}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">ยืนยันนัดสอบ</button>
-        <button data-cancel-form class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface-2)] text-[var(--muted)]">ยกเลิก</button>
+        <button data-confirm-assign="${x.id}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">${f.editing ? 'บันทึกการแก้ไข' : (isExam ? 'ยืนยันนัดสอบ' : 'ยืนยันมอบหมายงาน')}</button>
+        <button data-cancel-form class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface)] text-[var(--muted)]">ปิด</button>
       </div>
-    </div>` : ''}
-    ${openWork ? `
-    <div class="mt-3 rounded-xl p-3 bg-[var(--surface-2)]">
-      <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">ลิงก์ไฟล์งานแก้</label>
-      <input data-file-input class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs mb-2" placeholder="วางลิงก์ไฟล์" value="${escHtml(f.fileUrl)}">
-      <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">กำหนดส่งงาน</label>
-      <input data-due-input class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs" placeholder="เช่น 20 ก.พ. 2569" value="${escHtml(f.dueText)}">
-      <div class="flex gap-2 mt-2">
-        <button data-confirm-assign="${x.id}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">ยืนยันมอบหมายงาน</button>
-        <button data-cancel-form class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface-2)] text-[var(--muted)]">ยกเลิก</button>
-      </div>
-    </div>` : ''}
-  </div>`
+    </div>`
 }
 
 async function handleAssign(btn) {
   const id = Number(btn.dataset.confirmAssign)
   const f = teacher.form
-  if (!f.dueText.trim()) { showToast('กรุณากรอกวันที่/เวลาก่อนยืนยัน', 'warning'); return }
+  if (!f?.dueDate) { showToast('กรุณาเลือกวันที่จากปฏิทินก่อนยืนยัน', 'warning'); return }
+  if (f.method === 'นัดสอบปรับ' && !f.dueTime) { showToast('กรุณาเลือกเวลานัดสอบก่อนยืนยัน', 'warning'); return }
+  const dueText = f.method === 'นัดสอบปรับ' ? `${f.dueDate}T${f.dueTime}` : f.dueDate
   const x = teacher.subjects.find(r => r.id === id)
   const msg = f.method === 'นัดสอบปรับ'
-    ? `นัดสอบปรับวิชา "${x.subject_name}" ให้ ${x.students?.full_name || ''} วันที่ ${f.dueText.trim()} ใช่หรือไม่?`
-    : `มอบหมายงานแก้วิชา "${x.subject_name}" ให้ ${x.students?.full_name || ''} กำหนดส่ง ${f.dueText.trim()} ใช่หรือไม่?`
-  const ok = await showRegradeConfirm({ title: f.method === 'นัดสอบปรับ' ? 'ยืนยันนัดสอบปรับ' : 'ยืนยันมอบหมายงานแก้', message: msg, confirmText: 'ยืนยัน' })
+    ? `นัดสอบปรับวิชา "${x.subject_name}" ให้ ${x.students?.full_name || ''} วันที่ ${formatRegradeDue(dueText)} ใช่หรือไม่?`
+    : `มอบหมายงานแก้วิชา "${x.subject_name}" ให้ ${x.students?.full_name || ''} กำหนดส่ง ${formatRegradeDue(dueText)} ใช่หรือไม่?`
+  const ok = await showRegradeConfirm({ title: f.editing ? 'ยืนยันแก้ไขคำตอบ' : (f.method === 'นัดสอบปรับ' ? 'ยืนยันนัดสอบปรับ' : 'ยืนยันมอบหมายงานแก้'), message: msg, confirmText: f.editing ? 'บันทึกการแก้ไข' : 'ยืนยัน' })
   if (!ok) return
   try {
-    await assignWork(id, { method: f.method, dueText: f.dueText.trim(), fileUrl: f.fileUrl.trim() || null })
-    showToast('บันทึกการมอบหมายเรียบร้อย ✅', 'success')
+    await assignWork(id, { method: f.method, dueText, fileUrl: f.fileUrl.trim() || null })
+    showToast(f.editing ? 'แก้ไขคำตอบแล้ว ใบสั้นจะใช้ข้อมูลล่าสุดอัตโนมัติ ✅' : 'บันทึกการมอบหมายเรียบร้อย ✅', 'success')
     teacher.form = null
     renderTeacher()
   } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error') }
+}
+
+async function handleCancelResponse(btn) {
+  const id = Number(btn.dataset.cancelResponse)
+  const x = teacher.subjects.find(r => r.id === id)
+  const ok = await showRegradeConfirm({
+    title: 'ยืนยันยกเลิกคำตอบ',
+    message: `ยกเลิกคำตอบของ ${x?.students?.full_name || ''} วิชา "${x?.subject_name || ''}" ใช่หรือไม่? รายการจะกลับไปรอครูตอบรับใหม่`,
+    confirmText: 'ยกเลิกคำตอบ',
+  })
+  if (!ok) return
+  try {
+    await cancelAssignedWork(id)
+    teacher.form = null
+    showToast('ยกเลิกคำตอบแล้ว รายการกลับไปรอตอบรับใหม่เรียบร้อย', 'success')
+    renderTeacher()
+  } catch (err) { showToast('ยกเลิกคำตอบไม่สำเร็จ: ' + err.message, 'error') }
 }
 
 // ============================================================================
@@ -865,7 +934,7 @@ async function renderCloseList() {
         ${personAvatarHtml(x.students, true)}
         <div class="min-w-0">
           <p class="font-bold text-sm text-[var(--ink)]">${escHtml(name)} <span class="text-[var(--muted-2)] font-normal">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || '')})</span></p>
-          <p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)}) · ${escHtml(x.method || '')} — กำหนด ${escHtml(x.due_text || '-')}</p>
+          <p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)}) · ${escHtml(x.method || '')} — กำหนด ${escHtml(formatRegradeDue(x.due_text))}</p>
           <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
         </div>
       </div>

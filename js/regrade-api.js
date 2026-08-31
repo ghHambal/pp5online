@@ -69,12 +69,20 @@ export async function getMyTeachingRegradeSubjects(teacherId) {
 
 export async function assignWork(subjectRowId, { method, dueText, fileUrl }) {
   if (!['นัดสอบปรับ', 'ให้งานแก้'].includes(method)) throw new Error('method ไม่ถูกต้อง')
-  const { error } = await supabase.from('regrade_subjects')
-    .update({
-      status: 'กำลังดำเนินการปรับแก้', method, due_text: dueText || null, file_url: fileUrl || null,
-      assigned_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-    })
-    .eq('id', subjectRowId).eq('status', 'จำนงแล้ว')
+  if (!dueText) throw new Error('กรุณาเลือกวันที่')
+  // ใช้ RPC เพื่อให้ครูแก้คำตอบเดิมได้อย่างปลอดภัยโดยอัปเดตเฉพาะฟิลด์คำตอบ
+  // (ไม่เปิดสิทธิ์ UPDATE คอลัมน์รายวิชา/นักเรียนอื่น ๆ ผ่าน Data API)
+  const { error } = await supabase.rpc('regrade_teacher_save_response', {
+    p_subject_id: subjectRowId,
+    p_method: method,
+    p_due_text: dueText,
+    p_file_url: fileUrl || null,
+  })
+  if (error) throw error
+}
+
+export async function cancelAssignedWork(subjectRowId) {
+  const { error } = await supabase.rpc('regrade_teacher_cancel_response', { p_subject_id: subjectRowId })
   if (error) throw error
 }
 
