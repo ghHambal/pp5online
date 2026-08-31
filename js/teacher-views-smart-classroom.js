@@ -2036,68 +2036,86 @@ export async function renderSmartClassroom(teacher, classId) {
     document.getElementById('sc-plan-modal')?.remove()
     const isEdit = !!plan
     const p = plan ?? {}
+    const ms = cls?.master_subjects ?? {}
+    const areaCodes = { MATH:'คณิตศาสตร์', THAI:'ภาษาไทย', SCI:'วิทยาศาสตร์และเทคโนโลยี', ENG:'ภาษาต่างประเทศ', SOC:'สังคมศึกษา ศาสนาและวัฒนธรรม', PE:'สุขศึกษาและพลศึกษา', ART:'ศิลปะ', CAREER:'การงานอาชีพ', ISLAM:'อิสลามศึกษา' }
+    const rawArea = String(ms.dept ?? ms.subject_group ?? '').trim()
+    const learningArea = areaCodes[rawArea.toUpperCase()] || rawArea || '................................'
+    const rawClassName = String(cls?.class_name ?? '').trim()
+    const gradeText = String(ms.grade_level ?? '').replace(/ม\./g, '').trim()
+    const classDisplay = /^ม\./.test(rawClassName) ? rawClassName.replace(/^ม\./, '') : [gradeText, rawClassName].filter(Boolean).join(' ')
+    const classHeadRel = cls?.students
+    const classHeadName = (Array.isArray(classHeadRel) ? classHeadRel[0]?.full_name : classHeadRel?.full_name) ?? '................................'
     const m = document.createElement('div')
     m.id = 'sc-plan-modal'
-    m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+    m.className = 'fixed inset-0 z-[95] bg-slate-100 flex flex-col'
     m.innerHTML = `
-      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-5 space-y-3 animate-fade">
-        <div class="flex items-center justify-between">
-          <h3 class="font-bold text-gray-800 text-sm">${isEdit ? '📝 แก้ไขแผนการสอน' : '➕ สร้างแผนการสอนใหม่'}</h3>
-          <div class="flex items-center gap-2">
-            ${isEdit ? `<button id="lp-delete" class="text-[11px] text-red-400 hover:text-red-600">🗑️ ลบ</button>` : ''}
-            <button id="lp-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
-          </div>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-500 mb-1">ชื่อแผน *</label>
-          <input id="lp-title" type="text" value="${_htmlEsc(p.title ?? '')}" placeholder="เช่น แผนที่ 1 — เรื่องสมการเชิงเส้น" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
-        </div>
-        <div class="grid grid-cols-2 gap-2">
-          <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">สัปดาห์เริ่ม *</label>
-            <input id="lp-week-start" type="number" min="1" value="${p.week_start ?? ''}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">สัปดาห์สิ้นสุด *</label>
-            <input id="lp-week-end" type="number" min="1" value="${p.week_end ?? ''}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
-          </div>
-        </div>
-        <div class="grid grid-cols-3 gap-2">
-          <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">ครั้งที่สอน</label>
-            <input id="lp-session-number" type="number" min="1" value="${p.session_number ?? 1}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">วันที่สอน</label>
-            <input id="lp-lesson-date" type="date" value="${_htmlEsc(p.lesson_date ?? '')}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">เวลา (นาที)</label>
-            <input id="lp-duration" type="number" min="1" value="${p.duration_minutes ?? 100}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" />
-          </div>
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-500 mb-1">หน่วยการเรียนรู้</label>
-          <input id="lp-unit-title" type="text" value="${_htmlEsc(p.unit_title ?? '')}" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2" placeholder="เช่น หน่วยการเรียนรู้ที่ 1 เลขยกกำลัง" />
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-500 mb-1">มาตรฐาน/ตัวชี้วัด (ผลการเรียนรู้)</label>
-          <textarea id="lp-standards" rows="3" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none">${_htmlEsc(p.standards ?? '')}</textarea>
-        </div>
-        ${[
-          ['objectives', 'จุดประสงค์การเรียนรู้'], ['key_concept', 'สาระสำคัญ'],
-          ['activities_intro', 'นำเข้าสู่บทเรียน'], ['activities_main', 'กิจกรรมหลัก'], ['activities_wrap', 'สรุป'],
-          ['media', 'สื่อ/อุปกรณ์'], ['assessment', 'การวัดประเมินผล'], ['homework', 'งาน/การบ้าน'], ['teacher_notes', 'หมายเหตุครู'],
-        ].map(([key, label]) => `
-        <div>
-          <label class="block text-xs font-semibold text-gray-500 mb-1">${label}</label>
-          <textarea id="lp-${key}" rows="2" class="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none">${_htmlEsc(p[key] ?? '')}</textarea>
-        </div>`).join('')}
-        <button id="lp-save" class="sc-btn-dark w-full py-2.5 rounded-xl text-sm font-bold">บันทึกแผน</button>
-      </div>`
+      <style>
+        #sc-plan-modal .lp-toolbar{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:10px;padding:9px 14px;flex:none;position:relative;z-index:3}
+        #sc-plan-modal .lp-admin-input{height:40px;border:1px solid #dbe2ea;border-radius:10px;padding:0 10px;background:#fff;font-size:12px;color:#334155}
+        #sc-plan-modal .lp-editor-scroll{flex:1;min-height:0;overflow:auto;padding:22px}
+        #sc-plan-modal .lp-paper{width:210mm;min-height:297mm;margin:0 auto;background:white;box-shadow:0 15px 45px rgba(15,23,42,.16);padding:10mm 11mm 11mm;color:#111;font-family:"Sarabun",Tahoma,sans-serif;font-size:14px;line-height:1.42}
+        #sc-plan-modal .lp-head{text-align:center}.lp-head img{width:58px;height:58px;object-fit:contain;margin:auto}.lp-head h1{font-size:23px;line-height:1.15;font-weight:800;margin:5px 0 4px}.lp-head h2{font-size:17px;line-height:1.2;font-weight:700;margin:0 0 4px}.lp-subject-line{font-size:14px;margin:2px 0}.lp-unit-row{display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}.lp-unit-row input{min-width:0;text-align:center}
+        #sc-plan-modal .lp-doc-input,#sc-plan-modal .lp-doc-area{font:inherit;color:#111;background:transparent;border:1px dashed transparent;border-radius:4px;padding:2px 4px;outline:none;width:100%;resize:none;overflow:hidden}
+        #sc-plan-modal .lp-doc-input:hover,#sc-plan-modal .lp-doc-area:hover{background:#f8fafc;border-color:#cbd5e1}#sc-plan-modal .lp-doc-input:focus,#sc-plan-modal .lp-doc-area:focus{background:#fffef2;border-color:#0f7a42;box-shadow:0 0 0 2px rgba(15,122,66,.12)}
+        #sc-plan-modal .lp-meta{display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;border-top:1.5px solid #176b3a;border-bottom:1.5px solid #176b3a;margin-top:10px;padding:6px 7px}.lp-meta label{display:flex;align-items:center;gap:3px;white-space:nowrap}.lp-meta label:nth-child(2){justify-content:center}.lp-meta label:last-child{justify-content:flex-end}.lp-meta input[type=number]{width:58px}.lp-meta input[type=date]{width:128px}
+        #sc-plan-modal .lp-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}.lp-box{border:1.2px solid #17743d;border-radius:5px;overflow:hidden;margin-bottom:11px}.lp-box-title{background:#d8f6e2;color:#145f35;font-size:15px;padding:7px 10px;border-bottom:1px solid #17743d}.lp-box-body{padding:8px 10px}.lp-box-body textarea{min-height:62px}.lp-activities textarea{min-height:48px}.lp-activities .main{min-height:126px}.lp-media textarea{min-height:48px}
+        #sc-plan-modal .lp-sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:36px}.lp-sign{text-align:center;font-size:12px;line-height:1.55}.lp-sign-space{height:44px}.lp-sign-line{border-bottom:1px dotted #111;height:1px;margin:0 4px 5px}.lp-reflect{margin-top:28px}.lp-reflect h3,.lp-suggestion h3{font-size:14px;font-weight:500;border-bottom:1px solid #111;padding-bottom:4px;margin:0 0 9px}.lp-rule{height:31px;border-bottom:1px solid #8ca1bd;color:#176b3a;padding:3px 8px;font-size:12px}.lp-suggestion{margin-top:22px}.lp-dept-sign{width:72%;margin:72px auto 0;text-align:center;font-size:12px;line-height:1.6}.lp-dept-sign .lp-sign-line{display:inline-block;width:180px;vertical-align:middle}
+        #sc-plan-modal .lp-extra{position:relative;flex:none}.lp-extra summary{cursor:pointer;list-style:none}.lp-extra-content{position:absolute;top:46px;right:0;width:360px;background:#fff;border:1px solid #dbe2ea;border-radius:14px;box-shadow:0 16px 40px rgba(15,23,42,.18);padding:14px;z-index:5}.lp-extra textarea{width:100%;border:1px solid #dbe2ea;border-radius:9px;padding:8px;font-size:12px;resize:vertical}
+        @media(max-width:720px){#sc-plan-modal .lp-toolbar{height:auto;min-height:64px;flex-wrap:wrap;padding:8px}.lp-toolbar .lp-hide-mobile{display:none}#sc-plan-modal .lp-editor-scroll{padding:10px}.lp-extra-content{position:fixed!important;right:8px!important;top:62px!important;width:calc(100vw - 16px)!important}}
+      </style>
+      <header class="lp-toolbar">
+        <button id="lp-close" class="w-10 h-10 flex-none rounded-xl border text-gray-500 hover:bg-gray-50" aria-label="ปิด">←</button>
+        <div class="min-w-0 mr-auto"><p class="font-extrabold text-sm text-gray-800 truncate">${isEdit ? 'แก้ไขแผนการสอน' : 'สร้างแผนการสอนใหม่'}</p><p class="text-[10px] text-gray-400 lp-hide-mobile">แก้ไขบนหน้ากระดาษตามแบบฟอร์มจริง</p></div>
+        <input id="lp-title" value="${_htmlEsc(p.title ?? '')}" placeholder="ชื่อแผน *" class="lp-admin-input w-48 lp-hide-mobile">
+        <label class="text-[10px] text-gray-500 lp-hide-mobile">สัปดาห์ <input id="lp-week-start" type="number" min="1" value="${p.week_start ?? ''}" class="lp-admin-input w-16 ml-1"></label>
+        <label class="text-[10px] text-gray-500 lp-hide-mobile">ถึง <input id="lp-week-end" type="number" min="1" value="${p.week_end ?? ''}" class="lp-admin-input w-16 ml-1"></label>
+        <details class="lp-extra"><summary class="h-10 px-3 rounded-xl border flex items-center justify-center text-xs font-bold text-gray-600 bg-white">⚙️ ข้อมูลเพิ่มเติม</summary><div class="lp-extra-content"><div class="grid grid-cols-2 gap-2 mb-2 sm:hidden"><label class="text-[10px] text-gray-500">ชื่อแผน<input id="lp-title-mobile" value="${_htmlEsc(p.title ?? '')}" class="lp-admin-input w-full mt-1"></label><label class="text-[10px] text-gray-500">สัปดาห์<input id="lp-week-mobile" value="${p.week_start ?? ''}" class="lp-admin-input w-full mt-1"></label></div><label class="block text-[10px] font-bold text-gray-500">งาน/การบ้าน<textarea id="lp-homework" rows="3" class="mt-1">${_htmlEsc(p.homework ?? '')}</textarea></label><label class="block text-[10px] font-bold text-gray-500 mt-2">หมายเหตุครู<textarea id="lp-teacher_notes" rows="3" class="mt-1">${_htmlEsc(p.teacher_notes ?? '')}</textarea></label></div></details>
+        ${isEdit ? `<button id="lp-delete" class="h-10 px-3 flex-none rounded-xl border border-red-100 text-xs font-bold text-red-500 hover:bg-red-50">🗑️ <span class="lp-hide-mobile">ลบ</span></button>` : ''}
+        <button id="lp-save" class="h-10 px-4 flex-none rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold shadow-sm">💾 บันทึกแผน</button>
+      </header>
+      <main class="lp-editor-scroll">
+        <article class="lp-paper animate-fade">
+          <section class="lp-head">
+            <img src="./pp5-form-logo.png" alt="ตราโรงเรียน">
+            <h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1>
+            <h2>กลุ่มสาระการเรียนรู้${_htmlEsc(learningArea)}</h2>
+            <p class="lp-subject-line">วิชา ${_htmlEsc(ms.subject_name ?? '')} รหัสวิชา ${_htmlEsc(ms.subject_code ?? '')} ชั้นมัธยมศึกษาปีที่ ${_htmlEsc(classDisplay || '................................')}</p>
+            <div class="lp-unit-row">หน่วยการเรียนรู้ <input id="lp-unit-title" class="lp-doc-input" value="${_htmlEsc(p.unit_title ?? '')}" placeholder="หน่วยการเรียนรู้ที่ 1"> เรื่อง <input id="lp-key_concept" class="lp-doc-input" value="${_htmlEsc(p.key_concept ?? '')}" placeholder="เรื่องที่สอน"></div>
+          </section>
+          <section class="lp-meta">
+            <label>ครั้งที่ <input id="lp-session-number" type="number" min="1" class="lp-doc-input" value="${p.session_number ?? 1}"></label>
+            <label>เวลา <input id="lp-duration" type="number" min="1" class="lp-doc-input" value="${p.duration_minutes ?? 100}"> นาที</label>
+            <label>วันที่ <input id="lp-lesson-date" type="date" class="lp-doc-input" value="${_htmlEsc(p.lesson_date ?? '')}"></label>
+          </section>
+          <section class="lp-columns">
+            <div>
+              <div class="lp-box"><div class="lp-box-title">1.มาตรฐาน/ตัวชี้วัด (ผลการเรียนรู้)</div><div class="lp-box-body"><textarea id="lp-standards" class="lp-doc-area" rows="5">${_htmlEsc(p.standards ?? '')}</textarea></div></div>
+              <div class="lp-box"><div class="lp-box-title">2.จุดประสงค์การเรียนรู้</div><div class="lp-box-body"><textarea id="lp-objectives" class="lp-doc-area" rows="5">${_htmlEsc(p.objectives ?? '')}</textarea></div></div>
+              <div class="lp-box"><div class="lp-box-title">3.กิจกรรมการเรียนรู้</div><div class="lp-box-body lp-activities"><b>ขั้นนำเข้าสู่บทเรียน</b><textarea id="lp-activities_intro" class="lp-doc-area" rows="3">${_htmlEsc(p.activities_intro ?? '')}</textarea><b>ขั้นสอน</b><textarea id="lp-activities_main" class="lp-doc-area main" rows="7">${_htmlEsc(p.activities_main ?? '')}</textarea><b>ขั้นสรุป</b><textarea id="lp-activities_wrap" class="lp-doc-area" rows="3">${_htmlEsc(p.activities_wrap ?? '')}</textarea></div></div>
+              <div class="lp-box"><div class="lp-box-title">4.การวัดและประเมินผล</div><div class="lp-box-body"><textarea id="lp-assessment" class="lp-doc-area" rows="3">${_htmlEsc(p.assessment ?? '')}</textarea></div></div>
+            </div>
+            <div>
+              <div class="lp-box lp-media"><div class="lp-box-title">5.สื่อการเรียนรู้</div><div class="lp-box-body"><textarea id="lp-media" class="lp-doc-area" rows="3">${_htmlEsc(p.media ?? '')}</textarea></div></div>
+              <div class="lp-sign-pair">
+                <div class="lp-sign"><div class="lp-sign-space"></div><div>ลงชื่อ</div><div class="lp-sign-line"></div><div>หัวหน้าห้อง</div><div>( ${_htmlEsc(classHeadName)} )</div><div>วันที่ ${p.lesson_date ? _htmlEsc(p.lesson_date) : '........................'}</div></div>
+                <div class="lp-sign"><div class="lp-sign-space"></div><div>ลงชื่อ</div><div class="lp-sign-line"></div><div>ครูผู้สอน</div><div>( ${_htmlEsc(teacher?.full_name ?? '................................')} )</div><div>วันที่ ${p.lesson_date ? _htmlEsc(p.lesson_date) : '........................'}</div></div>
+              </div>
+              <div class="lp-reflect"><h3>บันทึกหลังการสอน</h3><div class="lp-rule">ผลการจัดการเรียนรู้:</div><div class="lp-rule"></div><div class="lp-rule">แนวทางการแก้ปัญหา:</div><div class="lp-rule"></div></div>
+              <div class="lp-suggestion"><h3>ข้อเสนอแนะ</h3><div class="lp-rule"></div><div class="lp-rule"></div><div class="lp-rule"></div></div>
+              <div class="lp-dept-sign">ลงชื่อ <span class="lp-sign-line"></span> หัวหน้ากลุ่มสาระ<div>( ................................ )</div><div>วันที่ ................................</div></div>
+            </div>
+          </section>
+        </article>
+      </main>`
     document.body.appendChild(m)
-    m.addEventListener('click', e => { if (e.target === m) m.remove() })
     m.querySelector('#lp-close').addEventListener('click', () => m.remove())
+    const desktopTitle = m.querySelector('#lp-title'), mobileTitle = m.querySelector('#lp-title-mobile')
+    mobileTitle?.addEventListener('input', () => { desktopTitle.value = mobileTitle.value })
+    desktopTitle?.addEventListener('input', () => { if (mobileTitle) mobileTitle.value = desktopTitle.value })
+    m.querySelector('#lp-week-mobile')?.addEventListener('input', e => {
+      m.querySelector('#lp-week-start').value = e.target.value
+      m.querySelector('#lp-week-end').value = e.target.value
+    })
     m.querySelector('#lp-delete')?.addEventListener('click', async () => {
       if (!confirm(`ลบแผน "${p.title}"? บันทึกหลังสอน/ลายเซ็นที่ผูกกับแผนนี้จะหายไปด้วย`)) return
       try { await deleteLessonPlan(p.id); showToast('ลบแผนแล้ว', 'success'); m.remove(); _reload() }
