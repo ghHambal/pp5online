@@ -19,6 +19,7 @@ import { getCertificateTemplates, getCertificateTemplate, createCertificateTempl
 import { openCertificatePrint } from './certificate-engine.js'
 import { openCertificateLayoutEditor } from './certificate-editor.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
+import { uploadAssignmentFile } from './storage.js'
 
 // ─── ใบสั้นแก้ค้างเก่า — ใช้เอนจิน/ตัวแก้ไขเทมเพลตเดียวกับระบบเกียรติบัตรกลาง (certificate-engine.js/
 // certificate-editor.js) แต่ไม่ผ่านตารางออกใบ (certificates) ของระบบนั้นเลย เพราะนี่เป็นเอกสารทำงาน
@@ -144,8 +145,38 @@ function openTeacherResponseForm(row, method) {
   const picked = duePickerValue(row.due_text)
   teacher.form = {
     id: Number(row.id), method, dueDate: picked.date, dueTime: picked.time,
-    fileUrl: method === 'ให้งานแก้' ? (row.file_url || '') : '', editing: row.status === 'กำลังดำเนินการปรับแก้',
+    fileUrl: method === 'ให้งานแก้' ? (row.file_url || '') : '', file: null,
+    fileSource: row.file_url ? 'current' : 'none', editing: row.status === 'กำลังดำเนินการปรับแก้',
   }
+}
+
+function findReusableWorkFile(row) {
+  return teacher.subjects
+    .filter(x => Number(x.id) !== Number(row.id)
+      && Number(x.teacher_id) === Number(row.teacher_id)
+      && x.subject_code === row.subject_code
+      && x.semester === row.semester
+      && x.category === row.category
+      && /^https:\/\//i.test(x.file_url || ''))
+    .sort((a, b) => new Date(b.assigned_at || b.updated_at || 0) - new Date(a.assigned_at || a.updated_at || 0))[0] || null
+}
+
+async function openTeacherWorkForm(row) {
+  openTeacherResponseForm(row, 'ให้งานแก้')
+  // ตอนแก้คำตอบเดิม แสดงไฟล์ปัจจุบันเลย ไม่ถามซ้ำกับไฟล์ของรายการเดียวกัน
+  if (row.file_url) { renderTeacher(); return }
+  const reusable = findReusableWorkFile(row)
+  if (reusable) {
+    const choice = await showReusableWorkFilePrompt(row, reusable)
+    if (choice === 'reuse') {
+      teacher.form.fileUrl = reusable.file_url
+      teacher.form.fileSource = 'reuse'
+    } else {
+      teacher.form.fileUrl = ''
+      teacher.form.fileSource = choice === 'upload' ? 'upload' : 'none'
+    }
+  }
+  renderTeacher()
 }
 function deadlineBannerHtml(startVal, endVal, title, colorVar, ctaLabel, ctaAction) {
   const start = formatThaiDateTime(startVal)
@@ -215,6 +246,42 @@ function showRegradeConfirm({ title = 'ยืนยันการดำเน�
     m.querySelector('#rgc-overlay').addEventListener('click', () => cleanup(false))
     m.querySelector('#rgc-cancel').addEventListener('click', () => cleanup(false))
     m.querySelector('#rgc-confirm').addEventListener('click', () => cleanup(true))
+  })
+}
+
+// พบไฟล์เดิมแล้วให้เลือกการกระทำแบบชัดเจน: ใช้เดิม / อัปโหลดใหม่ / ไม่แนบ
+function showReusableWorkFilePrompt(row, candidate) {
+  return new Promise(resolve => {
+    document.getElementById('regrade-reuse-file-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'regrade-reuse-file-modal'
+    m.className = 'fixed inset-0 z-[99999] flex items-center justify-center p-4'
+    const usedAt = candidate.assigned_at || candidate.updated_at
+    const usedAtText = usedAt ? new Date(usedAt).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '-'
+    const safeUrl = /^https:\/\//i.test(candidate.file_url || '') ? candidate.file_url : ''
+    m.innerHTML = `
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-reuse-choice="upload"></div>
+      <div class="rg-modal-panel relative shadow-2xl w-full max-w-sm overflow-hidden">
+        <div class="h-1.5" style="background:linear-gradient(135deg,var(--gold),var(--gold-dark))"></div>
+        <div class="px-6 pt-6 pb-4 text-center">
+          <div class="mx-auto mb-3 w-12 h-12 rounded-2xl flex items-center justify-center text-2xl" style="background:var(--gold-soft)">📎</div>
+          <h3 class="text-lg font-bold text-gray-900">พบไฟล์เดิมของรายวิชานี้</h3>
+          <p class="text-sm text-gray-600 leading-relaxed mt-2">${escHtml(row.subject_name)} (${escHtml(row.subject_code)})<br>ภาคเรียน ${escHtml(row.semester || '-')} · ${escHtml(row.category || '-')}</p>
+          <div class="mt-3 p-3 rounded-xl text-left" style="background:var(--surface-2);border:1px solid var(--line)">
+            <p class="text-xs font-bold text-[var(--ink)]">ไฟล์งานแก้ที่เคยอัปโหลด</p>
+            <p class="text-[10px] text-[var(--muted-2)] mt-1">ใช้ล่าสุด ${escHtml(usedAtText)}</p>
+            ${safeUrl ? `<a href="${escHtml(safeUrl)}" target="_blank" rel="noopener" class="inline-flex mt-2 text-xs font-bold" style="color:var(--info)">เปิดดูไฟล์เดิม ↗</a>` : ''}
+          </div>
+        </div>
+        <div class="px-6 pb-6 grid gap-2">
+          <button data-reuse-choice="reuse" class="py-3 rounded-2xl text-sm font-bold text-white shadow-lg active:scale-[0.97] transition-all" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">ใช้ไฟล์เดิม</button>
+          <button data-reuse-choice="upload" class="py-3 rounded-2xl border border-gray-200 text-sm font-semibold text-gray-700 active:scale-[0.97] transition-all">อัปโหลดไฟล์ใหม่</button>
+          <button data-reuse-choice="none" class="py-2 text-xs font-semibold text-gray-500">ไม่แนบไฟล์</button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+    const cleanup = choice => { m.remove(); resolve(choice) }
+    m.querySelectorAll('[data-reuse-choice]').forEach(el => el.addEventListener('click', () => cleanup(el.dataset.reuseChoice)))
   })
 }
 
@@ -580,12 +647,30 @@ async function renderTeacher() {
     const row = all.find(x => x.id === Number(btn.dataset.openExam)); if (row) openTeacherResponseForm(row, 'นัดสอบปรับ'); renderTeacher()
   }))
   content.querySelectorAll('[data-open-work]').forEach(btn => btn.addEventListener('click', () => {
-    const row = all.find(x => x.id === Number(btn.dataset.openWork)); if (row) openTeacherResponseForm(row, 'ให้งานแก้'); renderTeacher()
+    const row = all.find(x => x.id === Number(btn.dataset.openWork)); if (row) openTeacherWorkForm(row)
   }))
   content.querySelectorAll('[data-cancel-form]').forEach(btn => btn.addEventListener('click', () => { teacher.form = null; renderTeacher() }))
   content.querySelectorAll('[data-due-date]').forEach(el => el.addEventListener('input', () => { teacher.form.dueDate = el.value }))
   content.querySelectorAll('[data-due-time]').forEach(el => el.addEventListener('input', () => { teacher.form.dueTime = el.value }))
-  content.querySelectorAll('[data-file-input]').forEach(el => el.addEventListener('input', () => { teacher.form.fileUrl = el.value }))
+  content.querySelectorAll('[data-work-file]').forEach(el => el.addEventListener('change', () => {
+    const file = el.files?.[0] || null
+    if (file && file.size > 5 * 1024 * 1024) {
+      el.value = ''
+      showToast('ไฟล์ต้องมีขนาดไม่เกิน 5 MB', 'warning')
+      return
+    }
+    teacher.form.file = file
+    teacher.form.fileUrl = ''
+    teacher.form.fileSource = file ? 'upload' : 'none'
+    const name = content.querySelector('[data-work-file-name]')
+    if (name) name.textContent = file ? file.name : 'ยังไม่ได้เลือกไฟล์'
+  }))
+  content.querySelectorAll('[data-remove-work-file]').forEach(btn => btn.addEventListener('click', () => {
+    teacher.form.file = null
+    teacher.form.fileUrl = ''
+    teacher.form.fileSource = 'none'
+    renderTeacher()
+  }))
   content.querySelectorAll('[data-confirm-assign]').forEach(btn => btn.addEventListener('click', () => handleAssign(btn)))
   content.querySelectorAll('[data-cancel-response]').forEach(btn => btn.addEventListener('click', () => handleCancelResponse(btn)))
   content.querySelectorAll('[data-print-slip]').forEach(btn => btn.addEventListener('click', () => {
@@ -831,14 +916,28 @@ function teacherResponseActionsHtml(x) {
 }
 
 function teacherResponseFormHtml(x, f, isExam) {
+  const hasExistingFile = !isExam && !!f.fileUrl
+  const safeExistingUrl = hasExistingFile && /^https:\/\//i.test(f.fileUrl) ? f.fileUrl : ''
   return `
     <div class="mt-3 rounded-xl p-3 bg-[var(--surface-2)]">
       <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">${isExam ? 'วันที่นัดสอบปรับ' : 'กำหนดส่งงาน'}</label>
       <input data-due-date type="date" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]" value="${escHtml(f.dueDate)}">
       ${isExam ? `<label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">เวลานัดสอบ</label>
       <input data-due-time type="time" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]" value="${escHtml(f.dueTime)}">` : `
-      <label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">ลิงก์ไฟล์งานแก้ (ถ้ามี)</label>
-      <input data-file-input type="url" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]" placeholder="https://..." value="${escHtml(f.fileUrl)}">`}
+      <label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">ไฟล์ชี้แจงงานแก้ (ถ้ามี · ไม่เกิน 5 MB)</label>
+      ${hasExistingFile ? `
+        <div class="p-3 rounded-xl bg-[var(--surface)] border border-[var(--line)]">
+          <p class="text-xs font-bold text-[var(--ink)]">📎 ${f.fileSource === 'reuse' ? 'ใช้ไฟล์เดิมของรายวิชานี้' : 'ไฟล์ที่แนบอยู่ปัจจุบัน'}</p>
+          <div class="flex gap-3 mt-2">
+            ${safeExistingUrl ? `<a href="${escHtml(safeExistingUrl)}" target="_blank" rel="noopener" class="text-[11px] font-bold" style="color:var(--info)">เปิดดูไฟล์ ↗</a>` : ''}
+            <button type="button" data-remove-work-file class="text-[11px] font-bold" style="color:var(--bad)">เอาไฟล์ออก</button>
+          </div>
+        </div>` : ''}
+      <label class="mt-2 flex items-center justify-center gap-2 w-full py-2.5 rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] text-xs font-bold text-[var(--ink-2)] cursor-pointer">
+        <span>${hasExistingFile ? 'อัปโหลดไฟล์ใหม่แทน' : 'เลือกไฟล์จากเครื่อง'}</span>
+        <input data-work-file type="file" class="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png">
+      </label>
+      <p data-work-file-name class="mt-1 text-[10px] text-[var(--muted-2)] truncate">${escHtml(f.file?.name || (hasExistingFile ? 'หากไม่เลือกไฟล์ใหม่ ระบบจะใช้ไฟล์ที่แสดงอยู่' : 'ยังไม่ได้เลือกไฟล์'))}</p>`}
       <div class="flex gap-2 mt-2">
         <button data-confirm-assign="${x.id}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">${f.editing ? 'บันทึกการแก้ไข' : (isExam ? 'ยืนยันนัดสอบ' : 'ยืนยันมอบหมายงาน')}</button>
         <button data-cancel-form class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface)] text-[var(--muted)]">ปิด</button>
@@ -859,11 +958,21 @@ async function handleAssign(btn) {
   const ok = await showRegradeConfirm({ title: f.editing ? 'ยืนยันแก้ไขคำตอบ' : (f.method === 'นัดสอบปรับ' ? 'ยืนยันนัดสอบปรับ' : 'ยืนยันมอบหมายงานแก้'), message: msg, confirmText: f.editing ? 'บันทึกการแก้ไข' : 'ยืนยัน' })
   if (!ok) return
   try {
-    await assignWork(id, { method: f.method, dueText, fileUrl: f.fileUrl.trim() || null })
+    btn.disabled = true
+    let fileUrl = f.fileUrl || null
+    if (f.method === 'ให้งานแก้' && f.file) {
+      const safePart = value => String(value || 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
+      const uploaded = await uploadAssignmentFile(f.file, `regrade/teacher-${ctx.teacherRow.id}/${safePart(x.subject_code)}/${safePart(x.semester)}`)
+      fileUrl = uploaded.url
+    }
+    await assignWork(id, { method: f.method, dueText, fileUrl })
     showToast(f.editing ? 'แก้ไขคำตอบแล้ว ใบสั้นจะใช้ข้อมูลล่าสุดอัตโนมัติ ✅' : 'บันทึกการมอบหมายเรียบร้อย ✅', 'success')
     teacher.form = null
     renderTeacher()
-  } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error') }
+  } catch (err) {
+    btn.disabled = false
+    showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error')
+  }
 }
 
 async function handleCancelResponse(btn) {
