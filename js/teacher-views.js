@@ -782,19 +782,20 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>
 
     <!-- สรุปของฉัน -->
-    <div class="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
       ${[
         { label:'คอร์สวิชาของฉัน', value: subjects.length, icon:'📖', color:'text-emerald-700', bg:'bg-emerald-50', nav:'my-courses' },
         { label:'ห้องเรียน', value: classes.length, icon:'🏫', color:'text-blue-700', bg:'bg-blue-50', nav:'my-classes' },
         { label:'คำร้องรออนุมัติ', value: pendingRequests, icon:'🔔', color: pendingRequests > 0 ? 'text-red-700' : 'text-gray-400', bg:'bg-red-50', nav:'requests' },
+        { label:'Smart Classroom', value:'เปิดห้องสอนสด', icon:'👑', color:'text-amber-700', bg:'bg-amber-50', onclick:'window._openSmartClassroomLanding()' },
       ].map(c=>`
-        <div onclick="window._navTo('${c.nav}')"
+        <div onclick="${c.onclick || `window._navTo('${c.nav}')`}"
           class="relative overflow-hidden rounded-2xl border border-gray-200 shadow-md p-5 flex items-center gap-4 cursor-pointer hover:shadow-lg active:scale-[0.98] transition-all duration-150 bg-white">
           <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/60 to-transparent opacity-80"></div>
           <div class="w-11 h-11 rounded-xl ${c.bg} flex items-center justify-center text-xl shadow-sm">${c.icon}</div>
           <div>
             <p class="text-xs text-gray-500">${c.label}</p>
-            <p class="text-2xl font-bold ${c.color}">${c.value}</p>
+            <p class="${typeof c.value === 'number' ? 'text-2xl' : 'text-sm mt-1'} font-bold ${c.color}">${c.value}</p>
           </div>
         </div>`).join('')}
     </div>
