@@ -73,7 +73,7 @@ export async function renderMyCourses(teacher) {
                 <div class="flex items-center justify-end gap-1 flex-wrap">
                   <button class="course-workspace-btn text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800 font-bold shadow-sm"
                     data-sid="${s.id}">
-                    📚 จัดการคอร์ส
+                    📘 กำหนดการ/แผน
                   </button>
                   <button onclick="window._openRegisterClass(${s.id})"
                     class="text-xs bg-emerald-600 text-white px-2 py-1.5 rounded-lg hover:bg-emerald-700">
@@ -180,10 +180,10 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
   const m = document.createElement('div')
   m.id = 'course-workspace-modal'
   m.className = 'fixed inset-0 z-[95] bg-black/60 flex items-center justify-center p-2 sm:p-4'
-  m.innerHTML = `<div class="bg-gray-50 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-6xl h-[96vh] sm:h-auto sm:max-h-[92vh] overflow-hidden flex flex-col">
+  m.innerHTML = `<div class="bg-gray-50 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-5xl h-[96vh] sm:h-auto sm:max-h-[92vh] overflow-hidden flex flex-col">
     <header class="flex-shrink-0 px-4 sm:px-6 py-4 border-b bg-white flex items-start justify-between gap-3">
       <div class="min-w-0">
-        <span class="inline-flex px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-[10px] font-extrabold">📚 ศูนย์จัดการคอร์ส</span>
+        <span class="inline-flex px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-[10px] font-extrabold">📘 ออกแบบการสอนของคอร์ส</span>
         <h2 class="mt-2 text-lg sm:text-xl font-extrabold text-gray-900 truncate">${_htmlEsc(subject.subject_name)}</h2>
         <p class="text-xs text-gray-500 mt-0.5"><span class="font-mono text-blue-600">${_htmlEsc(subject.subject_code ?? '—')}</span> · ${_htmlEsc(subject.grade_level ?? '—')} · ${courseClasses.length} ห้องเรียน</p>
       </div>
@@ -216,12 +216,9 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       <span class="flex-shrink-0 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 text-[10px] font-bold h-fit">สัปดาห์ ${item.week_start}${item.week_end !== item.week_start ? `–${item.week_end}` : ''}</span>
       <div class="min-w-0"><p class="text-sm font-bold text-gray-800">${_htmlEsc(item.topic)}</p>${item.unit_title ? `<p class="text-[11px] text-blue-600 mt-0.5">${_htmlEsc(item.unit_title)}</p>` : ''}</div>
     </div>`).join('') : `<div class="rounded-xl border border-dashed border-blue-200 bg-blue-50/50 py-8 text-center text-xs text-blue-500">ยังไม่มีกำหนดการสอนของคอร์สนี้</div>`
-    const aiContextClasses = access.unlocked ? courseClasses : allowedClasses
-    const aiClassOptions = aiContextClasses.map(c => `<option value="${c.id}">${_htmlEsc(c.class_name ?? `ห้อง ${c.id}`)}</option>`).join('')
     const documentClassOptions = courseClasses.map(c => `<option value="${c.id}">${_htmlEsc(c.class_name ?? `ห้อง ${c.id}`)}</option>`).join('')
 
-    body.innerHTML = `<div class="grid lg:grid-cols-[1.15fr_.85fr] gap-4">
-      <section class="space-y-4">
+    body.innerHTML = `<div class="grid lg:grid-cols-2 gap-4 items-start">
         <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:p-5">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
             <div><h3 class="font-extrabold text-blue-950">📘 กำหนดการสอนของคอร์ส</h3><p class="text-xs text-blue-700/70 mt-1">สร้างครั้งเดียว แล้วทุกห้องในรายวิชานี้อ้างอิงชุดเดียวกัน</p></div>
@@ -232,52 +229,16 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
 
         <div class="rounded-2xl border border-violet-100 bg-violet-50/60 p-4 sm:p-5">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-            <div><h3 class="font-extrabold text-violet-950">📝 แผนการสอนหน้าเดียว</h3><p class="text-xs text-violet-700/70 mt-1">ใช้กำหนดการของคอร์สเป็นต้นทาง และเลือกห้องเมื่อต้องบันทึกหลังสอน</p></div>
-            <button id="cw-ai-plan" class="min-h-[44px] px-4 rounded-xl ${aiAllowed && courseClasses.length ? 'bg-violet-700 hover:bg-violet-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed && courseClasses.length ? '' : 'disabled'}>✨ สร้างแผนด้วย AI</button>
+            <div><h3 class="font-extrabold text-violet-950">📝 แผนการสอนหน้าเดียว</h3><p class="text-xs text-violet-700/70 mt-1">ออกแบบแผนกลางของคอร์ส ใช้ร่วมกันได้ทุกห้อง และค่อยแยกบันทึกหลังสอนตามห้อง</p></div>
+            <button id="cw-ai-plan" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-violet-700 hover:bg-violet-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>✨ สร้างแผนด้วย AI</button>
           </div>
-          ${aiContextClasses.length ? `<label class="block mt-3 text-[11px] font-bold text-violet-700">ห้องที่ใช้เป็นบริบทของ AI<select id="cw-ai-class" class="mt-1 w-full min-h-[42px] border border-violet-200 rounded-xl bg-white px-3 text-sm font-normal text-gray-700">${aiClassOptions}</select></label>` : ''}
           ${lessonPlans.length ? `<div class="mt-4 space-y-2">${lessonPlans.map(plan => `<button class="cw-plan-row w-full text-left rounded-xl border border-violet-100 bg-white px-3 py-3 hover:border-violet-300 transition" data-plan-id="${plan.id}"><p class="text-sm font-bold text-gray-800">${_htmlEsc(plan.title)}</p><p class="text-[11px] text-violet-600 mt-0.5">สัปดาห์ ${plan.week_start}${plan.week_end !== plan.week_start ? `–${plan.week_end}` : ''} · กดเพื่อเปิดเอกสาร/บันทึกหลังสอน</p></button>`).join('')}</div>` : `<div class="mt-4 rounded-xl border border-dashed border-violet-200 py-8 text-center text-xs text-violet-400">ยังไม่มีแผนการสอน</div>`}
-          ${!courseClasses.length ? `<p class="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">กรุณาเพิ่มห้องเรียนในคอร์สก่อนสร้างแผนรายครั้ง</p>` : ''}
         </div>
-      </section>
-
-      <aside class="space-y-4">
-        <div class="rounded-2xl border border-amber-100 bg-white p-4 sm:p-5">
-          <div class="flex items-start justify-between gap-3"><div><h3 class="font-extrabold text-gray-900">🏫 ห้องเรียนและแชท</h3><p class="text-xs text-gray-500 mt-1">ข้อความยังแยกเป็นรายห้อง ไม่รวมกันทั้งคอร์ส</p></div><span class="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold">${courseClasses.length} ห้อง</span></div>
-          <div class="mt-4 space-y-2">${courseClasses.length ? courseClasses.map(c => `<div class="rounded-xl border border-gray-100 bg-gray-50 p-3">
-            <p class="text-sm font-bold text-gray-800 truncate">${_htmlEsc(c.class_name ?? `ห้อง ${c.id}`)}</p>
-            <div class="grid grid-cols-2 gap-2 mt-2">
-              <button class="cw-chat min-h-[42px] rounded-lg border border-amber-200 bg-white text-amber-700 text-xs font-bold hover:bg-amber-50" data-class-id="${c.id}">💬 เปิดแชท</button>
-              <button class="cw-smart min-h-[42px] rounded-lg text-xs font-bold text-white" style="background:linear-gradient(135deg,#a9781a,#e6c988)" data-class-id="${c.id}">👑 เข้าห้องสอน</button>
-            </div>
-          </div>`).join('') : `<div class="rounded-xl border border-dashed py-8 text-center text-xs text-gray-400">ยังไม่มีห้องเรียนในคอร์สนี้</div>`}</div>
-        </div>
-
-        <div class="rounded-2xl border ${aiAllowed ? 'border-emerald-100 bg-emerald-50/60' : 'border-amber-200 bg-amber-50'} p-4">
-          <p class="font-extrabold ${aiAllowed ? 'text-emerald-800' : 'text-amber-800'}">${aiAllowed ? '✅ เปิดใช้ผู้ช่วย AI แล้ว' : '🔒 ผู้ช่วย AI สำหรับผู้สนับสนุน'}</p>
-          <p class="text-xs ${aiAllowed ? 'text-emerald-700' : 'text-amber-700'} mt-1 leading-relaxed">${aiAllowed ? 'สิทธิ์นี้ใช้กติกาเดียวกับ Smart Classroom และไม่สร้างระดับสมาชิกซ้ำ' : `รองรับผู้สนับสนุนระดับ ${access.minTier} ขึ้นไป หรือห้องทดลองใช้ฟรีที่เลือกไว้ตามสิทธิ์เดิม`}</p>
-          ${!aiAllowed ? `<button id="cw-support" class="mt-3 w-full min-h-[42px] rounded-xl bg-amber-600 text-white text-xs font-bold">ดูการสนับสนุนโครงการ</button>` : ''}
-        </div>
-      </aside>
     </div>
     ${lessonPlans.length && courseClasses.length ? `<div id="cw-document-picker" class="hidden fixed inset-0 z-[99] bg-black/50 items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5"><h3 class="font-extrabold text-gray-800">เลือกห้องสำหรับบันทึกหลังสอน</h3><p class="text-xs text-gray-400 mt-1">แผนเป็นของคอร์ส แต่บันทึกและลายเซ็นจะแยกตามห้อง</p><select id="cw-document-class" class="mt-4 w-full min-h-[44px] border rounded-xl bg-white px-3 text-sm">${documentClassOptions}</select><div class="grid grid-cols-2 gap-2 mt-4"><button id="cw-document-cancel" class="min-h-[42px] rounded-xl border text-gray-500 text-xs font-bold">ยกเลิก</button><button id="cw-document-open" class="min-h-[42px] rounded-xl bg-violet-700 text-white text-xs font-bold">เปิดเอกสาร</button></div></div></div>` : ''}`
 
-    const selectedAIClass = () => {
-      const classId = parseInt(body.querySelector('#cw-ai-class')?.value, 10)
-      return aiContextClasses.find(c => c.id === classId) ?? aiContextClasses[0] ?? virtualClass
-    }
-    body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: selectedAIClass(), courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', onSaved: reopen }))
-    body.querySelector('#cw-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: selectedAIClass(), courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'plan', onSaved: reopen }))
-    body.querySelectorAll('.cw-chat').forEach(btn => btn.addEventListener('click', () => {
-      const classId = parseInt(btn.dataset.classId, 10)
-      const cls = courseClasses.find(c => c.id === classId)
-      import('./chat-classroom.js').then(mod => mod.openTeacherClassroomChat(teacher, classId, cls?.class_name))
-    }))
-    body.querySelectorAll('.cw-smart').forEach(btn => btn.addEventListener('click', () => {
-      const classId = parseInt(btn.dataset.classId, 10)
-      close()
-      import('./teacher-views-smart-classroom.js').then(mod => mod.renderSmartClassroom(teacher, classId))
-    }))
+    body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', onSaved: reopen }))
+    body.querySelector('#cw-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'plan', onSaved: reopen }))
     let selectedPlan = null
     const picker = body.querySelector('#cw-document-picker')
     const hidePicker = () => { if (picker) { picker.classList.add('hidden'); picker.classList.remove('flex') } }
@@ -295,7 +256,6 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       hidePicker()
       openLessonPlanDocument({ plan: selectedPlan, cls, teacher, classId: cls.id, currentWeek: selectedPlan.week_start })
     })
-    body.querySelector('#cw-support')?.addEventListener('click', () => { close(); document.getElementById('btn-donate-float')?.click() })
   } catch (err) {
     body.innerHTML = `<div class="rounded-2xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">โหลดศูนย์จัดการคอร์สไม่สำเร็จ: ${_htmlEsc(err.message ?? '')}</div>`
   }

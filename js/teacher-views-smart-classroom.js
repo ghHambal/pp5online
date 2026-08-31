@@ -29,7 +29,7 @@ import { openQuizMonitor } from './teacher-views-quiz-monitor.js'
 import { openQuizAnalytics } from './teacher-views-quiz-analytics.js'
 import { openClassDashboard } from './teacher-views-dashboard.js'
 import { openTimerModal } from './timer-overlay.js'
-import { _openRandomPickerModal, renderClassDetail } from './teacher-views-classes.js'
+import { _openRandomPickerModal, renderClassDetail, openClassPromptGenModal } from './teacher-views-classes.js'
 import { showToast, showQuizCloseChoice } from './ui.js'
 import { uploadAssignmentFile } from './storage.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek } from './teacher-views-utils.js'
@@ -1056,6 +1056,8 @@ export async function renderSmartClassroom(teacher, classId) {
         <p class="text-xs font-semibold ${currentTopic ? 'text-gray-700' : 'text-gray-400'} truncate max-w-[240px]">${currentTopic ? _htmlEsc(currentTopic.topic) : 'ยังไม่ได้กำหนดหัวข้อสำหรับสัปดาห์นี้'}</p>
       </div>
       <div id="sc-clock-wrap" class="ml-auto flex-shrink-0 text-right"></div>
+      <button id="sc-class-chat" class="sc-desktop-quick-action items-center gap-1.5 flex-shrink-0 text-xs font-bold text-amber-700 border border-amber-200 bg-white hover:bg-amber-50 px-3 py-2 rounded-xl">💬 แชทห้องเรียน</button>
+      <button id="sc-teaching-ai" class="sc-desktop-quick-action items-center gap-1.5 flex-shrink-0 text-xs font-bold text-white px-3 py-2 rounded-xl shadow-sm" style="background:linear-gradient(135deg,#6366f1,#7c3aed)">✨ AI เตรียมการสอน</button>
       <button id="sc-switch-class" class="flex-shrink-0 text-xs font-semibold text-amber-700 border border-amber-200 bg-amber-50 hover:bg-amber-100 px-3 py-1.5 rounded-lg">🔀 สลับห้อง</button>
       <button id="sc-back" class="flex-shrink-0 text-xs text-gray-400 hover:text-gray-700 px-3 py-1.5 rounded-lg hover:bg-gray-50">← กลับ</button>
     </div>
@@ -1162,6 +1164,10 @@ export async function renderSmartClassroom(teacher, classId) {
   })
   document.getElementById('sc-switch-class').addEventListener('click', () => _openClassSwitcher())
   document.getElementById('sc-open-attendance').addEventListener('click', () => _openTodayAttendance())
+  const _openClassChat = () => import('./chat-classroom.js').then(mod => mod.openTeacherClassroomChat(teacher, classId, `${ms.subject_name ?? ''} · ${cls.class_name ?? ''}`))
+  const _openTeachingAI = () => openClassPromptGenModal(teacher, classId, cls, cfg)
+  document.getElementById('sc-class-chat')?.addEventListener('click', _openClassChat)
+  document.getElementById('sc-teaching-ai')?.addEventListener('click', _openTeachingAI)
   document.querySelectorAll('[data-sc-urgent-aid]').forEach(btn => btn.addEventListener('click', () => {
     const a = assignments.find(x => x.id === parseInt(btn.dataset.scUrgentAid, 10))
     if (a) _openAssignmentTrackingModal(a)
@@ -1882,6 +1888,8 @@ export async function renderSmartClassroom(teacher, classId) {
 
   const _mobileMoreHTML = () => `
     <div class="grid grid-cols-2 gap-2 mb-5">
+      <button id="sc-mobile-more-chat" class="min-h-[76px] rounded-xl border border-amber-100 bg-amber-50 text-xs font-bold text-amber-800">💬<br>แชทห้องเรียน</button>
+      <button id="sc-mobile-more-ai" class="min-h-[76px] rounded-xl text-xs font-bold text-white" style="background:linear-gradient(135deg,#6366f1,#7c3aed)">✨<br>AI เตรียมการสอน</button>
       <button id="sc-mobile-more-ann" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">📣<br>สร้างประกาศ</button>
       <button id="sc-mobile-more-dashboard" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">📈<br>Dashboard</button>
       <button id="sc-mobile-more-switch" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">🔀<br>สลับห้อง</button>
@@ -1893,6 +1901,8 @@ export async function renderSmartClassroom(teacher, classId) {
     </div>`
 
   function _wireMobileMore() {
+    document.getElementById('sc-mobile-more-chat')?.addEventListener('click', _openClassChat)
+    document.getElementById('sc-mobile-more-ai')?.addEventListener('click', _openTeachingAI)
     document.getElementById('sc-mobile-more-ann')?.addEventListener('click', () => document.getElementById('sc-add-announcement')?.click())
     document.getElementById('sc-mobile-more-dashboard')?.addEventListener('click', () => document.getElementById('sc-dashboard')?.click())
     document.getElementById('sc-mobile-more-switch')?.addEventListener('click', () => document.getElementById('sc-switch-class')?.click())

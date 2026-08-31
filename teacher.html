@@ -75,7 +75,7 @@
     .sc-btn-gold:active { transform: translateY(0); }
 
     /* Smart Classroom บนมือถือ: เมนูอ้างอิงต้องเข้าถึงได้ตลอด โดยไม่ต้องเลื่อนลงท้ายหน้า */
-    .sc-mobile-ref-nav, .sc-mobile-ref-head { display: none; }
+    .sc-mobile-ref-nav, .sc-mobile-ref-head, .sc-desktop-quick-action { display: none; }
     @media (max-width: 1023px) {
       body.sc-fullscreen #content { padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)); }
       .sc-mobile-ref-nav {
@@ -156,6 +156,7 @@
       .sc-mobile-ref-subtabs button.active { background: #fff3ce; color: #6d4a08; border-color: #dfc36e; }
     }
     @media (min-width: 1024px) {
+      .sc-desktop-quick-action { display: inline-flex; }
       .sc-mobile-app-section { display: block; }
       .sc-desktop-ref-tabs {
         display: grid;
@@ -509,7 +510,7 @@
   </div>
 
   <!-- Scripts -->
-  <script type="module" src="js/teacher.js?v=10.22.631"></script>
+  <script type="module" src="js/teacher.js?v=10.22.632"></script>
 
 </body>
 </html>

@@ -2014,6 +2014,11 @@ async function _promptGenModal(teacher, classId, cls, cfg) {
   renderForm()
 }
 
+// public entry point สำหรับ Smart Classroom และหน้าห้องเรียน ใช้ modal/สิทธิ์/โควตาชุดเดียวกัน
+export async function openClassPromptGenModal(teacher, classId, cls, cfg = {}) {
+  return _promptGenModal(teacher, classId, cls, cfg)
+}
+
 export async function _openRandomPickerModal(classId, cls, students, isDonorTeacher) {
   const systemLimitVal = window._pp5SystemCfg?.freeRandomPickerLimit
   let limit = 1
