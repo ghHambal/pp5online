@@ -50,11 +50,24 @@ export async function getMyRegradeSubjects(studentId) {
   return data ?? []
 }
 
+async function notifyRegradeEvent(subjectRowId, target, event) {
+  try {
+    const { error } = await supabase.functions.invoke('send-push', {
+      body: { subjectId: subjectRowId, target, event },
+    })
+    if (error) console.warn('[regrade-notify] ส่ง push ไม่สำเร็จ', error.message)
+  } catch (err) {
+    // push เป็นช่องทางเสริม การบันทึกสถานะหลักสำเร็จแล้วต้องไม่ถูกย้อนกลับ
+    console.warn('[regrade-notify] ส่ง push ไม่สำเร็จ', err)
+  }
+}
+
 export async function declareIntent(subjectRowId) {
   const { error } = await supabase.from('regrade_subjects')
     .update({ status: 'จำนงแล้ว', declared_at: new Date().toISOString(), updated_at: new Date().toISOString() })
     .eq('id', subjectRowId).eq('status', 'ยังไม่แจ้ง')
   if (error) throw error
+  await notifyRegradeEvent(subjectRowId, 'regrade_teacher', 'intent')
 }
 
 // ─── ฝั่งครู ──────────────────────────────────────────────────────────────────
@@ -79,11 +92,13 @@ export async function assignWork(subjectRowId, { method, dueText, fileUrl }) {
     p_file_url: fileUrl || null,
   })
   if (error) throw error
+  await notifyRegradeEvent(subjectRowId, 'regrade_student', 'response')
 }
 
 export async function cancelAssignedWork(subjectRowId) {
   const { error } = await supabase.rpc('regrade_teacher_cancel_response', { p_subject_id: subjectRowId })
   if (error) throw error
+  await notifyRegradeEvent(subjectRowId, 'regrade_student', 'cancel')
 }
 
 // ─── ฝั่งทะเบียน/แอดมิน (RLS อนุญาตเฉพาะ is_regrade_registrar()) ────────────────

@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.617'
+import { APP_VERSION } from './version.js?v=10.22.622'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -452,11 +452,18 @@ export async function renderStudentOverview(student) {
   }
 
   let regradeVisible = false
+  let regradeWorkCount = 0
   try {
-    const regradeCfg = await getRegradeConfig()
+    const [regradeCfg, regradeCountRes] = await Promise.all([
+      getRegradeConfig(),
+      Promise.resolve(supabase.from('regrade_subjects').select('id', { count: 'exact', head: true })
+        .eq('student_id', student.id).eq('status', 'กำลังดำเนินการปรับแก้')).catch(() => ({ count: 0 })),
+    ])
     regradeVisible = regradeCfg.visibility?.student_menu === true
+    regradeWorkCount = Number(regradeCountRes?.count) || 0
   } catch (_) {
     regradeVisible = false
+    regradeWorkCount = 0
   }
 
   // ปุ่มกีฬาสี — เดิมอยู่แถบเมนูล่างถาวร (student.js _loadSportsVisibility/_sportsVisibility ถูกลบไปแล้ว
@@ -522,7 +529,7 @@ export async function renderStudentOverview(student) {
         ${futsalVisible ? renderIconTile({ emoji:'⚽', label:'ฟุตซอล', from:'#C6E6FA', to:'#4F9BD6', onclick:`window._stuNav('futsal')` }, cfg.iconTileStyle) : ''}
         ${councilVisible ? renderIconTile({ emoji:'🏛️', label:'สภา<br>นักเรียน', from:'#E2D3F5', to:'#9663D1', onclick:`window.location.href='council.html'` }, cfg.iconTileStyle) : ''}
         ${terangganuVisible ? renderIconTile({ emoji:'⚜️', label:'ค่าย<br>TERANGGANU', from:'#B7ECDB', to:'#3F9C7E', onclick:`window.location.href='terangganu.html'` }, cfg.iconTileStyle) : ''}
-        ${regradeVisible ? renderIconTile({ emoji:'📋', label:'แก้ค้างเก่า', from:'#FBD0D6', to:'#E0616F', onclick:`window.location.href='regrade.html'` }, cfg.iconTileStyle) : ''}
+        ${regradeVisible ? renderIconTile({ id:'student-regrade-tile', emoji:'📋', label:'แก้ค้างเก่า', from:'#FBD0D6', to:'#E0616F', badge:regradeWorkCount, onclick:`window.location.href='regrade.html'` }, cfg.iconTileStyle) : ''}
         ${student.can_scan_prayer ? renderIconTile({ emoji:'🗂️', label:'ประวัติ<br>การสแกน', from:'#B7ECDB', to:'#5FBFA3', onclick:`window._stuNav('prayer_scan_history')` }, cfg.iconTileStyle) : ''}
       </div>
     </div>

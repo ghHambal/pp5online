@@ -439,16 +439,19 @@ export function _transparentEdgeDarkLogo(url) {
 // style คุมจาก system_config.iconTileStyle ('shadow' ค่าเริ่มต้น/'glossy'/'glass') CSS
 // คู่กันอยู่ที่ css/main.css — 'glass' มีโครงสร้าง HTML ต่างจาก 2 แบบแรกจริง (มีไอคอนเล็ก
 // ลอยอยู่ในการ์ดกระจกอีกที) ส่วน 'shadow'/'glossy' เป็น <span> เดียวแค่เปลี่ยน class+gradient
-export function renderIconTile({ emoji, label, from, to, onclick, id }, style = 'shadow') {
-  const btnCls = 'flex-shrink-0 w-[4.6rem] lg:w-24 flex flex-col items-center gap-1.5 lg:gap-2 active:scale-95 transition-transform'
+export function renderIconTile({ emoji, label, from, to, onclick, id, badge = 0 }, style = 'shadow') {
+  const btnCls = 'relative flex-shrink-0 w-[4.6rem] lg:w-24 flex flex-col items-center gap-1.5 lg:gap-2 active:scale-95 transition-transform'
   const labelCls = 'text-[10px] lg:text-sm font-bold text-gray-600 text-center leading-tight'
   const idAttr = id ? ` id="${id}"` : ''
   const onclickAttr = onclick ? ` onclick="${onclick}"` : ''
   const tint = to // ปลายไล่สี (เข้มกว่า) ใช้เป็นโทนเงา/tint ของ CSS var(--tile-tint)
+  const badgeNo = Math.max(0, Number(badge) || 0)
+  const badgeHtml = badgeNo ? `<span data-icon-tile-badge class="absolute -top-1 right-1 z-10 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold flex items-center justify-center shadow">${badgeNo > 99 ? '99+' : badgeNo}</span>` : ''
 
   if (style === 'glass') {
     return `
       <button type="button"${idAttr}${onclickAttr} class="${btnCls}">
+        ${badgeHtml}
         <span class="icon-tile-glass-outer" style="--tile-tint:${tint}">
           <span class="icon-tile-glass-dot" style="background:linear-gradient(135deg,${from},${to})">${emoji}</span>
         </span>
@@ -458,6 +461,7 @@ export function renderIconTile({ emoji, label, from, to, onclick, id }, style = 
   if (style === 'glossy') {
     return `
       <button type="button"${idAttr}${onclickAttr} class="${btnCls}">
+        ${badgeHtml}
         <span class="icon-tile-glossy" style="background:linear-gradient(135deg,${from},${to})">
           <span class="icon-tile-glossy-emoji">${emoji}</span>
         </span>
@@ -466,6 +470,7 @@ export function renderIconTile({ emoji, label, from, to, onclick, id }, style = 
   }
   return `
     <button type="button"${idAttr}${onclickAttr} class="${btnCls}">
+      ${badgeHtml}
       <span class="icon-tile-shadow" style="background:linear-gradient(135deg,${from},${to});--tile-tint:${tint}">${emoji}</span>
       <span class="${labelCls}">${label}</span>
     </button>`

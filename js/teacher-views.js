@@ -280,7 +280,7 @@ async function renderExecutiveOverview(teacher) {
       .filter(s => s.show && ['council', 'terangganu', 'regrade'].includes(s.key))
       .map(s => {
         const [from, to] = sidebarTileColors[s.key] || ['#E4E4E7', '#9C9CA3']
-        return { key: s.key, emoji: s.emoji, label: s.label, from, to, onclick: s.href ? `window.location.href='${s.href}'` : `window._navTo('${s.nav}')` }
+        return { key: s.key, id: s.id, emoji: s.emoji, label: s.label, from, to, badge: s.badge, onclick: s.href ? `window.location.href='${s.href}'` : `window._navTo('${s.nav}')` }
       }),
     // ระบบเวร (Wen) เป็นแอปแยกคนละโปรเจกต์/โดเมน — ลิงก์เดียวกับที่อยู่ในกลุ่ม "จอมอนิเตอร์"
     // ด้านล่าง แค่เพิ่มทางลัดซ้ำไว้ตรงนี้ด้วยตามที่ขอ ให้เข้าถึงเร็วขึ้นจากกริดบนสุด
@@ -645,7 +645,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     .map(s => {
       const [from, to] = sidebarTileColors[s.key] || ['#E4E4E7', '#9C9CA3']
       return {
-        key: s.key, show: true, emoji: s.emoji, label: s.label, from, to,
+        key: s.key, id: s.id, show: true, emoji: s.emoji, label: s.label, from, to, badge: s.badge,
         onclick: s.href ? `window.location.href='${s.href}'` : `window._navTo('${s.nav}')`,
       }
     })

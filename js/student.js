@@ -528,13 +528,34 @@ async function _pollStudentRequests() {
   } catch { /* ไม่ crash */ }
 }
 
+let _lastStudentRegradeCount = null
+async function _pollStudentRegrade() {
+  if (!_student?.id) return
+  try {
+    const { count, error } = await supabase.from('regrade_subjects')
+      .select('id', { count: 'exact', head: true })
+      .eq('student_id', _student.id).eq('status', 'กำลังดำเนินการปรับแก้')
+    if (error) throw error
+    const current = Number(count) || 0
+    const tile = document.getElementById('student-regrade-tile')
+    tile?.querySelector('[data-icon-tile-badge]')?.remove()
+    if (tile && current > 0) {
+      tile.insertAdjacentHTML('afterbegin', `<span data-icon-tile-badge class="absolute -top-1 right-1 z-10 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold flex items-center justify-center shadow">${current > 99 ? '99+' : current}</span>`)
+    }
+    if (_lastStudentRegradeCount !== null && current > _lastStudentRegradeCount) {
+      showToast(`🔔 ครูตอบรับงานแก้ค้างเก่าแล้ว ${current - _lastStudentRegradeCount} รายการ`, 'info')
+    }
+    _lastStudentRegradeCount = current
+  } catch { /* ไม่ block หน้าหลัก */ }
+}
+
 function _startStudentPolling() {
   const INTERVAL = 30000
   setInterval(() => {
-    if (document.visibilityState === 'visible') _pollStudentRequests()
+    if (document.visibilityState === 'visible') { _pollStudentRequests(); _pollStudentRegrade() }
   }, INTERVAL)
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') _pollStudentRequests()
+    if (document.visibilityState === 'visible') { _pollStudentRequests(); _pollStudentRegrade() }
   })
 }
 

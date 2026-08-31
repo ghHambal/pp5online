@@ -56,10 +56,57 @@ Deno.serve(async (req: Request) => {
     const isAdmin = callerProfile?.role === 'admin' || callerProfile?.is_also_admin === true
 
     const payload = await req.json()
-    const { title, body: msgBody, url, tag, profileIds, target } = payload
-    if (!title) return new Response(JSON.stringify({ error: 'ต้องระบุ title' }), { status: 400, headers: corsHeaders })
+    let { title, body: msgBody, url, tag } = payload
+    const { profileIds, target, subjectId, event: regradeEvent } = payload
 
     let targetIds: string[] | null = Array.isArray(profileIds) ? profileIds : null
+    const isRegradeTarget = ['regrade_teacher', 'regrade_student'].includes(target)
+
+    // ระบบแก้ค้างเก่า: หาเป้าหมายจากรายการจริงฝั่งเซิร์ฟเวอร์ และตรวจว่าผู้เรียกเป็นเจ้าของ
+    // รายการฝั่งนักเรียน/ครูจริง ไม่เชื่อ profileIds หรือข้อความจาก client
+    if (isRegradeTarget) {
+      // target พิเศษนี้ห้าม client ระบุผู้รับเองโดยเด็ดขาด
+      if (targetIds) return new Response(JSON.stringify({ error: 'ห้ามระบุ profileIds สำหรับระบบแก้ค้างเก่า' }), { status: 400, headers: corsHeaders })
+      const rowId = Number(subjectId)
+      if (!Number.isInteger(rowId) || rowId <= 0) {
+        return new Response(JSON.stringify({ error: 'subjectId ไม่ถูกต้อง' }), { status: 400, headers: corsHeaders })
+      }
+      const { data: row } = await admin.from('regrade_subjects')
+        .select('id, student_id, teacher_id, status, method, due_text, subject_name, subject_code')
+        .eq('id', rowId).maybeSingle()
+      if (!row) return new Response(JSON.stringify({ error: 'ไม่พบรายการแก้ค้างเก่า' }), { status: 404, headers: corsHeaders })
+
+      if (target === 'regrade_teacher') {
+        const { data: callerStudent } = await admin.from('students').select('id').eq('profile_id', user.id).maybeSingle()
+        if (!callerStudent || Number(callerStudent.id) !== Number(row.student_id) || row.status !== 'จำนงแล้ว' || regradeEvent !== 'intent') {
+          return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders })
+        }
+        const { data: recipient } = await admin.from('teachers').select('profile_id').eq('id', row.teacher_id).maybeSingle()
+        targetIds = recipient?.profile_id ? [recipient.profile_id] : []
+        title = '🔔 มีคำร้องแก้ค้างเก่าใหม่'
+        msgBody = `นักเรียนแจ้งขอแก้รายวิชา ${row.subject_name || ''} (${row.subject_code || '-'}) รอคุณครูตอบรับ`
+        tag = `regrade-teacher-${row.id}`
+      } else {
+        const { data: callerTeacher } = await admin.from('teachers').select('id').eq('profile_id', user.id).maybeSingle()
+        const validResponse = regradeEvent === 'response' && row.status === 'กำลังดำเนินการปรับแก้'
+        const validCancel = regradeEvent === 'cancel' && row.status === 'จำนงแล้ว' && !row.method
+        if (!callerTeacher || Number(callerTeacher.id) !== Number(row.teacher_id) || (!validResponse && !validCancel)) {
+          return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders })
+        }
+        const { data: recipient } = await admin.from('students').select('profile_id').eq('id', row.student_id).maybeSingle()
+        targetIds = recipient?.profile_id ? [recipient.profile_id] : []
+        if (validCancel) {
+          title = '↩️ ครูยกเลิกคำตอบแก้ค้างเก่า'
+          msgBody = `รายวิชา ${row.subject_name || ''} (${row.subject_code || '-'}) กลับไปรอครูตอบรับใหม่`
+        } else {
+          title = '📋 ครูตอบรับคำขอแก้ค้างเก่าแล้ว'
+          const methodText = row.method ? ` · ${row.method}` : ''
+          msgBody = `รายวิชา ${row.subject_name || ''} (${row.subject_code || '-'})${methodText} กรุณาเปิดดูรายละเอียดและกำหนดส่ง`
+        }
+        tag = `regrade-student-${row.id}`
+      }
+      url = 'regrade.html'
+    }
 
     // target ที่คำนวณรายชื่อ+สิทธิ์ผ่าน RPC ของระบบย่อยเอง (ดูหมายเหตุด้านบน) — เพิ่ม target ใหม่ที่นี่ได้เรื่อยๆ
     const TERANGGANU_RPC_TARGETS: Record<string, { rpc: string, emptyMessage: string }> = {
@@ -68,7 +115,9 @@ Deno.serve(async (req: Request) => {
     }
     const terangganuTarget = target ? TERANGGANU_RPC_TARGETS[target] : undefined
 
-    if (!targetIds && terangganuTarget) {
+    if (isRegradeTarget) {
+      // ตรวจสิทธิ์และคำนวณผู้รับเสร็จแล้วในบล็อกด้านบน
+    } else if (!targetIds && terangganuTarget) {
       const { data: ids, error: rpcErr } = await supabaseUser.rpc(terangganuTarget.rpc)
       if (rpcErr) return new Response(JSON.stringify({ error: rpcErr.message }), { status: 403, headers: corsHeaders })
       targetIds = Array.isArray(ids) ? ids : []
@@ -131,6 +180,7 @@ Deno.serve(async (req: Request) => {
       }
     }
 
+    if (!title) return new Response(JSON.stringify({ error: 'ต้องระบุ title' }), { status: 400, headers: corsHeaders })
     if (!targetIds || !targetIds.length) {
       return new Response(JSON.stringify({ error: 'ไม่พบกลุ่มเป้าหมาย (ระบุ profileIds หรือ target)' }), { status: 400, headers: corsHeaders })
     }

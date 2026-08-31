@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.617'
+import { APP_VERSION } from './version.js?v=10.22.622'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -563,6 +563,7 @@ window._openReadingScorePicker = (roomsJson) => {
 }
 
 let _lastPendingCount = null
+let _lastRegradePendingCount = null
 
 async function _updateRequestsBadge() {
   if (!_teacher) return
@@ -586,14 +587,47 @@ async function _updateRequestsBadge() {
   } catch { /* ไม่ crash */ }
 }
 
+function _renderLiveRegradeBadge(count) {
+  const normalized = Math.max(0, Number(count) || 0)
+  const label = normalized > 99 ? '99+' : String(normalized)
+  const menu = document.getElementById('menu-regrade')
+  menu?.querySelector('[data-regrade-menu-badge]')?.remove()
+  if (menu && normalized > 0) {
+    menu.insertAdjacentHTML('beforeend', `<span data-regrade-menu-badge class="ml-auto min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold inline-flex items-center justify-center">${label}</span>`)
+  }
+  const tile = document.getElementById('teacher-regrade-overview-tile')
+  tile?.querySelector('[data-icon-tile-badge]')?.remove()
+  if (tile && normalized > 0) {
+    tile.insertAdjacentHTML('afterbegin', `<span data-icon-tile-badge class="absolute -top-1 right-1 z-10 min-w-[20px] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-extrabold flex items-center justify-center shadow">${label}</span>`)
+  }
+  const system = window._teacherOverviewSystems?.find(s => s.key === 'regrade')
+  if (system) system.badge = normalized
+}
+
+async function _updateRegradeBadge() {
+  if (!_teacher) return
+  try {
+    const { count, error } = await supabase.from('regrade_subjects')
+      .select('id', { count: 'exact', head: true })
+      .eq('teacher_id', _teacher.id).eq('status', 'จำนงแล้ว')
+    if (error) throw error
+    const current = Number(count) || 0
+    _renderLiveRegradeBadge(current)
+    if (_lastRegradePendingCount !== null && current > _lastRegradePendingCount) {
+      showToast(`🔔 มีคำร้องแก้ค้างเก่าใหม่ ${current - _lastRegradePendingCount} รายการ`, 'info')
+    }
+    _lastRegradePendingCount = current
+  } catch { /* ไม่ block หน้าหลัก */ }
+}
+
 function _startPolling() {
   const INTERVAL = 30000 // 30 วินาที
   setInterval(() => {
-    if (document.visibilityState === 'visible') _updateRequestsBadge()
+    if (document.visibilityState === 'visible') { _updateRequestsBadge(); _updateRegradeBadge() }
   }, INTERVAL)
   // resume ทันทีเมื่อ user กลับมาที่แท็บ
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') _updateRequestsBadge()
+    if (document.visibilityState === 'visible') { _updateRequestsBadge(); _updateRegradeBadge() }
   })
 }
 
@@ -617,6 +651,7 @@ async function _applyRoleMenus() {
     activeEventRes,
     qrManagerRes,
     regradeCfg,
+    regradePendingRes,
   ] = await Promise.all([
     safe(getSystemConfig(), {}),
     _teacher ? safe(supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle(), { data: null }) : Promise.resolve({ data: null }),
@@ -625,6 +660,7 @@ async function _applyRoleMenus() {
     safe(supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle(), { data: null }),
     safe(supabase.from('qr_reissue_managers').select('profile_id').eq('profile_id', _teacher?.profile_id).maybeSingle(), { data: null }),
     safe(getRegradeConfig(), {}),
+    _teacher ? safe(supabase.from('regrade_subjects').select('id', { count: 'exact', head: true }).eq('teacher_id', _teacher.id).eq('status', 'จำนงแล้ว'), { count: 0 }) : Promise.resolve({ count: 0 }),
   ])
 
   if (!hasPrayer && _teacher) {
@@ -671,6 +707,8 @@ async function _applyRoleMenus() {
   const campAccess = campAccessRes?.data
   toggle('menu-terangganu', campAccess?.is_manager === true || campAccess?.teacher_participant === true)
   toggle('menu-regrade', regradeCfg.visibility?.teacher_menu === true || _isAlsoAdmin)
+  const regradePendingCount = Number(regradePendingRes?.count) || 0
+  _renderLiveRegradeBadge(regradePendingCount)
 
   const sportsMemberships = sportsMembershipsRes?.data || []
   toggle('menu-my-team', sportsMemberships.length > 0)
@@ -699,7 +737,7 @@ async function _applyRoleMenus() {
   window._teacherOverviewSystems = [
     { key: 'council',            show: cfg.council_visible_to_all !== 'false' || _isAlsoAdmin || isExecutive, emoji: '🏛️', label: 'สภา<br>นักเรียน',       href: 'council.html' },
     { key: 'terangganu',         show: campAccess?.is_manager === true || campAccess?.teacher_participant === true, emoji: '⚜️', label: 'ค่าย<br>TERANGGANU', href: 'terangganu.html' },
-    { key: 'regrade',            show: regradeCfg.visibility?.teacher_menu === true || _isAlsoAdmin, emoji: '📋', label: 'แก้ค้าง<br>เก่า',           href: 'regrade.html' },
+    { key: 'regrade', id: 'teacher-regrade-overview-tile', show: regradeCfg.visibility?.teacher_menu === true || _isAlsoAdmin, emoji: '📋', label: 'แก้ค้าง<br>เก่า', href: 'regrade.html', badge: regradePendingCount },
     { key: 'sports',             show: canSeeSports,                          emoji: '🏆', label: 'กีฬาสี',                nav: 'sports' },
     { key: 'certificates',       show: true,                                  emoji: '🏅', label: 'เกียรติ<br>บัตร',          nav: 'certificates' },
     { key: 'advisor-students',   show: hasAdvisorRoom,                        emoji: '👥', label: 'นักเรียน<br>ที่ปรึกษา',      nav: 'advisor-students' },
@@ -710,6 +748,7 @@ async function _applyRoleMenus() {
     { key: 'qr-print',           show: _isQrReissueManager,                   emoji: '🎫', label: 'พิมพ์/คำขอ<br>QR',         nav: 'student-qr-print' },
     { key: 'prayer-score',       show: hasPrayer,                             emoji: '🕌', label: 'คะแนน<br>ศาสนา',           nav: 'prayer-score' },
   ]
+  _lastRegradePendingCount = regradePendingCount
 }
 
 // refresh profile หลัง save
@@ -3152,6 +3191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // บริการประจำหน้าครูใช้ตัวตนครูที่มีผล ทั้งโหมดปกติและสวมบทบาท
   _updateRequestsBadge()
+  _updateRegradeBadge()
   _startPolling()
   if (_teacher?.id) _initDonationFlow(_teacher.id)
   if (_teacher?.id) _checkScheduleLinkPopup()
