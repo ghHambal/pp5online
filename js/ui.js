@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.623'
+import { APP_VERSION } from './version.js?v=10.22.624'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -156,6 +156,72 @@ export function showDangerConfirm({
     // ESC key
     const onKey = e => { if (e.key === 'Escape') { document.removeEventListener('keydown', onKey); cleanup(false) } }
     document.addEventListener('keydown', onKey)
+  })
+}
+
+// ─── Quiz close choice ──────────────────────────────────────────────────────
+// Closing a quiz and publishing its score are separate actions. The safe
+// close-only path is intentionally the primary/default action.
+export function showQuizCloseChoice({
+  quizTitle = 'แบบทดสอบ',
+  targetColumn = '',
+  writeModeLabel = '',
+  hasScoreColumn = false,
+} = {}) {
+  const esc = value => String(value ?? '')
+    .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;').replaceAll("'", '&#039;')
+
+  return new Promise(resolve => {
+    document.getElementById('quiz-close-choice-modal')?.remove()
+
+    const m = document.createElement('div')
+    m.id = 'quiz-close-choice-modal'
+    m.className = 'fixed inset-0 z-[99999] flex items-center justify-center p-4'
+    m.innerHTML = `
+      <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" data-qcc-cancel></div>
+      <div class="relative bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+        <div class="h-1.5 bg-gradient-to-r from-amber-400 via-orange-500 to-red-500"></div>
+        <div class="px-6 pt-6 pb-4">
+          <div class="mx-auto mb-3 w-14 h-14 rounded-full bg-amber-50 border-2 border-amber-100 flex items-center justify-center text-2xl">⏹️</div>
+          <h3 class="text-lg font-extrabold text-gray-900 text-center">ต้องการปิดสอบแบบใด?</h3>
+          <p class="text-sm text-gray-500 text-center mt-1">${esc(quizTitle)}</p>
+          ${hasScoreColumn ? `
+            <div class="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 leading-relaxed">
+              <p><b>คอลัมน์ปลายทาง:</b> ${esc(targetColumn || 'คอลัมน์คะแนนที่เลือกไว้')}</p>
+              <p><b>วิธีเขียน:</b> ${esc(writeModeLabel || 'ตามการตั้งค่าแบบทดสอบ')}</p>
+              <p class="mt-1 font-semibold">การส่งคะแนนอาจเปลี่ยนคะแนนเดิมหรือคะแนนสะสมของนักเรียน</p>
+            </div>` : `
+            <div class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+              แบบทดสอบนี้ไม่ได้ผูกคอลัมน์คะแนน จึงปิดได้โดยไม่กระทบสมุดคะแนน
+            </div>`}
+        </div>
+        <div class="px-6 pb-6 space-y-2.5">
+          <button data-qcc-safe class="w-full py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-sm">
+            🔒 ปิดสอบอย่างเดียว ไม่ส่งคะแนน <span class="text-[10px] opacity-80">(แนะนำ)</span>
+          </button>
+          ${hasScoreColumn ? `
+            <button data-qcc-write class="w-full py-3 rounded-2xl border-2 border-red-200 bg-red-50 hover:bg-red-100 text-red-700 text-sm font-bold">
+              ⚠️ ปิดสอบและส่งคะแนนเข้าสมุดคะแนน
+            </button>` : ''}
+          <button data-qcc-cancel class="w-full py-2.5 rounded-2xl border border-gray-200 text-gray-500 text-sm font-semibold hover:bg-gray-50">ยกเลิก</button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+
+    let settled = false
+    const cleanup = result => {
+      if (settled) return
+      settled = true
+      document.removeEventListener('keydown', onKey)
+      m.remove()
+      resolve(result)
+    }
+    const onKey = e => { if (e.key === 'Escape') cleanup(null) }
+    document.addEventListener('keydown', onKey)
+    m.querySelector('[data-qcc-safe]').addEventListener('click', () => cleanup('close_only'))
+    m.querySelector('[data-qcc-write]')?.addEventListener('click', () => cleanup('write_scores'))
+    m.querySelectorAll('[data-qcc-cancel]').forEach(el => el.addEventListener('click', () => cleanup(null)))
   })
 }
 
@@ -781,6 +847,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.624': [
+    '🛡️ ระบบแบบทดสอบ: ปิดสอบอย่างเดียวโดยไม่ส่งคะแนนเป็นตัวเลือกแนะนำ แยกจากปิดพร้อมส่งคะแนนอย่างชัดเจน พร้อมคำสั่งส่งคะแนนย้อนหลัง และแก้โหมดบวกเพิ่ม/ทับ/เก็บค่าสูงสุดให้ฐานข้อมูลทำงานตรงกับหน้าตั้งค่าจริง โดยโหมดบวกเพิ่มใช้เฉพาะส่วนต่างจึงไม่บวกซ้ำและไม่ทำลายคะแนนระหว่างเรียนที่ครูสะสมไว้',
+  ],
   '10.22.623': [
     '📷 หน้าครู: ปรับปุ่มกล้องด้านบนเป็นสีเรียบ ใช้อิโมจิและเงามิติแบบไม่เงาวาว พร้อมแก้ปุ่มเช็คชื่อหน้าภาพรวมให้โหลดห้องเรียนผ่านข้อมูลชุดเดียวกับระบบหลักและรองรับครูผู้ร่วมสอน',
   ],

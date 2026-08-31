@@ -104,10 +104,23 @@ export async function startQuizLive(id) {
   if (error) throw error
 }
 
-export async function closeQuiz(id) {
-  // Also auto-finalizes any still-in-progress attempts, not just the quiz status.
-  const { error } = await supabase.rpc('teacher_close_quiz_and_finalize', { p_quiz_id: id })
+export async function closeQuiz(id, { writeScores = false } = {}) {
+  // Safe by default: closing and publishing scores are separate decisions.
+  // Both RPCs finalize still-in-progress attempts; only the explicit
+  // writeScores path is allowed to touch student_scores.
+  const rpcName = writeScores
+    ? 'teacher_close_quiz_and_finalize'
+    : 'teacher_close_quiz_without_gradebook'
+  const { error } = await supabase.rpc(rpcName, { p_quiz_id: id })
   if (error) throw error
+}
+
+export async function applyQuizScores(id) {
+  // Idempotent on the server. In add mode only the contribution difference is
+  // applied, so pressing this again cannot double-add the same quiz score.
+  const { data, error } = await supabase.rpc('teacher_apply_quiz_scores', { p_quiz_id: id })
+  if (error) throw error
+  return Number(data ?? 0)
 }
 
 export async function deleteQuiz(id) {

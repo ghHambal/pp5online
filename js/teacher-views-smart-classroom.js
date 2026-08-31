@@ -30,7 +30,7 @@ import { openQuizAnalytics } from './teacher-views-quiz-analytics.js'
 import { openClassDashboard } from './teacher-views-dashboard.js'
 import { openTimerModal } from './timer-overlay.js'
 import { _openRandomPickerModal, renderClassDetail } from './teacher-views-classes.js'
-import { showToast } from './ui.js'
+import { showToast, showQuizCloseChoice } from './ui.js'
 import { uploadAssignmentFile } from './storage.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek } from './teacher-views-utils.js'
 import { supabase } from './supabase.js'
@@ -1562,7 +1562,26 @@ export async function renderSmartClassroom(teacher, classId) {
       const q = quizzes.find(x => x.id === monitorBtn.dataset.qid)
       if (q) openQuizMonitor(q)
     } else if (closeBtn) {
-      try { await closeQuiz(closeBtn.dataset.qid); showToast('ปิดสอบแล้ว', 'success'); _reload() }
+      const q = quizzes.find(x => x.id === closeBtn.dataset.qid)
+      if (!q) return
+      const target = scoreColumns.find(c => String(c.id) === String(q.score_column_id))
+      const quizWriteModeLabel = {
+        highest: 'เทียบเอาคะแนนสูงกว่า',
+        overwrite: 'ทับคะแนนเก่า',
+        add: 'บวกเพิ่มจากคะแนนเดิม',
+      }[q.score_write_mode] ?? 'ตามการตั้งค่าแบบทดสอบ'
+      const choice = await showQuizCloseChoice({
+        quizTitle: q.title,
+        hasScoreColumn: Boolean(q.score_column_id),
+        targetColumn: target?.assignment_name ?? '',
+        writeModeLabel: quizWriteModeLabel,
+      })
+      if (!choice) return
+      try {
+        await closeQuiz(q.id, { writeScores: choice === 'write_scores' })
+        showToast(choice === 'write_scores' ? 'ปิดสอบและส่งคะแนนแล้ว' : 'ปิดสอบแล้ว — สมุดคะแนนไม่ถูกเปลี่ยน', 'success')
+        _reload()
+      }
       catch (err) { showToast('ปิดสอบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
     } else if (analyticsBtn) {
       const q = quizzes.find(x => x.id === analyticsBtn.dataset.qid)

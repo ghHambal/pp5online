@@ -1,7 +1,7 @@
 // js/teacher-views-quiz-config.js
 import { getMyClasses, getScoreColumns, getSystemConfig } from './api.js'
-import { getQuizzesForBank, getQuizQuestions, createQuiz, updateQuiz, startQuizLive, closeQuiz, deleteQuiz, getTeacherStartedQuizCount } from './quiz-api.js'
-import { showToast, showDangerConfirm, setButtonLoading } from './ui.js'
+import { getQuizzesForBank, getQuizQuestions, createQuiz, updateQuiz, startQuizLive, closeQuiz, applyQuizScores, deleteQuiz, getTeacherStartedQuizCount } from './quiz-api.js'
+import { showToast, showDangerConfirm, showQuizCloseChoice, setButtonLoading } from './ui.js'
 import { setContent, setTitle, _htmlEsc, SELECT_CLS, INPUT_CLS } from './teacher-views-utils.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 
@@ -91,6 +91,7 @@ export async function renderBankQuizzes(teacher, bank, preferredClassId = null) 
                 ${q.status === 'started' ? `<button class="btn-close-quiz px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold" data-id="${q.id}">⏹️ ปิดสอบ</button>` : ''}
                 ${q.status === 'started' ? `<button class="btn-monitor-quiz px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold" data-id="${q.id}">🔴 ดูสด</button>` : ''}
                 ${(q.status === 'started' || q.status === 'closed') ? `<button class="btn-analytics-quiz px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold" data-id="${q.id}">📊 สถิติ</button>` : ''}
+                ${(q.status === 'closed' && q.score_column_id) ? `<button class="btn-apply-quiz-score px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold" data-id="${q.id}">📥 ส่งคะแนนย้อนหลัง</button>` : ''}
                 <button class="btn-preview-quiz px-3 py-1.5 rounded-lg border border-indigo-200 text-indigo-600 hover:bg-indigo-50 text-xs font-semibold" data-id="${q.id}">🧪 ทดลองทำข้อสอบ</button>
                 <button class="btn-edit-quiz px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 text-xs font-semibold" data-id="${q.id}">✏️ แก้ไข</button>
                 <button class="btn-delete-quiz px-3 py-1.5 rounded-lg border border-red-100 text-red-500 hover:bg-red-50 text-xs font-semibold" data-id="${q.id}">🗑️ ลบ</button>
@@ -132,15 +133,38 @@ export async function renderBankQuizzes(teacher, bank, preferredClassId = null) 
 
   document.querySelectorAll('.btn-close-quiz').forEach(btn =>
     btn.addEventListener('click', async () => {
+      const quiz = quizzes.find(q => q.id === btn.dataset.id)
+      if (!quiz) return
+      const cols = quiz.score_column_id ? await getScoreColumns(quiz.class_id).catch(() => []) : []
+      const target = cols.find(c => String(c.id) === String(quiz.score_column_id))
+      const choice = await showQuizCloseChoice({
+        quizTitle: quiz.title,
+        hasScoreColumn: Boolean(quiz.score_column_id),
+        targetColumn: target?.assignment_name ?? '',
+        writeModeLabel: WRITE_MODE_LABEL[quiz.score_write_mode]?.label ?? '',
+      })
+      if (!choice) return
+      await closeQuiz(btn.dataset.id, { writeScores: choice === 'write_scores' })
+      showToast(choice === 'write_scores' ? 'ปิดสอบและส่งคะแนนแล้ว' : 'ปิดสอบแล้ว — สมุดคะแนนไม่ถูกเปลี่ยน', 'success')
+      renderBankQuizzes(teacher, bank)
+    }))
+
+  document.querySelectorAll('.btn-apply-quiz-score').forEach(btn =>
+    btn.addEventListener('click', async () => {
+      const quiz = quizzes.find(q => q.id === btn.dataset.id)
+      if (!quiz?.score_column_id) return
+      const cols = await getScoreColumns(quiz.class_id).catch(() => [])
+      const target = cols.find(c => String(c.id) === String(quiz.score_column_id))
+      const mode = WRITE_MODE_LABEL[quiz.score_write_mode]?.label ?? 'ตามการตั้งค่า'
       const ok = await showDangerConfirm({
-        title: 'ปิดสอบเลยหรือไม่?',
-        message: 'นักเรียนที่ยังไม่ได้เริ่มสอบจะเข้าทำแบบทดสอบนี้ไม่ได้อีก',
-        confirmText: 'ปิดสอบ'
+        title: 'ส่งคะแนนข้อสอบย้อนหลัง?',
+        message: `ระบบจะนำคะแนน “${quiz.title}” ไปยังคอลัมน์ “${target?.assignment_name ?? 'คอลัมน์ที่ผูกไว้'}”`,
+        detail: `วิธีเขียน: ${mode} · โหมดบวกเพิ่มจะเพิ่มเฉพาะส่วนต่าง จึงกดซ้ำแล้วไม่บวกคะแนนเดิมซ้ำ`,
+        confirmText: 'ส่งคะแนน'
       })
       if (!ok) return
-      await closeQuiz(btn.dataset.id)
-      showToast('ปิดสอบแล้ว', 'success')
-      renderBankQuizzes(teacher, bank)
+      const count = await applyQuizScores(quiz.id)
+      showToast(`ส่งคะแนนแล้ว ${count} คน`, 'success')
     }))
 
   document.querySelectorAll('.btn-delete-quiz').forEach(btn =>
