@@ -33,10 +33,86 @@ export async function renderMyCourses(teacher) {
       teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
     ])
     const subjects_orig = subjects // keep for compat
+    const courseClasses = subjectId => allClasses.filter(c => Number(c.course_id ?? c.master_subjects?.id) === Number(subjectId))
+    const fmtNumber = value => Number.isInteger(value) ? String(value) : Number(value).toFixed(1).replace(/\.0$/, '')
+    const courseStats = subject => {
+      const credit = Number(subject.credit)
+      const hasCredit = Number.isFinite(credit) && credit > 0
+      return {
+        roomCount: courseClasses(subject.id).length,
+        credit: hasCredit ? fmtNumber(credit) : '—',
+        periodsPerWeek: hasCredit ? fmtNumber(credit * 2) : '—',
+        periodsPerTerm: hasCredit ? fmtNumber(credit * 40) : '—',
+      }
+    }
+    const groupKey = subject => String(subject.dept ?? subject.subject_group ?? '').trim() || 'รายวิชาอื่น ๆ'
+    const groupedSubjects = [...subjects.reduce((groups, subject) => {
+      const key = groupKey(subject)
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(subject)
+      return groups
+    }, new Map()).entries()].sort(([a], [b]) => a.localeCompare(b, 'th', { numeric: true }))
+    const statTile = (icon, value, label, tone) => `<div class="rounded-xl border ${tone} px-3 py-2.5 min-w-0">
+      <div class="flex items-center gap-2"><span class="text-base">${icon}</span><strong class="text-lg leading-none text-gray-800">${value}</strong></div>
+      <p class="mt-1 text-[10px] font-semibold text-gray-500">${label}</p>
+    </div>`
+    const renderCourseCard = subject => {
+      const stats = courseStats(subject)
+      return `<article class="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-emerald-200 transition overflow-hidden">
+        <div class="p-4 sm:p-5">
+          <div class="flex items-start justify-between gap-3">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">${_htmlEsc(subject.subject_code ?? '—')}</span>
+                ${subject.dept ? `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg">${_htmlEsc(subject.dept)}</span>` : ''}
+              </div>
+              <h3 class="mt-2 text-base sm:text-lg font-extrabold text-gray-900 leading-snug">${_htmlEsc(subject.subject_name)}</h3>
+              <p class="mt-1 text-xs text-gray-400">ระดับชั้น ${_htmlEsc(subject.grade_level ?? 'ไม่ระบุ')}</p>
+            </div>
+            <div class="flex-shrink-0 w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-50 to-blue-50 flex items-center justify-center text-xl">📚</div>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+            ${statTile('🏫', stats.roomCount, 'ห้องที่เปิดแล้ว', 'border-emerald-100 bg-emerald-50/50')}
+            ${statTile('🎓', stats.credit, 'หน่วยกิต', 'border-blue-100 bg-blue-50/50')}
+            ${statTile('🗓️', stats.periodsPerWeek, 'คาบ / สัปดาห์', 'border-amber-100 bg-amber-50/50')}
+            ${statTile('⏱️', stats.periodsPerTerm, 'คาบ / ภาคเรียน', 'border-violet-100 bg-violet-50/50')}
+          </div>
+
+          <div class="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
+            <button class="course-workspace-btn min-h-[44px] rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-bold px-4 flex items-center justify-center gap-2 shadow-sm"
+              data-sid="${subject.id}">📘 กำหนดการสอนและแผนหน้าเดียว</button>
+            <button onclick="window._openRegisterClass(${subject.id})"
+              class="min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 flex items-center justify-center gap-2">＋ เปิดห้องเรียน</button>
+          </div>
+        </div>
+
+        <details class="border-t border-gray-100 group">
+          <summary class="list-none cursor-pointer px-4 sm:px-5 py-3 flex items-center justify-between text-xs font-bold text-gray-600 hover:bg-gray-50 select-none">
+            <span>เครื่องมือและเอกสารของรายวิชา</span><span class="text-gray-400 group-open:rotate-180 transition">⌄</span>
+          </summary>
+          <div class="px-4 sm:px-5 pb-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <button class="ccm-open-btn min-h-[40px] text-xs text-indigo-700 font-semibold border border-indigo-100 bg-indigo-50/50 rounded-xl hover:bg-indigo-50" data-sid="${subject.id}" data-sname="${_htmlEsc(subject.subject_name)}">⚙️ คอลัมน์คะแนน</button>
+            <button onclick="window._openCourseDocPage2(${subject.id})" class="min-h-[40px] text-xs text-emerald-700 font-semibold border border-emerald-100 bg-emerald-50/50 rounded-xl hover:bg-emerald-50">📝 คำอธิบายรายวิชา</button>
+            <button class="lesson-plan-btn min-h-[40px] text-xs text-sky-700 font-semibold border border-sky-100 bg-sky-50/50 rounded-xl hover:bg-sky-50" data-sid="${subject.id}">📋 ใบขออนุญาต</button>
+            <button class="pp5-course-btn min-h-[40px] text-xs text-violet-700 font-semibold border border-violet-100 bg-violet-50/50 rounded-xl hover:bg-violet-50" data-sid="${subject.id}">💾 เอกสาร ปพ.5</button>
+          </div>
+          <div class="px-4 sm:px-5 py-3 border-t border-gray-100 bg-gray-50/70 flex items-center justify-end gap-2 flex-wrap">
+            <button onclick="window._copyCourse(${subject.id})" class="min-h-[36px] px-3 rounded-lg border bg-white text-xs font-semibold text-purple-700 hover:bg-purple-50">📋 ทำสำเนา</button>
+            <button onclick="window._editCourse(${subject.id})" class="min-h-[36px] px-3 rounded-lg border bg-white text-xs font-semibold text-gray-600 hover:bg-gray-100">✏️ แก้ไข</button>
+            <button class="cd2-del-course-btn min-h-[36px] px-3 rounded-lg border border-red-100 bg-white text-xs font-semibold text-red-500 hover:bg-red-50" data-id="${subject.id}" data-name="${_htmlEsc(subject.subject_name)}">🗑️ ลบ</button>
+          </div>
+        </details>
+      </article>`
+    }
     setContent(`<div class="animate-fade">
-      <div class="flex justify-end mb-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+        <div>
+          <p class="text-sm font-bold text-gray-700">รายวิชาที่เปิดสอน ${subjects.length} คอร์ส · ${allClasses.length} ห้องเรียน</p>
+          <p class="text-xs text-gray-400 mt-1">จำนวนคาบคำนวณตามโครงสร้างหลักสูตร 1 หน่วยกิต = 2 คาบต่อสัปดาห์ = 40 คาบต่อภาคเรียน</p>
+        </div>
         <button onclick="window._openCourseForm()"
-          class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl flex items-center gap-2">
+          class="btn-primary min-h-[44px] px-5 py-2.5 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 flex-shrink-0">
           <span>＋</span> เปิดคอร์สใหม่
         </button>
       </div>
@@ -46,72 +122,15 @@ export async function renderMyCourses(teacher) {
         <p class="font-medium">ยังไม่มีคอร์สวิชา</p>
         <p class="text-xs mt-1">กดปุ่ม "เปิดคอร์สใหม่" เพื่อเริ่มต้น</p>
       </div>` : `
-      <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden">
-        <table class="w-full text-sm">
-          <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
-            <tr>
-              <th class="px-4 py-3 text-left">รหัส / ชื่อวิชา</th>
-              <th class="px-4 py-3 text-left hidden sm:table-cell">กลุ่มสาระ</th>
-              <th class="px-4 py-3 text-center hidden md:table-cell">ชั้น</th>
-              <th class="px-4 py-3 text-center hidden md:table-cell">กิต</th>
-              <th class="px-4 py-3 text-right">จัดการ</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-50">
-            ${subjects.map(s=>`
-            <tr class="hover:bg-gray-50 transition">
-              <td class="px-4 py-3">
-                <p class="font-semibold text-gray-800">${s.subject_name}</p>
-                <p class="text-xs font-mono text-indigo-500">${s.subject_code??'—'}</p>
-              </td>
-              <td class="px-4 py-3 hidden sm:table-cell">
-                ${s.dept?`<span class="px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700">${s.dept}</span>`:'—'}
-              </td>
-              <td class="px-4 py-3 text-center text-xs text-gray-500 hidden md:table-cell">${s.grade_level??'—'}</td>
-              <td class="px-4 py-3 text-center text-xs text-gray-500 hidden md:table-cell">${s.credit??'—'}</td>
-              <td class="px-4 py-3 text-right">
-                <div class="flex items-center justify-end gap-1 flex-wrap">
-                  <button class="course-workspace-btn text-xs bg-blue-700 text-white px-3 py-1.5 rounded-lg hover:bg-blue-800 font-bold shadow-sm"
-                    data-sid="${s.id}">
-                    📘 กำหนดการ/แผน
-                  </button>
-                  <button onclick="window._openRegisterClass(${s.id})"
-                    class="text-xs bg-emerald-600 text-white px-2 py-1.5 rounded-lg hover:bg-emerald-700">
-                    ＋ห้อง
-                  </button>
-                  <button class="ccm-open-btn text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1.5 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition"
-                    data-sid="${s.id}" data-sname="${_htmlEsc(s.subject_name)}">
-                    ⚙️ คอลัมน์
-                  </button>
-                  <button onclick="window._openCourseDocPage2(${s.id})"
-                    class="text-xs text-emerald-700 hover:text-emerald-900 font-medium px-2 py-1.5 border border-emerald-200 rounded-lg hover:bg-emerald-50">
-                    คำอธิบายฯ
-                  </button>
-                  <button class="lesson-plan-btn text-xs text-sky-700 hover:text-sky-900 font-medium px-2 py-1.5 border border-sky-200 rounded-lg hover:bg-sky-50 transition"
-                    data-sid="${s.id}">
-                    📋 ใบขออนุญาต
-                  </button>
-                  <button class="pp5-course-btn text-xs text-violet-700 hover:text-violet-900 font-medium px-2 py-1.5 border border-violet-200 rounded-lg hover:bg-violet-50 transition"
-                    data-sid="${s.id}">
-                    💾 ปพ.5
-                  </button>
-                  <button onclick="window._copyCourse(${s.id})"
-                    class="text-xs text-purple-600 hover:text-purple-800 font-medium px-2 py-1.5 border border-purple-200 rounded-lg hover:bg-purple-50 transition">
-                    📋 ทำสำเนา
-                  </button>
-                  <button onclick="window._editCourse(${s.id})"
-                    class="text-xs text-gray-500 hover:text-gray-700 font-medium px-2 py-1.5 border border-gray-200 rounded-lg">
-                    แก้ไข
-                  </button>
-                  <button class="cd2-del-course-btn text-xs text-red-400 hover:text-red-600 font-medium px-2 py-1.5 border border-red-100 rounded-lg"
-                    data-id="${s.id}" data-name="${_htmlEsc(s.subject_name)}">
-                    ลบ
-                  </button>
-                </div>
-              </td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
+      <div class="space-y-7">
+        ${groupedSubjects.map(([group, courses]) => `<section>
+          <div class="flex items-center gap-3 mb-3">
+            <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">🏷️</div>
+            <div><h2 class="font-extrabold text-gray-800">กลุ่มสาระ ${_htmlEsc(group)}</h2><p class="text-[11px] text-gray-400">${courses.length} คอร์ส · ${courses.reduce((sum, course) => sum + courseClasses(course.id).length, 0)} ห้องเรียน</p></div>
+            <div class="h-px bg-gray-200 flex-1"></div>
+          </div>
+          <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">${courses.map(renderCourseCard).join('')}</div>
+        </section>`).join('')}
       </div>`}
     </div>`)
 
