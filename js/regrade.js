@@ -522,7 +522,7 @@ async function handleDeclare(btn) {
 // ฝั่งครู
 // ============================================================================
 const teacher = {
-  subView: 'overview', subjects: [], form: null,
+  subView: 'overview', subjects: [], form: null, editingResponseId: null,
   catalogExpanded: new Set(), catalogSemesterFilter: {},
   assignedExpanded: new Set(), assignedSemesterFilter: {},
   deptHeadExpanded: new Set(), unassigned: [], deptHeadTeacherOptions: null,
@@ -643,6 +643,16 @@ async function renderTeacher() {
   document.getElementById('regrade-teacher-fab')?.addEventListener('click', () => { teacher.subView = 'respond'; renderTeacher() })
   document.getElementById('regrade-teacher-back')?.addEventListener('click', () => { teacher.subView = 'overview'; renderTeacher() })
   content.querySelectorAll('[data-deadline-cta]').forEach(btn => btn.addEventListener('click', () => { teacher.subView = btn.dataset.deadlineCta; renderTeacher() }))
+  content.querySelectorAll('[data-edit-response]').forEach(btn => btn.addEventListener('click', () => {
+    teacher.form = null
+    teacher.editingResponseId = Number(btn.dataset.editResponse)
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-close-edit-response]').forEach(btn => btn.addEventListener('click', () => {
+    teacher.form = null
+    teacher.editingResponseId = null
+    renderTeacher()
+  }))
   content.querySelectorAll('[data-open-exam]').forEach(btn => btn.addEventListener('click', () => {
     const row = all.find(x => x.id === Number(btn.dataset.openExam)); if (row) openTeacherResponseForm(row, 'นัดสอบปรับ'); renderTeacher()
   }))
@@ -761,6 +771,11 @@ function catalogStudentRow(x) {
 
 function assignedStudentRow(x) {
   const name = x.students?.full_name || '-'
+  const f = teacher.form
+  const isEditing = Number(teacher.editingResponseId) === Number(x.id)
+  const openExam = f && Number(f.id) === Number(x.id) && f.method === 'นัดสอบปรับ'
+  const openWork = f && Number(f.id) === Number(x.id) && f.method === 'ให้งานแก้'
+  const safeFileUrl = /^https:\/\//i.test(x.file_url || '') ? x.file_url : ''
   return `
   <div class="p-2.5 rounded-xl bg-[var(--surface-2)]">
     <div class="flex items-center gap-2.5">
@@ -769,13 +784,28 @@ function assignedStudentRow(x) {
         <p class="text-xs font-bold text-[var(--ink)] truncate">${escHtml(name)}</p>
         <p class="text-[10px] text-[var(--muted-2)] truncate">${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || x.students?.religion_room || '')} · ${escHtml(x.semester)}</p>
       </div>
-      <button data-print-slip="${x.id}" class="flex-shrink-0 px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-[10px] font-bold text-[var(--ink-2)]">🖨️ ใบสั้น</button>
+      <span class="flex-shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${badgeStyle(x.status)}">ตอบรับแล้ว</span>
     </div>
     <div class="mt-2 rounded-lg p-2" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
       <p class="text-[11px] font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
       <p class="text-[11px] mt-0.5" style="color:var(--info)">กำหนด: ${escHtml(formatRegradeDue(x.due_text))}</p>
     </div>
-    ${teacherResponseActionsHtml(x)}
+    <div class="grid ${safeFileUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-2 mt-2">
+      ${safeFileUrl ? `<a href="${escHtml(safeFileUrl)}" target="_blank" rel="noopener" class="py-2 rounded-xl border border-[var(--info-soft-line)] text-[var(--info)] text-xs font-bold text-center">📎 เปิดไฟล์งาน ↗</a>` : ''}
+      <button data-print-slip="${x.id}" class="py-2 rounded-xl border border-[var(--line)] text-[var(--ink-2)] text-xs font-bold">🖨️ ใบสั้น</button>
+    </div>
+    ${!isEditing ? `
+      <button data-edit-response="${x.id}" class="mt-2 w-full py-2 rounded-xl text-xs font-bold" style="background:var(--primary-soft);color:var(--primary-dark);border:1px solid var(--primary-soft-line)">✏️ แก้ไข</button>
+    ` : (!openExam && !openWork ? `
+      <p class="text-[10px] font-bold text-[var(--muted-2)] mt-3">เลือกวิธีที่ต้องการแก้ไข</p>
+      <div class="flex gap-2 mt-1.5">
+        <button data-open-exam="${x.id}" class="flex-1 py-2 rounded-xl text-xs font-bold" style="background:var(--info-soft);color:var(--info);border:1px solid var(--info-soft-line)">🗓 นัดสอบปรับ</button>
+        <button data-open-work="${x.id}" class="flex-1 py-2 rounded-xl text-xs font-bold" style="background:var(--gold-soft);color:var(--gold-ink);border:1px solid var(--gold-soft-line)">📎 ให้งานแก้</button>
+      </div>
+      <button data-close-edit-response class="mt-2 w-full py-2 rounded-xl text-xs font-bold bg-[var(--surface)] text-[var(--muted)]">ปิดการแก้ไข</button>
+    ` : '')}
+    ${openExam ? teacherResponseFormHtml(x, f, true) : ''}
+    ${openWork ? teacherResponseFormHtml(x, f, false) : ''}
   </div>`
 }
 
@@ -968,6 +998,7 @@ async function handleAssign(btn) {
     await assignWork(id, { method: f.method, dueText, fileUrl })
     showToast(f.editing ? 'แก้ไขคำตอบแล้ว ใบสั้นจะใช้ข้อมูลล่าสุดอัตโนมัติ ✅' : 'บันทึกการมอบหมายเรียบร้อย ✅', 'success')
     teacher.form = null
+    teacher.editingResponseId = null
     renderTeacher()
   } catch (err) {
     btn.disabled = false
@@ -987,6 +1018,7 @@ async function handleCancelResponse(btn) {
   try {
     await cancelAssignedWork(id)
     teacher.form = null
+    teacher.editingResponseId = null
     showToast('ยกเลิกคำตอบแล้ว รายการกลับไปรอตอบรับใหม่เรียบร้อย', 'success')
     renderTeacher()
   } catch (err) { showToast('ยกเลิกคำตอบไม่สำเร็จ: ' + err.message, 'error') }
