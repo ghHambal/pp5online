@@ -52,7 +52,7 @@ function _smartClassroomMinTier(cfg) {
 // ตั้งแบบ fire-and-forget ไม่มีจุดไหน await คอยแน่นอนก่อนหน้านี้ — ยืนยันด้วย debug จริงแล้วว่า
 // ค่า global ยังเป็นค่าเริ่มต้น (tier=0, cfg={}) ได้แม้ init() หน้าอื่นจะรันไปไกลแล้วก็ตาม
 // (เช่น ตอนคลิกจากการ์ดห้องเรียนหลังนำทางไปมาหลายหน้า) ในขณะที่ query สดตรงๆ ถูกต้องเสมอ
-async function _resolveSmartClassroomAccess(teacher) {
+export async function resolveSmartClassroomAccess(teacher) {
   const cfg = await getSystemConfig().catch(() => window._pp5SystemCfg ?? {})
   const minTier = _smartClassroomMinTier(cfg)
   let tierIndex = window._pp5DonorTierIndex ?? 0
@@ -206,7 +206,7 @@ export async function findCurrentOrNextClass(teacher) {
 // ครูระดับ 4+ ที่ติ๊ก "ไม่ต้องโชว์อีก" จะข้ามป๊อบอัพนี้ไปเปิดคลาสรูมอัตโนมัติทันทีในครั้งถัดไป
 // ครูที่ยังไม่ถึงระดับจะเห็นป๊อบอัพนี้ทุกครั้งที่กด (ไม่มีปุ่มข้าม) พร้อมปุ่มไปหน้าสนับสนุนโครงการ
 export async function openSmartClassroomLanding(teacher) {
-  const { cfg, minTier, unlocked } = await _resolveSmartClassroomAccess(teacher)
+  const { cfg, minTier, unlocked } = await resolveSmartClassroomAccess(teacher)
 
   if (unlocked && localStorage.getItem(SC_SKIP_POPUP_KEY) === '1') {
     _launchAuto(teacher)
@@ -304,7 +304,7 @@ export async function renderSmartClassroom(teacher, classId) {
     </svg>
   </div>`)
 
-  const { cfg, minTier, unlocked, donationRequests: _scDonationRequests } = await _resolveSmartClassroomAccess(teacher)
+  const { cfg, minTier, unlocked, donationRequests: _scDonationRequests } = await resolveSmartClassroomAccess(teacher)
 
   if (!canUseSmartClassroomForClass(unlocked, teacher, classId)) {
     const freeClassId = teacher?.smart_classroom_free_class_id
