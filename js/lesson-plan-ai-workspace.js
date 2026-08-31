@@ -95,66 +95,58 @@ function validatePayload(raw, mode) {
   return data
 }
 
-export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek, onSaved }) {
+export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek, initialMode = 'plan', onSaved }) {
   document.getElementById('lp-ai-workspace')?.remove()
   const m = document.createElement('div')
   m.id = 'lp-ai-workspace'
   m.className = 'fixed inset-0 z-[97] bg-black/60 flex items-center justify-center p-3'
-  let mode = 'plan'
+  const mode = initialMode === 'schedule' ? 'schedule' : 'plan'
+  const isSchedule = mode === 'schedule'
   let files = []
   m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
     <div class="flex items-start justify-between gap-3 mb-4">
-      <div><h3 class="font-extrabold text-gray-800">🤖 ผู้ช่วยสร้างเอกสารด้วย AI ส่วนตัว</h3><p class="text-xs text-gray-400 mt-1">สร้าง Prompt → ใช้กับ AI ที่ครูเลือก → นำ JSON กลับมาวาง → ระบบสร้างเอกสาร</p></div>
+      <div><span class="inline-flex px-2.5 py-1 rounded-full ${isSchedule ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'} text-[10px] font-extrabold mb-2">${isSchedule ? '📘 กำหนดการสอน' : '📝 แผนหน้าเดียว'}</span><h3 class="font-extrabold text-gray-800 text-lg">${isSchedule ? 'สร้างกำหนดการสอนด้วย AI' : 'สร้างแผนการสอนหน้าเดียวด้วย AI'}</h3><p class="text-xs text-gray-400 mt-1">สร้าง Prompt → ใช้กับ AI ที่ครูเลือก → นำ JSON กลับมาวาง → ระบบสร้าง${isSchedule ? 'กำหนดการสอน' : 'แผนการสอน'}</p></div>
       <button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button>
     </div>
-    <div class="grid grid-cols-2 gap-2 mb-4">
-      <button data-mode="plan" class="lp-ai-mode min-h-[44px] rounded-xl border font-bold text-xs">📝 แผนหน้าเดียว</button>
-      <button data-mode="schedule" class="lp-ai-mode min-h-[44px] rounded-xl border font-bold text-xs">📘 กำหนดการสอน</button>
-    </div>
-    <div class="grid sm:grid-cols-3 gap-2 mb-3">
+    ${isSchedule ? `<div class="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 mb-4"><p class="text-sm font-bold text-blue-800">สร้างโครงสร้างทั้งภาคเรียนในครั้งเดียว</p><p class="text-[11px] text-blue-600 mt-1">AI จะจัดช่วงสัปดาห์ หัวข้อ วิธีสอน และหมายเหตุตามเอกสารหลักสูตรหรือแบบฟอร์มที่แนบ</p></div>` : `<div class="grid sm:grid-cols-3 gap-2 mb-3">
       <label class="text-xs font-bold text-gray-500">สัปดาห์<input id="lp-ai-week" type="number" min="1" value="${currentWeek || 1}" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
       <label class="text-xs font-bold text-gray-500">ครั้งที่สอน<input id="lp-ai-session" type="number" min="1" value="1" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
       <label class="text-xs font-bold text-gray-500">เวลา (นาที)<input id="lp-ai-duration" type="number" min="1" value="100" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
     </div>
-    <label class="block text-xs font-bold text-gray-500 mb-3">เรื่องที่ต้องการสร้าง<input id="lp-ai-topic" value="${esc((syllabusItems ?? []).find(x => currentWeek >= x.week_start && currentWeek <= x.week_end)?.topic ?? '')}" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal" placeholder="เว้นว่างเพื่อให้ AI ยึดจากกำหนดการสอน"></label>
-    <div class="rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/50 p-4 mb-3">
-      <p class="text-xs font-bold text-indigo-700">📎 เอกสารประกอบสำหรับ AI</p>
+    <label class="block text-xs font-bold text-gray-500 mb-3">เรื่องที่ต้องการสร้าง<input id="lp-ai-topic" value="${esc((syllabusItems ?? []).find(x => currentWeek >= x.week_start && currentWeek <= x.week_end)?.topic ?? '')}" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal" placeholder="เว้นว่างเพื่อให้ AI ยึดจากกำหนดการสอน"></label>`}
+    <div class="rounded-2xl border border-dashed ${isSchedule ? 'border-blue-200 bg-blue-50/50' : 'border-violet-200 bg-violet-50/50'} p-4 mb-3">
+      <p class="text-xs font-bold ${isSchedule ? 'text-blue-700' : 'text-violet-700'}">📎 เอกสารประกอบสำหรับ AI</p>
       <p class="text-[11px] text-gray-500 mt-1">เลือกหนังสือเรียน หลักสูตร หรือต้นแบบ ระบบจะใส่ชื่อไฟล์ใน Prompt ไฟล์ยังอยู่บนเครื่องและต้องแนบไฟล์เดียวกันให้ AI ด้วย</p>
       <input id="lp-ai-files" type="file" multiple accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg" class="mt-3 text-xs w-full">
       <div id="lp-ai-file-list" class="text-[11px] text-gray-500 mt-2"></div>
     </div>
-    <button id="lp-ai-generate" class="w-full py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">⚡ สร้าง Prompt เฉพาะครั้งสอน</button>
+    <button id="lp-ai-generate" class="w-full min-h-[48px] rounded-xl ${isSchedule ? 'bg-blue-700' : 'bg-violet-700'} text-white font-bold text-sm">⚡ ${isSchedule ? 'สร้าง Prompt กำหนดการทั้งภาคเรียน' : 'สร้าง Prompt แผนครั้งสอนนี้'}</button>
     <div class="mt-4">
-      <div class="flex justify-between items-center mb-1"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><button id="lp-ai-copy" class="text-xs font-bold text-indigo-600">📋 คัดลอก</button></div>
+      <div class="flex justify-between items-center mb-1"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><button id="lp-ai-copy" class="text-xs font-bold ${isSchedule ? 'text-blue-700' : 'text-violet-700'}">📋 คัดลอก Prompt</button></div>
       <textarea id="lp-ai-prompt" rows="8" class="w-full border rounded-xl p-3 text-[11px] font-mono"></textarea>
     </div>
     <div class="mt-4 pt-4 border-t">
       <label class="text-xs font-bold text-gray-500">วาง JSON ที่ได้จาก AI</label>
       <textarea id="lp-ai-json" rows="8" class="mt-1 w-full border rounded-xl p-3 text-[11px] font-mono" placeholder='วาง { "schema_version": ... } ที่นี่'></textarea>
       <div id="lp-ai-result" class="hidden mt-2 rounded-xl px-3 py-2 text-xs"></div>
-      <div class="grid grid-cols-2 gap-2 mt-3"><button id="lp-ai-validate" class="py-2.5 rounded-xl border border-indigo-200 text-indigo-700 font-bold text-xs">🔎 ตรวจ JSON</button><button id="lp-ai-save" class="py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs">💾 สร้างในระบบ</button></div>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3"><button id="lp-ai-validate" class="min-h-[46px] rounded-xl border ${isSchedule ? 'border-blue-200 text-blue-700' : 'border-violet-200 text-violet-700'} font-bold text-xs">🔎 ตรวจ JSON</button><button id="lp-ai-save" class="min-h-[46px] rounded-xl bg-emerald-600 text-white font-bold text-xs">💾 สร้าง${isSchedule ? 'กำหนดการสอน' : 'แผนการสอน'}ในระบบ</button></div>
     </div>
   </div>`
   document.body.appendChild(m)
 
-  const paintMode = () => m.querySelectorAll('.lp-ai-mode').forEach(b => {
-    const active = b.dataset.mode === mode
-    b.className = `lp-ai-mode min-h-[44px] rounded-xl border font-bold text-xs ${active ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-500'}`
-  })
   const prompt = () => makePrompt({
     mode, cls, teacher, syllabusItems,
-    week: asInt(m.querySelector('#lp-ai-week').value, 1), session: asInt(m.querySelector('#lp-ai-session').value, 1),
-    duration: asInt(m.querySelector('#lp-ai-duration').value, 100), topic: m.querySelector('#lp-ai-topic').value.trim(), files,
+    week: isSchedule ? null : asInt(m.querySelector('#lp-ai-week').value, 1), session: isSchedule ? null : asInt(m.querySelector('#lp-ai-session').value, 1),
+    duration: isSchedule ? null : asInt(m.querySelector('#lp-ai-duration').value, 100), topic: isSchedule ? '' : m.querySelector('#lp-ai-topic').value.trim(), files,
   })
   const showResult = (message, ok) => {
     const box = m.querySelector('#lp-ai-result'); box.classList.remove('hidden')
     box.className = `mt-2 rounded-xl px-3 py-2 text-xs ${ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'}`
     box.textContent = message
   }
-  paintMode(); m.querySelector('#lp-ai-prompt').value = prompt()
+  m.querySelector('#lp-ai-prompt').value = prompt()
   m.addEventListener('click', e => { if (e.target === m) m.remove() })
   m.querySelector('[data-close]').addEventListener('click', () => m.remove())
-  m.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { mode = b.dataset.mode; paintMode(); m.querySelector('#lp-ai-prompt').value = prompt() }))
   m.querySelector('#lp-ai-files').addEventListener('change', e => {
     files = [...e.target.files]
     m.querySelector('#lp-ai-file-list').innerHTML = files.length ? files.map(f => `<span class="inline-block mr-1 mb-1 px-2 py-1 rounded-lg bg-white border">${esc(f.name)}</span>`).join('') : ''

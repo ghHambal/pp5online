@@ -957,7 +957,7 @@ export async function renderSmartClassroom(teacher, classId) {
 
   const _syllabusHTML = () => {
     if (!syllabusItems.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่ได้กำหนดหัวข้อการสอน — กด "➕ เพิ่มหัวข้อ" เพื่อเริ่มวางกำหนดการสอน</p>`
-    return `<div class="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">${syllabusItems.map(it => `
+    return `<div class="max-h-72 lg:max-h-[28rem] overflow-y-auto space-y-2 pr-1">${syllabusItems.map(it => `
       <button class="sc-syllabus-row w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl border transition ${curWeek >= it.week_start && curWeek <= it.week_end ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100 bg-gray-50 hover:border-indigo-200'}" data-sylid="${it.id}">
         <span class="text-[10px] font-bold text-gray-500 flex-shrink-0 w-16">สัปดาห์ ${it.week_start}${it.week_end !== it.week_start ? `-${it.week_end}` : ''}</span>
         <span class="text-xs font-semibold text-gray-700 truncate flex-1">${_htmlEsc(it.topic)}</span>
@@ -967,7 +967,7 @@ export async function renderSmartClassroom(teacher, classId) {
   // ── แผนการจัดการเรียนรู้ (ผูกกับรายวิชา ยืดหยุ่นจำนวนแผน) ────────────────────
   const _lessonPlansHTML = () => {
     if (!lessonPlans.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่มีแผนการสอน — กด "➕ สร้างแผน" เพื่อเริ่ม</p>`
-    return `<div class="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">${lessonPlans.map(p => `
+    return `<div class="max-h-72 lg:max-h-[28rem] overflow-y-auto space-y-2 pr-1">${lessonPlans.map(p => `
       <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 bg-gray-50">
         <button class="sc-plan-row flex-1 min-w-0 text-left" data-planid="${p.id}">
           <p class="text-xs font-bold text-gray-700 truncate">${_htmlEsc(p.title)}</p>
@@ -979,11 +979,11 @@ export async function renderSmartClassroom(teacher, classId) {
 
   // ── โซนอ้างอิง — แท็บรวมข้อมูลที่ไม่ได้ใช้ระหว่างสอนสดทุกวินาที (เดิมแยกการ์ดเรียงยาว 3 แถว) ──
   const REF_TABS = [
-    { key: 'schedule',    icon: '🗓️', label: 'ตารางเรียน',    mobileLabel: 'ตาราง' },
-    { key: 'examqueue',   icon: '📋', label: 'คิวสอบ',         mobileLabel: 'คิวสอบ' },
-    { key: 'syllabus',    icon: '📘', label: 'กำหนดการสอน',   mobileLabel: 'การสอน' },
-    { key: 'plans',       icon: '📝', label: 'แผนการสอน',      mobileLabel: 'แผน' },
-    { key: 'assignments', icon: '📚', label: 'งานที่มอบหมาย', mobileLabel: 'งาน' },
+    { key: 'schedule',    icon: '🗓️', label: 'ตารางเรียน',    mobileLabel: 'ตาราง', desc: 'ดูคาบรายวันและรายสัปดาห์' },
+    { key: 'examqueue',   icon: '📋', label: 'คิวสอบ',         mobileLabel: 'คิวสอบ', desc: 'ติดตามคำร้องสอบย้อนหลัง' },
+    { key: 'syllabus',    icon: '📘', label: 'กำหนดการสอน',   mobileLabel: 'การสอน', desc: 'วางหัวข้อทั้งภาคเรียน' },
+    { key: 'plans',       icon: '📝', label: 'แผนการสอน',      mobileLabel: 'แผน', desc: 'สร้างแผนหน้าเดียวรายครั้ง' },
+    { key: 'assignments', icon: '📚', label: 'งานที่มอบหมาย', mobileLabel: 'งาน', desc: 'สั่งงานและติดตามการส่ง' },
   ]
   const MOBILE_GROUPS = [
     { key: 'room', icon: '👥', label: 'ห้อง' },
@@ -1009,9 +1009,14 @@ export async function renderSmartClassroom(teacher, classId) {
       <p class="text-xs text-gray-400 mb-3">คิวคำร้องขอสอบปรับ/สอบย้อนหลัง เรียงจากใกล้ไปไกล</p>
       <div id="sc-exam-queue">${_examQueueHTML()}</div>`
     if (tab === 'syllabus') return `
-      <div class="flex items-center justify-between mb-1">
-        <p class="text-xs text-gray-400">หัวข้อที่สอนแต่ละช่วงสัปดาห์ — ผูกกับรายวิชา ใช้ร่วมกันทุกห้อง</p>
-        <button id="sc-add-syllabus" class="sc-btn-gold text-xs font-bold px-3 py-1.5 rounded-lg flex-shrink-0">➕ เพิ่มหัวข้อ</button>
+      <div class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 lg:p-5 mb-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div><p class="text-base font-extrabold text-blue-950">📘 กำหนดการสอนรายภาคเรียน</p><p class="text-xs text-blue-700/70 mt-1">กำหนดหัวข้อแต่ละช่วงสัปดาห์ ผูกกับรายวิชา และใช้ร่วมกันทุกห้อง</p><div class="flex gap-2 mt-2"><span class="px-2 py-1 rounded-lg bg-white border border-blue-100 text-[10px] font-bold text-blue-700">${syllabusItems.length} ช่วงการสอน</span><span class="px-2 py-1 rounded-lg bg-white border border-blue-100 text-[10px] font-bold text-blue-700">สัปดาห์ปัจจุบัน ${curWeek || '—'}</span></div></div>
+          <div class="grid grid-cols-2 gap-2 sm:min-w-[310px]">
+            <button id="sc-ai-syllabus" class="min-h-[48px] rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold shadow-sm">🤖 สร้างกำหนดการด้วย AI</button>
+            <button id="sc-add-syllabus" class="min-h-[48px] rounded-xl bg-white border border-blue-200 text-blue-800 text-xs font-bold hover:bg-blue-50">＋ เพิ่มหัวข้อเอง</button>
+          </div>
+        </div>
       </div>
       <div class="my-3 px-3 py-2.5 rounded-xl ${currentTopic ? 'bg-indigo-50 border border-indigo-100' : 'bg-gray-50 border border-gray-100'}">
         <p class="text-[10px] font-bold ${currentTopic ? 'text-indigo-500' : 'text-gray-400'} uppercase tracking-wide">สัปดาห์นี้ — สัปดาห์ที่ ${curWeek || '—'}</p>
@@ -1019,11 +1024,13 @@ export async function renderSmartClassroom(teacher, classId) {
       </div>
       <div id="sc-syllabus-list">${_syllabusHTML()}</div>`
     if (tab === 'plans') return `
-      <div class="flex items-start justify-between gap-2 mb-3">
-        <p class="text-xs text-gray-400">แผนหน้าเดียวรายครั้ง พร้อม Prompt สำหรับ AI, รับ JSON, บันทึกหลังสอน และลายเซ็น 3 ฝ่าย</p>
-        <div class="flex gap-2 flex-shrink-0">
-          <button id="sc-ai-plan" class="text-xs font-bold px-3 py-1.5 rounded-lg bg-indigo-600 text-white">🤖 สร้างด้วย AI</button>
-          <button id="sc-add-plan" class="sc-btn-gold text-xs font-bold px-3 py-1.5 rounded-lg">➕ สร้างเอง</button>
+      <div class="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4 lg:p-5 mb-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div><p class="text-base font-extrabold text-violet-950">📝 แผนการสอนหน้าเดียว</p><p class="text-xs text-violet-700/70 mt-1">สร้างแผนรายครั้ง บันทึกหลังสอน และลงลายเซ็นครบ 3 ฝ่าย</p><div class="flex gap-2 mt-2"><span class="px-2 py-1 rounded-lg bg-white border border-violet-100 text-[10px] font-bold text-violet-700">${lessonPlans.length} แผน</span><span class="px-2 py-1 rounded-lg bg-white border border-violet-100 text-[10px] font-bold text-violet-700">เชื่อมกำหนดการสอน</span></div></div>
+          <div class="grid grid-cols-2 gap-2 sm:min-w-[300px]">
+            <button id="sc-ai-plan" class="min-h-[48px] rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-xs font-bold shadow-sm">🤖 สร้างแผนด้วย AI</button>
+            <button id="sc-add-plan" class="min-h-[48px] rounded-xl bg-white border border-violet-200 text-violet-800 text-xs font-bold hover:bg-violet-50">＋ สร้างแผนเอง</button>
+          </div>
         </div>
       </div>
       <div id="sc-plan-list">${_lessonPlansHTML()}</div>`
@@ -1120,7 +1127,7 @@ export async function renderSmartClassroom(teacher, classId) {
 
     </div>
 
-    <div id="sc-reference-panel" class="sc-reference-panel bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mt-4">
+    <div id="sc-reference-panel" class="sc-reference-panel bg-white rounded-2xl border border-gray-100 shadow-sm p-4 lg:p-5 mt-4">
       <div class="sc-mobile-ref-head">
         <div>
           <p id="sc-mobile-ref-title" class="text-sm font-bold text-gray-800">${REF_TABS.find(t => t.key === _refTab)?.icon} ${REF_TABS.find(t => t.key === _refTab)?.label}</p>
@@ -1129,8 +1136,9 @@ export async function renderSmartClassroom(teacher, classId) {
         <button id="sc-mobile-ref-close" type="button" class="min-w-[44px] min-h-[44px] rounded-xl border border-gray-200 bg-white text-gray-500 text-lg">✕</button>
       </div>
       <div id="sc-mobile-ref-subtabs" class="sc-mobile-ref-subtabs"></div>
-      <div id="sc-reftabs-bar" class="sc-desktop-ref-tabs sc-tabbar mb-4">
-        ${REF_TABS.map(t => `<button data-reftab="${t.key}" class="sc-reftab-btn sc-tab-pill ${t.key === _refTab ? 'active' : ''}">${t.icon} ${t.label}${t.key === 'assignments' && urgentAssignments.length ? ` (${urgentAssignments.length})` : ''}</button>`).join('')}
+      <div class="hidden lg:flex items-center justify-between gap-3 mb-4"><div><h2 class="text-base font-extrabold text-gray-800">พื้นที่จัดการรายวิชา</h2><p class="text-xs text-gray-400 mt-0.5">เลือกงานที่ต้องการ ระบบจะแยกข้อมูลและปุ่มสร้างให้ชัดเจน</p></div><span class="px-3 py-1.5 rounded-full bg-amber-50 border border-amber-100 text-[10px] font-bold text-amber-700">${_htmlEsc(ms.subject_name ?? '')}</span></div>
+      <div id="sc-reftabs-bar" class="sc-desktop-ref-tabs mb-5">
+        ${REF_TABS.map(t => `<button data-reftab="${t.key}" class="sc-reftab-btn ${t.key === _refTab ? 'active' : ''}"><span class="sc-ref-tab-icon">${t.icon}</span><span class="min-w-0 text-left"><b>${t.label}${t.key === 'assignments' && urgentAssignments.length ? ` (${urgentAssignments.length})` : ''}</b><small>${t.desc}</small></span></button>`).join('')}
       </div>
       <div id="sc-reftab-body">${_refTabBodyHTML(_refTab)}</div>
     </div>
@@ -1838,6 +1846,9 @@ export async function renderSmartClassroom(teacher, classId) {
       })
     })
     document.getElementById('sc-add-syllabus')?.addEventListener('click', () => _openSyllabusItemModal())
+    document.getElementById('sc-ai-syllabus')?.addEventListener('click', () => openLessonPlanAIWorkspace({
+      teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek: curWeek || 1, initialMode: 'schedule', onSaved: () => _reload(),
+    }))
     document.getElementById('sc-syllabus-list')?.addEventListener('click', e => {
       const row = e.target.closest('.sc-syllabus-row')
       if (!row) return
@@ -1846,7 +1857,7 @@ export async function renderSmartClassroom(teacher, classId) {
     })
     document.getElementById('sc-add-plan')?.addEventListener('click', () => _openLessonPlanModal())
     document.getElementById('sc-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({
-      teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek: curWeek || 1, onSaved: () => _reload(),
+      teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek: curWeek || 1, initialMode: 'plan', onSaved: () => _reload(),
     }))
     document.getElementById('sc-plan-list')?.addEventListener('click', e => {
       const reflectBtn = e.target.closest('.sc-plan-reflect')
