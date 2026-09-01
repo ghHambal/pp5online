@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
-import { uploadShirtDesignColorImage, uploadShirtDesignHtml, uploadGalleryPhoto } from './storage.js'
+import { uploadSystemAsset, uploadShirtDesignColorImage, uploadShirtDesignHtml, uploadGalleryPhoto } from './storage.js'
 import { getEffectiveProfileId, getEffectiveUser } from './impersonation.js'
 
 export const esc = (v='') => String(v ?? '').replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))
@@ -2021,7 +2021,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       #my-team-workspace[data-theme="light"] .btn-danger-ghost{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
       @keyframes status-pulse{0%,100%{opacity:1}50%{opacity:.55}}
       @media (max-width:480px){#my-team-workspace .team-head b{font-size:.95rem}#my-team-workspace table{font-size:12px}#my-team-workspace .team-card{padding:1rem!important}}
-      @media (max-width:639px){#team-tab-body{height:calc(100vh - 132px)}}
+      @media (max-width:639px){#team-tab-body{height:calc(100vh - 132px);box-sizing:border-box;padding-bottom:calc(7.5rem + env(safe-area-inset-bottom))}}
     </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover ring-2 ring-pink-500/20">`:''}<div><b>${studentView?'สีของฉัน':'จัดการทีมสี'}${esc(c.name)}</b></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl font-bold shadow-lg shadow-pink-500/20">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs hidden sm:block border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold transition-all ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main><nav id="team-bottom-nav" class="team-tabs sm:hidden fixed bottom-0 inset-x-0 z-40 flex border-t safe-area-bottom"></nav>`
     // รายละเอียดคะแนนแยกเกณฑ์ (เฉลี่ยจากกรรมการทุกคนที่ให้คะแนนเกณฑ์นั้นแล้ว) — เฉพาะสีเราเอง
     // เพราะ sports_score_entries query ข้างบนกรอง team_color_id ไว้แล้ว
@@ -2073,7 +2073,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
     wrap.querySelector('[data-theme-toggle]').onclick=()=>{const next=wrap.dataset.theme==='dark'?'light':'dark';wrap.dataset.theme=next;localStorage.setItem('sports_team_theme',next);wrap.querySelector('[data-theme-toggle]').textContent=next==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}
     renderBottomNav()
     drawTab()
-    if(m.role==='lead_teacher') identity?.filter(x=>x.status==='pending_lead'&&x.submitted_by!==m.profile_id).forEach(x=>{const bar=document.createElement('div');bar.className='fixed bottom-4 right-4 z-30 bg-slate-800 border border-amber-500 rounded-xl p-3 shadow-xl';bar.innerHTML=`<p class="text-sm mb-2">คำขอแก้อัตลักษณ์รอหัวหน้าครูตรวจสอบ</p><button data-no class="px-3 py-1 border border-red-400 text-red-300 rounded-lg mr-2">ปฏิเสธ</button><button data-yes class="px-3 py-1 bg-emerald-600 rounded-lg">อนุมัติส่งแอดมิน</button>`;wrap.appendChild(bar);const review=async decision=>{const {error}=await supabase.rpc('review_team_identity',{p_request:x.id,p_decision:decision,p_comment:null});if(error)return toast(error.message,'error');toast('บันทึกผลตรวจสอบแล้ว');openMyTeamWorkspace()};bar.querySelector('[data-yes]').onclick=()=>review('approve');bar.querySelector('[data-no]').onclick=()=>review('reject')})
+    if(m.role==='lead_teacher') identity?.filter(x=>x.status==='pending_lead'&&x.submitted_by!==m.profile_id).forEach(x=>{const bar=document.createElement('div');bar.className='fixed right-4 z-30 bg-slate-800 border border-amber-500 rounded-xl p-3 shadow-xl';bar.style.bottom='calc(5.5rem + env(safe-area-inset-bottom))';bar.innerHTML=`<p class="text-sm mb-2">คำขอแก้อัตลักษณ์รอหัวหน้าครูตรวจสอบ</p><button data-no class="px-3 py-1 border border-red-400 text-red-300 rounded-lg mr-2">ปฏิเสธ</button><button data-yes class="px-3 py-1 bg-emerald-600 rounded-lg">อนุมัติส่งแอดมิน</button>`;wrap.appendChild(bar);const media=window.matchMedia('(min-width:640px)');const position=()=>{bar.style.bottom=media.matches?'1rem':'calc(5.5rem + env(safe-area-inset-bottom))'};position();media.addEventListener?.('change',position);const review=async decision=>{const {error}=await supabase.rpc('review_team_identity',{p_request:x.id,p_decision:decision,p_comment:null});if(error)return toast(error.message,'error');toast('บันทึกผลตรวจสอบแล้ว');openMyTeamWorkspace()};bar.querySelector('[data-yes]').onclick=()=>review('approve');bar.querySelector('[data-no]').onclick=()=>review('reject')})
   } catch(e){console.error(e);wrap.innerHTML=`<button class="absolute right-4 top-4" onclick="this.parentElement.remove()">✕</button>${missing()}`}
 }
 
@@ -2389,6 +2389,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   let leavePasses=[]
   let recentScans=[]
   let html5Qrcode=null, scanning=false, reportAbsent=[]
+  let areaLeaveModal=null, areaLeaveScanner=null, areaLeaveScanning=false, leaveSystemReady=true
 
   const campBanner=(()=>{
     if(!todayMatch) return `<div class="rounded-xl px-3 py-2 text-xs font-bold bg-amber-500/10 text-amber-400 mb-3">⚠️ วันนี้ไม่ตรงกับวันเข้าสี/กีฬาสีในปฏิทินปฏิบัติงาน — เลือกประเภทด้วยตนเองด้านล่าง (หรือกำลังทดสอบระบบ)</div>`
@@ -2439,27 +2440,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
         <div><h3 class="font-bold">🚪 ติดตามการออกจากพื้นที่สี</h3><p class="text-xs muted mt-1">บันทึกผู้ที่ขอออก กำหนดเวลากลับ และยกเลิกเช็คชื่อวันนี้ได้หากไม่กลับ</p></div>
         <span id="area-leave-count" class="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400">กำลังโหลด...</span>
       </div>
-      <div class="team-sub rounded-2xl p-4 mb-3 space-y-3">
-        <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-2">
-          <input id="area-leave-code" type="text" inputmode="numeric" placeholder="รหัสนักเรียน" class="rounded-xl team-field px-3 py-2 text-sm">
-          <select id="area-leave-reason" class="rounded-xl team-field px-3 py-2 text-sm">
-            <option value="ไปห้องน้ำ">ไปห้องน้ำ</option>
-            <option value="ไปห้องพยาบาล">ไปห้องพยาบาล</option>
-            <option value="ไปพบครู/ทำธุระ">ไปพบครู/ทำธุระ</option>
-            <option value="ไปทำศาสนกิจ">ไปทำศาสนกิจ</option>
-            <option value="อื่นๆ">อื่นๆ</option>
-          </select>
-          <input id="area-leave-detail" type="text" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)" class="rounded-xl team-field px-3 py-2 text-sm">
-          <div class="flex gap-2">
-            <select id="area-leave-minutes" class="rounded-xl team-field px-3 py-2 text-sm flex-1">
-              <option value="10">กลับใน 10 นาที</option><option value="15" selected>กลับใน 15 นาที</option>
-              <option value="20">กลับใน 20 นาที</option><option value="30">กลับใน 30 นาที</option>
-              <option value="60">กลับใน 60 นาที</option>
-            </select>
-            <button id="area-leave-submit" type="button" class="px-4 py-2 rounded-xl bg-amber-600 text-white text-sm font-bold whitespace-nowrap">อนุญาตให้ออก</button>
-          </div>
-        </div>
-      </div>
+      <button id="area-leave-open" type="button" class="w-full sm:w-auto px-5 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-lg shadow-amber-900/20 mb-3">📷 สแกนเพื่ออนุญาตออกนอกพื้นที่</button>
       <div id="area-leave-status" class="mb-3"></div>
       <div id="area-leave-list" class="grid md:grid-cols-2 gap-2"></div>
       <div id="area-leave-history" class="mt-4"></div>
@@ -2492,6 +2473,134 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     el.querySelectorAll('[data-cancel-scan]').forEach(btn=>btn.onclick=()=>cancelScan(btn.dataset.cancelScan))
   }
   const leaveStudent=id=>membersList.find(s=>String(s.id)===String(id))
+  const stopAreaLeaveScanner=async()=>{
+    const scanner=areaLeaveScanner
+    areaLeaveScanner=null;areaLeaveScanning=false
+    if(!scanner)return
+    try{await scanner.stop()}catch(e){}
+    try{await scanner.clear()}catch(e){}
+  }
+  const closeAreaLeaveModal=async()=>{
+    const modal=areaLeaveModal
+    areaLeaveModal=null
+    await stopAreaLeaveScanner()
+    modal?.remove()
+  }
+  const openAreaLeaveModal=()=>{
+    if(!leaveSystemReady)return toast('ระบบติดตามการออกจากพื้นที่ยังไม่พร้อมใช้งาน','error')
+    closeAreaLeaveModal()
+    const modal=document.createElement('div')
+    modal.className='fixed inset-0 bg-black/75 grid place-items-center p-3 sm:p-5 overflow-y-auto'
+    modal.style.zIndex='500'
+    modal.innerHTML=`<div class="team-card border rounded-3xl w-full max-w-xl shadow-2xl my-auto overflow-hidden">
+      <div class="flex items-start justify-between gap-3 p-4 border-b line"><div><h3 class="font-bold">🚪 อนุญาตออกนอกพื้นที่สี</h3><p class="text-xs muted mt-1">สแกน QR หรือกรอกรหัส แล้วตรวจสอบว่าเป็นสมาชิกสี${esc(c.name)}</p></div><button type="button" data-area-modal-close class="w-10 h-10 rounded-xl border line flex-shrink-0">✕</button></div>
+      <div id="area-leave-modal-content" class="p-4 sm:p-5"></div>
+    </div>`
+    ;(body.closest('#my-team-workspace')||document.body).appendChild(modal)
+    areaLeaveModal=modal
+    modal.querySelector('[data-area-modal-close]').onclick=closeAreaLeaveModal
+    modal.addEventListener('click',e=>{if(e.target===modal)closeAreaLeaveModal()})
+
+    const content=modal.querySelector('#area-leave-modal-content')
+    let lookupBusy=false
+    const normalizeCode=value=>{let code=String(value||'').trim();if(code.startsWith('SQ:'))code=code.split(':')[1]||'';return code.trim()}
+    const showScanner=()=>{
+      stopAreaLeaveScanner()
+      content.innerHTML=`<div class="space-y-4">
+        <div id="area-leave-reader" class="hidden w-full aspect-square max-w-sm mx-auto rounded-2xl overflow-hidden bg-black"></div>
+        <button type="button" data-area-camera class="w-full py-3 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold">📷 เปิดกล้องสแกน QR</button>
+        <div class="flex items-center gap-3"><span class="h-px bg-slate-700 flex-1"></span><span class="text-xs muted">หรือกรอกรหัสนักเรียน</span><span class="h-px bg-slate-700 flex-1"></span></div>
+        <div class="flex gap-2"><input data-area-code type="text" inputmode="numeric" autocomplete="off" placeholder="รหัสประจำตัวนักเรียน" class="team-field rounded-xl px-3 py-3 text-sm flex-1 min-w-0"><button type="button" data-area-find class="px-4 py-3 rounded-xl bg-emerald-600 text-white text-sm font-bold">ตรวจสอบ</button></div>
+        <div data-area-lookup-status></div>
+      </div>`
+      const input=content.querySelector('[data-area-code]'), cameraBtn=content.querySelector('[data-area-camera]'), reader=content.querySelector('#area-leave-reader')
+      const runManual=()=>processStudent(input.value)
+      content.querySelector('[data-area-find]').onclick=runManual
+      input.addEventListener('keydown',e=>{if(e.key==='Enter')runManual()})
+      cameraBtn.onclick=async()=>{
+        if(areaLeaveScanning){await stopAreaLeaveScanner();reader.classList.add('hidden');cameraBtn.textContent='📷 เปิดกล้องสแกน QR';return}
+        try{
+          cameraBtn.disabled=true;cameraBtn.textContent='กำลังเปิดกล้อง...';reader.classList.remove('hidden')
+          const Html5Qrcode=await _loadHtml5QrcodeAtt()
+          areaLeaveScanner=new Html5Qrcode('area-leave-reader')
+          let lastCode='',lastAt=0
+          await areaLeaveScanner.start({facingMode:'environment'},{fps:15,aspectRatio:1},decodedText=>{
+            if(decodedText===lastCode&&Date.now()-lastAt<2000)return
+            lastCode=decodedText;lastAt=Date.now();processStudent(decodedText)
+          })
+          areaLeaveScanning=true;cameraBtn.disabled=false;cameraBtn.textContent='⏹ ปิดกล้อง'
+        }catch(error){await stopAreaLeaveScanner();reader.classList.add('hidden');cameraBtn.disabled=false;cameraBtn.textContent='📷 เปิดกล้องสแกน QR';content.querySelector('[data-area-lookup-status]').innerHTML=`<p class="rounded-xl p-3 text-xs bg-red-500/10 text-red-400">เปิดกล้องไม่สำเร็จ: ${esc(error?.message||'กรุณาตรวจสิทธิ์กล้อง')}</p>`}
+      }
+      setTimeout(()=>input.focus(),50)
+    }
+    const processStudent=async raw=>{
+      if(lookupBusy)return
+      const code=normalizeCode(raw), status=content.querySelector('[data-area-lookup-status]')
+      if(!code){if(status)status.innerHTML='<p class="text-xs text-red-400">กรุณากรอกรหัสนักเรียน</p>';return}
+      lookupBusy=true
+      if(status)status.innerHTML='<p class="text-xs muted text-center py-2">กำลังตรวจสอบข้อมูล...</p>'
+      try{
+        let student=membersList.find(s=>String(s.student_code)===code)
+        let sameColor=!!student
+        if(!student){
+          const {data,error}=await supabase.from('students').select('id,student_code,full_name,main_room,house_color,team_color_id,image_url,photo_url').eq('student_code',code).eq('is_active',true).maybeSingle()
+          if(error)throw error
+          student=data
+          sameColor=!!student&&(String(student.team_color_id||'')===String(c.id)||String(student.house_color||'')===String(c.name))
+        }
+        _playScanBeepAtt(!!student&&sameColor)
+        await stopAreaLeaveScanner()
+        if(!student){
+          content.innerHTML=`<div class="text-center space-y-4 py-3"><div class="text-5xl">⚠️</div><div><h4 class="font-bold text-red-400">ไม่พบนักเรียนรหัส ${esc(code)}</h4><p class="text-xs muted mt-1">ตรวจสอบรหัสแล้วลองใหม่อีกครั้ง</p></div><button type="button" data-area-retry class="w-full py-3 rounded-2xl bg-slate-700 text-white font-bold">สแกนหรือกรอกใหม่</button></div>`
+          content.querySelector('[data-area-retry]').onclick=showScanner
+          return
+        }
+        showStudent(student,sameColor)
+      }catch(error){if(status)status.innerHTML=`<p class="rounded-xl p-3 text-xs bg-red-500/10 text-red-400">ตรวจสอบไม่สำเร็จ: ${esc(error?.message||'ไม่สามารถเชื่อมต่อระบบได้')}</p>`}
+      finally{lookupBusy=false}
+    }
+    const showStudent=(student,sameColor)=>{
+      const attended=attendanceLocal.some(a=>String(a.student_id)===String(student.id)&&a.session_date===todayStr)
+      const alreadyOut=leavePasses.some(lp=>String(lp.student_id)===String(student.id)&&lp.status==='out')
+      const canPermit=sameColor&&attended&&!alreadyOut
+      const photo=student.image_url||student.photo_url
+      const colorText=sameColor?`เป็นสมาชิกสี${c.name}`:`ไม่ได้อยู่ในสี${c.name}${student.house_color?` · อยู่สี${student.house_color}`:''}`
+      content.innerHTML=`<div class="space-y-4">
+        <div class="flex items-center gap-4 team-sub rounded-2xl p-4"><div class="w-24 h-28 rounded-2xl overflow-hidden bg-slate-800 flex-shrink-0">${photo?`<img src="${esc(photo)}" class="w-full h-full object-cover">`:'<div class="w-full h-full grid place-items-center text-4xl">👤</div>'}</div><div class="min-w-0 flex-1"><p class="text-xs muted">ข้อมูลนักเรียน</p><h4 class="font-extrabold text-lg mt-1">${esc(student.full_name)}</h4><p class="text-xs muted mt-1">${esc(student.student_code)} · ${esc(student.main_room||'ไม่ระบุห้อง')}</p><span class="inline-flex mt-2 px-2.5 py-1 rounded-full text-xs font-bold ${sameColor?'bg-emerald-500/15 text-emerald-400':'bg-red-500/15 text-red-400'}">${sameColor?'✅':'❌'} ${esc(colorText)}</span><span class="inline-flex mt-2 ml-1 px-2.5 py-1 rounded-full text-xs font-bold ${attended?'bg-sky-500/15 text-sky-300':'bg-amber-500/15 text-amber-400'}">${attended?'✅ เช็คชื่อวันนี้แล้ว':'⚠️ ยังไม่ได้เช็คชื่อวันนี้'}</span>${alreadyOut?'<span class="inline-flex mt-2 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-400">อยู่ระหว่างออกนอกพื้นที่แล้ว</span>':''}</div></div>
+        ${!canPermit?`<p class="rounded-xl p-3 text-xs ${sameColor?'bg-amber-500/10 text-amber-300':'bg-red-500/10 text-red-400'}">${!sameColor?'ไม่สามารถอนุญาตได้ เพราะนักเรียนไม่ได้อยู่ในสีเดียวกัน':alreadyOut?'นักเรียนมีรายการออกนอกพื้นที่ที่ยังไม่ปิด':'ต้องเช็คชื่อนักเรียนของวันนี้ก่อน จึงจะอนุญาตให้ออกได้'}</p>`:''}
+        <div class="grid grid-cols-2 gap-2"><button type="button" data-area-retry class="py-3 rounded-2xl border line font-bold">สแกนใหม่</button><button type="button" data-area-permit class="py-3 rounded-2xl bg-amber-600 text-white font-bold disabled:opacity-40 disabled:cursor-not-allowed" ${canPermit?'':'disabled'}>อนุญาต</button></div>
+      </div>`
+      content.querySelector('[data-area-retry]').onclick=showScanner
+      content.querySelector('[data-area-permit]').onclick=()=>showOptions(student)
+    }
+    const showOptions=student=>{
+      const reasons=[['🚽','ไปห้องน้ำ'],['💊','ไปห้องพยาบาล'],['👩‍🏫','ไปพบครู/ทำธุระ'],['🕌','ไปทำศาสนกิจ'],['✏️','อื่นๆ']]
+      const durations=[5,10,15,30]
+      let reason='',minutes=15
+      content.innerHTML=`<div class="space-y-5"><div class="flex items-center gap-3"><div class="w-12 h-14 rounded-xl overflow-hidden bg-slate-800">${student.image_url||student.photo_url?`<img src="${esc(student.image_url||student.photo_url)}" class="w-full h-full object-cover">`:'<div class="w-full h-full grid place-items-center">👤</div>'}</div><div><p class="text-xs muted">กำลังอนุญาตให้ออก</p><b>${esc(student.full_name)}</b><p class="text-xs muted">${esc(student.student_code)}</p></div></div>
+        <div><p class="text-xs font-bold muted mb-2">เลือกเหตุผล</p><div class="grid grid-cols-2 gap-2">${reasons.map(([icon,label])=>`<button type="button" data-area-reason="${esc(label)}" class="team-sub rounded-2xl p-3 text-left border line"><span class="text-xl">${icon}</span><b class="block text-xs mt-1">${esc(label)}</b></button>`).join('')}</div><input data-area-detail class="hidden mt-2 w-full team-field rounded-xl px-3 py-2 text-sm" placeholder="ระบุเหตุผลเพิ่มเติม"></div>
+        <div><p class="text-xs font-bold muted mb-2">กำหนดเวลากลับ</p><div class="grid grid-cols-4 gap-2">${durations.map(value=>`<button type="button" data-area-minutes="${value}" class="rounded-xl border line py-3 text-xs font-bold ${value===15?'team-tab-active':''}">${value} นาที</button>`).join('')}</div><div class="flex items-center gap-2 mt-2"><button type="button" data-area-custom-minutes class="rounded-xl border line px-3 py-2 text-xs font-bold">กำหนดเอง</button><input data-area-minutes-input type="number" min="1" max="240" class="hidden flex-1 team-field rounded-xl px-3 py-2 text-sm" placeholder="1–240 นาที"></div></div>
+        <div class="grid grid-cols-2 gap-2"><button type="button" data-area-back class="py-3 rounded-2xl border line font-bold">ย้อนกลับ</button><button type="button" data-area-confirm class="py-3 rounded-2xl bg-amber-600 text-white font-bold">ยืนยันอนุญาต</button></div><div data-area-save-status></div></div>`
+      const reasonButtons=[...content.querySelectorAll('[data-area-reason]')], minuteButtons=[...content.querySelectorAll('[data-area-minutes]')], detail=content.querySelector('[data-area-detail]'), customInput=content.querySelector('[data-area-minutes-input]')
+      reasonButtons.forEach(btn=>btn.onclick=()=>{reason=btn.dataset.areaReason;reasonButtons.forEach(x=>x.classList.toggle('team-tab-active',x===btn));detail.classList.toggle('hidden',reason!=='อื่นๆ');if(reason==='อื่นๆ')detail.focus()})
+      minuteButtons.forEach(btn=>btn.onclick=()=>{minutes=Number(btn.dataset.areaMinutes);minuteButtons.forEach(x=>x.classList.toggle('team-tab-active',x===btn));customInput.classList.add('hidden');customInput.value=''})
+      content.querySelector('[data-area-custom-minutes]').onclick=()=>{minutes=0;minuteButtons.forEach(x=>x.classList.remove('team-tab-active'));customInput.classList.remove('hidden');customInput.focus()}
+      content.querySelector('[data-area-back]').onclick=()=>showStudent(student,true)
+      content.querySelector('[data-area-confirm]').onclick=async()=>{
+        const saveStatus=content.querySelector('[data-area-save-status]'),submit=content.querySelector('[data-area-confirm]')
+        const detailText=detail.value.trim(), selectedMinutes=minutes||Number(customInput.value)
+        if(!reason){saveStatus.innerHTML='<p class="text-xs text-red-400">กรุณาเลือกเหตุผล</p>';return}
+        if(reason==='อื่นๆ'&&!detailText){saveStatus.innerHTML='<p class="text-xs text-red-400">กรุณาระบุเหตุผลเพิ่มเติม</p>';detail.focus();return}
+        if(!selectedMinutes||selectedMinutes<1||selectedMinutes>240){saveStatus.innerHTML='<p class="text-xs text-red-400">กรุณากำหนดเวลากลับ 1–240 นาที</p>';return}
+        const finalReason=detailText?`${reason}: ${detailText}`:reason
+        submit.disabled=true;submit.textContent='กำลังบันทึก...'
+        const {data,error}=await supabase.rpc('record_sports_area_exit',{p_event:event.id,p_team_color_id:c.id,p_student:student.id,p_reason:finalReason,p_expected_minutes:selectedMinutes})
+        if(error){saveStatus.innerHTML=`<p class="rounded-xl p-3 text-xs bg-red-500/10 text-red-400">${esc(error.message)}</p>`;submit.disabled=false;submit.textContent='ยืนยันอนุญาต';return}
+        leavePasses.unshift(data);renderLeaveTracking();await closeAreaLeaveModal();feedback(true,`อนุญาตให้ ${student.full_name} ออกจากพื้นที่แล้ว`,`ควรกลับภายใน ${selectedMinutes} นาที`);toast(`อนุญาตให้ ${student.full_name} ออกนอกพื้นที่แล้ว`)
+      }
+    }
+    showScanner()
+  }
   const renderLeaveTracking=()=>{
     const now=Date.now()
     const active=leavePasses.filter(x=>x.status==='out').sort((a,b)=>new Date(a.expected_return_at)-new Date(b.expected_return_at))
@@ -2520,7 +2629,8 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     const {data,error}=await supabase.from('sports_area_leave_passes').select('*').eq('event_id',event.id).eq('team_color_id',c.id).eq('session_date',todayStr).order('out_at',{ascending:false})
     if(error){
       statusEl.innerHTML=`<div class="rounded-xl px-3 py-2 text-xs bg-amber-500/10 text-amber-400">ยังไม่ได้ติดตั้งระบบติดตามการออกจากพื้นที่ — รัน <code>patch_sports_area_leave_tracking.sql</code></div>`
-      body.querySelector('#area-leave-submit').disabled=true
+      leaveSystemReady=false
+      body.querySelector('#area-leave-open').disabled=true
       body.querySelector('#area-leave-count').textContent='ยังไม่พร้อมใช้งาน'
       return
     }
@@ -2659,37 +2769,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   }
   body.querySelector('#att-manual-code').addEventListener('keydown',e=>{if(e.key==='Enter')body.querySelector('#att-manual-submit').click()})
 
-  body.querySelector('#area-leave-submit').onclick=async()=>{
-    const submit=body.querySelector('#area-leave-submit')
-    const codeInput=body.querySelector('#area-leave-code')
-    const detailInput=body.querySelector('#area-leave-detail')
-    const code=codeInput.value.trim()
-    const student=membersList.find(s=>s.student_code===code)
-    if(!student){feedback(false,'ไม่พบนักเรียน','ตรวจสอบรหัสอีกครั้ง — หรือไม่ใช่สมาชิกสีนี้');codeInput.focus();return}
-    if(!attendanceLocal.some(a=>String(a.student_id)===String(student.id)&&a.session_date===todayStr)){
-      feedback(false,`${student.full_name} ยังไม่ได้เช็คชื่อวันนี้`,'ต้องเช็คชื่อก่อน จึงจะบันทึกการขอออกจากพื้นที่ได้')
-      return
-    }
-    const baseReason=body.querySelector('#area-leave-reason').value
-    const detail=detailInput.value.trim()
-    if(baseReason==='อื่นๆ'&&!detail){feedback(false,'กรุณาระบุเหตุผล','ช่องรายละเอียดจำเป็นเมื่อเลือก “อื่นๆ”');detailInput.focus();return}
-    const reason=detail?`${baseReason}: ${detail}`:baseReason
-    const minutes=Number(body.querySelector('#area-leave-minutes').value)||15
-    submit.disabled=true;submit.textContent='กำลังบันทึก...'
-    try{
-      const {data,error}=await supabase.rpc('record_sports_area_exit',{p_event:event.id,p_team_color_id:c.id,p_student:student.id,p_reason:reason,p_expected_minutes:minutes})
-      if(error){feedback(false,'บันทึกการขอออกไม่สำเร็จ',error.message);return}
-      leavePasses.unshift(data)
-      codeInput.value='';detailInput.value='';codeInput.focus()
-      feedback(true,`อนุญาตให้ ${student.full_name} ออกจากพื้นที่แล้ว`,`ควรกลับภายใน ${minutes} นาที`)
-      renderLeaveTracking()
-    }catch(error){
-      feedback(false,'บันทึกการขอออกไม่สำเร็จ',error?.message||'ไม่สามารถเชื่อมต่อระบบได้')
-    }finally{
-      submit.disabled=false;submit.textContent='อนุญาตให้ออก'
-    }
-  }
-  body.querySelector('#area-leave-code').addEventListener('keydown',e=>{if(e.key==='Enter')body.querySelector('#area-leave-submit').click()})
+  body.querySelector('#area-leave-open').onclick=openAreaLeaveModal
 
   body.querySelector('[data-att-camera-toggle]').onclick=async()=>{
     const btn=body.querySelector('[data-att-camera-toggle]')
@@ -3698,4 +3778,53 @@ function printTeamList(title,c,rows,{mode='table'}={}){
   const area=document.createElement('div');area.id='team-print-area';area.innerHTML=`<style>@media print{body>*:not(#team-print-area){display:none!important}.print-actions{display:none!important}#team-print-area{position:static!important;padding:0!important}}#team-print-area{position:fixed;inset:0;z-index:9999;background:white;color:#111827;overflow:auto;padding:24px;font-family:Sarabun,Arial,sans-serif}.print-actions{position:sticky;top:0;background:white;padding-bottom:12px;text-align:right}.print-table{width:100%;border-collapse:collapse}.print-table th,.print-table td{border:1px solid #111827;padding:6px 8px;font-size:12px}.print-table th{background:#f3f4f6}.print-title{text-align:center;margin:8px 0 16px}.print-logos{display:flex;justify-content:center;gap:8px;margin-top:4px}.print-logo{width:54px;height:54px;border-radius:999px;object-fit:cover}.print-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.print-card{border:1px solid #111827;border-radius:12px;padding:10px;display:flex;gap:10px;align-items:center;min-height:88px}.print-photo{width:56px;height:64px;border:1px solid #9ca3af;border-radius:8px;display:grid;place-items:center;font-weight:bold;overflow:hidden}.print-photo img{width:100%;height:100%;object-fit:cover}</style><div class="print-actions"><button id="team-print-confirm" style="padding:8px 14px;background:#111827;color:white;border-radius:10px">🖨️ สั่งพิมพ์ / บันทึก PDF</button> <button id="team-print-close" style="padding:8px 14px;border:1px solid #d1d5db;border-radius:10px">ปิด</button></div><div class="print-logos">${c.logo_url?`<img src="${esc(c.logo_url)}" class="print-logo">`:''}</div><div class="print-title"><h2>${esc(title)}</h2><p>กิจกรรมกีฬาสีภายใน · พิมพ์ ${new Date().toLocaleDateString('th-TH')}</p></div>${mode==='cards'?`<div class="print-grid">${cards}</div>`:table}`;document.body.appendChild(area);area.querySelector('#team-print-confirm').onclick=()=>window.print();area.querySelector('#team-print-close').onclick=()=>area.remove()
 }
 
-function identityForm(wrap,m,c){const box=document.createElement('div');box.className='fixed inset-0 z-[400] bg-black/70 grid place-items-center p-4';box.innerHTML=`<form class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-lg space-y-3"><h3 class="font-bold">เสนอแก้อัตลักษณ์ทีมสี${esc(c.name)}</h3><input name="logo" placeholder="URL โลโก้ใหม่" class="w-full bg-slate-800 rounded-xl px-3 py-2"><input name="name" placeholder="ชื่อทีมใหม่ (ถ้ามี)" class="w-full bg-slate-800 rounded-xl px-3 py-2"><input name="motto" placeholder="คำขวัญ" class="w-full bg-slate-800 rounded-xl px-3 py-2"><input name="mascot" placeholder="มาสคอต" class="w-full bg-slate-800 rounded-xl px-3 py-2"><div class="flex gap-2"><button type="button" class="flex-1 border border-slate-600 rounded-xl py-2" data-cancel>ยกเลิก</button><button class="flex-1 bg-violet-600 rounded-xl py-2">ส่งตรวจสอบ</button></div></form>`;wrap.appendChild(box);box.querySelector('[data-cancel]').onclick=()=>box.remove();box.querySelector('form').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const {error}=await supabase.from('sports_team_identity_requests').insert({event_id:m.event_id,team_color_id:c.id,proposed_logo_url:f.get('logo')||null,proposed_name:f.get('name')||null,proposed_motto:f.get('motto')||null,proposed_mascot:f.get('mascot')||null,status:'pending_lead',submitted_at:new Date().toISOString()});if(error)return toast(error.message,'error');box.remove();toast('ส่งให้หัวหน้าครูประจำสีตรวจสอบแล้ว');openMyTeamWorkspace()}}
+function identityForm(wrap,m,c){
+  const box=document.createElement('div')
+  box.className='fixed inset-0 z-[400] bg-black/70 grid place-items-center p-4'
+  box.innerHTML=`<form class="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-full max-w-lg space-y-3">
+    <div class="flex items-center justify-between gap-3"><div><h3 class="font-bold">เสนอแก้อัตลักษณ์ทีมสี${esc(c.name)}</h3><p class="text-xs text-slate-400 mt-1">อัปโหลดไฟล์ภาพจริง แล้วส่งให้หัวหน้าครูประจำสีตรวจสอบ</p></div><button type="button" data-cancel class="w-9 h-9 rounded-xl border border-slate-600">✕</button></div>
+    <label class="block rounded-2xl border border-dashed border-slate-600 p-4 text-center cursor-pointer hover:border-violet-400 transition">
+      <input name="logo_file" type="file" accept="image/jpeg,image/png,image/webp" class="hidden">
+      <div id="identity-logo-preview" class="mx-auto mb-2 w-24 h-24 rounded-2xl bg-slate-800 overflow-hidden grid place-items-center text-3xl">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-full h-full object-cover">`:'🖼️'}</div>
+      <b class="text-sm text-violet-300">เลือกรูปโลโก้ใหม่</b><p id="identity-file-name" class="text-xs text-slate-500 mt-1">JPG, PNG หรือ WebP ไม่เกิน 5 MB</p>
+    </label>
+    <input name="name" placeholder="ชื่อทีมใหม่ (ถ้ามี)" class="w-full bg-slate-800 rounded-xl px-3 py-2">
+    <input name="motto" placeholder="คำขวัญ" class="w-full bg-slate-800 rounded-xl px-3 py-2">
+    <input name="mascot" placeholder="มาสคอต" class="w-full bg-slate-800 rounded-xl px-3 py-2">
+    <div class="flex gap-2"><button type="button" class="flex-1 border border-slate-600 rounded-xl py-2" data-cancel>ยกเลิก</button><button class="flex-1 bg-violet-600 rounded-xl py-2 font-bold" data-submit>ส่งตรวจสอบ</button></div>
+  </form>`
+  wrap.appendChild(box)
+  const form=box.querySelector('form'), fileInput=form.elements.logo_file, preview=box.querySelector('#identity-logo-preview')
+  let previewUrl=null
+  const close=()=>{if(previewUrl)URL.revokeObjectURL(previewUrl);box.remove()}
+  box.querySelectorAll('[data-cancel]').forEach(btn=>btn.onclick=close)
+  box.addEventListener('click',e=>{if(e.target===box)close()})
+  fileInput.onchange=()=>{
+    const file=fileInput.files?.[0]
+    if(!file)return
+    if(!['image/jpeg','image/png','image/webp'].includes(file.type)){toast('รองรับเฉพาะไฟล์ JPG, PNG หรือ WebP','error');fileInput.value='';return}
+    if(file.size>5*1024*1024){toast('ไฟล์โลโก้ต้องมีขนาดไม่เกิน 5 MB','error');fileInput.value='';return}
+    if(previewUrl)URL.revokeObjectURL(previewUrl)
+    previewUrl=URL.createObjectURL(file)
+    preview.innerHTML=`<img src="${esc(previewUrl)}" class="w-full h-full object-cover">`
+    box.querySelector('#identity-file-name').textContent=file.name
+  }
+  form.onsubmit=async e=>{
+    e.preventDefault()
+    const f=new FormData(form), file=fileInput.files?.[0]
+    const hasText=['name','motto','mascot'].some(key=>String(f.get(key)||'').trim())
+    if(!file&&!hasText)return toast('กรุณาเลือกรูป หรือกรอกข้อมูลที่ต้องการแก้ไขอย่างน้อย 1 รายการ','error')
+    const submit=box.querySelector('[data-submit]');submit.disabled=true;submit.textContent=file?'กำลังอัปโหลดรูป...':'กำลังส่ง...'
+    try{
+      let logoUrl=null
+      if(file){
+        const unique=`${Date.now()}-${Math.random().toString(36).slice(2,8)}`
+        logoUrl=await uploadSystemAsset(`sports/team-identity/${c.id}/${unique}`,file)
+      }
+      submit.textContent='กำลังบันทึกคำขอ...'
+      const {error}=await supabase.from('sports_team_identity_requests').insert({event_id:m.event_id,team_color_id:c.id,proposed_logo_url:logoUrl,proposed_name:String(f.get('name')||'').trim()||null,proposed_motto:String(f.get('motto')||'').trim()||null,proposed_mascot:String(f.get('mascot')||'').trim()||null,status:'pending_lead',submitted_at:new Date().toISOString()})
+      if(error)throw error
+      close();toast('อัปโหลดและส่งให้หัวหน้าครูประจำสีตรวจสอบแล้ว');openMyTeamWorkspace()
+    }catch(error){toast(error?.message||'อัปโหลดหรือส่งคำขอไม่สำเร็จ','error');submit.disabled=false;submit.textContent='ส่งตรวจสอบ'}
+  }
+}
