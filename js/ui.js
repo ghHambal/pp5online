@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.641'
+import { APP_VERSION } from './version.js?v=10.22.642'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -848,6 +848,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.642': [
+    '✨ แคปซูลเมนูย่อยหน้าจัดการสีของฉัน สไลด์ขึ้นจากปุ่มหลักที่กดจริง กดปุ่มเดิมซ้ำสไลด์กลับลงปิดได้ทันที',
+  ],
   '10.22.641': [
     '🎈 หน้าจัดการสีของฉันบนมือถือ กดกลุ่มเมนูล่างแล้วลอยแคปซูลแสดงเมนูย่อยให้เห็นชัด กดเข้าได้ทันที (พ่อสี/แม่สี/สต๊าฟ)',
   ],

@@ -2033,6 +2033,12 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       #my-team-workspace[data-theme="light"] table th{background:#f1f5f9;color:#475569}
       #my-team-workspace[data-theme="dark"] table th{background:rgba(30,41,59,.6);color:#94a3b8}
       .team-tab-active{background:#db2777!important;color:white!important;border-color:#db2777!important;box-shadow:0 4px 12px -4px rgba(219,39,119,.5)}
+      /* แคปซูลเมนูย่อยมือถือ — สไลด์ขึ้นจากปุ่มหลักของตัวเอง (anchorX) แล้วสไลด์กลับลงเมื่อปิด
+         ต้อง set transform เริ่มต้นไว้ก่อน แล้วค่อยเติมคลาส is-open เฟรมถัดไปให้ transition ทำงาน */
+      #team-sheet-backdrop{opacity:0;transition:opacity .22s ease}
+      #team-sheet-backdrop.is-open{opacity:1}
+      .team-sheet-panel{transform:translateY(24px);transition:transform .28s cubic-bezier(.34,1.56,.64,1)}
+      .team-sheet-panel.is-open{transform:translateY(0)}
       .sport-icon{width:1.75rem;height:1.75rem;object-fit:contain;flex-shrink:0}
       #team-tab-body{height:calc(100vh - 180px);overflow:auto}
       .status-pill{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;padding:3px 9px;border-radius:999px;white-space:nowrap}
@@ -2060,7 +2066,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       @keyframes status-pulse{0%,100%{opacity:1}50%{opacity:.55}}
       @media (max-width:480px){#my-team-workspace .team-head b{font-size:.95rem}#my-team-workspace table{font-size:12px}#my-team-workspace .team-card{padding:1rem!important}}
       @media (max-width:639px){#team-tab-body{height:calc(100vh - 132px);box-sizing:border-box;padding-bottom:calc(7.5rem + env(safe-area-inset-bottom))}}
-    </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover ring-2 ring-pink-500/20">`:''}<div><b>${studentView?'สีของฉัน':'จัดการทีมสี'}${esc(c.name)}</b></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl font-bold shadow-lg shadow-pink-500/20">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs hidden sm:block border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold transition-all ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main><nav id="team-bottom-nav" class="team-tabs sm:hidden fixed bottom-0 inset-x-0 z-40 flex border-t safe-area-bottom"></nav><div id="team-mobile-sheet" class="sm:hidden"></div>`
+    </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover ring-2 ring-pink-500/20">`:''}<div><b>${studentView?'สีของฉัน':'จัดการทีมสี'}${esc(c.name)}</b></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl font-bold shadow-lg shadow-pink-500/20">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs hidden sm:block border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold transition-all ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main><nav id="team-bottom-nav" class="team-tabs sm:hidden fixed bottom-0 inset-x-0 z-50 flex border-t safe-area-bottom"></nav><div id="team-mobile-sheet" class="sm:hidden"></div>`
     // รายละเอียดคะแนนแยกเกณฑ์ (เฉลี่ยจากกรรมการทุกคนที่ให้คะแนนเกณฑ์นั้นแล้ว) — เฉพาะสีเราเอง
     // เพราะ sports_score_entries query ข้างบนกรอง team_color_id ไว้แล้ว
     const scoreBreakdown=(scoreCriteria||[]).map(crit=>{
@@ -2088,16 +2094,36 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
     ]
     const tabGroups=groupDefs.map(g=>({...g,tabs:tabList.filter(t=>g.keys.includes(t[0]))})).filter(g=>g.tabs.length>0)
     const navState={sheetGroup:null}
+    let sheetCloseTimer=null
     const findGroup=tabKey=>tabGroups.find(g=>g.tabs.some(t=>t[0]===tabKey))
+    // ปิดแบบมี animation เสมอ (สไลด์กลับลงไปหาปุ่มหลัก) แทนการล้าง innerHTML ทันที — เรียกได้แม้
+    // ไม่มีแคปซูลเปิดอยู่ (เช็ค backdrop/panel มีจริงก่อนเสมอ กันเรียกซ้ำ/เรียกตอนปิดอยู่แล้วพัง)
+    const closeTeamMobileSheet=()=>{
+      navState.sheetGroup=null
+      const el=wrap.querySelector('#team-mobile-sheet');if(!el)return
+      const backdrop=el.querySelector('#team-sheet-backdrop'),panel=el.querySelector('.team-sheet-panel')
+      if(!backdrop||!panel)return
+      backdrop.classList.remove('is-open');panel.classList.remove('is-open')
+      clearTimeout(sheetCloseTimer)
+      sheetCloseTimer=setTimeout(()=>{if(!navState.sheetGroup)el.innerHTML=''},280)
+    }
     const renderTeamMobileSheet=()=>{
       const el=wrap.querySelector('#team-mobile-sheet');if(!el)return
       const g=tabGroups.find(x=>x.key===navState.sheetGroup)
       if(!g){el.innerHTML='';return}
-      el.innerHTML=`<div class="fixed inset-0 z-[70] bg-black/20" id="team-sheet-backdrop"><div class="absolute left-1/2 -translate-x-1/2" style="bottom: calc(78px + env(safe-area-inset-bottom));"><div class="flex flex-col-reverse gap-2 items-stretch" style="width: min(74vw, 260px);">${g.tabs.map(t=>`
+      clearTimeout(sheetCloseTimer)
+      // สไลด์ขึ้นจากตำแหน่งจริงของปุ่มหลักที่กด (anchorX) แทนกึ่งกลางจอตายตัว
+      const btn=wrap.querySelector(`[data-team-group="${g.key}"]`)
+      const anchorX=btn?btn.getBoundingClientRect().left+btn.offsetWidth/2:window.innerWidth/2
+      // backdrop ต้อง z ต่ำกว่า #team-bottom-nav (z-50) เสมอ ไม่งั้น backdrop เต็มจอ (inset-0) จะ
+      // บังปุ่มหลักที่กดเปิดไว้ กดซ้ำเพื่อสไลด์ปิดไม่ติดเลย (คลิกไปโดนแค่ backdrop ที่กว้างกว่า)
+      el.innerHTML=`<div class="fixed inset-0 z-40 bg-black/20" id="team-sheet-backdrop"><div class="absolute" style="left:${anchorX}px;bottom: calc(78px + env(safe-area-inset-bottom));transform:translateX(-50%)"><div class="team-sheet-panel flex flex-col-reverse gap-2 items-stretch" style="width: min(74vw, 260px);">${g.tabs.map(t=>`
         <button type="button" data-team-tab-m="${t[0]}" class="mobile-sheet-item text-left ${t[0]===tabState.active?'team-tab-active':'team-sub'}
           backdrop-blur-md px-4 py-3 rounded-full text-sm font-bold flex items-center gap-3 min-h-[44px] shadow-lg"><span class="text-base">${t[2]}</span><span>${esc(t[1])}</span></button>`).join('')}</div></div></div>`
-      el.querySelector('#team-sheet-backdrop').addEventListener('click',e=>{if(e.target.id==='team-sheet-backdrop'){navState.sheetGroup=null;renderTeamMobileSheet()}})
-      el.querySelectorAll('[data-team-tab-m]').forEach(b=>b.onclick=()=>{navState.sheetGroup=null;renderTeamMobileSheet();selectTab(b.dataset.teamTabM)})
+      const backdrop=el.querySelector('#team-sheet-backdrop'),panel=el.querySelector('.team-sheet-panel')
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{backdrop.classList.add('is-open');panel.classList.add('is-open')}))
+      backdrop.addEventListener('click',e=>{if(e.target.id==='team-sheet-backdrop')closeTeamMobileSheet()})
+      el.querySelectorAll('[data-team-tab-m]').forEach(b=>b.onclick=()=>{selectTab(b.dataset.teamTabM);closeTeamMobileSheet()})
     }
     const renderBottomNav=()=>{
       const nav=wrap.querySelector('#team-bottom-nav');if(!nav)return
@@ -2105,8 +2131,9 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
         return `<button data-team-group="${g.key}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-bold ${active?'text-pink-500':'muted'}"><span class="text-lg">${g.icon}</span><span>${esc(g.label)}</span></button>`}).join('')
       nav.querySelectorAll('[data-team-group]').forEach(b=>b.onclick=()=>{
         const g=tabGroups.find(x=>x.key===b.dataset.teamGroup)
-        if(g.tabs.length===1){navState.sheetGroup=null;renderTeamMobileSheet();selectTab(g.tabs[0][0])}
-        else{navState.sheetGroup=navState.sheetGroup===g.key?null:g.key;renderTeamMobileSheet()}
+        if(g.tabs.length===1){closeTeamMobileSheet();selectTab(g.tabs[0][0])}
+        else if(navState.sheetGroup===g.key){closeTeamMobileSheet()}
+        else{navState.sheetGroup=g.key;renderTeamMobileSheet()}
       })
     }
     const selectTab=key=>{tabState.active=key;wrap.querySelectorAll('[data-team-tab]').forEach(x=>x.classList.toggle('team-tab-active',x.dataset.teamTab===key));renderBottomNav();drawTab()}
