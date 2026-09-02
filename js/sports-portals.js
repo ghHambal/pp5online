@@ -2520,6 +2520,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   // ของตาราง sports_attendance (ใครกดซ้ำทีหลังจะเจอ error 23505 ซึ่งจัดการเป็นข้อความที่เข้าใจง่ายแทน)
   const advisorCheckinToday=!!cfg?.advisor_checkin_date && todayStr===cfg.advisor_checkin_date
   let attendanceLocal=[...attendance]
+  let attListTab='checked', attListSearch=''
   let leavePasses=[]
   let recentScans=[]
   let html5Qrcode=null, scanning=false, reportAbsent=[]
@@ -2570,6 +2571,18 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
       </div>
     </div>
     <div class="line border-t mt-5 pt-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h3 class="font-bold">📋 รายชื่อนักเรียน</h3>
+        <div class="inline-flex p-1 rounded-xl team-sub gap-1">
+          <button type="button" data-att-list-tab="checked" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">✅ เช็คชื่อแล้ว</button>
+          <button type="button" data-att-list-tab="missing" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">⏳ ยังไม่เช็คชื่อ</button>
+        </div>
+      </div>
+      <input id="att-list-search" type="text" placeholder="🔍 ค้นหาชื่อหรือรหัสนักเรียน..." class="rounded-xl team-field px-3 py-2 text-sm w-full mb-3">
+      <p id="att-list-count" class="text-xs muted mb-2"></p>
+      <div id="att-list-grid" class="grid md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-96 overflow-y-auto"></div>
+    </div>
+    <div class="line border-t mt-5 pt-5">
       <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
         <div><h3 class="font-bold">🚪 ติดตามการออกจากพื้นที่สี</h3><p class="text-xs muted mt-1">บันทึกผู้ที่ขอออก กำหนดเวลากลับ และยกเลิกเช็คชื่อวันนี้ได้หากไม่กลับ</p></div>
         <span id="area-leave-count" class="px-3 py-1 rounded-full text-xs font-bold bg-amber-500/10 text-amber-400">กำลังโหลด...</span>
@@ -2605,6 +2618,19 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     const el=body.querySelector('#att-recent')
     el.innerHTML=recentScans.length ? recentScans.map(s=>`<div class="flex items-center gap-2 team-card rounded-lg p-2"><img src="${esc(s.image_url||s.photo_url||'')}" class="w-7 h-9 rounded object-cover border border-slate-700 flex-shrink-0" onerror="this.style.display='none'"><div class="min-w-0 flex-1"><b class="text-xs truncate block">${esc(s.full_name)}</b><span class="text-[10px] muted">${esc(s.student_code)}</span></div><span class="text-xs ${s._pending?'tone-warn':'tone-ok'}" title="${s._pending?'รอซิงก์ (ยังไม่มีเน็ต)':'ซิงก์แล้ว'}">${s._pending?'⏳':'✓'}</span><button type="button" data-cancel-scan="${esc(s._attendanceId)}" class="px-2 py-1 rounded-lg btn-danger-ghost hover:bg-red-600 hover:text-white transition text-[10px] font-bold flex-shrink-0">ยกเลิก</button></div>`).join('') : '<p class="text-xs muted text-center py-4">ยังไม่มีการสแกน</p>'
     el.querySelectorAll('[data-cancel-scan]').forEach(btn=>btn.onclick=()=>cancelScan(btn.dataset.cancelScan))
+  }
+  // แถบสลับ "เช็คชื่อแล้ว" ⇄ "ยังไม่เช็คชื่อ" ของวันที่/ประเภทที่กำลังเลือกอยู่ — อ่านจาก attendanceLocal
+  // เดียวกับแถบความคืบหน้าด้านบน จึงอัปเดตสดทันทีที่สแกน/ยกเลิก/เปลี่ยนวันที่ ไม่ต้องกดรีเฟรชแยก
+  const renderAttList=()=>{
+    body.querySelectorAll('[data-att-list-tab]').forEach(b=>b.classList.toggle('team-tab-active',b.dataset.attListTab===attListTab))
+    const scannedIds=new Set(attendanceLocal.filter(a=>a.session_date===sessionDate).map(a=>a.student_id))
+    const source=attListTab==='checked' ? membersList.filter(s=>scannedIds.has(s.id)) : membersList.filter(s=>!scannedIds.has(s.id))
+    const q=attListSearch.trim().toLowerCase()
+    const filtered=q ? source.filter(s=>String(s.full_name||'').toLowerCase().includes(q)||String(s.student_code||'').toLowerCase().includes(q)) : source
+    body.querySelector('#att-list-count').textContent=`แสดง ${filtered.length} จาก ${source.length} คน`
+    body.querySelector('#att-list-grid').innerHTML=filtered.length
+      ? filtered.map(s=>`<div class="team-sub rounded-xl p-2 flex items-center gap-2">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-7 h-9 rounded object-cover border border-slate-700/60 flex-shrink-0" onerror="this.style.display='none'">`:''}<div class="min-w-0 flex-1"><b class="text-xs truncate block">${esc(s.full_name)}</b><span class="text-[10px] muted">${esc(s.student_code)} · ${esc(s.main_room)}</span></div></div>`).join('')
+      : `<p class="text-xs muted text-center py-6 col-span-full">${attListTab==='checked'?'ยังไม่มีใครเช็คชื่อในวันที่นี้':'🎉 เช็คชื่อครบทุกคนแล้ว'}</p>`
   }
   const leaveStudent=id=>membersList.find(s=>String(s.id)===String(id))
   const stopAreaLeaveScanner=async()=>{
@@ -2787,7 +2813,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
       attendanceLocal=attendanceLocal.filter(a=>!(String(a.student_id)===String(data.student_id)&&a.session_date===data.session_date))
       recentScans=recentScans.filter(s=>String(s.id)!==String(data.student_id))
       feedback(true,`ยกเลิกเช็คชื่อ ${student?.full_name||''} แล้ว`,'เก็บเหตุผลและผู้ดำเนินการไว้ตรวจสอบย้อนหลัง')
-      renderProgress();renderRecent()
+      renderProgress();renderRecent();renderAttList()
     }else feedback(true,`${student?.full_name||'นักเรียน'} กลับเข้าสีแล้ว`,'บันทึกเวลากลับเรียบร้อย')
     renderLeaveTracking()
   }
@@ -2832,7 +2858,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
       attendanceLocal.push({...payload,id:localId,_pending:true})
       recentScans.unshift({...student,_attendanceId:localId,_pending:true})
       feedback(true,`บันทึก ${student.full_name} ไว้ในเครื่องแล้ว`,'ไม่มีเน็ตตอนนี้ — จะซิงก์อัตโนมัติเมื่อเชื่อมต่อได้')
-      renderProgress();renderRecent()
+      renderProgress();renderRecent();renderAttList()
     }
     let data,error
     try{
@@ -2850,7 +2876,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     recentScans.unshift({...student,_attendanceId:data.id})
     feedback(true,`เช็คชื่อ ${student.full_name} สำเร็จ`,`รหัส ${student.student_code}`)
     showAttendanceSuccessPopup(student)
-    renderProgress();renderRecent()
+    renderProgress();renderRecent();renderAttList()
   }
   // ยกเลิกรายการที่สแกนผิด/พลาด — ถ้ายังไม่ sync (รอคิวออฟไลน์อยู่) ลบออกจากคิว+local state
   // ตรงๆ พอ (ยังไม่มีแถวจริงใน DB ให้ลบ) ถ้า sync ไปแล้วค่อยลบจากฐานข้อมูลจริง
@@ -2861,7 +2887,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
       attendanceLocal=attendanceLocal.filter(a=>String(a.id)!==String(attendanceId))
       recentScans=recentScans.filter(s=>String(s._attendanceId)!==String(attendanceId))
       feedback(true,`ยกเลิกการเช็คชื่อ${student?` ${student.full_name}`:''}แล้ว`,'ลบออกจากคิวที่รอซิงก์แล้ว')
-      renderProgress();renderRecent()
+      renderProgress();renderRecent();renderAttList()
       return
     }
     const {error}=await supabase.from('sports_attendance').delete().eq('id',attendanceId)
@@ -2869,7 +2895,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     attendanceLocal=attendanceLocal.filter(a=>String(a.id)!==String(attendanceId))
     recentScans=recentScans.filter(s=>String(s._attendanceId)!==String(attendanceId))
     feedback(true,`ยกเลิกการเช็คชื่อ${student?` ${student.full_name}`:''}แล้ว`,'ลบออกจากระบบเรียบร้อย')
-    renderProgress();renderRecent()
+    renderProgress();renderRecent();renderAttList()
   }
   // ฟังการเปลี่ยนแปลงคิวออฟไลน์ — พอ sync สำเร็จ (รายการหายไปจากคิว) ให้ลบ badge "รอซิงก์" ออก
   onSportsQueueChange(queue=>{
@@ -2878,7 +2904,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     attendanceLocal.forEach(a=>{if(a._pending&&!stillPendingIds.has(a.id)){a._pending=false;changed=true}})
     recentScans.forEach(s=>{if(s._pending&&!stillPendingIds.has(s._attendanceId)){s._pending=false;changed=true}})
     renderQueueStatus(queue)
-    if(changed){renderProgress();renderRecent()}
+    if(changed){renderProgress();renderRecent();renderAttList()}
   })
   renderQueueStatus()
   trySyncSportsQueue()
@@ -2890,8 +2916,11 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     // ถ้าวันที่เลือกตรงกับปฏิทินปฏิบัติงานพอดี ตั้งประเภทเช็คชื่อให้อัตโนมัติตามป้ายชื่อวันนั้น
     const matched=dateOptions.find(d=>d.date===sessionDate)
     if(matched?.label) sessionType=sessionTypeForLabel(matched.label)
-    renderProgress()
+    renderProgress();renderAttList()
   })
+
+  body.querySelectorAll('[data-att-list-tab]').forEach(b=>b.onclick=()=>{attListTab=b.dataset.attListTab;renderAttList()})
+  body.querySelector('#att-list-search').addEventListener('input',e=>{attListSearch=e.target.value;renderAttList()})
 
   body.querySelector('#att-manual-submit').onclick=()=>{
     const input=body.querySelector('#att-manual-code')
@@ -2950,7 +2979,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     a.click();URL.revokeObjectURL(a.href)
   }
 
-  renderProgress();renderRecent();loadLeavePasses()
+  renderProgress();renderRecent();renderAttList();loadLeavePasses()
 }
 
 // แท็บ "ค่าบำรุงสี" — ใช้กลไกสแกน QR/กรอกรหัสมือแบบเดียวกับเช็คชื่อเป๊ะ (SQ:{student_code}:{ts}
@@ -2958,6 +2987,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
 // "วันไหน" (จ่ายครั้งเดียวจบต่อคนต่ออีเวนต์ unique(event_id,student_id))
 function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,card}){
   let duesLocal=[...(duesPayments||[])]
+  let duesListTab='paid', duesListSearch=''
   let recentScans=[]
   let html5Qrcode=null, scanning=false, reportUnpaid=[]
 
@@ -2988,6 +3018,18 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
       </div>
     </div>
     <div class="line border-t mt-5 pt-5">
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h3 class="font-bold">📋 รายชื่อนักเรียน</h3>
+        <div class="inline-flex p-1 rounded-xl team-sub gap-1">
+          <button type="button" data-dues-list-tab="paid" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">✅ จ่ายแล้ว</button>
+          <button type="button" data-dues-list-tab="unpaid" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">⏳ ยังไม่จ่าย</button>
+        </div>
+      </div>
+      <input id="dues-list-search" type="text" placeholder="🔍 ค้นหาชื่อหรือรหัสนักเรียน..." class="rounded-xl team-field px-3 py-2 text-sm w-full mb-3">
+      <p id="dues-list-count" class="text-xs muted mb-2"></p>
+      <div id="dues-list-grid" class="grid md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-96 overflow-y-auto"></div>
+    </div>
+    <div class="line border-t mt-5 pt-5">
       <h3 class="font-bold mb-3">📄 รายงานยังไม่ชำระ</h3>
       <div class="flex flex-wrap items-center gap-2 mb-3">
         <button type="button" id="dues-report-run" class="px-4 py-2 rounded-xl bg-violet-600 text-white text-xs font-bold">สร้างรายงาน</button>
@@ -3007,6 +3049,19 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
     const el=body.querySelector('#dues-recent')
     el.innerHTML=recentScans.length ? recentScans.map(s=>`<div class="flex items-center gap-2 team-card rounded-lg p-2"><img src="${esc(s.image_url||s.photo_url||'')}" class="w-7 h-9 rounded object-cover border border-slate-700 flex-shrink-0" onerror="this.style.display='none'"><div class="min-w-0 flex-1"><b class="text-xs truncate block">${esc(s.full_name)}</b><span class="text-[10px] muted">${esc(s.student_code)}</span></div><span class="text-xs ${s._pending?'tone-warn':'tone-ok'}" title="${s._pending?'รอซิงก์ (ยังไม่มีเน็ต)':'ซิงก์แล้ว'}">${s._pending?'⏳':'✓'}</span><button type="button" data-cancel-dues="${esc(s._duesId)}" class="px-2 py-1 rounded-lg btn-danger-ghost hover:bg-red-600 hover:text-white transition text-[10px] font-bold flex-shrink-0">ยกเลิก</button></div>`).join('') : '<p class="text-xs muted text-center py-4">ยังไม่มีการรับเงิน</p>'
     el.querySelectorAll('[data-cancel-dues]').forEach(btn=>btn.onclick=()=>cancelDues(btn.dataset.cancelDues))
+  }
+  // แถบสลับ "จ่ายแล้ว" ⇄ "ยังไม่จ่าย" — อ่านจาก duesLocal เดียวกับแถบความคืบหน้าด้านบน อัปเดตสด
+  // ทันทีที่รับเงิน/ยกเลิก ไม่ต้องกดสร้างรายงานแยกเหมือนส่วน "รายงานยังไม่ชำระ" ด้านล่าง
+  const renderDuesList=()=>{
+    body.querySelectorAll('[data-dues-list-tab]').forEach(b=>b.classList.toggle('team-tab-active',b.dataset.duesListTab===duesListTab))
+    const paidIds=new Set(duesLocal.map(d=>d.student_id))
+    const source=duesListTab==='paid' ? membersList.filter(s=>paidIds.has(s.id)) : membersList.filter(s=>!paidIds.has(s.id))
+    const q=duesListSearch.trim().toLowerCase()
+    const filtered=q ? source.filter(s=>String(s.full_name||'').toLowerCase().includes(q)||String(s.student_code||'').toLowerCase().includes(q)) : source
+    body.querySelector('#dues-list-count').textContent=`แสดง ${filtered.length} จาก ${source.length} คน`
+    body.querySelector('#dues-list-grid').innerHTML=filtered.length
+      ? filtered.map(s=>`<div class="team-sub rounded-xl p-2 flex items-center gap-2">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-7 h-9 rounded object-cover border border-slate-700/60 flex-shrink-0" onerror="this.style.display='none'">`:''}<div class="min-w-0 flex-1"><b class="text-xs truncate block">${esc(s.full_name)}</b><span class="text-[10px] muted">${esc(s.student_code)} · ${esc(s.main_room)}</span></div></div>`).join('')
+      : `<p class="text-xs muted text-center py-6 col-span-full">${duesListTab==='paid'?'ยังไม่มีใครจ่ายค่าบำรุง':'🎉 จ่ายค่าบำรุงครบทุกคนแล้ว'}</p>`
   }
   const renderQueueStatus=(queue)=>{
     const pending=(queue||sqGet()).filter(i=>i.type==='dues').length
@@ -3051,7 +3106,7 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
       duesLocal.push({...payload,id:localId,_pending:true})
       recentScans.unshift({...student,_duesId:localId,_pending:true})
       feedback(true,`บันทึกรับเงิน ${student.full_name} ไว้ในเครื่องแล้ว`,`ไม่มีเน็ตตอนนี้ — จะซิงก์อัตโนมัติเมื่อเชื่อมต่อได้ (${Number(duesAmount).toLocaleString('th-TH')} บาท)`)
-      renderProgress();renderRecent()
+      renderProgress();renderRecent();renderDuesList()
     }
     let data,error
     try{
@@ -3065,7 +3120,7 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
     recentScans.unshift({...student,_duesId:data.id})
     feedback(true,`รับเงิน ${student.full_name} สำเร็จ`,`รหัส ${student.student_code} · ${Number(duesAmount).toLocaleString('th-TH')} บาท`)
     showDuesSuccessPopup(student,duesAmount)
-    renderProgress();renderRecent()
+    renderProgress();renderRecent();renderDuesList()
   }
   // ยกเลิกรายการที่สแกนผิด/พลาด — ถ้ายังไม่ sync (รอคิวออฟไลน์อยู่) ลบออกจากคิว+local state
   // ตรงๆ พอ (ยังไม่มีแถวจริงใน DB ให้ลบ) ถ้า sync ไปแล้วค่อยลบจากฐานข้อมูลจริง
@@ -3076,7 +3131,7 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
       duesLocal=duesLocal.filter(d=>String(d.id)!==String(duesId))
       recentScans=recentScans.filter(s=>String(s._duesId)!==String(duesId))
       feedback(true,`ยกเลิกรายการรับเงิน${student?` ${student.full_name}`:''}แล้ว`,'ลบออกจากคิวที่รอซิงก์แล้ว')
-      renderProgress();renderRecent()
+      renderProgress();renderRecent();renderDuesList()
       return
     }
     const {error}=await supabase.from('sports_team_dues').delete().eq('id',duesId)
@@ -3084,7 +3139,7 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
     duesLocal=duesLocal.filter(d=>String(d.id)!==String(duesId))
     recentScans=recentScans.filter(s=>String(s._duesId)!==String(duesId))
     feedback(true,`ยกเลิกรายการรับเงิน${student?` ${student.full_name}`:''}แล้ว`,'ลบออกจากระบบเรียบร้อย')
-    renderProgress();renderRecent()
+    renderProgress();renderRecent();renderDuesList()
   }
   // ฟังการเปลี่ยนแปลงคิวออฟไลน์ — พอ sync สำเร็จ (รายการหายไปจากคิว) ให้ลบ badge "รอซิงก์" ออก
   onSportsQueueChange(queue=>{
@@ -3093,7 +3148,7 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
     duesLocal.forEach(d=>{if(d._pending&&!stillPendingIds.has(d.id)){d._pending=false;changed=true}})
     recentScans.forEach(s=>{if(s._pending&&!stillPendingIds.has(s._duesId)){s._pending=false;changed=true}})
     renderQueueStatus(queue)
-    if(changed){renderProgress();renderRecent()}
+    if(changed){renderProgress();renderRecent();renderDuesList()}
   })
   renderQueueStatus()
   trySyncSportsQueue()
@@ -3107,6 +3162,9 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
     input.value='';input.focus()
   }
   body.querySelector('#dues-manual-code').addEventListener('keydown',e=>{if(e.key==='Enter')body.querySelector('#dues-manual-submit').click()})
+
+  body.querySelectorAll('[data-dues-list-tab]').forEach(b=>b.onclick=()=>{duesListTab=b.dataset.duesListTab;renderDuesList()})
+  body.querySelector('#dues-list-search').addEventListener('input',e=>{duesListSearch=e.target.value;renderDuesList()})
 
   body.querySelector('[data-dues-camera-toggle]').onclick=async()=>{
     const btn=body.querySelector('[data-dues-camera-toggle]')
@@ -3151,7 +3209,7 @@ function renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount,car
     a.click();URL.revokeObjectURL(a.href)
   }
 
-  renderProgress();renderRecent()
+  renderProgress();renderRecent();renderDuesList()
 }
 
 // แท็บ "ภาพกิจกรรม" — อัปโหลดรูปเข้าคลังกลาง (ไม่แบ่งสีตอนแสดงผล ทุกสีเห็นกันหมด) สตาฟทุกสี
