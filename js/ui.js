@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.639'
+import { APP_VERSION } from './version.js?v=10.22.640'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -848,6 +848,9 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.640': [
+    '🔲 เปลี่ยนปุ่มนักกีฬาเป็นไอคอน QR Code แบบชัดเจน พร้อมข้อความกำกับและคำอธิบายสำหรับการเข้าถึง',
+  ],
   '10.22.639': [
     '🖼️ เพิ่มรูปนักเรียนหน้าชื่อในตารางนักกีฬา พร้อมใช้รูปสำรองและตัวอักษรย่อเมื่อไม่มีรูปหรือรูปโหลดไม่ได้',
   ],
