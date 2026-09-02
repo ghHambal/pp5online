@@ -2191,8 +2191,10 @@ function renderActivitiesView() {
   if (activities === null) { loadActivities(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
   const canCreate = ctx.canCreateActivities
   // สมาชิกที่ได้รับมอบหมาย (ไม่ใช่แอดมิน/ประธาน) สร้างได้เอง แต่ owner_member_id ของกิจกรรมที่
-  // สร้างต้องเป็นตัวเองเสมอ (RLS บังคับไว้แล้วฝั่ง DB) — ล็อกฟอร์มให้ตรงกับสิทธิ์จริง ไม่โชว์
-  // ตัวเลือกที่กดแล้วจะโดน RLS ปฏิเสธ
+  // สร้างต้องเป็นตัวเองเสมอ (RLS บังคับไว้แล้วฝั่ง DB) — ล็อกเฉพาะจุดนี้ให้ตรงกับสิทธิ์จริง
+  // (ไม่โชว์ตัวเลือกที่กดแล้วจะโดน RLS ปฏิเสธ) ส่วนเพศของกิจกรรม (ชาย/หญิง/ทั้งหมด) เลือกได้
+  // อิสระเหมือนแอดมิน/ประธานเสมอ — แค่ preselect เพศฝั่งตัวเองไว้เป็นค่าเริ่มต้นให้สะดวก
+  // เพราะบางกิจกรรมที่สมาชิกได้รับมอบหมายจัดเป็นงานร่วมสองฝั่งจริง ไม่ควรบังคับ
   const isDelegatedCreator = canCreate && !ctx.isAdmin && !ctx.isChair
   const myMember = ctx.membership[0]
   const counts = {}
@@ -2218,7 +2220,7 @@ function renderActivitiesView() {
           <input name="budget" type="number" step="0.01" placeholder="งบประมาณ (บาท)" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
         </div>
         <div class="grid grid-cols-2 gap-2">
-          <select name="gender" ${isDelegatedCreator ? 'disabled' : ''} class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
+          <select name="gender" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
             <option value="" ${isDelegatedCreator && !myMember?.council_positions?.gender ? 'selected' : ''}>สภาชาย+หญิงร่วมกัน</option>
             <option value="M" ${isDelegatedCreator && myMember?.council_positions?.gender === 'M' ? 'selected' : ''}>สภาชายเท่านั้น</option>
             <option value="W" ${isDelegatedCreator && myMember?.council_positions?.gender === 'W' ? 'selected' : ''}>สภาหญิงเท่านั้น</option>
