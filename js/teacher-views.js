@@ -371,7 +371,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     teacher ? getUnreadNotifications(teacher.id).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDuty(teacher.teacher_code).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDutyGrade(teacher.teacher_code).catch(()=>null) : Promise.resolve(null),
-    teacher ? import('./sports-portals.js?v=10.22.644').then(m => m.getTeacherShirtButtonState(teacher)).catch(() => ({ visible: false, enabled: false })) : Promise.resolve({ visible: false, enabled: false }),
+    teacher ? import('./sports-portals.js?v=10.22.645').then(m => m.getTeacherShirtButtonState(teacher)).catch(() => ({ visible: false, enabled: false })) : Promise.resolve({ visible: false, enabled: false }),
   ])
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
@@ -607,7 +607,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
   // ไซซ์เสื้อกีฬาสี (ครู) — เปิด modal เดิมของ sports-portals.js ตรงๆ
   window._openTeacherShirtModal = async () => {
-    const { openTeacherShirtSizeModal } = await import('./sports-portals.js?v=10.22.644')
+    const { openTeacherShirtSizeModal } = await import('./sports-portals.js?v=10.22.645')
     openTeacherShirtSizeModal(teacher)
   }
 
@@ -637,7 +637,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     regrade: ['#E5E1DA', '#B3A990'], sports: ['#FDD9B5', '#E8865C'],
     certificates: ['#FCE7A8', '#DDAE3F'], 'advisor-students': ['#B9EAF0', '#5CB8C4'],
     'my-team': ['#FBD0D6', '#E0616F'], 'shirt-summary': ['#E4E4E7', '#9C9CA3'],
-    'sports-fund': ['#C8ECC9', '#67B96A'], 'shirt-vote': ['#E2D3F5', '#9663D1'],
+    'sports-fund': ['#C8ECC9', '#67B96A'], 'sports-overview': ['#C6E6FA', '#4F9BD6'], 'shirt-vote': ['#E2D3F5', '#9663D1'],
     'qr-print': ['#C6E6FA', '#4F9BD6'], 'prayer-score': ['#B7ECDB', '#3F9C7E'],
   }
   const sidebarTiles = (window._teacherOverviewSystems || [])

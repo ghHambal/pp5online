@@ -1653,6 +1653,94 @@ export async function renderSportsFundAdmin() {
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
 
+// หน้า "ภาพรวมกีฬาสี" (แอดมิน) — สรุปเช็คชื่อรายวัน/ค่าบำรุง/บัญชีของทุกสีพร้อมกันในหน้าเดียว ไม่ต้อง
+// ไล่เปิดทีละสีเหมือนเดิม อ่านข้อมูลจาก RPC เดียว (get_sports_admin_overview, patch_sports_admin_overview.sql)
+// ที่รวมทุกตารางไว้แล้ว เพราะ RLS ของ sports_attendance/sports_team_dues กันไว้ตามทีมเป็นค่าเริ่มต้น
+export async function renderSportsOverviewAdmin() {
+  const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลดภาพรวมกีฬาสี...</div>'
+  try {
+    const {event}=await context()
+    const [{data:ov,error},{data:campCalendar}]=await Promise.all([
+      supabase.rpc('get_sports_admin_overview',{p_event:event.id}),
+      supabase.from('work_calendar_events').select('id,label,event_date,end_date').or('label.ilike.%เข้าสี%,label.ilike.%กีฬาสี%,label.ilike.%วันงาน%'),
+    ])
+    if(error) throw error
+    const colors=ov?.colors||[], attendance=ov?.attendance||[], dues=ov?.dues||[], fund=ov?.fund||[]
+    // รวมวันจากปฏิทินปฏิบัติงาน + วันที่มีการเช็คชื่อจริงที่อาจตกหล่นจากปฏิทิน (กันเช็คชื่อทดสอบ/ย้อนหลังหาย)
+    const days=[...new Set([..._expandCalendarDays(campCalendar).map(d=>d.date), ...attendance.map(a=>a.session_date)])].sort()
+    const attMap=new Map(attendance.map(a=>[`${a.team_color_id}|${a.session_date}`,Number(a.checked_count)]))
+    const duesMap=new Map(dues.map(d=>[d.team_color_id,d]))
+    const fundMap=new Map(fund.map(f=>[f.team_color_id,f]))
+    const pctBarColor=pct=>pct>=80?'bg-emerald-500':pct>=50?'bg-amber-500':'bg-red-500'
+
+    const renderAttendanceTab=()=>days.length?`<div class="overflow-x-auto"><table class="w-full text-sm border-collapse">
+        <thead><tr class="border-b bg-gray-50"><th class="p-2 text-left sticky left-0 bg-gray-50 z-10">สี</th>${days.map(d=>`<th class="p-2 text-center whitespace-nowrap">${esc(d)}</th>`).join('')}</tr></thead>
+        <tbody>${colors.map(c=>{
+          const total=Number(c.member_count)||0
+          return `<tr class="border-b"><td class="p-2 font-bold sticky left-0 bg-white z-10" style="color:${esc(c.hex_color)}">สี${esc(c.name)}</td>${days.map(d=>{
+            const checked=attMap.get(`${c.id}|${d}`)||0
+            const pct=total?Math.round(checked*100/total):0
+            return `<td class="p-2 text-center"><div class="inline-flex flex-col items-center gap-1"><span class="text-xs font-bold">${checked}/${total}</span><div class="w-14 h-1.5 rounded-full bg-gray-100 overflow-hidden"><div class="h-full ${pctBarColor(pct)}" style="width:${pct}%"></div></div></div></td>`
+          }).join('')}</tr>`
+        }).join('')}</tbody>
+      </table></div>`:`<p class="text-sm text-gray-400 text-center py-10">ยังไม่มีปฏิทินปฏิบัติงานวันเข้าสี/กีฬาสี หรือยังไม่มีการเช็คชื่อ</p>`
+
+    const renderDuesTab=()=>{
+      const totalMembers=colors.reduce((s,c)=>s+(Number(c.member_count)||0),0)
+      const totalPaid=dues.reduce((s,d)=>s+(Number(d.paid_count)||0),0)
+      const totalAmount=dues.reduce((s,d)=>s+(Number(d.total_amount)||0),0)
+      return `<div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead><tr class="border-b bg-gray-50"><th class="p-3 text-left">สี</th><th class="p-3 text-center">จ่ายแล้ว</th><th class="p-3 text-center">ยังไม่จ่าย</th><th class="p-3 text-center">%</th><th class="p-3 text-right">ยอดรวม (บาท)</th></tr></thead>
+        <tbody>${colors.map(c=>{
+          const d=duesMap.get(c.id)||{paid_count:0,total_amount:0}
+          const total=Number(c.member_count)||0, paid=Number(d.paid_count)||0
+          const pct=total?Math.round(paid*100/total):0
+          return `<tr class="border-b"><td class="p-3 font-bold" style="color:${esc(c.hex_color)}">สี${esc(c.name)}</td><td class="p-3 text-center">${paid}</td><td class="p-3 text-center">${Math.max(0,total-paid)}</td><td class="p-3 text-center">${pct}%</td><td class="p-3 text-right font-bold">${Number(d.total_amount||0).toLocaleString('th-TH')}</td></tr>`
+        }).join('')}
+        <tr class="bg-gray-50 font-bold"><td class="p-3">รวมทุกสี</td><td class="p-3 text-center">${totalPaid}</td><td class="p-3 text-center">${Math.max(0,totalMembers-totalPaid)}</td><td class="p-3"></td><td class="p-3 text-right">${totalAmount.toLocaleString('th-TH')}</td></tr>
+        </tbody>
+      </table></div>`
+    }
+
+    const renderLedgerTab=()=>{
+      let grandDues=0,grandSchool=0,grandPrize=0,grandExpense=0
+      const rows=colors.map(c=>{
+        const d=duesMap.get(c.id)||{total_amount:0}, f=fundMap.get(c.id)||{school_support:0,prize:0,expense:0}
+        const duesTotal=Number(d.total_amount)||0, school=Number(f.school_support)||0, prize=Number(f.prize)||0, expense=Number(f.expense)||0
+        const balance=duesTotal+school+prize-expense
+        grandDues+=duesTotal;grandSchool+=school;grandPrize+=prize;grandExpense+=expense
+        return `<tr class="border-b"><td class="p-3 font-bold" style="color:${esc(c.hex_color)}">สี${esc(c.name)}</td><td class="p-3 text-right">${duesTotal.toLocaleString('th-TH')}</td><td class="p-3 text-right">${school.toLocaleString('th-TH')}</td><td class="p-3 text-right">${prize.toLocaleString('th-TH')}</td><td class="p-3 text-right text-red-600">${expense.toLocaleString('th-TH')}</td><td class="p-3 text-right font-bold ${balance<0?'text-red-600':'text-emerald-600'}">${balance.toLocaleString('th-TH')}</td></tr>`
+      }).join('')
+      const grandBalance=grandDues+grandSchool+grandPrize-grandExpense
+      return `<div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead><tr class="border-b bg-gray-50"><th class="p-3 text-left">สี</th><th class="p-3 text-right">ค่าบำรุง</th><th class="p-3 text-right">สนับสนุนโรงเรียน</th><th class="p-3 text-right">เงินรางวัล</th><th class="p-3 text-right">รายจ่าย</th><th class="p-3 text-right">คงเหลือ</th></tr></thead>
+        <tbody>${rows}<tr class="bg-gray-50 font-bold"><td class="p-3">รวมทุกสี</td><td class="p-3 text-right">${grandDues.toLocaleString('th-TH')}</td><td class="p-3 text-right">${grandSchool.toLocaleString('th-TH')}</td><td class="p-3 text-right">${grandPrize.toLocaleString('th-TH')}</td><td class="p-3 text-right text-red-600">${grandExpense.toLocaleString('th-TH')}</td><td class="p-3 text-right ${grandBalance<0?'text-red-600':'text-emerald-600'}">${grandBalance.toLocaleString('th-TH')}</td></tr></tbody>
+      </table></div>`
+    }
+
+    el.innerHTML=`<div class="max-w-6xl mx-auto space-y-5">
+      <div><h1 class="text-2xl font-bold">📊 ภาพรวมกีฬาสี (แอดมิน)</h1><p class="text-sm text-gray-500">สรุปเช็คชื่อรายวัน ค่าบำรุงสี และบัญชีของทุกสี เทียบกันในหน้าเดียว</p></div>
+      <div id="sports-ov-tabs" class="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
+        <button type="button" data-ov-tab="attendance" class="px-4 py-2 rounded-lg text-sm font-bold transition">📷 เช็คชื่อรายวัน</button>
+        <button type="button" data-ov-tab="dues" class="px-4 py-2 rounded-lg text-sm font-bold transition">💰 ค่าบำรุงสี</button>
+        <button type="button" data-ov-tab="ledger" class="px-4 py-2 rounded-lg text-sm font-bold transition">📒 บัญชีสี</button>
+      </div>
+      <section class="bg-white border rounded-2xl p-5"><div id="sports-ov-body"></div></section>
+    </div>`
+
+    let tab='attendance'
+    const render=()=>{
+      el.querySelectorAll('[data-ov-tab]').forEach(b=>{
+        const active=b.dataset.ovTab===tab
+        b.className=`px-4 py-2 rounded-lg text-sm font-bold transition ${active?'bg-indigo-600 text-white':'text-gray-600 hover:bg-gray-200'}`
+      })
+      el.querySelector('#sports-ov-body').innerHTML=tab==='attendance'?renderAttendanceTab():tab==='dues'?renderDuesTab():renderLedgerTab()
+    }
+    el.querySelectorAll('[data-ov-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.ovTab;render()})
+    render()
+  } catch(e) { console.error(e); el.innerHTML=missing() }
+}
+
 export async function renderShirtVoteSettings(gender='ชาย') {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลด...</div>'
   try {
