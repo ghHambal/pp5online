@@ -9,6 +9,7 @@ const COUNCIL_CONFIG_KEYS = [
   'council_min_gpa', 'council_min_gpa_religious', // เกรดขั้นต่ำ สามัญ/ศาสนา แยกกัน (สเปคข้อ 8.2)
   'council_eligible_grade_levels', 'council_require_teacher_endorsement', 'council_require_peer_endorsement',
   'council_min_certificates', // จำนวนเกียรติบัตร/รางวัลขั้นต่ำที่ต้องแนบตอนสมัคร (default '5')
+  'council_min_attendance_pct', // % เช็คชื่อขั้นต่ำ (จากกิจกรรมที่ counts_for_evaluation=true และเกิดขึ้นแล้ว) สำหรับประเมินความเป็นสมาชิกสภา — ว่าง = ไม่บังคับ
   'council_apply_opens_at', 'council_apply_closes_at', // ช่วงเวลาเปิด-ปิดรับสมัคร
   'council_featured_phase', // '' (auto)/'apply'/'election'/'none' — จุดเด่นในหน้าหลักที่แอดมินเลือกเองได้ ไม่งั้นคำนวณจากวันที่
   'council_video_max_minutes', 'council_video_brief', // วิดีโอแนะนำตัว: จำนวนนาที + หัวข้อที่ต้องพูด (JSON array)
@@ -94,7 +95,7 @@ export async function removeEndorsementPhrase(id) {
 // ─── รายชื่อสภาปัจจุบัน (public roster) ───────────────────────────────────────
 export async function getCouncilMembers(academicYear) {
   let q = supabase.from('council_members')
-    .select('id, position_id, student_id, academic_year, status, source, council_positions(gender, position_name, sort_order, is_elected), students(full_name, student_code, main_room, image_url, photo_url)')
+    .select('id, position_id, student_id, academic_year, status, source, can_create_activities, council_positions(gender, position_name, sort_order, is_elected), students(full_name, student_code, main_room, image_url, photo_url)')
     .eq('status', 'active')
   if (academicYear) q = q.eq('academic_year', academicYear)
   const { data, error } = await q
@@ -130,10 +131,16 @@ export async function getMyCouncilApplications(studentId) {
 
 export async function getMyCouncilMembership(studentId) {
   const { data, error } = await supabase.from('council_members')
-    .select('id, position_id, status, source, term_start_date, term_end_date, council_positions(position_name, gender, is_elected)')
+    .select('id, position_id, status, source, term_start_date, term_end_date, can_create_activities, council_positions(position_name, gender, is_elected)')
     .eq('student_id', studentId).eq('status', 'active')
   if (error) throw error
   return data ?? []
+}
+
+// มอบ/ถอนสิทธิ์ "สร้างกิจกรรมเอง" — RPC เช็คสิทธิ์ผู้เรียกฝั่ง DB เอง (แอดมิน หรือประธานสภาเพศเดียวกับเป้าหมาย)
+export async function setMemberCanCreateActivities(memberId, value) {
+  const { error } = await supabase.rpc('set_council_member_can_create', { p_member_id: memberId, p_value: !!value })
+  if (error) throw error
 }
 
 // ─── สมัครสภานักเรียน — wizard 5-6 ขั้น (สเปคข้อ 8.2 + เกียรติบัตร/รางวัลขั้นต่ำ 5 รายการ) ──
@@ -499,11 +506,12 @@ export async function getCouncilActivities(academicYear) {
   return data ?? []
 }
 
-export async function createActivity({ title, detail, gender, activityDate, budget, ownerText, academicYear, openToGeneral, ownerMemberId }) {
+export async function createActivity({ title, detail, gender, activityDate, budget, ownerText, academicYear, openToGeneral, ownerMemberId, countsForEvaluation }) {
   const { error } = await supabase.from('council_activities').insert({
     title, detail, gender: gender || null, activity_date: activityDate || null,
     budget: budget || null, owner_text: ownerText || null, academic_year: academicYear,
     open_to_general: !!openToGeneral, owner_member_id: ownerMemberId || null,
+    counts_for_evaluation: countsForEvaluation !== false,
   })
   if (error) throw error
 }
@@ -519,6 +527,24 @@ export async function updateActivityOwnership(activityId, { openToGeneral, owner
     .update({ open_to_general: !!openToGeneral, owner_member_id: ownerMemberId || null, updated_at: new Date().toISOString() })
     .eq('id', activityId)
   if (error) throw error
+}
+
+// สรุปกิจกรรม+เช็คชื่อของนักเรียนคนเดียว ใช้ทั้งคำนวณ % สำหรับหน้าสรุปของฉัน และหน้าจัดการ
+// ของแอดมิน/ครูที่ปรึกษา — นับเฉพาะกิจกรรมที่เกิดขึ้นแล้วจริง (ongoing/completed) และ
+// counts_for_evaluation=true เท่านั้นเป็นตัวหาร (planned ยังไม่เกิดขึ้น ไม่ควรตัดคะแนนล่วงหน้า)
+export async function getMyActivityAttendanceSummary(studentId, gender, academicYear) {
+  let q = supabase.from('council_activities')
+    .select('id, title, activity_date, status, gender, counts_for_evaluation, open_to_general')
+    .in('status', ['ongoing', 'completed'])
+  if (academicYear) q = q.eq('academic_year', academicYear)
+  if (gender) q = q.or(`gender.is.null,gender.eq.${gender}`)
+  const [{ data: activities, error: e1 }, { data: myAttendance, error: e2 }] = await Promise.all([
+    q.order('activity_date', { ascending: false }),
+    supabase.from('council_activity_attendance').select('activity_id, checked_in_at').eq('student_id', studentId),
+  ])
+  if (e1) throw e1
+  if (e2) throw e2
+  return { activities: activities ?? [], myAttendance: myAttendance ?? [] }
 }
 
 // เซตของ student_id ที่เช็คชื่อแล้ว — ใช้ทำ checklist แบบเบา (ไม่ต้องละเอียดวันเวลา)

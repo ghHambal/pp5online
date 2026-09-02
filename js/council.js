@@ -41,6 +41,7 @@ import {
   getAdvisorPositions, setAdvisorPositions, getAllAdvisorPositions,
   updateMySignature, updateMyPhoto,
   searchStudentsForCouncil, addCouncilMemberManual, updateCouncilMember, removeCouncilMember,
+  setMemberCanCreateActivities, getMyActivityAttendanceSummary,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -279,6 +280,12 @@ async function init() {
   // ประธานสภา (chair) — นักเรียนที่ล็อกอินอยู่และมีสมาชิกภาพ active ในตำแหน่งที่ is_elected=true
   // ได้สิทธิ์จัดการกิจกรรม/ประกาศเท่าแอดมิน (RLS คุมไว้แล้ว ดู patch_council_phase3_activities_news.sql)
   const isChair = role === 'student' && membership.some(m => m.council_positions?.is_elected)
+  // สิทธิ์สร้างกิจกรรม/การประชุมเองได้ทันที (ไม่ใช่แค่จัดการกิจกรรมที่มีอยู่แล้วผ่าน owner_member_id)
+  // — ประธานสภาได้เสมอ + สมาชิกที่แอดมิน/ประธานมอบสิทธิ์ can_create_activities ไว้ล่วงหน้า
+  const canCreateActivities = isChair || membership.some(m => m.can_create_activities)
+  // เพศของสภาที่ตัวเองเป็นประธานอยู่ — ใช้จำกัดขอบเขตตอนมอบสิทธิ์สร้างกิจกรรมให้สมาชิกคนอื่น
+  // (ประธานสภาชาย มอบสิทธิ์ให้ได้เฉพาะสมาชิกสภาชายเท่านั้น ไม่ข้ามไปฝั่งหญิง)
+  const chairGender = membership.find(m => m.council_positions?.is_elected)?.council_positions?.gender ?? null
 
   // ครูที่ปรึกษาสภา — ตำแหน่ง (position) 'council_advisor' ที่แอดมินมอบให้จากหน้าตั้งค่าครูเดิม
   // (dashboard.html) เห็นเกือบทุกหน้าเหมือนแอดมิน ยกเว้นมอบสิทธิ์ — ต้องเช็คทั้ง teacher.position
@@ -299,6 +306,7 @@ async function init() {
 
   ctx = {
     role, isAdmin, isChair, isCouncilAdvisor, isStudentAffairsHead, isSchoolDirector, isExecutive,
+    canCreateActivities, chairGender,
     student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
   }
@@ -364,6 +372,8 @@ function getNavItems() {
   if (ctx.isChair || ctx.isAdmin || ctx.isCouncilAdvisor) items.push({ id: 'chairteam', icon: '👔', label: 'เสนอคณะทำงาน', group: 'council' })
   if (ctx.isChair) items.push({ id: 'assignments', icon: '📌', label: 'มอบหมายงาน', group: 'council' })
   if (ctx.membership.length) items.push({ id: 'myduty', icon: '🎫', label: 'หน้าที่/งานของฉัน', group: 'council' })
+  // สรุปของฉัน — กิจกรรม/กำหนดการ + ผลเช็คชื่อ + ผลประเมิน % ของตัวเอง หน้าเดียวจบ ไม่ต้องไปหาหลายที่
+  if (ctx.membership.length) items.push({ id: 'mysummary', icon: '📊', label: 'สรุปของฉัน', group: 'council' })
   // รับรองจากสภานักเรียนปัจจุบัน — เห็นเฉพาะสมาชิกสภา active เมื่อเปิดใช้บังคับจากหน้าตั้งค่า
   if (ctx.membership.length && ctx.cfg.council_require_peer_endorsement === 'true') {
     items.push({ id: 'peerEndorse', icon: '✋', label: 'รับรองผู้สมัคร (สภา)', group: 'council' })
@@ -1849,12 +1859,18 @@ function renderRosterView() {
     ? `<button type="button" id="btn-add-council-member" class="w-full py-2.5 rounded-xl border border-dashed border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold mb-4 hover:bg-[var(--primary-soft)]">＋ เพิ่มสมาชิกสภา${GENDER_LABEL[rosterGenderTab]}</button>`
     : ''
 
+  // มอบสิทธิ์ "สร้างกิจกรรมเอง" — แอดมินมอบให้ใครก็ได้ ประธานสภามอบได้เฉพาะสมาชิกเพศเดียวกับตัวเอง
+  // (ตรงกับที่ RPC set_council_member_can_create เช็คซ้ำอีกชั้นฝั่ง DB อยู่แล้ว)
+  const canGrantCreate = ctx.isAdmin || (ctx.isChair && ctx.chairGender === rosterGenderTab)
+
   const memberCard = m => `
     <div class="rounded-xl border border-[var(--line-soft)] p-3 bg-[var(--surface)] text-center">
       ${studentPhoto(m.students, 'w-16 h-20 mx-auto')}
       <p class="text-sm font-bold text-[var(--ink)] truncate mt-2">${esc(m.students?.full_name ?? '—')}</p>
       <p class="text-[0.6875rem] text-[var(--muted)] truncate">${esc(m.students?.main_room ?? '')}</p>
       <p class="text-[0.6875rem] text-[var(--primary)] font-semibold truncate mt-0.5">${esc(m.council_positions?.position_name ?? '—')}</p>
+      ${canGrantCreate ? `
+        <button type="button" class="btn-toggle-can-create w-full mt-2 text-[0.625rem] font-bold py-1 rounded-[8px] border ${m.can_create_activities ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)] text-[#106143]' : 'border-[var(--line)] text-[var(--muted)]'}" data-id="${m.id}" data-value="${m.can_create_activities ? '' : '1'}">${m.can_create_activities ? '✅ สร้างกิจกรรมได้' : '➕ ให้สิทธิ์สร้างกิจกรรม'}</button>` : ''}
       ${ctx.isAdmin ? `
         <div class="flex gap-1.5 mt-2 pt-2 border-t border-[var(--line-soft)]">
           <button type="button" class="btn-edit-council-member flex-1 text-[0.6875rem] font-bold py-1 rounded-[8px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${m.id}">✏️ แก้ไข</button>
@@ -2173,7 +2189,12 @@ function computeCertEligibility({ rule, override, attendanceRows }) {
 
 function renderActivitiesView() {
   if (activities === null) { loadActivities(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
-  const canCreate = ctx.isAdmin || ctx.isChair
+  const canCreate = ctx.canCreateActivities
+  // สมาชิกที่ได้รับมอบหมาย (ไม่ใช่แอดมิน/ประธาน) สร้างได้เอง แต่ owner_member_id ของกิจกรรมที่
+  // สร้างต้องเป็นตัวเองเสมอ (RLS บังคับไว้แล้วฝั่ง DB) — ล็อกฟอร์มให้ตรงกับสิทธิ์จริง ไม่โชว์
+  // ตัวเลือกที่กดแล้วจะโดน RLS ปฏิเสธ
+  const isDelegatedCreator = canCreate && !ctx.isAdmin && !ctx.isChair
+  const myMember = ctx.membership[0]
   const counts = {}
   activities.forEach(a => { counts[a.status] = (counts[a.status] ?? 0) + 1 })
 
@@ -2197,24 +2218,33 @@ function renderActivitiesView() {
           <input name="budget" type="number" step="0.01" placeholder="งบประมาณ (บาท)" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
         </div>
         <div class="grid grid-cols-2 gap-2">
-          <select name="gender" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
-            <option value="">สภาชาย+หญิงร่วมกัน</option>
-            <option value="M">สภาชายเท่านั้น</option>
-            <option value="W">สภาหญิงเท่านั้น</option>
+          <select name="gender" ${isDelegatedCreator ? 'disabled' : ''} class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
+            <option value="" ${isDelegatedCreator && !myMember?.council_positions?.gender ? 'selected' : ''}>สภาชาย+หญิงร่วมกัน</option>
+            <option value="M" ${isDelegatedCreator && myMember?.council_positions?.gender === 'M' ? 'selected' : ''}>สภาชายเท่านั้น</option>
+            <option value="W" ${isDelegatedCreator && myMember?.council_positions?.gender === 'W' ? 'selected' : ''}>สภาหญิงเท่านั้น</option>
           </select>
           <input name="owner_text" placeholder="ฝ่าย/ผู้รับผิดชอบ (ข้อความ)" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
         </div>
+        ${isDelegatedCreator ? `
+        <input type="hidden" name="owner_member_id" value="${myMember?.id ?? ''}" />
+        <p class="text-xs text-[var(--muted-2)] bg-[var(--surface-2)] rounded-xl px-3 py-2">👤 ผู้รับผิดชอบกิจกรรมนี้คือคุณเอง (ตามสิทธิ์ที่ได้รับมอบหมาย)</p>` : `
         <div>
           <label class="block text-xs font-medium text-[var(--muted)] mb-1">ผู้รับผิดชอบกิจกรรม (สมาชิกสภา — จัดการเช็คชื่อ/เกียรติบัตรของกิจกรรมนี้ได้เอง)</label>
           <select name="owner_member_id" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
             <option value="">— ไม่ระบุ (แอดมิน/ครูที่ปรึกษาสภา/ประธานจัดการเท่านั้น) —</option>
             ${ctx.members.map(m => `<option value="${m.id}">${esc(m.students?.full_name ?? '—')} (${esc(m.council_positions?.position_name ?? '—')})</option>`).join('')}
           </select>
-        </div>
+        </div>`}
         <label class="flex items-center gap-2 text-sm text-[var(--ink-2)]">
           <input type="checkbox" name="open_to_general" class="w-4 h-4" />
           เปิดให้นักเรียนทั่วไป (ไม่ใช่แค่สมาชิกสภา) เช็คชื่อเข้าร่วมได้
         </label>
+        <label class="flex items-center gap-2 text-sm text-[var(--ink-2)]">
+          <input type="checkbox" name="counts_for_evaluation" checked class="w-4 h-4" />
+          นับกิจกรรมนี้ในเกณฑ์ % เช็คชื่อสำหรับประเมินความเป็นสมาชิกสภา
+        </label>
+        <!-- ตั้งใจไม่มีปุ่มแก้ไขค่านี้หลังสร้างแล้ว — กันคนที่เป็นทั้งผู้สร้าง+ผู้ถูกประเมิน
+             ย้อนกลับมาปลดกิจกรรมที่ตัวเองขาดออกจากตัวหารทีหลัง ตั้งได้ครั้งเดียวตอนสร้างเท่านั้น -->
         <button type="submit" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">สร้างกิจกรรม</button>
       </form>
     </div>` : ''
@@ -2240,8 +2270,12 @@ function renderActivitiesView() {
         ${a.detail ? `<p class="text-xs text-[var(--ink-2)]">${esc(a.detail)}</p>` : ''}
         ${manageable ? `
           <div class="flex flex-wrap gap-2 pt-1 border-t border-[var(--line-soft)]">
-            ${ctx.isAdmin || ctx.isChair ? (ACT_NEXT_STATUS[a.status] ? `<button type="button" class="btn-activity-next text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)]" data-id="${a.id}" data-next="${ACT_NEXT_STATUS[a.status]}">${ACT_NEXT_LABEL[a.status]}</button>` : '') : ''}
-            ${(ctx.isAdmin || ctx.isChair) && a.status !== 'cancelled' && a.status !== 'completed' ? `<button type="button" class="btn-activity-cancel text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${a.id}">ยกเลิก</button>` : ''}
+            <!-- เดิมจำกัดแค่ admin/chair เปลี่ยนสถานะได้ — แต่กิจกรรมที่ค้างสถานะ "planned" ตลอดไป
+                 จะไม่ถูกนับใน % เช็คชื่อสำหรับประเมินเลย (นับเฉพาะ ongoing/completed) ผู้รับผิดชอบ
+                 ที่ได้รับมอบหมาย (owner) จึงต้องเปลี่ยนสถานะกิจกรรมของตัวเองได้ด้วย ไม่งั้นฟีเจอร์
+                 "สร้าง+เช็คชื่อได้เอง" จะใช้ไม่ได้จริงเพราะกิจกรรมไม่มีวันถูกนับผล -->
+            ${manageable ? (ACT_NEXT_STATUS[a.status] ? `<button type="button" class="btn-activity-next text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)]" data-id="${a.id}" data-next="${ACT_NEXT_STATUS[a.status]}">${ACT_NEXT_LABEL[a.status]}</button>` : '') : ''}
+            ${manageable && a.status !== 'cancelled' && a.status !== 'completed' ? `<button type="button" class="btn-activity-cancel text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${a.id}">ยกเลิก</button>` : ''}
             <button type="button" class="btn-activity-attendance text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${a.id}">👥 เช็คชื่อสมาชิก</button>
             <button type="button" class="btn-activity-scan text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white" data-id="${a.id}" data-title="${esc(a.title)}" data-open-general="${a.open_to_general ? '1' : ''}">📷 สแกน QR เช็คอิน</button>
             <button type="button" class="btn-activity-cert-manage text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--gold-soft-line)] text-[var(--gold-ink)] hover:bg-[var(--gold-soft)]" data-id="${a.id}">🏅 จัดการเกียรติบัตร</button>
@@ -3155,6 +3189,15 @@ function renderSettingsGeneral() {
         </div>
       </div>
 
+      <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-3">
+        <p class="text-sm font-bold text-[var(--ink-2)]">📈 เกณฑ์การประเมินความเป็นสมาชิกสภา</p>
+        <p class="text-[0.6875rem] text-[var(--muted-2)]">คิดจากกิจกรรมที่เกิดขึ้นแล้ว (กำลังดำเนินการ/เสร็จแล้ว) และถูกเลือกไว้ตอนสร้างว่า "นับผล" เท่านั้น — ตัวเลข % เป็นข้อมูลให้ครูที่ปรึกษาสภาดูประกอบการตัดสินใจเท่านั้น ไม่ตัดสิทธิ์อัตโนมัติ</p>
+        <div>
+          <label class="block text-xs font-medium text-[var(--muted)] mb-1">% เช็คชื่อขั้นต่ำที่ควรผ่าน (เว้นว่าง = ไม่ตั้งเกณฑ์)</label>
+          <input type="number" min="0" max="100" step="1" name="council_min_attendance_pct" value="${esc(cfg.council_min_attendance_pct || '')}" placeholder="เช่น 80" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        </div>
+      </div>
+
       <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-2">
         <p class="text-sm font-bold text-[var(--ink-2)]">🌟 จุดเด่นในหน้าหลัก</p>
         <p class="text-[0.6875rem] text-[var(--muted-2)]">ควบคุมว่าปุ่ม "สมัครสภานักเรียน" หรือ "การเลือกตั้ง" จะโชว์เด่นในหน้าหลักของนักเรียน/ครูทั่วไป — ปล่อยว่างไว้ให้ระบบคำนวณจากช่วงเปิด-ปิดรับสมัคร/เลือกตั้งด้านบนให้อัตโนมัติ</p>
@@ -3647,6 +3690,73 @@ function showMyCouncilQr(student) {
   modal.addEventListener('click', e => { if (e.target === modal) close() })
 }
 
+// ─── สรุปของฉัน — กิจกรรม/กำหนดการ + ผลเช็คชื่อ % + สถานะเทียบเกณฑ์ที่แอดมิน/ครูที่ปรึกษาตั้งไว้ ──
+// หน้าเดียวจบสำหรับสมาชิกสภา ไม่ต้องไปนับเองจากหน้ากิจกรรม — ตัวเลข % เป็นข้อมูลให้ดูเฉย ๆ
+// (ไม่ตัดสินผ่าน/ไม่ผ่านอัตโนมัติ ครูที่ปรึกษาเป็นคนตัดสินใจสุดท้ายเสมอ ตามที่ตกลงกันไว้)
+let mySummaryData = null // { activities, myAttendance } | null = ยังไม่โหลด
+
+async function loadMySummary() {
+  const member = ctx.membership[0]
+  if (!member || !ctx.student) { mySummaryData = { activities: [], myAttendance: [] }; render(); return }
+  mySummaryData = await getMyActivityAttendanceSummary(ctx.student.id, member.council_positions?.gender, electionYear)
+    .catch(() => ({ activities: [], myAttendance: [] }))
+  render()
+}
+
+const SUMMARY_STATUS_BADGE = {
+  planned: ['ยังไม่จัด', 'text-[var(--gold-ink)]'],
+  ongoing: ['กำลังดำเนินการ', 'text-[var(--primary)]'],
+  completed: ['เสร็จแล้ว', 'text-[#106143]'],
+  cancelled: ['ยกเลิก', 'text-[var(--muted-2)]'],
+}
+
+function renderMySummaryView() {
+  const member = ctx.membership[0]
+  if (!member) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะสมาชิกสภาที่ล็อกอินอยู่เท่านั้น</p>`
+  if (mySummaryData === null) { loadMySummary(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+
+  const { activities, myAttendance } = mySummaryData
+  const attendedIds = new Set(myAttendance.map(r => r.activity_id))
+  const eligible = activities.filter(a => a.counts_for_evaluation)
+  const attendedCount = eligible.filter(a => attendedIds.has(a.id)).length
+  const pct = eligible.length ? Math.round((attendedCount / eligible.length) * 100) : null
+  const threshold = ctx.cfg.council_min_attendance_pct ? Number(ctx.cfg.council_min_attendance_pct) : null
+  const passed = threshold == null || pct == null ? null : pct >= threshold
+
+  const pctCard = `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 mb-4">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-2">📈 ผลเช็คชื่อของฉัน</p>
+      ${eligible.length ? `
+        <div class="flex items-end gap-2 mb-2">
+          <span class="text-3xl font-bold text-[var(--primary)]">${pct}%</span>
+          <span class="text-xs text-[var(--muted-2)] mb-1">${attendedCount}/${eligible.length} กิจกรรม</span>
+        </div>
+        <div class="w-full h-2 rounded-full bg-[var(--bg-2)] overflow-hidden mb-2"><div class="h-full ${passed === false ? 'bg-[var(--bad)]' : 'bg-[var(--primary)]'}" style="width:${pct}%"></div></div>
+        ${threshold != null ? `<p class="text-xs ${passed ? 'text-[var(--ok)]' : 'text-[var(--bad)]'} font-bold">${passed ? '✅ ผ่านเกณฑ์ขั้นต่ำ' : '⚠️ ยังไม่ถึงเกณฑ์ขั้นต่ำ'} ${threshold}%</p>` : `<p class="text-xs text-[var(--muted-2)]">ยังไม่มีการตั้งเกณฑ์ขั้นต่ำจากผู้ดูแล</p>`}
+      ` : `<p class="text-xs text-[var(--muted-2)] py-4 text-center">ยังไม่มีกิจกรรมที่นับผลในระบบ</p>`}
+      <p class="text-[0.625rem] text-[var(--muted-2)] mt-2">นับจากกิจกรรมที่เกิดขึ้นแล้วและถูกตั้งค่าให้ "นับผล" เท่านั้น — ผลนี้เป็นข้อมูลให้ครูที่ปรึกษาใช้ประกอบการประเมิน ไม่ได้ตัดสินอัตโนมัติ</p>
+    </div>`
+
+  const listCard = `
+    <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4">
+      <p class="text-sm font-bold text-[var(--ink-2)] mb-3">📅 กิจกรรม/กำหนดการ</p>
+      ${activities.length ? `<div class="space-y-2">${activities.map(a => {
+        const attended = attendedIds.has(a.id)
+        const [label, cls] = SUMMARY_STATUS_BADGE[a.status] ?? ['—', 'text-[var(--muted)]']
+        return `
+        <div class="flex items-center gap-3 rounded-xl border border-[var(--line-soft)] p-3">
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.title)}</p>
+            <p class="text-[0.6875rem] text-[var(--muted-2)]">${a.activity_date ? new Date(a.activity_date).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ยังไม่กำหนดวัน'} · <span class="${cls}">${label}</span>${!a.counts_for_evaluation ? ' · <span class="text-[var(--muted-2)]">ไม่นับผล</span>' : ''}</p>
+          </div>
+          <span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full ${attended ? 'bg-[var(--ok-soft-line)] text-[#106143]' : 'bg-[var(--bad-soft)] text-[var(--bad)]'}">${attended ? '✅ เช็คชื่อแล้ว' : '✗ ยังไม่เช็คชื่อ'}</span>
+        </div>`
+      }).join('')}</div>` : `<p class="text-xs text-[var(--muted-2)] text-center py-8">ยังไม่มีกิจกรรม</p>`}
+    </div>`
+
+  return `${pctCard}${listCard}`
+}
+
 // ─── มอบหมายงาน (ประธาน) — สเปคข้อ 8.7 ───────────────────────────────────────────
 const assignmentsByGender = {} // { M: [...], W: [...] } — undefined = ยังไม่โหลด
 
@@ -3903,6 +4013,7 @@ const VIEW_RENDERERS = {
   settings: renderSettingsView,
   chairteam: renderChairTeamView,
   myduty: renderMyDutyView,
+  mysummary: renderMySummaryView,
   assignments: renderAssignmentsView,
   peerEndorse: renderPeerEndorseView,
   perms: renderPermsView,
@@ -4007,6 +4118,24 @@ function wireContentEvents() {
         render()
       } catch (err) {
         showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      }
+    })
+  })
+  document.querySelectorAll('.btn-toggle-can-create').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = Number(btn.dataset.id), value = btn.dataset.value === '1'
+      btn.disabled = true
+      try {
+        await setMemberCanCreateActivities(id, value)
+        const m = ctx.members.find(x => x.id === id)
+        if (m) m.can_create_activities = value
+        const mine = ctx.membership.find(x => x.id === id)
+        if (mine) mine.can_create_activities = value
+        showToast(value ? 'ให้สิทธิ์สร้างกิจกรรมแล้ว ✅' : 'ถอนสิทธิ์แล้ว ✅', 'success')
+        render()
+      } catch (err) {
+        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        btn.disabled = false
       }
     })
   })
@@ -4483,6 +4612,7 @@ function wireSettingsEvents() {
         council_min_gpa_religious: f.council_min_gpa_religious.value,
         council_eligible_grade_levels: f.council_eligible_grade_levels.value.trim(),
         council_min_certificates: f.council_min_certificates.value,
+        council_min_attendance_pct: f.council_min_attendance_pct.value,
         council_require_teacher_endorsement: f.council_require_teacher_endorsement.checked ? 'true' : 'false',
         council_require_peer_endorsement: f.council_require_peer_endorsement.checked ? 'true' : 'false',
         council_apply_opens_at: f.council_apply_opens_at.value ? new Date(f.council_apply_opens_at.value).toISOString() : '',
@@ -4946,6 +5076,7 @@ function wireActivitiesEvents() {
         activityDate: f.activity_date.value || null, budget: f.budget.value ? Number(f.budget.value) : null,
         ownerText: f.owner_text.value.trim(), academicYear: electionYear,
         openToGeneral: f.open_to_general.checked, ownerMemberId: f.owner_member_id.value ? Number(f.owner_member_id.value) : null,
+        countsForEvaluation: f.counts_for_evaluation.checked,
       })
       showToast('สร้างกิจกรรมแล้ว ✅', 'success')
       activities = null
