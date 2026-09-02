@@ -26,7 +26,7 @@ import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { openRegradeModal } from './regrade-modal.js'
-import { renderShirtSummary, renderSportsFundAdmin, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.638'
+import { renderShirtSummary, renderSportsFundAdmin, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.639'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
