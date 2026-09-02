@@ -2060,7 +2060,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       @keyframes status-pulse{0%,100%{opacity:1}50%{opacity:.55}}
       @media (max-width:480px){#my-team-workspace .team-head b{font-size:.95rem}#my-team-workspace table{font-size:12px}#my-team-workspace .team-card{padding:1rem!important}}
       @media (max-width:639px){#team-tab-body{height:calc(100vh - 132px);box-sizing:border-box;padding-bottom:calc(7.5rem + env(safe-area-inset-bottom))}}
-    </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover ring-2 ring-pink-500/20">`:''}<div><b>${studentView?'สีของฉัน':'จัดการทีมสี'}${esc(c.name)}</b></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl font-bold shadow-lg shadow-pink-500/20">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs hidden sm:block border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold transition-all ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main><nav id="team-bottom-nav" class="team-tabs sm:hidden fixed bottom-0 inset-x-0 z-40 flex border-t safe-area-bottom"></nav>`
+    </style><header class="team-head border-b px-4 py-3 flex items-center gap-3"><div class="flex items-center gap-3 flex-1">${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover ring-2 ring-pink-500/20">`:''}<div><b>${studentView?'สีของฉัน':'จัดการทีมสี'}${esc(c.name)}</b></div></div><button data-theme-toggle class="px-3 py-2 border line rounded-xl text-sm">${theme==='dark'?'☀️ โหมดสว่าง':'🌙 โหมดมืด'}</button><button data-full class="px-3 py-2 bg-pink-600 text-white rounded-xl font-bold shadow-lg shadow-pink-500/20">AZIZGAMES</button><button data-close class="w-10 h-10 border line rounded-xl">✕</button></header><nav class="team-tabs hidden sm:block border-b px-4 py-3 overflow-x-auto whitespace-nowrap">${tabList.map(t=>`<button data-team-tab="${t[0]}" class="mr-2 px-4 py-2 rounded-xl border line text-sm font-bold transition-all ${t[0]===tabState.active?'team-tab-active':''}">${t[2]} ${esc(t[1])}</button>`).join('')}</nav><main id="team-tab-body" class="max-w-7xl mx-auto p-4 md:p-6"></main><nav id="team-bottom-nav" class="team-tabs sm:hidden fixed bottom-0 inset-x-0 z-40 flex border-t safe-area-bottom"></nav><div id="team-mobile-sheet" class="sm:hidden"></div>`
     // รายละเอียดคะแนนแยกเกณฑ์ (เฉลี่ยจากกรรมการทุกคนที่ให้คะแนนเกณฑ์นั้นแล้ว) — เฉพาะสีเราเอง
     // เพราะ sports_score_entries query ข้างบนกรอง team_color_id ไว้แล้ว
     const scoreBreakdown=(scoreCriteria||[]).map(crit=>{
@@ -2076,8 +2076,10 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
     const data={m,c,event,cfg,shirtSizes,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,compAssignments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,canCompAssign,isLead,canManageStaff,theme,studentView}
     const drawTab=()=>renderTeamWorkspaceTab(wrap,tabState.active,data)
     // จัดกลุ่มแท็บสำหรับแถบเมนูด้านล่างบนมือถือ (บนเดสก์ท็อปยังใช้แถบเดิมด้านบนเหมือนเดิม)
-    // กดกลุ่มที่มีแท็บเดียว (เช่น ภาพรวม) ไปหน้านั้นทันที ส่วนกลุ่มที่มีหลายแท็บ ปุ่มด้านล่างจะ
-    // เปลี่ยนเป็นแท็บย่อยของกลุ่มนั้นแทน พร้อมปุ่ม "กลับ" ให้ย้อนไปเลือกกลุ่มอื่นได้
+    // กดกลุ่มที่มีแท็บเดียว (เช่น ภาพรวม) ไปหน้านั้นทันที ส่วนกลุ่มที่มีหลายแท็บ ลอยแคปซูล
+    // กระจกฝ้าขึ้นเหนือแถบล่างแสดงแท็บย่อยทั้งหมดให้เห็นชัดว่ากลุ่มนั้นมีอะไรบ้าง (mirror
+    // ลูกเล่นเดียวกับ #council-mobile-sheet ใน council.js) — พ่อสี/แม่สี/สต๊าฟจะได้กดเข้าเมนูย่อย
+    // ได้ตรงๆ โดยไม่ต้องเดาว่ากลุ่มนั้นซ่อนอะไรไว้
     const groupDefs=[
       {key:'overview',label:'ภาพรวม',icon:'🏠',keys:['overview']},
       {key:'team',label:'ทีม',icon:'👥',keys:['members','athletes','managers','permissions']},
@@ -2085,25 +2087,27 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       {key:'results',label:'ผลงาน',icon:'🏆',keys:['scores','shirts','identity','gallery']},
     ]
     const tabGroups=groupDefs.map(g=>({...g,tabs:tabList.filter(t=>g.keys.includes(t[0]))})).filter(g=>g.tabs.length>0)
-    const navState={pickerOpen:true}
+    const navState={sheetGroup:null}
     const findGroup=tabKey=>tabGroups.find(g=>g.tabs.some(t=>t[0]===tabKey))
+    const renderTeamMobileSheet=()=>{
+      const el=wrap.querySelector('#team-mobile-sheet');if(!el)return
+      const g=tabGroups.find(x=>x.key===navState.sheetGroup)
+      if(!g){el.innerHTML='';return}
+      el.innerHTML=`<div class="fixed inset-0 z-[70] bg-black/20" id="team-sheet-backdrop"><div class="absolute left-1/2 -translate-x-1/2" style="bottom: calc(78px + env(safe-area-inset-bottom));"><div class="flex flex-col-reverse gap-2 items-stretch" style="width: min(74vw, 260px);">${g.tabs.map(t=>`
+        <button type="button" data-team-tab-m="${t[0]}" class="mobile-sheet-item text-left ${t[0]===tabState.active?'team-tab-active':'team-sub'}
+          backdrop-blur-md px-4 py-3 rounded-full text-sm font-bold flex items-center gap-3 min-h-[44px] shadow-lg"><span class="text-base">${t[2]}</span><span>${esc(t[1])}</span></button>`).join('')}</div></div></div>`
+      el.querySelector('#team-sheet-backdrop').addEventListener('click',e=>{if(e.target.id==='team-sheet-backdrop'){navState.sheetGroup=null;renderTeamMobileSheet()}})
+      el.querySelectorAll('[data-team-tab-m]').forEach(b=>b.onclick=()=>{navState.sheetGroup=null;renderTeamMobileSheet();selectTab(b.dataset.teamTabM)})
+    }
     const renderBottomNav=()=>{
       const nav=wrap.querySelector('#team-bottom-nav');if(!nav)return
-      if(navState.pickerOpen){
-        nav.innerHTML=tabGroups.map(g=>{const active=findGroup(tabState.active)?.key===g.key
-          return `<button data-team-group="${g.key}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-bold ${active?'text-pink-500':'muted'}"><span class="text-lg">${g.icon}</span><span>${esc(g.label)}</span></button>`}).join('')
-        nav.querySelectorAll('[data-team-group]').forEach(b=>b.onclick=()=>{
-          const g=tabGroups.find(x=>x.key===b.dataset.teamGroup)
-          if(g.tabs.length===1){selectTab(g.tabs[0][0])}
-          else{navState.pickerOpen=false;if(findGroup(tabState.active)?.key!==g.key)selectTab(g.tabs[0][0]);else renderBottomNav()}
-        })
-      }else{
-        const g=findGroup(tabState.active)
-        nav.innerHTML=`<button data-team-back class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-bold muted"><span class="text-lg">⬅️</span><span>กลับ</span></button>`+
-          g.tabs.map(t=>`<button data-team-tab-m="${t[0]}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-bold ${t[0]===tabState.active?'text-pink-500':'muted'}"><span class="text-lg">${t[2]}</span><span>${esc(t[1])}</span></button>`).join('')
-        nav.querySelector('[data-team-back]').onclick=()=>{navState.pickerOpen=true;renderBottomNav()}
-        nav.querySelectorAll('[data-team-tab-m]').forEach(b=>b.onclick=()=>selectTab(b.dataset.teamTabM))
-      }
+      nav.innerHTML=tabGroups.map(g=>{const active=findGroup(tabState.active)?.key===g.key
+        return `<button data-team-group="${g.key}" class="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 text-[11px] font-bold ${active?'text-pink-500':'muted'}"><span class="text-lg">${g.icon}</span><span>${esc(g.label)}</span></button>`}).join('')
+      nav.querySelectorAll('[data-team-group]').forEach(b=>b.onclick=()=>{
+        const g=tabGroups.find(x=>x.key===b.dataset.teamGroup)
+        if(g.tabs.length===1){navState.sheetGroup=null;renderTeamMobileSheet();selectTab(g.tabs[0][0])}
+        else{navState.sheetGroup=navState.sheetGroup===g.key?null:g.key;renderTeamMobileSheet()}
+      })
     }
     const selectTab=key=>{tabState.active=key;wrap.querySelectorAll('[data-team-tab]').forEach(x=>x.classList.toggle('team-tab-active',x.dataset.teamTab===key));renderBottomNav();drawTab()}
     wrap.querySelector('[data-close]').onclick=()=>wrap.remove();wrap.querySelectorAll('[data-full]').forEach(b=>b.onclick=()=>openAzizGamesModal({tab:b.dataset.azizTab||'',stdid:m?.student_id?m._studentCode||'':''}))
