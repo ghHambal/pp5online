@@ -1667,15 +1667,18 @@ export async function renderSportsOverviewAdmin() {
     ])
     if(error) throw error
     const colors=ov?.colors||[], attendance=ov?.attendance||[], dues=ov?.dues||[], fund=ov?.fund||[]
-    // รวมวันจากปฏิทินปฏิบัติงาน + วันที่มีการเช็คชื่อจริงที่อาจตกหล่นจากปฏิทิน (กันเช็คชื่อทดสอบ/ย้อนหลังหาย)
-    const days=[...new Set([..._expandCalendarDays(campCalendar).map(d=>d.date), ...attendance.map(a=>a.session_date)])].sort()
+    // ยึดตามปฏิทินปฏิบัติงานเท่านั้น (วันเข้าสี/วันกีฬาสีจริงที่ตั้งไว้จริง) — ห้ามรวมวันที่มีการ
+    // เช็คชื่อทุกวันแบบเดิม เพราะจะดึงวันทดสอบ/เช็คชื่อย้อนหลังนอกปฏิทิน (เช่นครูที่ปรึกษาทดสอบระบบ)
+    // เข้ามาเป็นคอลัมน์ขยะปนด้วย ทำให้ตารางยาวเกินจำนวนวันจริงที่ควรมี
+    const dayInfos=[...new Map(_expandCalendarDays(campCalendar).map(d=>[d.date,d.label])).entries()].map(([date,label])=>({date,label})).sort((a,b)=>a.date<b.date?-1:1)
+    const days=dayInfos.map(d=>d.date)
     const attMap=new Map(attendance.map(a=>[`${a.team_color_id}|${a.session_date}`,Number(a.checked_count)]))
     const duesMap=new Map(dues.map(d=>[d.team_color_id,d]))
     const fundMap=new Map(fund.map(f=>[f.team_color_id,f]))
     const pctBarColor=pct=>pct>=80?'bg-emerald-500':pct>=50?'bg-amber-500':'bg-red-500'
 
     const renderAttendanceTab=()=>days.length?`<div class="overflow-x-auto"><table class="w-full text-sm border-collapse">
-        <thead><tr class="border-b bg-gray-50"><th class="p-2 text-left sticky left-0 bg-gray-50 z-10">สี</th>${days.map(d=>`<th class="p-2 text-center whitespace-nowrap">${esc(d)}</th>`).join('')}</tr></thead>
+        <thead><tr class="border-b bg-gray-50"><th class="p-2 text-left sticky left-0 bg-gray-50 z-10">สี</th>${dayInfos.map(d=>`<th class="p-2 text-center whitespace-nowrap"><div>${esc(d.date)}</div>${d.label?`<div class="text-[10px] font-normal text-gray-400">${esc(d.label)}</div>`:''}</th>`).join('')}</tr></thead>
         <tbody>${colors.map(c=>{
           const total=Number(c.member_count)||0
           return `<tr class="border-b"><td class="p-2 font-bold sticky left-0 bg-white z-10" style="color:${esc(c.hex_color)}">สี${esc(c.name)}</td>${days.map(d=>{
@@ -1684,7 +1687,7 @@ export async function renderSportsOverviewAdmin() {
             return `<td class="p-2 text-center"><div class="inline-flex flex-col items-center gap-1"><span class="text-xs font-bold">${checked}/${total}</span><div class="w-14 h-1.5 rounded-full bg-gray-100 overflow-hidden"><div class="h-full ${pctBarColor(pct)}" style="width:${pct}%"></div></div></div></td>`
           }).join('')}</tr>`
         }).join('')}</tbody>
-      </table></div>`:`<p class="text-sm text-gray-400 text-center py-10">ยังไม่มีปฏิทินปฏิบัติงานวันเข้าสี/กีฬาสี หรือยังไม่มีการเช็คชื่อ</p>`
+      </table></div>`:`<p class="text-sm text-gray-400 text-center py-10">ยังไม่มีวันเข้าสี/กีฬาสีในปฏิทินปฏิบัติงาน — ไปตั้งวันที่ในหน้าปฏิทินปฏิบัติงานก่อน</p>`
 
     const renderDuesTab=()=>{
       const totalMembers=colors.reduce((s,c)=>s+(Number(c.member_count)||0),0)
