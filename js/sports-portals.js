@@ -2150,7 +2150,7 @@ const roleLabel = role => ({lead_teacher:'พ่อสี/แม่สี (ห�
 const permPill = (label,on) => `<div class="rounded-xl px-3 py-2 text-xs font-bold ${on?'status-done':'status-pending'}">${on?'เปิดให้ใช้':'ไม่เปิดให้ใช้'} · ${esc(label)}</div>`
 // duesPaidIds: Set ของ student.id ที่จ่ายค่าบำรุงสีแล้ว — ส่ง undefined ถ้าผู้ดูไม่มีสิทธิ์เห็นค่าบำรุง
 // (ไม่แสดงป้ายเลยดีกว่าแสดงป้าย "แดง/ยังไม่จ่าย" มั่วๆ ทั้งที่จริงๆ แค่ไม่มีสิทธิ์ดึงข้อมูลมา)
-const memberCard = (s,duesPaidIds) => `<div class="team-sub rounded-xl p-3 flex items-center gap-3">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-9 h-11 rounded-lg object-cover border border-slate-700/60 shadow-sm shadow-black/30 flex-shrink-0">`:''}<div class="min-w-0 flex-1"><b class="text-sm truncate block">${esc(s.full_name)}</b><p class="text-xs muted truncate">${esc(s.student_code)} · ${esc(s.main_room)} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p></div>${duesPaidIds?(duesPaidIds.has(s.id)?'<span class="status-pill status-done flex-shrink-0">💰 จ่ายแล้ว</span>':'<span class="status-pill status-bad flex-shrink-0">💰 ยังไม่จ่าย</span>'):''}</div>`
+const memberCard = (s,duesPaidIds) => `<div class="team-sub rounded-xl p-3 flex items-center gap-3">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-9 h-11 rounded-lg object-cover border border-slate-700/60 shadow-sm shadow-black/30 flex-shrink-0">`:''}<div class="min-w-0 flex-1"><b class="text-sm truncate block">${esc(s.full_name)}</b><p class="text-xs muted truncate">${esc(s.student_code)} · ${esc(s.main_room)} · เสื้อ ${esc(s.sports_shirt_size||'—')}</p></div>${duesPaidIds?(duesPaidIds.has(s.id)?'<span class="status-pill status-done flex-shrink-0">💰 จ่ายแล้ว</span>':'<span class="status-pill status-bad flex-shrink-0">💰 ยังไม่จ่าย</span>'):''}<button type="button" data-member-qr="${esc(s.id)}" title="เปิด QR Code ${esc(s.full_name||'นักเรียน')}" aria-label="เปิด QR Code ของ ${esc(s.full_name||'นักเรียน')}" class="flex-shrink-0 w-8 h-8 rounded-lg team-sub flex items-center justify-center">${teamAthleteQrIcon}</button></div>`
 
 async function openTeamAthleteQR(reg,c){
   document.getElementById('sports-athlete-qr-modal')?.remove()
@@ -2159,6 +2159,15 @@ async function openTeamAthleteQR(reg,c){
   modal.innerHTML=`<div class="bg-white text-slate-900 rounded-3xl p-5 w-full max-w-sm text-center shadow-2xl"><div class="flex justify-end"><button data-close class="text-2xl text-slate-400">×</button></div>${photo?`<img src="${esc(photo)}" class="w-20 h-24 rounded-xl object-cover mx-auto border">`:''}<h3 class="font-extrabold mt-3">${esc(reg.students?.full_name||'นักกีฬา')}</h3><p class="text-xs text-slate-500">สี${esc(c.name)} · ${esc(reg.students?.main_room||'')} · ${esc(reg.sports?.name||'')}</p><div data-qr class="mt-4 min-h-[220px] flex items-center justify-center text-sm text-slate-400">กำลังสร้าง QR Code...</div><p class="font-bold tracking-wider mt-2">${esc(reg.students?.student_code||'')}</p><p class="text-xs text-slate-500 mt-1">ใช้สแกนรายงานตัวแทน QR ประจำตัวนักเรียนได้</p></div>`
   document.body.appendChild(modal);modal.querySelector('[data-close]').onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove()}
   try{const url=await QRCode.toDataURL(reg.students?.student_code||'',{width:220,margin:2,color:{dark:'#111827',light:'#ffffff'}});modal.querySelector('[data-qr]').innerHTML=`<img src="${url}" class="w-[220px] h-[220px] rounded-xl border p-2" alt="QR Code">`}catch{modal.querySelector('[data-qr]').textContent='สร้าง QR Code ไม่สำเร็จ'}
+}
+
+async function openTeamMemberQR(s,c){
+  document.getElementById('sports-athlete-qr-modal')?.remove()
+  const modal=document.createElement('div');modal.id='sports-athlete-qr-modal';modal.className='fixed inset-0 z-[700] bg-black/75 p-4 flex items-center justify-center'
+  const photo=s?.image_url||s?.photo_url
+  modal.innerHTML=`<div class="bg-white text-slate-900 rounded-3xl p-5 w-full max-w-sm text-center shadow-2xl"><div class="flex justify-end"><button data-close class="text-2xl text-slate-400">×</button></div>${photo?`<img src="${esc(photo)}" class="w-20 h-24 rounded-xl object-cover mx-auto border">`:''}<h3 class="font-extrabold mt-3">${esc(s?.full_name||'นักเรียน')}</h3><p class="text-xs text-slate-500">สี${esc(c.name)} · ${esc(s?.main_room||'')}</p><div data-qr class="mt-4 min-h-[220px] flex items-center justify-center text-sm text-slate-400">กำลังสร้าง QR Code...</div><p class="font-bold tracking-wider mt-2">${esc(s?.student_code||'')}</p><p class="text-xs text-slate-500 mt-1">ใช้สแกนเช็คชื่อ/เก็บค่าบำรุงแทน QR ประจำตัวนักเรียนได้</p></div>`
+  document.body.appendChild(modal);modal.querySelector('[data-close]').onclick=()=>modal.remove();modal.onclick=e=>{if(e.target===modal)modal.remove()}
+  try{const url=await QRCode.toDataURL(s?.student_code||'',{width:220,margin:2,color:{dark:'#111827',light:'#ffffff'}});modal.querySelector('[data-qr]').innerHTML=`<img src="${url}" class="w-[220px] h-[220px] rounded-xl border p-2" alt="QR Code">`}catch{modal.querySelector('[data-qr]').textContent='สร้าง QR Code ไม่สำเร็จ'}
 }
 
 function openTeamAthleteEdit(reg,onSaved){
@@ -2285,6 +2294,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
       })
       body.querySelector('#member-count').textContent=`แสดง ${filtered.length} จาก ${membersList.length} คน`
       body.querySelector('#member-grid').innerHTML=filtered.map(s=>memberCard(s,duesPaidIds)).join('')||'<p class="text-sm muted col-span-full">ไม่พบรายชื่อที่ตรงกับเงื่อนไข</p>'
+      body.querySelectorAll('[data-member-qr]').forEach(b=>b.onclick=()=>openTeamMemberQR(membersList.find(x=>String(x.id)===b.dataset.memberQr),c))
     }
     body.querySelector('#member-search').addEventListener('input',e=>{memberSearch=e.target.value;drawMembers()})
     body.querySelector('#member-level-filter').addEventListener('change',e=>{memberLevel=e.target.value;drawMembers()})
