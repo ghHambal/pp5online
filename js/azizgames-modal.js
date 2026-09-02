@@ -1,4 +1,5 @@
-import { APP_VERSION } from './version.js?v=10.22.617'
+import { APP_VERSION } from './version.js?v=10.22.638'
+import { supabase } from './supabase.js'
 
 const AZIZGAMES_PATH = 'azizgames.html'
 
@@ -102,8 +103,38 @@ export function openAzizGamesModal({ admin = false, manage = false, teacherName 
     <iframe src="${url}" class="flex-1 w-full border-0 bg-white" title="AZIZGAMES กีฬาสีออนไลน์"></iframe>
   `
 
+  const iframe = modal.querySelector('iframe')
+  const onMessage = async (event) => {
+    if (event.origin !== window.location.origin || event.source !== iframe?.contentWindow) return
+    const message = event.data
+    if (message?.type !== 'azizgames:save-athlete-schedule' || !message.requestId) return
+    const payload = message.payload || {}
+    const isoOrNull = value => value ? new Date(value).toISOString() : null
+    try {
+      const registrationCloses = isoOrNull(payload.registrationClosesAt)
+      const editOpens = isoOrNull(payload.editOpensAt)
+      const editCloses = isoOrNull(payload.editClosesAt)
+      if (editOpens && registrationCloses && new Date(editOpens) < new Date(registrationCloses)) throw new Error('เวลาเปิดแก้ไขต้องไม่ก่อนเวลาปิดรับสมัคร')
+      if (editCloses && editOpens && new Date(editCloses) <= new Date(editOpens)) throw new Error('เวลาปิดแก้ไขต้องอยู่หลังเวลาเปิดแก้ไข')
+      const { data: activeEvent, error: eventError } = await supabase.from('events').select('id').eq('status','active').order('academic_year',{ascending:false}).limit(1).maybeSingle()
+      if (eventError || !activeEvent?.id) throw eventError || new Error('ไม่พบกิจกรรมกีฬาสีที่เปิดใช้งาน')
+      const { error } = await supabase.from('sports_portal_settings').update({
+        athlete_registration_closes_at: registrationCloses,
+        athlete_edit_opens_at: editOpens,
+        athlete_edit_closes_at: editCloses,
+        updated_at: new Date().toISOString(),
+      }).eq('event_id', activeEvent.id)
+      if (error) throw error
+      iframe.contentWindow?.postMessage({ type:'azizgames:save-athlete-schedule-result', requestId:message.requestId, ok:true }, window.location.origin)
+    } catch (error) {
+      iframe.contentWindow?.postMessage({ type:'azizgames:save-athlete-schedule-result', requestId:message.requestId, ok:false, error:error?.message || 'บันทึกไม่สำเร็จ' }, window.location.origin)
+    }
+  }
+  window.addEventListener('message', onMessage)
+
   const close = () => {
     document.removeEventListener('keydown', onKeydown)
+    window.removeEventListener('message', onMessage)
     document.body.style.overflow = previousOverflow
     modal.remove()
   }
