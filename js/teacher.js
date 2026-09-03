@@ -26,7 +26,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.652'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.653'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -2846,7 +2846,7 @@ function _showShirtSizeReminderPopup() {
   document.body.appendChild(wrap)
   wrap.querySelector('#ssrp-go').addEventListener('click', () => {
     wrap.remove()
-    import('./sports-portals.js?v=10.22.652').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+    import('./sports-portals.js?v=10.22.653').then(m => m.openTeacherShirtSizeModal?.(_teacher))
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
 }

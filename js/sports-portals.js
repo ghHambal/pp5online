@@ -1746,6 +1746,10 @@ export async function renderSportsOverviewAdmin() {
 }
 
 const EVAL_CATEGORY_LABEL={parade:'🕌 ขบวนพาเหรด/ความร่วมมือสี',page:'📣 หน้าเว็บเพจ',color_eval:'🎨 วันเข้าสี/วันกีฬาสีจริง'}
+// สีปกติของแต่ละสี (คงที่ตามชื่อสีจริง) — ใช้แทน team_colors.hex_color เพราะสีนั้นแก้ไขได้ผ่านคำขอ
+// เปลี่ยนอัตลักษณ์สี (ทำให้อาจไม่ใช่สีตามชื่อ เช่นสีแดงอาจถูกปรับเป็นเฉดอื่น) หน้าประเมินต้องการสี
+// อ้างอิงมาตรฐานที่กรรมการคุ้นเคย ไม่ใช่สีอัตลักษณ์ที่แต่ละสีปรับแต่งเอง
+const HOUSE_COLOR_HEX={'แดง':'#ef4444','น้ำเงิน':'#3b82f6','เขียว':'#10b981','น้ำตาล':'#92400e','ส้ม':'#f97316','ฟ้า':'#0ea5e9','ม่วง':'#a855f7','เทา':'#6b7280'}
 
 // หน้า "ประเมินกีฬาสี" — ครูที่ถูกมอบหมาย (sports_score_evaluators, patch_sports_score_evaluators.sql)
 // ให้คะแนนเกณฑ์ที่ตัวเองรับผิดชอบได้ตรงนี้เลย ผูกกับบัญชีครูจริง ไม่ต้องแยกไปล็อกอิน AZIZGAMES
@@ -1761,7 +1765,7 @@ export async function renderSportsEvaluationWorkspace() {
     const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true||await _hasHouseColorAdminPosition(profileId)
     const judgeUsername='pp5:'+profileId
     const [{data:colors},{data:criteria},{data:myAssignments},{data:myEntries}]=await Promise.all([
-      supabase.from('team_colors').select('id,name,hex_color,gender').eq('event_id',event.id).order('gender').order('display_order'),
+      supabase.from('team_colors').select('id,name,hex_color,logo_url,gender').eq('event_id',event.id).order('gender').order('display_order'),
       supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('category').order('display_order'),
       supabase.from('sports_score_evaluators').select('*').eq('event_id',event.id).eq('profile_id',profileId).eq('is_active',true),
       supabase.from('sports_score_entries').select('criteria_id,team_color_id,score').eq('event_id',event.id).eq('judge_username',judgeUsername),
@@ -1783,27 +1787,48 @@ export async function renderSportsEvaluationWorkspace() {
     const assignedCriteriaIds=new Set((myAssignments||[]).filter(a=>a.criteria_id).map(a=>a.criteria_id))
     const myCriteria=(criteria||[]).filter(c=>assignedCategories.has(c.category)||assignedCriteriaIds.has(c.id))
 
-    let gender='M', settingsOpen=false
+    const myCategories=[...new Set(myCriteria.map(c=>c.category))]
+    let gender='M', settingsOpen=false, evalCategory=myCategories[0]||null
     let teacherPicker=null
 
+    // การ์ดต่อสี (โลโก้+สีปกติ+ช่องกรอกคะแนนแยกหัวข้อ) อ่านง่ายกว่าตารางยาวๆ โดยเฉพาะบนมือถือ
+    // ที่กรรมการส่วนใหญ่ใช้จริง — แยกแท็บตามหมวดด้วยถ้าได้รับมอบหมายมากกว่า 1 หมวด กันปนกันมั่ว
     const scoringSection=()=>{
       if(!myCriteria.length) return isAdmin?'':`<section class="bg-white border rounded-2xl p-8 text-center"><p class="text-gray-400">คุณยังไม่ได้รับมอบหมายให้ประเมินหมวดใด — ติดต่อแอดมินเพื่อขอสิทธิ์</p></section>`
+      const catCriteria=myCriteria.filter(c=>c.category===evalCategory)
       const colorsForGender=(colors||[]).filter(c=>c.gender===gender)
       return `<section class="bg-white border rounded-2xl p-5">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div><h2 class="font-bold">📝 ให้คะแนนประเมิน</h2><p class="text-xs text-gray-500 mt-1">กรอกคะแนนแล้วกดบันทึก — แก้ไขซ้ำได้เสมอ (คะแนนล่าสุดของคุณจะถูกใช้)</p></div>
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div><h2 class="font-bold">📝 ให้คะแนนประเมิน</h2><p class="text-xs text-gray-500 mt-1">กรอกคะแนนแต่ละสีแล้วกดบันทึกด้านล่าง — แก้ไขซ้ำได้เสมอ</p></div>
           <div class="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
             <button type="button" data-eval-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition ${gender==='M'?'bg-emerald-600 text-white':'text-gray-600'}">👦 กลุ่มสีชาย</button>
             <button type="button" data-eval-gender="W" class="px-4 py-2 rounded-lg text-xs font-bold transition ${gender==='W'?'bg-rose-600 text-white':'text-gray-600'}">👧 กลุ่มสีหญิง</button>
           </div>
         </div>
-        <div class="overflow-x-auto"><table class="w-full text-sm border-collapse">
-          <thead><tr class="border-b bg-gray-50"><th class="p-2 text-left">สี</th>${myCriteria.map(c=>`<th class="p-2 text-center min-w-[110px]">${esc(EVAL_CATEGORY_LABEL[c.category]?.split(' ')[0]||'')} ${esc(c.name)}<div class="text-[10px] font-normal text-gray-400">เต็ม ${Number(c.max_score)}</div></th>`).join('')}</tr></thead>
-          <tbody>${colorsForGender.map(c=>`<tr class="border-b"><td class="p-2 font-bold" style="color:${esc(c.hex_color)}">สี${esc(c.name)}</td>${myCriteria.map(crit=>{
-            const v=scoreMap.get(`${crit.id}|${c.id}`)
-            return `<td class="p-2 text-center"><input type="number" min="0" max="${Number(crit.max_score)}" value="${v??''}" data-score-input data-crit="${crit.id}" data-color="${c.id}" class="w-20 border rounded-lg px-2 py-1.5 text-center text-sm"></td>`
-          }).join('')}</tr>`).join('')}</tbody>
-        </table></div>
+        ${myCategories.length>1?`<div class="flex flex-wrap gap-2 mb-4">${myCategories.map(cat=>`<button type="button" data-eval-cattab="${cat}" class="px-4 py-2 rounded-xl text-xs font-bold border transition ${cat===evalCategory?'bg-indigo-600 text-white border-indigo-600':'text-gray-600 border-gray-200 hover:bg-gray-50'}">${esc(EVAL_CATEGORY_LABEL[cat]||cat)}</button>`).join('')}</div>`:''}
+        <div class="grid sm:grid-cols-2 gap-3">
+          ${colorsForGender.map(c=>{
+            const swatch=HOUSE_COLOR_HEX[c.name]||c.hex_color||'#94a3b8'
+            return `<div class="rounded-2xl border overflow-hidden" style="border-color:${esc(swatch)}55">
+              <div class="flex items-center gap-3 p-3" style="background:${esc(swatch)}14">
+                ${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover border-2 flex-shrink-0 bg-white" style="border-color:${esc(swatch)}">`:`<div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${esc((c.name||'?').slice(0,1))}</div>`}
+                <b class="text-sm" style="color:${esc(swatch)}">สี${esc(c.name)}</b>
+              </div>
+              <div class="p-3 space-y-2 bg-white">
+                ${catCriteria.map(crit=>{
+                  const v=scoreMap.get(`${crit.id}|${c.id}`)
+                  return `<div class="flex items-center justify-between gap-2">
+                    <label class="text-xs text-gray-600 flex-1">${esc(crit.name)}</label>
+                    <div class="flex items-center gap-1 flex-shrink-0">
+                      <input type="number" min="0" max="${Number(crit.max_score)}" value="${v??''}" data-score-input data-crit="${crit.id}" data-color="${c.id}" class="w-16 border rounded-lg px-2 py-1.5 text-center text-sm">
+                      <span class="text-[10px] text-gray-400 w-10">/ ${Number(crit.max_score)}</span>
+                    </div>
+                  </div>`
+                }).join('')}
+              </div>
+            </div>`
+          }).join('')}
+        </div>
         <button id="eval-submit" type="button" class="mt-4 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold">💾 บันทึกคะแนนประเมิน</button>
       </section>`
     }
@@ -1839,7 +1864,7 @@ export async function renderSportsEvaluationWorkspace() {
               <option value="page">📣 หน้าเว็บเพจ</option>
             </select>
             <input id="crit-new-name" placeholder="ชื่อหัวข้อ" class="border rounded-xl px-3 py-2 text-sm sm:col-span-2">
-            <input id="crit-new-max" type="number" min="1" value="100" class="border rounded-xl px-3 py-2 text-sm" placeholder="คะแนนเต็ม">
+            <input id="crit-new-max" type="number" min="1" value="10" class="border rounded-xl px-3 py-2 text-sm" placeholder="คะแนนเต็ม">
           </div>
           <button id="crit-new-add" type="button" class="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">➕ เพิ่มหัวข้อ</button>
         </div>
@@ -1867,6 +1892,7 @@ export async function renderSportsEvaluationWorkspace() {
 
       el.querySelector('#eval-settings-toggle')?.addEventListener('click',()=>{settingsOpen=!settingsOpen;draw()})
       el.querySelectorAll('[data-eval-gender]').forEach(b=>b.onclick=()=>{gender=b.dataset.evalGender;draw()})
+      el.querySelectorAll('[data-eval-cattab]').forEach(b=>b.onclick=()=>{evalCategory=b.dataset.evalCattab;draw()})
 
       el.querySelector('#eval-submit')?.addEventListener('click',async()=>{
         const rows=[]
