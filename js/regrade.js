@@ -11,7 +11,7 @@ import {
   addRegradeRegistrarStaff, removeRegradeRegistrarStaff, getAllTeachersForPicker,
   getRegradeExecutives, addRegradeExecutive, removeRegradeExecutive,
   previewRegradeCsvRows, importRegradeSubjectsCsv,
-  getUnassignedRegradeSubjects, assignSubjectTeacherBulk, getRegradeDistinctClassLevels,
+  getUnassignedRegradeSubjects, assignSubjectTeacherBulk, assignSubjectTeacherByIds, getRegradeDistinctClassLevels,
   getDepartmentById,
   getClassroomSummary, getClassroomStudents, getStudentSubjectsForExec, getTopStudentsNeedingAttention,
 } from './regrade-api.js'
@@ -527,6 +527,7 @@ const teacher = {
   assignedExpanded: new Set(), assignedSemesterFilter: {},
   deptHeadExpanded: new Set(), unassigned: [], deptHeadTeacherOptions: null,
   deptHeadDept: undefined, deptHeadShowAll: false,
+  deptHeadSelectMode: new Set(), deptHeadSelected: {}, // { [subject_code]: Set<regrade_subjects.id> } — มอบหมายเฉพาะบางคนในวิชาเดียวกัน
 }
 
 function isDeptHead() {
@@ -695,6 +696,28 @@ async function renderTeacher() {
   }))
   content.querySelectorAll('[data-depthead-assign]').forEach(btn => btn.addEventListener('click', () => handleDeptHeadAssign(btn)))
   content.querySelectorAll('[data-depthead-scope]').forEach(btn => btn.addEventListener('click', () => { teacher.deptHeadShowAll = btn.dataset.deptheadScope === 'all'; renderTeacher() }))
+  content.querySelectorAll('[data-depthead-toggle-select]').forEach(btn => btn.addEventListener('click', () => {
+    const code = btn.dataset.deptheadToggleSelect
+    if (teacher.deptHeadSelectMode.has(code)) teacher.deptHeadSelectMode.delete(code)
+    else teacher.deptHeadSelectMode.add(code)
+    teacher.deptHeadSelected[code] = new Set()
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-depthead-student-select]').forEach(cb => cb.addEventListener('change', () => {
+    const code = cb.dataset.deptheadCode
+    const id = Number(cb.dataset.deptheadStudentSelect)
+    if (!teacher.deptHeadSelected[code]) teacher.deptHeadSelected[code] = new Set()
+    const set = teacher.deptHeadSelected[code]
+    if (cb.checked) set.add(id); else set.delete(id)
+    _updateDeptHeadSelectionUI(code)
+  }))
+  content.querySelectorAll('[data-depthead-select-all]').forEach(cb => cb.addEventListener('change', () => {
+    const code = cb.dataset.deptheadSelectAll
+    const group = groupBySubject(teacher.unassigned).find(g => g.subject_code === code)
+    teacher.deptHeadSelected[code] = new Set(cb.checked ? (group?.items.map(x => x.id) ?? []) : [])
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-depthead-assign-selected]').forEach(btn => btn.addEventListener('click', () => handleDeptHeadAssignSelected(btn)))
   content.querySelectorAll('[data-group-sem]').forEach(sel => sel.addEventListener('change', (e) => {
     const [scope, code] = sel.dataset.groupSem.split('|')
     const map = scope === 'catalog' ? teacher.catalogSemesterFilter : teacher.assignedSemesterFilter
@@ -809,9 +832,25 @@ function assignedStudentRow(x) {
   </div>`
 }
 
+function unassignedStudentRowSelectable(x, code, checked) {
+  const name = x.students?.full_name || '-'
+  return `
+  <label class="flex items-center gap-2.5 p-2.5 rounded-xl bg-[var(--surface-2)] cursor-pointer">
+    <input type="checkbox" data-depthead-student-select="${x.id}" data-depthead-code="${escHtml(code)}" ${checked ? 'checked' : ''} class="flex-shrink-0 rounded border-gray-300 text-[var(--primary)]">
+    ${personAvatarHtml(x.students, false)}
+    <div class="min-w-0 flex-1">
+      <p class="text-xs font-bold text-[var(--ink)] truncate">${escHtml(name)}</p>
+      <p class="text-[10px] text-[var(--muted-2)] truncate">${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || x.students?.religion_room || '')} · ${escHtml(x.semester)}</p>
+    </div>
+    <span class="flex-shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${badgeStyle(x.status)}">${statusMeta(x.status).label}</span>
+  </label>`
+}
+
 function unassignedSubjectGroupCard(group, expandedSet, teacherOptions) {
   const code = group.subject_code
   const isOpen = expandedSet.has(code)
+  const selectMode = teacher.deptHeadSelectMode.has(code)
+  const selectedSet = teacher.deptHeadSelected[code] || new Set()
   return `
   <div class="rg-card p-4">
     <button data-toggle-group="depthead|${escHtml(code)}" class="w-full flex justify-between items-start gap-2 text-left">
@@ -826,14 +865,44 @@ function unassignedSubjectGroupCard(group, expandedSet, teacherOptions) {
     </button>
     ${isOpen ? `
     <div class="mt-3 pt-3 border-t border-dashed border-[var(--line-soft)]">
-      <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">มอบหมายครูผู้สอนปัจจุบันให้วิชานี้ทั้งหมด (${group.items.length} รายการ)</label>
+      <div class="flex items-center justify-between gap-2 mb-1.5">
+        <label class="block text-[11px] font-bold text-[var(--ink-2)]">มอบหมายครูผู้สอนปัจจุบันให้วิชานี้ทั้งหมด (${group.items.length} รายการ)</label>
+        <button type="button" data-depthead-toggle-select="${escHtml(code)}" class="flex-shrink-0 text-[10px] font-bold" style="color:var(--primary)">${selectMode ? '✕ ยกเลิกเลือกเฉพาะคน' : '☑️ เลือกเฉพาะบางคน'}</button>
+      </div>
       <div class="flex gap-2 mb-3">
         <input data-depthead-input="${escHtml(code)}" list="regrade-depthead-teacher-list" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-xs" placeholder="พิมพ์ชื่อหรือรหัสครู แล้วเลือกจากรายการ...">
-        <button data-depthead-assign="${escHtml(code)}" class="px-4 py-2 rounded-lg text-white text-xs font-bold flex-shrink-0" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">มอบหมาย</button>
+        <button data-depthead-assign="${escHtml(code)}" class="px-4 py-2 rounded-lg text-white text-xs font-bold flex-shrink-0" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">มอบหมายทั้งหมด</button>
       </div>
-      <div class="flex flex-col gap-2">${group.items.map(x => catalogStudentRow(x)).join('')}</div>
+      ${selectMode ? `
+      <label class="flex items-center gap-2 mb-2 px-1 text-[11px] text-[var(--muted-2)] select-none">
+        <input type="checkbox" data-depthead-select-all="${escHtml(code)}" data-total="${group.items.length}" class="rounded border-gray-300 text-[var(--primary)]">
+        เลือกทั้งหมดในวิชานี้
+      </label>` : ''}
+      <div class="flex flex-col gap-2">${group.items.map(x => selectMode ? unassignedStudentRowSelectable(x, code, selectedSet.has(x.id)) : catalogStudentRow(x)).join('')}</div>
+      ${selectMode ? `
+      <div data-depthead-selected-bar="${escHtml(code)}" class="mt-3 pt-3 border-t border-dashed border-[var(--line-soft)] flex gap-2 ${selectedSet.size === 0 ? 'opacity-40' : ''}">
+        <input data-depthead-selected-input="${escHtml(code)}" list="regrade-depthead-teacher-list" class="flex-1 px-3 py-2 rounded-lg border border-[var(--line)] text-xs" placeholder="พิมพ์ชื่อหรือรหัสครูสำหรับคนที่เลือก...">
+        <button data-depthead-assign-selected="${escHtml(code)}" ${selectedSet.size === 0 ? 'disabled' : ''} class="px-4 py-2 rounded-lg text-white text-xs font-bold flex-shrink-0" style="background:linear-gradient(135deg,var(--secondary),var(--secondary-dark))">มอบหมายที่เลือก (<span data-depthead-selected-count="${escHtml(code)}">${selectedSet.size}</span>)</button>
+      </div>` : ''}
     </div>` : ''}
   </div>`
+}
+
+// อัปเดตแค่ตัวนับ/ปุ่ม/ติ๊กเลือกทั้งหมด โดยไม่ re-render ทั้งหน้า กันโฟกัส/ตำแหน่งสกอลล์หลุดตอนติ๊กถี่ๆ
+function _updateDeptHeadSelectionUI(code) {
+  const set = teacher.deptHeadSelected[code] || new Set()
+  const bar = document.querySelector(`[data-depthead-selected-bar="${CSS.escape(code)}"]`)
+  const countEl = document.querySelector(`[data-depthead-selected-count="${CSS.escape(code)}"]`)
+  const btn = document.querySelector(`[data-depthead-assign-selected="${CSS.escape(code)}"]`)
+  const selectAllCb = document.querySelector(`[data-depthead-select-all="${CSS.escape(code)}"]`)
+  if (countEl) countEl.textContent = String(set.size)
+  if (btn) btn.disabled = set.size === 0
+  if (bar) bar.classList.toggle('opacity-40', set.size === 0)
+  if (selectAllCb) {
+    const total = Number(selectAllCb.dataset.total || 0)
+    selectAllCb.checked = total > 0 && set.size === total
+    selectAllCb.indeterminate = set.size > 0 && set.size < total
+  }
 }
 
 async function handleDeptHeadAssign(btn) {
@@ -851,6 +920,29 @@ async function handleDeptHeadAssign(btn) {
   try {
     const n = await assignSubjectTeacherBulk(code, ctx.teacherRow.category, teacher_.id)
     showToast(`มอบหมายครูผู้สอนให้ ${n} รายการเรียบร้อย ✅`, 'success')
+    renderTeacher()
+  } catch (err) { showToast('มอบหมายไม่สำเร็จ: ' + err.message, 'error') }
+}
+
+async function handleDeptHeadAssignSelected(btn) {
+  const code = btn.dataset.deptheadAssignSelected
+  const input = document.querySelector(`[data-depthead-selected-input="${CSS.escape(code)}"]`)
+  const teacher_ = resolveTeacherFromPickerInput(input.value, teacher.deptHeadTeacherOptions)
+  if (!teacher_) { showToast('กรุณาพิมพ์แล้วเลือกชื่อครูจากรายการที่แสดง', 'warning'); return }
+  const ids = [...(teacher.deptHeadSelected[code] || [])]
+  if (!ids.length) { showToast('กรุณาเลือกนักเรียนอย่างน้อย 1 คน', 'warning'); return }
+  const group = groupBySubject(teacher.unassigned).find(g => g.subject_code === code)
+  const ok = await showRegradeConfirm({
+    title: 'ยืนยันมอบหมายครูผู้สอน',
+    message: `มอบหมาย "${teacher_.full_name}" เป็นครูผู้สอนวิชา "${group?.subject_name || code}" ให้นักเรียนที่เลือกไว้ ${ids.length} คนใช่หรือไม่?`,
+    confirmText: 'ยืนยันมอบหมาย',
+  })
+  if (!ok) return
+  try {
+    const n = await assignSubjectTeacherByIds(ids, teacher_.id)
+    showToast(`มอบหมายครูผู้สอนให้ ${n} คนที่เลือกเรียบร้อย ✅`, 'success')
+    teacher.deptHeadSelectMode.delete(code)
+    delete teacher.deptHeadSelected[code]
     renderTeacher()
   } catch (err) { showToast('มอบหมายไม่สำเร็จ: ' + err.message, 'error') }
 }

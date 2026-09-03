@@ -235,6 +235,17 @@ export async function assignSubjectTeacherBulk(subjectCode, category, teacherId)
   return data?.length ?? 0
 }
 
+// มอบหมายเฉพาะบางแถวที่หัวหน้ากลุ่มสาระเลือกไว้ (แบ่งนักเรียนวิชาเดียวกันให้ครูคนละคนได้) —
+// RLS policy regrade_subjects_depthead_assign คุมสิทธิ์อยู่แล้ว (ต้องเป็นแถวที่ยังไม่มีครู + อยู่ในหมวดตัวเอง)
+export async function assignSubjectTeacherByIds(rowIds, teacherId) {
+  const { data, error } = await supabase.from('regrade_subjects')
+    .update({ teacher_id: teacherId, updated_at: new Date().toISOString() })
+    .in('id', rowIds).is('teacher_id', null)
+    .select('id')
+  if (error) throw error
+  return data?.length ?? 0
+}
+
 export async function getRegradeDistinctClassLevels() {
   const { data, error } = await supabase.rpc('regrade_distinct_class_levels')
   if (error) throw error
