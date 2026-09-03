@@ -3346,8 +3346,9 @@ export async function renderSettings() {
         await applyThemeForRole('admin', {}, true)
         showToast('บันทึกสำเร็จ ✅', 'success')
         document.getElementById('cfg-save-hint').textContent = `บันทึกล่าสุด: ${new Date().toLocaleTimeString('th-TH')}`
-      } catch {
-        showToast('บันทึกไม่สำเร็จ', 'error')
+      } catch (error) {
+        console.error('บันทึกการตั้งค่าไม่สำเร็จ:', error)
+        showToast('บันทึกไม่สำเร็จ: ' + (error?.message || 'ไม่ทราบสาเหตุ'), 'error')
       } finally {
         btn.disabled = false; btn.textContent = 'บันทึก'
       }
