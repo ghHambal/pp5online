@@ -26,7 +26,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.649'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.652'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -255,6 +255,8 @@ const ROUTES = {
   'advisor-students': () => renderAdvisorStudents(_teacher, _homeroomRooms),
   'shirt-summary': () => renderShirtSummary(),
   'sports-fund-admin': () => renderSportsFundAdmin(),
+  'sports-overview-admin': () => renderSportsOverviewAdmin(),
+  'sports-evaluation': () => renderSportsEvaluationWorkspace(),
   'shirt-vote-settings': () => renderShirtVoteSettings(),
   'shirt-vote-dashboard': () => renderShirtVoteDashboard(),
   'my-team-workspace': () => openMyTeamWorkspace(),
@@ -652,6 +654,7 @@ async function _applyRoleMenus() {
     qrManagerRes,
     regradeCfg,
     regradePendingRes,
+    sportsEvaluatorRes,
   ] = await Promise.all([
     safe(getSystemConfig(), {}),
     _teacher ? safe(supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle(), { data: null }) : Promise.resolve({ data: null }),
@@ -661,6 +664,7 @@ async function _applyRoleMenus() {
     safe(supabase.from('qr_reissue_managers').select('profile_id').eq('profile_id', _teacher?.profile_id).maybeSingle(), { data: null }),
     safe(getRegradeConfig(), {}),
     _teacher ? safe(supabase.from('regrade_subjects').select('id', { count: 'exact', head: true }).eq('teacher_id', _teacher.id).eq('status', 'จำนงแล้ว'), { count: 0 }) : Promise.resolve({ count: 0 }),
+    safe(supabase.from('sports_score_evaluators').select('id').eq('profile_id', _teacher?.profile_id).eq('is_active', true), { data: [] }),
   ])
 
   if (!hasPrayer && _teacher) {
@@ -718,6 +722,8 @@ async function _applyRoleMenus() {
   toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
   toggle('menu-sports-fund-admin', !!isSportsManager)
   toggle('menu-sports-overview-admin', !!isSportsManager)
+  const isSportsEvaluator = isSportsManager || (sportsEvaluatorRes?.data?.length > 0)
+  toggle('menu-sports-evaluation', !!isSportsEvaluator)
 
   let isShirtVoteManager = false
   try {
@@ -746,6 +752,7 @@ async function _applyRoleMenus() {
     { key: 'shirt-summary',      show: !!canViewSportsShirtSummary,           emoji: '📦', label: 'สรุปยอด<br>เสื้อกีฬาสี',     nav: 'shirt-summary' },
     { key: 'sports-fund',        show: !!isSportsManager,                     emoji: '💰', label: 'บัญชีเงิน<br>กีฬาสี',        nav: 'sports-fund-admin' },
     { key: 'sports-overview',    show: !!isSportsManager,                     emoji: '📊', label: 'ภาพรวม<br>กีฬาสี',          nav: 'sports-overview-admin' },
+    { key: 'sports-evaluation',  show: !!isSportsEvaluator,                   emoji: '🧑‍⚖️', label: 'ประเมิน<br>กีฬาสี',         nav: 'sports-evaluation' },
     { key: 'shirt-vote',         show: !!(isSportsManager || isShirtVoteManager), emoji: '🗳️', label: 'ผลโหวต<br>แบบเสื้อ',    nav: 'shirt-vote-dashboard' },
     { key: 'qr-print',           show: _isQrReissueManager,                   emoji: '🎫', label: 'พิมพ์/คำขอ<br>QR',         nav: 'student-qr-print' },
     { key: 'prayer-score',       show: hasPrayer,                             emoji: '🕌', label: 'คะแนน<br>ศาสนา',           nav: 'prayer-score' },
@@ -2839,7 +2846,7 @@ function _showShirtSizeReminderPopup() {
   document.body.appendChild(wrap)
   wrap.querySelector('#ssrp-go').addEventListener('click', () => {
     wrap.remove()
-    import('./sports-portals.js?v=10.22.649').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+    import('./sports-portals.js?v=10.22.652').then(m => m.openTeacherShirtSizeModal?.(_teacher))
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
 }

@@ -1745,6 +1745,202 @@ export async function renderSportsOverviewAdmin() {
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
 
+const EVAL_CATEGORY_LABEL={parade:'🕌 ขบวนพาเหรด/ความร่วมมือสี',page:'📣 หน้าเว็บเพจ',color_eval:'🎨 วันเข้าสี/วันกีฬาสีจริง'}
+
+// หน้า "ประเมินกีฬาสี" — ครูที่ถูกมอบหมาย (sports_score_evaluators, patch_sports_score_evaluators.sql)
+// ให้คะแนนเกณฑ์ที่ตัวเองรับผิดชอบได้ตรงนี้เลย ผูกกับบัญชีครูจริง ไม่ต้องแยกไปล็อกอิน AZIZGAMES
+// อีกระบบเหมือนเดิม คะแนนเขียนลง sports_score_entries ตารางเดียวกับกรรมการฝั่ง AZIZGAMES
+// (judge_username='pp5:'+profile_id) เฉลี่ยรวมกันอัตโนมัติ ไม่ต้องแตะฝั่ง AZIZGAMES เลย
+// แอดมิน/house_color_admin เห็นแผงตั้งค่าเกณฑ์+มอบหมายผู้ประเมินฝังอยู่ในหน้าเดียวกันนี้
+export async function renderSportsEvaluationWorkspace() {
+  const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลดหน้าประเมินกีฬาสี...</div>'
+  try {
+    const {event}=await context()
+    const profileId=await getEffectiveProfileId(supabase)
+    const {data:profile}=await supabase.from('profiles').select('role,is_also_admin').eq('id',profileId).maybeSingle()
+    const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true||await _hasHouseColorAdminPosition(profileId)
+    const judgeUsername='pp5:'+profileId
+    const [{data:colors},{data:criteria},{data:myAssignments},{data:myEntries}]=await Promise.all([
+      supabase.from('team_colors').select('id,name,hex_color,gender').eq('event_id',event.id).order('gender').order('display_order'),
+      supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('category').order('display_order'),
+      supabase.from('sports_score_evaluators').select('*').eq('event_id',event.id).eq('profile_id',profileId).eq('is_active',true),
+      supabase.from('sports_score_entries').select('criteria_id,team_color_id,score').eq('event_id',event.id).eq('judge_username',judgeUsername),
+    ])
+    let allEvaluators=[], allTeachers=[]
+    if(isAdmin){
+      const [{data:ev},{data:tc}]=await Promise.all([
+        supabase.from('sports_score_evaluators').select('*').eq('event_id',event.id).order('created_at',{ascending:false}),
+        supabase.from('teachers').select('id,full_name,teacher_code,profile_id,image_url').order('full_name'),
+      ])
+      allEvaluators=ev||[]; allTeachers=(tc||[]).filter(t=>t.profile_id)
+    }
+    const teacherByProfile=new Map(allTeachers.map(t=>[t.profile_id,t]))
+    const criteriaById=new Map((criteria||[]).map(c=>[c.id,c]))
+    const scoreMap=new Map((myEntries||[]).map(e=>[`${e.criteria_id}|${e.team_color_id}`,Number(e.score)]))
+
+    // เกณฑ์ที่ฉันประเมินได้ — assignment ที่ criteria_id ว่าง = ทุกหัวข้อในหมวดนั้น, ระบุมา = หัวข้อเดียว
+    const assignedCategories=new Set((myAssignments||[]).filter(a=>!a.criteria_id).map(a=>a.category))
+    const assignedCriteriaIds=new Set((myAssignments||[]).filter(a=>a.criteria_id).map(a=>a.criteria_id))
+    const myCriteria=(criteria||[]).filter(c=>assignedCategories.has(c.category)||assignedCriteriaIds.has(c.id))
+
+    let gender='M', settingsOpen=false
+    let teacherPicker=null
+
+    const scoringSection=()=>{
+      if(!myCriteria.length) return isAdmin?'':`<section class="bg-white border rounded-2xl p-8 text-center"><p class="text-gray-400">คุณยังไม่ได้รับมอบหมายให้ประเมินหมวดใด — ติดต่อแอดมินเพื่อขอสิทธิ์</p></section>`
+      const colorsForGender=(colors||[]).filter(c=>c.gender===gender)
+      return `<section class="bg-white border rounded-2xl p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div><h2 class="font-bold">📝 ให้คะแนนประเมิน</h2><p class="text-xs text-gray-500 mt-1">กรอกคะแนนแล้วกดบันทึก — แก้ไขซ้ำได้เสมอ (คะแนนล่าสุดของคุณจะถูกใช้)</p></div>
+          <div class="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
+            <button type="button" data-eval-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition ${gender==='M'?'bg-emerald-600 text-white':'text-gray-600'}">👦 กลุ่มสีชาย</button>
+            <button type="button" data-eval-gender="W" class="px-4 py-2 rounded-lg text-xs font-bold transition ${gender==='W'?'bg-rose-600 text-white':'text-gray-600'}">👧 กลุ่มสีหญิง</button>
+          </div>
+        </div>
+        <div class="overflow-x-auto"><table class="w-full text-sm border-collapse">
+          <thead><tr class="border-b bg-gray-50"><th class="p-2 text-left">สี</th>${myCriteria.map(c=>`<th class="p-2 text-center min-w-[110px]">${esc(EVAL_CATEGORY_LABEL[c.category]?.split(' ')[0]||'')} ${esc(c.name)}<div class="text-[10px] font-normal text-gray-400">เต็ม ${Number(c.max_score)}</div></th>`).join('')}</tr></thead>
+          <tbody>${colorsForGender.map(c=>`<tr class="border-b"><td class="p-2 font-bold" style="color:${esc(c.hex_color)}">สี${esc(c.name)}</td>${myCriteria.map(crit=>{
+            const v=scoreMap.get(`${crit.id}|${c.id}`)
+            return `<td class="p-2 text-center"><input type="number" min="0" max="${Number(crit.max_score)}" value="${v??''}" data-score-input data-crit="${crit.id}" data-color="${c.id}" class="w-20 border rounded-lg px-2 py-1.5 text-center text-sm"></td>`
+          }).join('')}</tr>`).join('')}</tbody>
+        </table></div>
+        <button id="eval-submit" type="button" class="mt-4 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold">💾 บันทึกคะแนนประเมิน</button>
+      </section>`
+    }
+
+    const criteriaSettingsHtml=()=>['parade','color_eval','page'].map(cat=>{
+      const rows=(criteria||[]).filter(c=>c.category===cat)
+      return `<div class="mb-4"><h4 class="text-sm font-bold text-gray-700 mb-2">${EVAL_CATEGORY_LABEL[cat]}</h4><div class="space-y-1.5" data-crit-cat="${cat}">${rows.map(c=>`<div class="flex items-center gap-2 bg-gray-50 rounded-lg p-2" data-crit-row="${c.id}"><span class="flex-1 text-sm" data-crit-view>${esc(c.name)}</span><span class="text-xs text-gray-500 w-20 text-right" data-crit-view>เต็ม ${Number(c.max_score)}</span><button type="button" data-crit-edit="${c.id}" class="px-2 py-1 text-xs border rounded-lg text-indigo-600">แก้ไข</button><button type="button" data-crit-del="${c.id}" class="px-2 py-1 text-xs border rounded-lg text-red-600">ลบ</button></div>`).join('')||'<p class="text-xs text-gray-400">ยังไม่มีหัวข้อ</p>'}</div></div>`
+    }).join('')
+
+    const evaluatorsListHtml=()=>{
+      if(!allEvaluators.length) return '<p class="text-sm text-gray-400 text-center py-4">ยังไม่มีผู้ประเมิน</p>'
+      const byProfile=new Map()
+      allEvaluators.forEach(a=>{ if(!byProfile.has(a.profile_id)) byProfile.set(a.profile_id,[]); byProfile.get(a.profile_id).push(a) })
+      return [...byProfile.entries()].map(([pid,rows])=>{
+        const t=teacherByProfile.get(pid)
+        return `<div class="flex items-start gap-3 bg-gray-50 rounded-xl p-3 mb-2"><div class="flex-1 min-w-0"><b class="text-sm block truncate">${esc(t?.full_name||'ไม่พบชื่อ (บัญชีอาจถูกลบ)')}</b><div class="flex flex-wrap gap-1.5 mt-1.5">${rows.map(r=>`<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold">${esc(EVAL_CATEGORY_LABEL[r.category]||r.category)}${r.criteria_id?` · ${esc(criteriaById.get(r.criteria_id)?.name||'')}`:''}${r.role_label?` · ${esc(r.role_label)}`:''}<button type="button" data-eval-del="${r.id}" class="ml-1 text-red-500 font-black">✕</button></span>`).join('')}</div></div></div>`
+      }).join('')
+    }
+
+    const settingsSection=()=>!isAdmin?'':`<section class="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-5 mb-5">
+      <button type="button" id="eval-settings-toggle" class="w-full flex items-center justify-between text-left">
+        <div><h2 class="font-bold">⚙️ ตั้งค่าการประเมิน (แอดมิน)</h2><p class="text-xs text-gray-500 mt-1">จัดการหัวข้อ/คะแนนเต็ม และมอบหมายครูผู้ประเมิน</p></div>
+        <span class="text-xl transition-transform ${settingsOpen?'rotate-180':''}">⌄</span>
+      </button>
+      ${settingsOpen?`<div class="mt-4 pt-4 border-t border-indigo-100 grid lg:grid-cols-2 gap-6">
+        <div>
+          <h3 class="font-bold text-sm mb-3">📋 หัวข้อเกณฑ์การประเมิน</h3>
+          ${criteriaSettingsHtml()}
+          <div class="grid sm:grid-cols-4 gap-2 mt-3">
+            <select id="crit-new-category" class="border rounded-xl px-3 py-2 text-sm">
+              <option value="parade">🕌 ขบวนพาเหรด/ความร่วมมือสี</option>
+              <option value="color_eval">🎨 วันเข้าสี/วันกีฬาสีจริง</option>
+              <option value="page">📣 หน้าเว็บเพจ</option>
+            </select>
+            <input id="crit-new-name" placeholder="ชื่อหัวข้อ" class="border rounded-xl px-3 py-2 text-sm sm:col-span-2">
+            <input id="crit-new-max" type="number" min="1" value="100" class="border rounded-xl px-3 py-2 text-sm" placeholder="คะแนนเต็ม">
+          </div>
+          <button id="crit-new-add" type="button" class="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold">➕ เพิ่มหัวข้อ</button>
+        </div>
+        <div>
+          <h3 class="font-bold text-sm mb-3">🧑‍⚖️ ผู้ประเมิน (${allEvaluators.length} รายการ)</h3>
+          <div class="max-h-64 overflow-y-auto mb-3">${evaluatorsListHtml()}</div>
+          <div id="eval-teacher-picker-wrap" class="mb-2"></div>
+          <div class="flex flex-wrap gap-3 mb-2 text-xs font-bold">
+            <label class="flex items-center gap-1.5"><input type="checkbox" data-eval-cat="parade">🕌 ขบวนพาเหรด/ความร่วมมือสี</label>
+            <label class="flex items-center gap-1.5"><input type="checkbox" data-eval-cat="color_eval">🎨 วันเข้าสี/วันกีฬาสีจริง</label>
+            <label class="flex items-center gap-1.5"><input type="checkbox" data-eval-cat="page">📣 หน้าเว็บเพจ</label>
+          </div>
+          <input id="eval-role-label" placeholder="ตำแหน่ง เช่น หัวหน้า/ผู้ช่วย (ไม่บังคับ)" class="border rounded-xl px-3 py-2 text-sm w-full mb-2">
+          <button id="eval-add-btn" type="button" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold">➕ เพิ่มผู้ประเมิน</button>
+        </div>
+      </div>`:''}
+    </section>`
+
+    const draw=()=>{
+      el.innerHTML=`<div class="max-w-6xl mx-auto space-y-5">
+        <div><h1 class="text-2xl font-bold">🧑‍⚖️ ประเมินกีฬาสี</h1><p class="text-sm text-gray-500">ให้คะแนนหัวข้อที่ได้รับมอบหมาย — คะแนนของทุกคนที่ประเมินหัวข้อเดียวกันจะถูกเฉลี่ยรวมกันอัตโนมัติ</p></div>
+        ${settingsSection()}
+        ${scoringSection()}
+      </div>`
+
+      el.querySelector('#eval-settings-toggle')?.addEventListener('click',()=>{settingsOpen=!settingsOpen;draw()})
+      el.querySelectorAll('[data-eval-gender]').forEach(b=>b.onclick=()=>{gender=b.dataset.evalGender;draw()})
+
+      el.querySelector('#eval-submit')?.addEventListener('click',async()=>{
+        const rows=[]
+        el.querySelectorAll('[data-score-input]').forEach(inp=>{
+          const v=String(inp.value).trim()
+          if(v==='')return
+          rows.push({event_id:event.id,criteria_id:inp.dataset.crit,team_color_id:inp.dataset.color,judge_username:judgeUsername,score:Number(v),updated_at:new Date().toISOString()})
+        })
+        if(!rows.length)return toast('กรุณากรอกคะแนนอย่างน้อย 1 ช่อง','error')
+        const btn=el.querySelector('#eval-submit'); btn.disabled=true;btn.textContent='กำลังบันทึก...'
+        const {error}=await supabase.from('sports_score_entries').upsert(rows,{onConflict:'criteria_id,team_color_id,judge_username'})
+        btn.disabled=false;btn.textContent='💾 บันทึกคะแนนประเมิน'
+        if(error)return toast(error.message,'error')
+        rows.forEach(r=>scoreMap.set(`${r.criteria_id}|${r.team_color_id}`,r.score))
+        toast('บันทึกคะแนนประเมินแล้ว')
+      })
+
+      if(!isAdmin||!settingsOpen)return
+
+      teacherPicker=_createPickerSelect({wrap:el.querySelector('#eval-teacher-picker-wrap'),items:allTeachers.map(t=>({id:t.profile_id,label:t.full_name,sub:t.teacher_code,photo:t.image_url})),placeholder:'พิมพ์ชื่อครู...',emptyLabel:'-- เลือกครูผู้ประเมิน --',photoClass:'w-7 h-9 rounded object-cover flex-shrink-0 border'})
+
+      el.querySelector('#crit-new-add')?.addEventListener('click',async()=>{
+        const category=el.querySelector('#crit-new-category').value
+        const name=el.querySelector('#crit-new-name').value.trim()
+        const max_score=Number(el.querySelector('#crit-new-max').value)
+        if(!name||!max_score||max_score<=0)return toast('กรอกชื่อหัวข้อและคะแนนเต็มให้ครบ','error')
+        const display_order=(criteria||[]).filter(c=>c.category===category).length
+        const {error}=await supabase.from('sports_score_criteria').insert({event_id:event.id,category,name,max_score,display_order})
+        if(error)return toast(error.message,'error')
+        toast('เพิ่มหัวข้อแล้ว'); renderSportsEvaluationWorkspace()
+      })
+      el.querySelectorAll('[data-crit-edit]').forEach(b=>b.addEventListener('click',()=>{
+        const row=el.querySelector(`[data-crit-row="${b.dataset.critEdit}"]`)
+        const c=criteriaById.get(b.dataset.critEdit)
+        row.innerHTML=`<input data-edit-name value="${esc(c.name)}" class="flex-1 border rounded-lg px-2 py-1.5 text-xs"><input data-edit-max type="number" min="1" value="${Number(c.max_score)}" class="w-20 border rounded-lg px-2 py-1.5 text-xs"><button type="button" data-edit-save class="px-2 py-1 text-xs bg-emerald-600 text-white rounded-lg">บันทึก</button><button type="button" data-edit-cancel class="px-2 py-1 text-xs border rounded-lg">ยกเลิก</button>`
+        row.querySelector('[data-edit-cancel]').onclick=()=>draw()
+        row.querySelector('[data-edit-save]').onclick=async()=>{
+          const name=row.querySelector('[data-edit-name]').value.trim()
+          const max_score=Number(row.querySelector('[data-edit-max]').value)
+          if(!name||!max_score||max_score<=0)return toast('กรอกข้อมูลให้ครบ','error')
+          const {error}=await supabase.from('sports_score_criteria').update({name,max_score}).eq('id',c.id)
+          if(error)return toast(error.message,'error')
+          toast('แก้ไขแล้ว'); renderSportsEvaluationWorkspace()
+        }
+      }))
+      el.querySelectorAll('[data-crit-del]').forEach(b=>b.addEventListener('click',async()=>{
+        if(!confirm('ลบหัวข้อนี้? คะแนนที่เคยให้ไว้ในหัวข้อนี้จะไม่ถูกนับต่อ'))return
+        const {error}=await supabase.from('sports_score_criteria').delete().eq('id',b.dataset.critDel)
+        if(error)return toast(error.message,'error')
+        toast('ลบหัวข้อแล้ว'); renderSportsEvaluationWorkspace()
+      }))
+
+      el.querySelector('#eval-add-btn')?.addEventListener('click',async()=>{
+        const pid=teacherPicker?.getValue()
+        if(!pid)return toast('เลือกครูก่อน','error')
+        const cats=[...el.querySelectorAll('[data-eval-cat]:checked')].map(c=>c.dataset.evalCat)
+        if(!cats.length)return toast('เลือกอย่างน้อย 1 หมวด','error')
+        const roleLabel=el.querySelector('#eval-role-label').value.trim()||null
+        const rows=cats.map(category=>({event_id:event.id,profile_id:pid,category,role_label:roleLabel}))
+        const {error}=await supabase.from('sports_score_evaluators').insert(rows)
+        if(error){ if(error.code==='23505')return toast('มีบางหมวดที่มอบหมายให้ครูคนนี้ไว้แล้ว','error'); return toast(error.message,'error') }
+        toast('เพิ่มผู้ประเมินแล้ว'); renderSportsEvaluationWorkspace()
+      })
+      el.querySelectorAll('[data-eval-del]').forEach(b=>b.addEventListener('click',async()=>{
+        if(!confirm('ลบสิทธิ์ประเมินรายการนี้?'))return
+        const {error}=await supabase.from('sports_score_evaluators').delete().eq('id',b.dataset.evalDel)
+        if(error)return toast(error.message,'error')
+        toast('ลบแล้ว'); renderSportsEvaluationWorkspace()
+      }))
+    }
+    draw()
+  } catch(e) { console.error(e); el.innerHTML=missing() }
+}
+
 export async function renderShirtVoteSettings(gender='ชาย') {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลด...</div>'
   try {
