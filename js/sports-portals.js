@@ -1750,6 +1750,11 @@ const EVAL_CATEGORY_LABEL={parade:'🕌 ขบวนพาเหรด/ควา
 // เปลี่ยนอัตลักษณ์สี (ทำให้อาจไม่ใช่สีตามชื่อ เช่นสีแดงอาจถูกปรับเป็นเฉดอื่น) หน้าประเมินต้องการสี
 // อ้างอิงมาตรฐานที่กรรมการคุ้นเคย ไม่ใช่สีอัตลักษณ์ที่แต่ละสีปรับแต่งเอง
 const HOUSE_COLOR_HEX={'แดง':'#ef4444','น้ำเงิน':'#3b82f6','เขียว':'#10b981','น้ำตาล':'#92400e','ส้ม':'#f97316','ฟ้า':'#0ea5e9','ม่วง':'#a855f7','เทา':'#6b7280'}
+// ชื่อสีปกติเรียงตามลำดับจริง (display_order ภายในเพศเดียวกัน) — ใช้แทน team_colors.name ตรงๆ
+// เพราะชื่อนั้นแก้ได้ผ่านคำขอเปลี่ยนอัตลักษณ์ (เช่นทีมสีแดงเปลี่ยนชื่อเป็นชื่อเล่นภาษาอังกฤษได้)
+// อ้างอิงด้วยตำแหน่งแทนชื่อ จึงไม่มีวันคลาดเคลื่อนไม่ว่าใครจะไปเปลี่ยนชื่อ/โลโก้ทีมยังไงก็ตาม
+const HOUSE_ORDER_M=['แดง','น้ำเงิน','เขียว','น้ำตาล']
+const HOUSE_ORDER_W=['ส้ม','ฟ้า','ม่วง','เทา']
 
 // หน้า "ประเมินกีฬาสี" — ครูที่ถูกมอบหมาย (sports_score_evaluators, patch_sports_score_evaluators.sql)
 // ให้คะแนนเกณฑ์ที่ตัวเองรับผิดชอบได้ตรงนี้เลย ผูกกับบัญชีครูจริง ไม่ต้องแยกไปล็อกอิน AZIZGAMES
@@ -1807,12 +1812,14 @@ export async function renderSportsEvaluationWorkspace() {
         </div>
         ${myCategories.length>1?`<div class="flex flex-wrap gap-2 mb-4">${myCategories.map(cat=>`<button type="button" data-eval-cattab="${cat}" class="px-4 py-2 rounded-xl text-xs font-bold border transition ${cat===evalCategory?'bg-indigo-600 text-white border-indigo-600':'text-gray-600 border-gray-200 hover:bg-gray-50'}">${esc(EVAL_CATEGORY_LABEL[cat]||cat)}</button>`).join('')}</div>`:''}
         <div class="grid sm:grid-cols-2 gap-3">
-          ${colorsForGender.map(c=>{
-            const swatch=HOUSE_COLOR_HEX[c.name]||c.hex_color||'#94a3b8'
+          ${colorsForGender.map((c,idx)=>{
+            const canonicalName=(gender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M)[idx]||c.name
+            const swatch=HOUSE_COLOR_HEX[canonicalName]||c.hex_color||'#94a3b8'
+            const initial=esc((canonicalName||'?').slice(0,1))
             return `<div class="rounded-2xl border overflow-hidden" style="border-color:${esc(swatch)}55">
               <div class="flex items-center gap-3 p-3" style="background:${esc(swatch)}14">
-                ${c.logo_url?`<img src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover border-2 flex-shrink-0 bg-white" style="border-color:${esc(swatch)}">`:`<div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${esc((c.name||'?').slice(0,1))}</div>`}
-                <b class="text-sm" style="color:${esc(swatch)}">สี${esc(c.name)}</b>
+                ${c.logo_url?`<img data-color-logo src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover border-2 flex-shrink-0 bg-white" style="border-color:${esc(swatch)}"><div data-color-logo-fallback class="hidden w-11 h-11 rounded-full items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`:`<div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`}
+                <b class="text-sm" style="color:${esc(swatch)}">สี${esc(canonicalName)}</b>
               </div>
               <div class="p-3 space-y-2 bg-white">
                 ${catCriteria.map(crit=>{
@@ -1893,6 +1900,7 @@ export async function renderSportsEvaluationWorkspace() {
       el.querySelector('#eval-settings-toggle')?.addEventListener('click',()=>{settingsOpen=!settingsOpen;draw()})
       el.querySelectorAll('[data-eval-gender]').forEach(b=>b.onclick=()=>{gender=b.dataset.evalGender;draw()})
       el.querySelectorAll('[data-eval-cattab]').forEach(b=>b.onclick=()=>{evalCategory=b.dataset.evalCattab;draw()})
+      el.querySelectorAll('[data-color-logo]').forEach(img=>img.onerror=()=>{img.classList.add('hidden');const fb=img.nextElementSibling;fb?.classList.remove('hidden');fb?.classList.add('flex')})
 
       el.querySelector('#eval-submit')?.addEventListener('click',async()=>{
         const rows=[]
