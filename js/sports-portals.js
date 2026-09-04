@@ -1661,14 +1661,9 @@ export async function renderSportsOverviewAdmin() {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลดภาพรวมกีฬาสี...</div>'
   try {
     const {event}=await context()
-    const [{data:ov,error},{data:campCalendar},{data:criteria},{data:entries},{data:pp5Evaluators},{data:azizJudges},{data:teachersList}]=await Promise.all([
+    const [{data:ov,error},{data:campCalendar}]=await Promise.all([
       supabase.rpc('get_sports_admin_overview',{p_event:event.id}),
       supabase.from('work_calendar_events').select('id,label,event_date,end_date').or('label.ilike.%เข้าสี%,label.ilike.%กีฬาสี%,label.ilike.%วันงาน%'),
-      supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('category').order('display_order'),
-      supabase.from('sports_score_entries').select('criteria_id,team_color_id,judge_username,score,updated_at').eq('event_id',event.id),
-      supabase.from('sports_score_evaluators').select('*').eq('event_id',event.id).eq('is_active',true),
-      supabase.from('sports_evaluation_judges').select('id,name,username,role,criteria_id').eq('event_id',event.id),
-      supabase.from('teachers').select('full_name,profile_id').order('full_name'),
     ])
     if(error) throw error
     const colors=ov?.colors||[], attendance=ov?.attendance||[], dues=ov?.dues||[], fund=ov?.fund||[]
@@ -1727,59 +1722,12 @@ export async function renderSportsOverviewAdmin() {
       </table></div>`
     }
 
-    // แท็บ "การประเมิน" — สถานะความครบถ้วนของเกณฑ์ประเมิน (กี่สีจากทั้งหมดมีคะแนนแล้ว) + รายชื่อ
-    // ผู้ประเมินทุกคนไม่ว่าจะมาจากฝั่งไหน (ครู ปพ.5 ผ่าน sports_score_evaluators หรือกรรมการ
-    // AZIZGAMES เดิมผ่าน sports_evaluation_judges) รวมกันเป็นรายการเดียว จับคู่ด้วย judge_username
-    // เดียวกับที่ sports_score_entries ใช้ (ปพ.5 = 'pp5:'+profile_id, AZIZGAMES = username เดิม)
-    const teacherByProfile2=new Map((teachersList||[]).map(t=>[t.profile_id,t]))
-    const pp5ByProfile=new Map()
-    ;(pp5Evaluators||[]).forEach(ev=>{
-      if(!pp5ByProfile.has(ev.profile_id)) pp5ByProfile.set(ev.profile_id,new Set())
-      pp5ByProfile.get(ev.profile_id).add(ev.category)
-    })
-    const roster=[
-      ...[...pp5ByProfile.entries()].map(([pid,cats])=>({name:teacherByProfile2.get(pid)?.full_name||'ไม่พบชื่อ',source:'ครู ปพ.5',categories:[...cats],judgeUsername:'pp5:'+pid})),
-      ...(azizJudges||[]).map(j=>({name:j.name,source:'กรรมการ AZIZGAMES',categories:[j.role==='colorEval'?'color_eval':j.role],judgeUsername:j.username})),
-    ]
-    const entriesByJudge=new Map()
-    ;(entries||[]).forEach(e=>{
-      if(!entriesByJudge.has(e.judge_username)) entriesByJudge.set(e.judge_username,[])
-      entriesByJudge.get(e.judge_username).push(e)
-    })
-    const totalColors=colors.length||8
-    const criteriaCoverage=(criteria||[]).map(crit=>{
-      const rows=(entries||[]).filter(e=>e.criteria_id===crit.id)
-      const colorsScored=new Set(rows.map(e=>e.team_color_id)).size
-      const judgesCount=new Set(rows.map(e=>e.judge_username)).size
-      const avg=rows.length?Math.round(rows.reduce((s,e)=>s+Number(e.score),0)/rows.length*100)/100:0
-      return {crit,colorsScored,judgesCount,avg,submitted:rows.length}
-    })
-    const renderEvaluationTab=()=>`<div class="space-y-6">
-      <div>
-        <h3 class="font-bold text-sm mb-3">📋 ความครบถ้วนของเกณฑ์ (${totalColors} สี)</h3>
-        <div class="overflow-x-auto"><table class="w-full text-sm">
-          <thead><tr class="border-b bg-gray-50"><th class="p-2 text-left">หัวข้อ</th><th class="p-2 text-center">สีที่มีคะแนน</th><th class="p-2 text-center">ผู้ประเมิน</th><th class="p-2 text-center">เฉลี่ย</th></tr></thead>
-          <tbody>${criteriaCoverage.map(x=>`<tr class="border-b"><td class="p-2">${esc(EVAL_CATEGORY_LABEL[x.crit.category]?.split(' ')[0]||'')} ${esc(x.crit.name)}</td><td class="p-2 text-center ${x.colorsScored<totalColors?'text-amber-600 font-bold':'text-emerald-600 font-bold'}">${x.colorsScored}/${totalColors}</td><td class="p-2 text-center">${x.judgesCount}</td><td class="p-2 text-center font-bold">${x.submitted?x.avg+' / '+Number(x.crit.max_score):'—'}</td></tr>`).join('')||'<tr><td colspan="4" class="p-6 text-center text-gray-400">ยังไม่มีหัวข้อเกณฑ์ในระบบ</td></tr>'}</tbody>
-        </table></div>
-      </div>
-      <div>
-        <h3 class="font-bold text-sm mb-3">🧑‍⚖️ ผู้ประเมิน (${roster.length} คน)</h3>
-        <div class="space-y-2">${roster.map(r=>{
-          const mine=entriesByJudge.get(r.judgeUsername)||[]
-          const submitted=mine.length
-          const lastAt=submitted?mine.reduce((m,e)=>e.updated_at>m?e.updated_at:m,mine[0].updated_at):null
-          return `<div class="flex items-center justify-between gap-3 bg-gray-50 rounded-xl p-3"><div class="min-w-0"><b class="text-sm block truncate">${esc(r.name)}</b><p class="text-xs text-gray-500 mt-0.5">${esc(r.source)} · ${r.categories.map(c=>esc(EVAL_CATEGORY_LABEL[c]||c)).join(', ')}</p></div><div class="text-right flex-shrink-0"><span class="px-3 py-1 rounded-full text-xs font-bold ${submitted?'bg-emerald-50 text-emerald-700':'bg-gray-100 text-gray-400'}">${submitted?submitted+' รายการ':'ยังไม่ส่งคะแนน'}</span>${lastAt?`<p class="text-[10px] text-gray-400 mt-1">ล่าสุด ${new Date(lastAt).toLocaleDateString('th-TH',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</p>`:''}</div></div>`
-        }).join('')||'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีผู้ประเมินในระบบ</p>'}</div>
-      </div>
-    </div>`
-
     el.innerHTML=`<div class="max-w-6xl mx-auto space-y-5">
-      <div><h1 class="text-2xl font-bold">📊 ภาพรวมกีฬาสี (แอดมิน)</h1><p class="text-sm text-gray-500">สรุปเช็คชื่อรายวัน ค่าบำรุงสี บัญชี และการประเมินของทุกสี เทียบกันในหน้าเดียว</p></div>
+      <div><h1 class="text-2xl font-bold">📊 ภาพรวมกีฬาสี (แอดมิน)</h1><p class="text-sm text-gray-500">สรุปเช็คชื่อรายวัน ค่าบำรุงสี และบัญชีของทุกสี เทียบกันในหน้าเดียว — ดูสถานะการประเมิน/คะแนนได้ที่หน้า "ประเมินกีฬาสี"</p></div>
       <div id="sports-ov-tabs" class="inline-flex flex-wrap p-1 rounded-xl bg-gray-100 gap-1">
         <button type="button" data-ov-tab="attendance" class="px-4 py-2 rounded-lg text-sm font-bold transition">📷 เช็คชื่อรายวัน</button>
         <button type="button" data-ov-tab="dues" class="px-4 py-2 rounded-lg text-sm font-bold transition">💰 ค่าบำรุงสี</button>
         <button type="button" data-ov-tab="ledger" class="px-4 py-2 rounded-lg text-sm font-bold transition">📒 บัญชีสี</button>
-        <button type="button" data-ov-tab="evaluation" class="px-4 py-2 rounded-lg text-sm font-bold transition">🧑‍⚖️ การประเมิน</button>
       </div>
       <section class="bg-white border rounded-2xl p-5"><div id="sports-ov-body"></div></section>
     </div>`
@@ -1790,7 +1738,7 @@ export async function renderSportsOverviewAdmin() {
         const active=b.dataset.ovTab===tab
         b.className=`px-4 py-2 rounded-lg text-sm font-bold transition ${active?'bg-indigo-600 text-white':'text-gray-600 hover:bg-gray-200'}`
       })
-      el.querySelector('#sports-ov-body').innerHTML=tab==='attendance'?renderAttendanceTab():tab==='dues'?renderDuesTab():tab==='ledger'?renderLedgerTab():renderEvaluationTab()
+      el.querySelector('#sports-ov-body').innerHTML=tab==='attendance'?renderAttendanceTab():tab==='dues'?renderDuesTab():renderLedgerTab()
     }
     el.querySelectorAll('[data-ov-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.ovTab;render()})
     render()
@@ -1821,23 +1769,27 @@ export async function renderSportsEvaluationWorkspace() {
     const {data:profile}=await supabase.from('profiles').select('role,is_also_admin').eq('id',profileId).maybeSingle()
     const isAdmin=profile?.role==='admin'||profile?.is_also_admin===true||await _hasHouseColorAdminPosition(profileId)
     const judgeUsername='pp5:'+profileId
-    const [{data:colors},{data:criteria},{data:myAssignments},{data:myEntries}]=await Promise.all([
+    // entries ดึงมาทั้งหมด (ไม่กรองเฉพาะของฉัน) เพราะใช้ร่วมกันทั้ง 4 แท็บ: prefill คะแนนของฉันเอง,
+    // สรุปคะแนนทุกสี, และสถานะความครบถ้วนของผู้ประเมินทุกคน — กันยิง query ซ้ำซ้อนหลายรอบ
+    const [{data:colors},{data:criteria},{data:myAssignments},{data:entries},{data:totals}]=await Promise.all([
       supabase.from('team_colors').select('id,name,hex_color,logo_url,gender').eq('event_id',event.id).order('gender').order('display_order'),
       supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('category').order('display_order'),
       supabase.from('sports_score_evaluators').select('*').eq('event_id',event.id).eq('profile_id',profileId).eq('is_active',true),
-      supabase.from('sports_score_entries').select('criteria_id,team_color_id,score').eq('event_id',event.id).eq('judge_username',judgeUsername),
+      supabase.from('sports_score_entries').select('criteria_id,team_color_id,judge_username,score,updated_at').eq('event_id',event.id),
+      supabase.from('color_totals').select('*').eq('event_id',event.id),
     ])
-    let allEvaluators=[], allTeachers=[]
+    let allEvaluators=[], allTeachers=[], azizJudges=[]
     if(isAdmin){
-      const [{data:ev},{data:tc}]=await Promise.all([
+      const [{data:ev},{data:tc},{data:aj}]=await Promise.all([
         supabase.from('sports_score_evaluators').select('*').eq('event_id',event.id).order('created_at',{ascending:false}),
         supabase.from('teachers').select('id,full_name,teacher_code,profile_id,image_url').order('full_name'),
+        supabase.from('sports_evaluation_judges').select('id,name,username,role,criteria_id').eq('event_id',event.id),
       ])
-      allEvaluators=ev||[]; allTeachers=(tc||[]).filter(t=>t.profile_id)
+      allEvaluators=ev||[]; allTeachers=(tc||[]).filter(t=>t.profile_id); azizJudges=aj||[]
     }
     const teacherByProfile=new Map(allTeachers.map(t=>[t.profile_id,t]))
     const criteriaById=new Map((criteria||[]).map(c=>[c.id,c]))
-    const scoreMap=new Map((myEntries||[]).map(e=>[`${e.criteria_id}|${e.team_color_id}`,Number(e.score)]))
+    const scoreMap=new Map((entries||[]).filter(e=>e.judge_username===judgeUsername).map(e=>[`${e.criteria_id}|${e.team_color_id}`,Number(e.score)]))
 
     // เกณฑ์ที่ฉันประเมินได้ — assignment ที่ criteria_id ว่าง = ทุกหัวข้อในหมวดนั้น, ระบุมา = หัวข้อเดียว
     const assignedCategories=new Set((myAssignments||[]).filter(a=>!a.criteria_id).map(a=>a.category))
@@ -1845,7 +1797,8 @@ export async function renderSportsEvaluationWorkspace() {
     const myCriteria=(criteria||[]).filter(c=>assignedCategories.has(c.category)||assignedCriteriaIds.has(c.id))
 
     const myCategories=[...new Set(myCriteria.map(c=>c.category))]
-    let gender='M', settingsOpen=false, evalCategory=myCategories[0]||null, evalSession=null
+    let gender='M', evalCategory=myCategories[0]||null, evalSession=null
+    let summaryGender='M', summaryExpandedId=null
     // ตัดชื่อหัวข้อที่ตั้งแบบ "รอบ/วัน - หัวข้อย่อย" (เช่น "เข้าสีครั้งที่ 1 - การซ้อมกีฬา") เอาส่วน
     // หน้า " - " มาเป็นชื่อรอบ ไว้จัดกลุ่มให้เลือกทีละรอบ กันหัวข้อทั้งหมวดยาวเป็นสิบข้อโผล่พร้อมกัน
     const sessionOf=name=>{ const i=String(name||'').indexOf(' - '); return i===-1?name:name.slice(0,i) }
@@ -1854,7 +1807,7 @@ export async function renderSportsEvaluationWorkspace() {
     // การ์ดต่อสี (โลโก้+สีปกติ+ช่องกรอกคะแนนแยกหัวข้อ) อ่านง่ายกว่าตารางยาวๆ โดยเฉพาะบนมือถือ
     // ที่กรรมการส่วนใหญ่ใช้จริง — แยกแท็บตามหมวดด้วยถ้าได้รับมอบหมายมากกว่า 1 หมวด กันปนกันมั่ว
     const scoringSection=()=>{
-      if(!myCriteria.length) return isAdmin?'':`<section class="bg-white border rounded-2xl p-8 text-center"><p class="text-gray-400">คุณยังไม่ได้รับมอบหมายให้ประเมินหมวดใด — ติดต่อแอดมินเพื่อขอสิทธิ์</p></section>`
+      if(!myCriteria.length) return `<section class="bg-white border rounded-2xl p-8 text-center"><p class="text-gray-400">คุณยังไม่ได้รับมอบหมายให้ประเมินหมวดใด — ติดต่อแอดมินเพื่อขอสิทธิ์ (ดูสรุปคะแนนได้ที่แท็บ "สรุปคะแนนทุกสี")</p></section>`
       const catCriteria=myCriteria.filter(c=>c.category===evalCategory)
       // จัดกลุ่มหัวข้อในหมวดนี้ตามรอบ/วัน แล้วเลือกโชว์ทีละรอบผ่านดรอปดาวน์ — ถ้ามีรอบเดียว
       // (ไม่มี " - " ในชื่อเลยสักหัวข้อ) ก็โชว์ทั้งหมดตรงๆ ไม่ต้องมีดรอปดาวน์ให้รก
@@ -1920,12 +1873,9 @@ export async function renderSportsEvaluationWorkspace() {
       }).join('')
     }
 
-    const settingsSection=()=>!isAdmin?'':`<section class="bg-indigo-50/50 border border-indigo-100 rounded-2xl p-5 mb-5">
-      <button type="button" id="eval-settings-toggle" class="w-full flex items-center justify-between text-left">
-        <div><h2 class="font-bold">⚙️ ตั้งค่าการประเมิน (แอดมิน)</h2><p class="text-xs text-gray-500 mt-1">จัดการหัวข้อ/คะแนนเต็ม และมอบหมายครูผู้ประเมิน</p></div>
-        <span class="text-xl transition-transform ${settingsOpen?'rotate-180':''}">⌄</span>
-      </button>
-      ${settingsOpen?`<div class="mt-4 pt-4 border-t border-indigo-100 grid lg:grid-cols-2 gap-6">
+    const settingsTabContent=()=>`<section class="bg-white border rounded-2xl p-5">
+      <div class="mb-4"><h2 class="font-bold">⚙️ ตั้งค่าการประเมิน</h2><p class="text-xs text-gray-500 mt-1">จัดการหัวข้อ/คะแนนเต็ม และมอบหมายครูผู้ประเมิน</p></div>
+      <div class="grid lg:grid-cols-2 gap-6">
         <div>
           <h3 class="font-bold text-sm mb-3">📋 หัวข้อเกณฑ์การประเมิน</h3>
           ${criteriaSettingsHtml()}
@@ -1952,17 +1902,140 @@ export async function renderSportsEvaluationWorkspace() {
           <input id="eval-role-label" placeholder="ตำแหน่ง เช่น หัวหน้า/ผู้ช่วย (ไม่บังคับ)" class="border rounded-xl px-3 py-2 text-sm w-full mb-2">
           <button id="eval-add-btn" type="button" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold">➕ เพิ่มผู้ประเมิน</button>
         </div>
-      </div>`:''}
+      </div>
     </section>`
+
+    // แท็บ "สรุปคะแนนทุกสี" — ย้ายมาจาก renderSportsScoreSummary เดิม (แยกหน้าไว้ก่อนหน้านี้แล้วโดน
+    // ท้วงว่าทำไมไม่รวมกับหน้าประเมิน) อ่าน view color_totals ตัวเดียวกับ ColorScoreBoard ของ AZIZGAMES
+    const maxByCategory=cat=>(criteria||[]).filter(x=>x.category===cat).reduce((s,x)=>s+(Number(x.max_score)||0),0)
+    const maxParade=maxByCategory('parade')||100, maxPage=maxByCategory('page')||100, maxColorEval=maxByCategory('color_eval')||100
+    const totalsByColor=new Map((totals||[]).map(t=>[t.team_color_id,t]))
+    const breakdownFor=colorId=>(criteria||[]).map(crit=>{
+      const vals=(entries||[]).filter(e=>e.criteria_id===crit.id&&e.team_color_id===colorId).map(e=>Number(e.score))
+      const avg=vals.length?Math.round(vals.reduce((s,v)=>s+v,0)/vals.length*100)/100:0
+      return {crit,avg,count:vals.length}
+    }).filter(x=>x.count>0)
+    const scoreBar=(label,val,max)=>`<div class="space-y-1"><div class="flex justify-between text-xs text-gray-500"><span>${esc(label)}</span><span class="font-bold text-gray-700">${Number(val).toLocaleString('th-TH')} / ${Number(max).toLocaleString('th-TH')}</span></div><div class="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" style="width:${max?Math.min(100,val/max*100):0}%"></div></div></div>`
+    const summaryTabContent=()=>{
+      const colorsForGender=(colors||[]).filter(c=>c.gender===summaryGender)
+      const order=summaryGender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M
+      const rows=colorsForGender.map((c,idx)=>{
+        const canonicalName=order[idx]||c.name
+        const t=totalsByColor.get(c.id)||{}
+        return {c,canonicalName,t,grand:Number(t.grand_total)||0}
+      }).sort((a,b)=>b.grand-a.grand)
+      return `<section class="bg-white border rounded-2xl p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <div><h2 class="font-bold">🏅 สรุปคะแนนทุกสี</h2><p class="text-xs text-gray-500 mt-1">รวมคะแนนกรรมการ + วิชาการ + กีฬา + เหรียญรางวัล ข้อมูลเดียวกับระบบกีฬาสีหลัก อัปเดตสด</p></div>
+          <div class="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
+            <button type="button" data-sum-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition ${summaryGender==='M'?'bg-emerald-600 text-white':'text-gray-600'}">👦 กลุ่มสีชาย</button>
+            <button type="button" data-sum-gender="W" class="px-4 py-2 rounded-lg text-xs font-bold transition ${summaryGender==='W'?'bg-rose-600 text-white':'text-gray-600'}">👧 กลุ่มสีหญิง</button>
+          </div>
+        </div>
+        <div class="space-y-3">
+          ${rows.map((r,rank)=>{
+            const swatch=HOUSE_COLOR_HEX[r.canonicalName]||r.c.hex_color||'#94a3b8'
+            const initial=esc(r.canonicalName.slice(0,1))
+            const expanded=summaryExpandedId===r.c.id
+            const bd=breakdownFor(r.c.id)
+            return `<div class="rounded-2xl border overflow-hidden">
+              <button type="button" data-toggle-expand="${r.c.id}" class="w-full flex items-center justify-between gap-3 p-3.5" style="background:${esc(swatch)}14">
+                <div class="flex items-center gap-3 min-w-0">
+                  <span class="w-6 text-center font-bold text-sm text-gray-400 flex-shrink-0">#${rank+1}</span>
+                  ${r.c.logo_url?`<img data-color-logo src="${esc(r.c.logo_url)}" class="w-10 h-10 rounded-full object-cover border-2 flex-shrink-0 bg-white" style="border-color:${esc(swatch)}"><div data-color-logo-fallback class="hidden w-10 h-10 rounded-full items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`:`<div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`}
+                  <b class="text-sm truncate" style="color:${esc(swatch)}">สี${esc(r.canonicalName)}</b>
+                </div>
+                <div class="flex items-center gap-3 flex-shrink-0">
+                  <span class="px-3.5 py-1.5 rounded-xl bg-gray-900 text-yellow-400 font-black text-sm">${r.grand.toLocaleString('th-TH')}</span>
+                  <span class="text-gray-400">${expanded?'▲':'▼'}</span>
+                </div>
+              </button>
+              ${expanded?`<div class="p-4 border-t bg-gray-50 space-y-4">
+                <div class="grid sm:grid-cols-2 gap-3">
+                  ${scoreBar('🕌 พาเหรด/ความร่วมมือสี',Number(r.t.parade_total)||0,maxParade)}
+                  ${scoreBar('📣 หน้าเว็บเพจ',Number(r.t.page_total)||0,maxPage)}
+                  ${scoreBar('🎨 วันเข้าสี/วันกีฬาสีจริง',Number(r.t.color_eval_total)||0,maxColorEval)}
+                  ${scoreBar('🧹 วิชาการสะสม',Number(r.t.academic_total)||0,100)}
+                  ${scoreBar('🏃 กีฬาสะสม',Number(r.t.sport_score_total)||0,150)}
+                </div>
+                <div class="flex flex-wrap gap-2 text-xs font-bold">
+                  <span class="px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-700">🥇 ทอง ${Number(r.t.gold_count)||0}</span>
+                  <span class="px-3 py-1.5 rounded-full bg-gray-100 text-gray-600">🥈 เงิน ${Number(r.t.silver_count)||0}</span>
+                  <span class="px-3 py-1.5 rounded-full bg-orange-50 text-orange-700">🥉 ทองแดง ${Number(r.t.bronze_count)||0}</span>
+                </div>
+                <div class="border-t pt-3">
+                  <p class="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-2">รายละเอียดคะแนนแยกหัวข้อ (เฉลี่ยจากผู้ประเมินทุกคน)</p>
+                  ${bd.length?`<div class="space-y-1.5">${bd.map(x=>`<div class="flex items-center justify-between gap-2 bg-white border rounded-lg px-3 py-2"><span class="text-xs text-gray-600">${esc(EVAL_CATEGORY_LABEL[x.crit.category]?.split(' ')[0]||'')} ${esc(x.crit.name)}</span><b class="text-xs">${x.avg} / ${Number(x.crit.max_score)}</b></div>`).join('')}</div>`:'<p class="text-xs text-gray-400 text-center py-3">ยังไม่มีผู้ประเมินให้คะแนน</p>'}
+                </div>
+              </div>`:''}
+            </div>`
+          }).join('')}
+        </div>
+      </section>`
+    }
+
+    // แท็บ "สถานะผู้ประเมิน" (แอดมิน) — ย้ายมาจากแท็บ "การประเมิน" ในหน้าภาพรวมกีฬาสีเดิม
+    // (ยุบมารวมที่นี่แทน เพราะเป็นเรื่องเดียวกับการประเมิน ไม่ใช่เช็คชื่อ/ค่าบำรุง/บัญชี)
+    const teacherByProfile2=teacherByProfile
+    const pp5ByProfile=new Map()
+    ;(allEvaluators||[]).forEach(ev=>{
+      if(!pp5ByProfile.has(ev.profile_id)) pp5ByProfile.set(ev.profile_id,new Set())
+      pp5ByProfile.get(ev.profile_id).add(ev.category)
+    })
+    const roster=[
+      ...[...pp5ByProfile.entries()].map(([pid,cats])=>({name:teacherByProfile2.get(pid)?.full_name||'ไม่พบชื่อ',source:'ครู ปพ.5',categories:[...cats],judgeUsername:'pp5:'+pid})),
+      ...(azizJudges||[]).map(j=>({name:j.name,source:'กรรมการ AZIZGAMES',categories:[j.role==='colorEval'?'color_eval':j.role],judgeUsername:j.username})),
+    ]
+    const entriesByJudge=new Map()
+    ;(entries||[]).forEach(e=>{
+      if(!entriesByJudge.has(e.judge_username)) entriesByJudge.set(e.judge_username,[])
+      entriesByJudge.get(e.judge_username).push(e)
+    })
+    const totalColorsCount=(colors||[]).length||8
+    const criteriaCoverage=(criteria||[]).map(crit=>{
+      const rows=(entries||[]).filter(e=>e.criteria_id===crit.id)
+      const colorsScored=new Set(rows.map(e=>e.team_color_id)).size
+      const judgesCount=new Set(rows.map(e=>e.judge_username)).size
+      const avg=rows.length?Math.round(rows.reduce((s,e)=>s+Number(e.score),0)/rows.length*100)/100:0
+      return {crit,colorsScored,judgesCount,avg,submitted:rows.length}
+    })
+    const statusTabContent=()=>`<section class="bg-white border rounded-2xl p-5 space-y-6">
+      <div>
+        <h2 class="font-bold mb-1">🧑‍⚖️ สถานะผู้ประเมิน</h2>
+        <p class="text-xs text-gray-500 mb-3">ความครบถ้วนของแต่ละเกณฑ์ (${totalColorsCount} สี) และสถานะการส่งคะแนนของผู้ประเมินทุกคน</p>
+        <div class="overflow-x-auto"><table class="w-full text-sm">
+          <thead><tr class="border-b bg-gray-50"><th class="p-2 text-left">หัวข้อ</th><th class="p-2 text-center">สีที่มีคะแนน</th><th class="p-2 text-center">ผู้ประเมิน</th><th class="p-2 text-center">เฉลี่ย</th></tr></thead>
+          <tbody>${criteriaCoverage.map(x=>`<tr class="border-b"><td class="p-2">${esc(EVAL_CATEGORY_LABEL[x.crit.category]?.split(' ')[0]||'')} ${esc(x.crit.name)}</td><td class="p-2 text-center ${x.colorsScored<totalColorsCount?'text-amber-600 font-bold':'text-emerald-600 font-bold'}">${x.colorsScored}/${totalColorsCount}</td><td class="p-2 text-center">${x.judgesCount}</td><td class="p-2 text-center font-bold">${x.submitted?x.avg+' / '+Number(x.crit.max_score):'—'}</td></tr>`).join('')||'<tr><td colspan="4" class="p-6 text-center text-gray-400">ยังไม่มีหัวข้อเกณฑ์ในระบบ</td></tr>'}</tbody>
+        </table></div>
+      </div>
+      <div>
+        <h3 class="font-bold text-sm mb-3">รายชื่อผู้ประเมิน (${roster.length} คน)</h3>
+        <div class="space-y-2">${roster.map(r=>{
+          const mine=entriesByJudge.get(r.judgeUsername)||[]
+          const submitted=mine.length
+          const lastAt=submitted?mine.reduce((m,e)=>e.updated_at>m?e.updated_at:m,mine[0].updated_at):null
+          return `<div class="flex items-center justify-between gap-3 bg-gray-50 rounded-xl p-3"><div class="min-w-0"><b class="text-sm block truncate">${esc(r.name)}</b><p class="text-xs text-gray-500 mt-0.5">${esc(r.source)} · ${r.categories.map(c=>esc(EVAL_CATEGORY_LABEL[c]||c)).join(', ')}</p></div><div class="text-right flex-shrink-0"><span class="px-3 py-1 rounded-full text-xs font-bold ${submitted?'bg-emerald-50 text-emerald-700':'bg-gray-100 text-gray-400'}">${submitted?submitted+' รายการ':'ยังไม่ส่งคะแนน'}</span>${lastAt?`<p class="text-[10px] text-gray-400 mt-1">ล่าสุด ${new Date(lastAt).toLocaleDateString('th-TH',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</p>`:''}</div></div>`
+        }).join('')||'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีผู้ประเมินในระบบ</p>'}</div>
+      </div>
+    </section>`
+
+    const tabDefs=[
+      {key:'score',label:'📝 ให้คะแนน',show:true},
+      {key:'summary',label:'🏅 สรุปคะแนนทุกสี',show:true},
+      {key:'status',label:'🧑‍⚖️ สถานะผู้ประเมิน',show:isAdmin},
+      {key:'settings',label:'⚙️ ตั้งค่า',show:isAdmin},
+    ].filter(t=>t.show)
+    // แท็บเริ่มต้น: มีงานให้ทำก่อนเสมอ (ให้คะแนนถ้ามีสิทธิ์ ไม่งั้นแอดมินไปดูสถานะ ไม่งั้นดูสรุปคะแนน)
+    let activeTab=myCriteria.length?'score':(isAdmin?'status':'summary')
 
     const draw=()=>{
       el.innerHTML=`<div class="max-w-6xl mx-auto space-y-5">
-        <div><h1 class="text-2xl font-bold">🧑‍⚖️ ประเมินกีฬาสี</h1><p class="text-sm text-gray-500">ให้คะแนนหัวข้อที่ได้รับมอบหมาย — คะแนนของทุกคนที่ประเมินหัวข้อเดียวกันจะถูกเฉลี่ยรวมกันอัตโนมัติ</p></div>
-        ${settingsSection()}
-        ${scoringSection()}
+        <div><h1 class="text-2xl font-bold">🧑‍⚖️ ประเมินกีฬาสี</h1><p class="text-sm text-gray-500">ให้คะแนน ดูสรุปผล และติดตามสถานะผู้ประเมิน ทุกอย่างในหน้าเดียว</p></div>
+        <div class="inline-flex flex-wrap p-1 rounded-xl bg-gray-100 gap-1">${tabDefs.map(t=>`<button type="button" data-eval-main-tab="${t.key}" class="px-4 py-2 rounded-lg text-sm font-bold transition ${activeTab===t.key?'bg-indigo-600 text-white':'text-gray-600 hover:bg-gray-200'}">${t.label}</button>`).join('')}</div>
+        <div id="eval-tab-body">${activeTab==='score'?scoringSection():activeTab==='summary'?summaryTabContent():activeTab==='status'?statusTabContent():settingsTabContent()}</div>
       </div>`
 
-      el.querySelector('#eval-settings-toggle')?.addEventListener('click',()=>{settingsOpen=!settingsOpen;draw()})
+      el.querySelectorAll('[data-eval-main-tab]').forEach(b=>b.onclick=()=>{activeTab=b.dataset.evalMainTab;draw()})
       el.querySelectorAll('[data-eval-gender]').forEach(b=>b.onclick=()=>{gender=b.dataset.evalGender;draw()})
       el.querySelectorAll('[data-eval-cattab]').forEach(b=>b.onclick=()=>{evalCategory=b.dataset.evalCattab;draw()})
       el.querySelectorAll('[data-color-logo]').forEach(img=>img.onerror=()=>{img.classList.add('hidden');const fb=img.nextElementSibling;fb?.classList.remove('hidden');fb?.classList.add('flex')})
@@ -1984,7 +2057,12 @@ export async function renderSportsEvaluationWorkspace() {
         toast('บันทึกคะแนนประเมินแล้ว')
       })
 
-      if(!isAdmin||!settingsOpen)return
+      if(activeTab==='summary'){
+        el.querySelectorAll('[data-sum-gender]').forEach(b=>b.onclick=()=>{summaryGender=b.dataset.sumGender;summaryExpandedId=null;draw()})
+        el.querySelectorAll('[data-toggle-expand]').forEach(b=>b.onclick=()=>{const id=b.dataset.toggleExpand;summaryExpandedId=summaryExpandedId===id?null:id;draw()})
+      }
+
+      if(activeTab!=='settings'||!isAdmin)return
 
       teacherPicker=_createPickerSelect({wrap:el.querySelector('#eval-teacher-picker-wrap'),items:allTeachers.map(t=>({id:t.profile_id,label:t.full_name,sub:t.teacher_code,photo:t.image_url})),placeholder:'พิมพ์ชื่อครู...',emptyLabel:'-- เลือกครูผู้ประเมิน --',photoClass:'w-7 h-9 rounded object-cover flex-shrink-0 border'})
 
@@ -2036,97 +2114,6 @@ export async function renderSportsEvaluationWorkspace() {
         if(error)return toast(error.message,'error')
         toast('ลบแล้ว'); renderSportsEvaluationWorkspace()
       }))
-    }
-    draw()
-  } catch(e) { console.error(e); el.innerHTML=missing() }
-}
-
-// หน้า "สรุปคะแนนทุกสี" — เทียบคะแนนทุกสีในหน้าเดียว ข้อมูลชุดเดียวกับ ColorScoreBoard ใน AZIZGAMES
-// เป๊ะ (อ่าน view color_totals ตัวเดียวกัน ซึ่งเฉลี่ยคะแนนจาก sports_score_entries ที่ทั้งกรรมการ
-// AZIZGAMES และผู้ประเมินฝั่ง pp5-online เขียนร่วมกันอยู่แล้ว) เปิดให้ทุกคนดูได้เหมือน AZIZGAMES เดิม
-export async function renderSportsScoreSummary() {
-  const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลดสรุปคะแนนทุกสี...</div>'
-  try {
-    const {event}=await context()
-    const [{data:colors},{data:totals},{data:criteria},{data:entries}]=await Promise.all([
-      supabase.from('team_colors').select('id,name,hex_color,logo_url,gender').eq('event_id',event.id).order('gender').order('display_order'),
-      supabase.from('color_totals').select('*').eq('event_id',event.id),
-      supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('category').order('display_order'),
-      supabase.from('sports_score_entries').select('criteria_id,team_color_id,score').eq('event_id',event.id),
-    ])
-    const totalsByColor=new Map((totals||[]).map(t=>[t.team_color_id,t]))
-    const maxByCategory=cat=>(criteria||[]).filter(x=>x.category===cat).reduce((s,x)=>s+(Number(x.max_score)||0),0)
-    const maxParade=maxByCategory('parade')||100, maxPage=maxByCategory('page')||100, maxColorEval=maxByCategory('color_eval')||100
-
-    let gender='M', expandedId=null
-
-    const breakdownFor=colorId=>(criteria||[]).map(crit=>{
-      const vals=(entries||[]).filter(e=>e.criteria_id===crit.id&&e.team_color_id===colorId).map(e=>Number(e.score))
-      const avg=vals.length?Math.round(vals.reduce((s,v)=>s+v,0)/vals.length*100)/100:0
-      return {crit,avg,count:vals.length}
-    }).filter(x=>x.count>0)
-
-    const bar=(label,val,max)=>`<div class="space-y-1"><div class="flex justify-between text-xs text-gray-500"><span>${esc(label)}</span><span class="font-bold text-gray-700">${Number(val).toLocaleString('th-TH')} / ${Number(max).toLocaleString('th-TH')}</span></div><div class="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" style="width:${max?Math.min(100,val/max*100):0}%"></div></div></div>`
-
-    const draw=()=>{
-      const colorsForGender=(colors||[]).filter(c=>c.gender===gender)
-      const order=gender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M
-      const rows=colorsForGender.map((c,idx)=>{
-        const canonicalName=order[idx]||c.name
-        const t=totalsByColor.get(c.id)||{}
-        return {c,canonicalName,t,grand:Number(t.grand_total)||0}
-      }).sort((a,b)=>b.grand-a.grand)
-
-      el.innerHTML=`<div class="max-w-4xl mx-auto space-y-5">
-        <div><h1 class="text-2xl font-bold">🏅 สรุปคะแนนทุกสี</h1><p class="text-sm text-gray-500">รวมคะแนนกรรมการ (พาเหรด/หน้าเว็บ/วันเข้าสี-กีฬาสีจริง) + วิชาการ + กีฬา + เหรียญรางวัล ข้อมูลเดียวกับระบบกีฬาสีหลัก อัปเดตสด</p></div>
-        <div class="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
-          <button type="button" data-sum-gender="M" class="px-4 py-2 rounded-lg text-sm font-bold transition ${gender==='M'?'bg-emerald-600 text-white':'text-gray-600'}">👦 กลุ่มสีชาย</button>
-          <button type="button" data-sum-gender="W" class="px-4 py-2 rounded-lg text-sm font-bold transition ${gender==='W'?'bg-rose-600 text-white':'text-gray-600'}">👧 กลุ่มสีหญิง</button>
-        </div>
-        <div class="space-y-3">
-          ${rows.map((r,rank)=>{
-            const swatch=HOUSE_COLOR_HEX[r.canonicalName]||r.c.hex_color||'#94a3b8'
-            const initial=esc(r.canonicalName.slice(0,1))
-            const expanded=expandedId===r.c.id
-            const bd=breakdownFor(r.c.id)
-            return `<div class="rounded-2xl border overflow-hidden">
-              <button type="button" data-toggle-expand="${r.c.id}" class="w-full flex items-center justify-between gap-3 p-3.5" style="background:${esc(swatch)}14">
-                <div class="flex items-center gap-3 min-w-0">
-                  <span class="w-6 text-center font-bold text-sm text-gray-400 flex-shrink-0">#${rank+1}</span>
-                  ${r.c.logo_url?`<img data-color-logo src="${esc(r.c.logo_url)}" class="w-10 h-10 rounded-full object-cover border-2 flex-shrink-0 bg-white" style="border-color:${esc(swatch)}"><div data-color-logo-fallback class="hidden w-10 h-10 rounded-full items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`:`<div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`}
-                  <b class="text-sm truncate" style="color:${esc(swatch)}">สี${esc(r.canonicalName)}</b>
-                </div>
-                <div class="flex items-center gap-3 flex-shrink-0">
-                  <span class="px-3.5 py-1.5 rounded-xl bg-gray-900 text-yellow-400 font-black text-sm">${r.grand.toLocaleString('th-TH')}</span>
-                  <span class="text-gray-400">${expanded?'▲':'▼'}</span>
-                </div>
-              </button>
-              ${expanded?`<div class="p-4 border-t bg-gray-50 space-y-4">
-                <div class="grid sm:grid-cols-2 gap-3">
-                  ${bar('🕌 พาเหรด/ความร่วมมือสี',Number(r.t.parade_total)||0,maxParade)}
-                  ${bar('📣 หน้าเว็บเพจ',Number(r.t.page_total)||0,maxPage)}
-                  ${bar('🎨 วันเข้าสี/วันกีฬาสีจริง',Number(r.t.color_eval_total)||0,maxColorEval)}
-                  ${bar('🧹 วิชาการสะสม',Number(r.t.academic_total)||0,100)}
-                  ${bar('🏃 กีฬาสะสม',Number(r.t.sport_score_total)||0,150)}
-                </div>
-                <div class="flex flex-wrap gap-2 text-xs font-bold">
-                  <span class="px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-700">🥇 ทอง ${Number(r.t.gold_count)||0}</span>
-                  <span class="px-3 py-1.5 rounded-full bg-gray-100 text-gray-600">🥈 เงิน ${Number(r.t.silver_count)||0}</span>
-                  <span class="px-3 py-1.5 rounded-full bg-orange-50 text-orange-700">🥉 ทองแดง ${Number(r.t.bronze_count)||0}</span>
-                </div>
-                <div class="border-t pt-3">
-                  <p class="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-2">รายละเอียดคะแนนแยกหัวข้อ (เฉลี่ยจากผู้ประเมินทุกคน)</p>
-                  ${bd.length?`<div class="space-y-1.5">${bd.map(x=>`<div class="flex items-center justify-between gap-2 bg-white border rounded-lg px-3 py-2"><span class="text-xs text-gray-600">${esc(EVAL_CATEGORY_LABEL[x.crit.category]?.split(' ')[0]||'')} ${esc(x.crit.name)}</span><b class="text-xs">${x.avg} / ${Number(x.crit.max_score)}</b></div>`).join('')}</div>`:'<p class="text-xs text-gray-400 text-center py-3">ยังไม่มีผู้ประเมินให้คะแนน</p>'}
-                </div>
-              </div>`:''}
-            </div>`
-          }).join('')}
-        </div>
-      </div>`
-
-      el.querySelectorAll('[data-sum-gender]').forEach(b=>b.onclick=()=>{gender=b.dataset.sumGender;expandedId=null;draw()})
-      el.querySelectorAll('[data-toggle-expand]').forEach(b=>b.onclick=()=>{const id=b.dataset.toggleExpand;expandedId=expandedId===id?null:id;draw()})
-      el.querySelectorAll('[data-color-logo]').forEach(img=>img.onerror=()=>{img.classList.add('hidden');const fb=img.nextElementSibling;fb?.classList.remove('hidden');fb?.classList.add('flex')})
     }
     draw()
   } catch(e) { console.error(e); el.innerHTML=missing() }
