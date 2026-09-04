@@ -1989,6 +1989,97 @@ export async function renderSportsEvaluationWorkspace() {
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
 
+// หน้า "สรุปคะแนนทุกสี" — เทียบคะแนนทุกสีในหน้าเดียว ข้อมูลชุดเดียวกับ ColorScoreBoard ใน AZIZGAMES
+// เป๊ะ (อ่าน view color_totals ตัวเดียวกัน ซึ่งเฉลี่ยคะแนนจาก sports_score_entries ที่ทั้งกรรมการ
+// AZIZGAMES และผู้ประเมินฝั่ง pp5-online เขียนร่วมกันอยู่แล้ว) เปิดให้ทุกคนดูได้เหมือน AZIZGAMES เดิม
+export async function renderSportsScoreSummary() {
+  const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลดสรุปคะแนนทุกสี...</div>'
+  try {
+    const {event}=await context()
+    const [{data:colors},{data:totals},{data:criteria},{data:entries}]=await Promise.all([
+      supabase.from('team_colors').select('id,name,hex_color,logo_url,gender').eq('event_id',event.id).order('gender').order('display_order'),
+      supabase.from('color_totals').select('*').eq('event_id',event.id),
+      supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('category').order('display_order'),
+      supabase.from('sports_score_entries').select('criteria_id,team_color_id,score').eq('event_id',event.id),
+    ])
+    const totalsByColor=new Map((totals||[]).map(t=>[t.team_color_id,t]))
+    const maxByCategory=cat=>(criteria||[]).filter(x=>x.category===cat).reduce((s,x)=>s+(Number(x.max_score)||0),0)
+    const maxParade=maxByCategory('parade')||100, maxPage=maxByCategory('page')||100, maxColorEval=maxByCategory('color_eval')||100
+
+    let gender='M', expandedId=null
+
+    const breakdownFor=colorId=>(criteria||[]).map(crit=>{
+      const vals=(entries||[]).filter(e=>e.criteria_id===crit.id&&e.team_color_id===colorId).map(e=>Number(e.score))
+      const avg=vals.length?Math.round(vals.reduce((s,v)=>s+v,0)/vals.length*100)/100:0
+      return {crit,avg,count:vals.length}
+    }).filter(x=>x.count>0)
+
+    const bar=(label,val,max)=>`<div class="space-y-1"><div class="flex justify-between text-xs text-gray-500"><span>${esc(label)}</span><span class="font-bold text-gray-700">${Number(val).toLocaleString('th-TH')} / ${Number(max).toLocaleString('th-TH')}</span></div><div class="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" style="width:${max?Math.min(100,val/max*100):0}%"></div></div></div>`
+
+    const draw=()=>{
+      const colorsForGender=(colors||[]).filter(c=>c.gender===gender)
+      const order=gender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M
+      const rows=colorsForGender.map((c,idx)=>{
+        const canonicalName=order[idx]||c.name
+        const t=totalsByColor.get(c.id)||{}
+        return {c,canonicalName,t,grand:Number(t.grand_total)||0}
+      }).sort((a,b)=>b.grand-a.grand)
+
+      el.innerHTML=`<div class="max-w-4xl mx-auto space-y-5">
+        <div><h1 class="text-2xl font-bold">🏅 สรุปคะแนนทุกสี</h1><p class="text-sm text-gray-500">รวมคะแนนกรรมการ (พาเหรด/หน้าเว็บ/วันเข้าสี-กีฬาสีจริง) + วิชาการ + กีฬา + เหรียญรางวัล ข้อมูลเดียวกับระบบกีฬาสีหลัก อัปเดตสด</p></div>
+        <div class="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
+          <button type="button" data-sum-gender="M" class="px-4 py-2 rounded-lg text-sm font-bold transition ${gender==='M'?'bg-emerald-600 text-white':'text-gray-600'}">👦 กลุ่มสีชาย</button>
+          <button type="button" data-sum-gender="W" class="px-4 py-2 rounded-lg text-sm font-bold transition ${gender==='W'?'bg-rose-600 text-white':'text-gray-600'}">👧 กลุ่มสีหญิง</button>
+        </div>
+        <div class="space-y-3">
+          ${rows.map((r,rank)=>{
+            const swatch=HOUSE_COLOR_HEX[r.canonicalName]||r.c.hex_color||'#94a3b8'
+            const initial=esc(r.canonicalName.slice(0,1))
+            const expanded=expandedId===r.c.id
+            const bd=breakdownFor(r.c.id)
+            return `<div class="rounded-2xl border overflow-hidden">
+              <button type="button" data-toggle-expand="${r.c.id}" class="w-full flex items-center justify-between gap-3 p-3.5" style="background:${esc(swatch)}14">
+                <div class="flex items-center gap-3 min-w-0">
+                  <span class="w-6 text-center font-bold text-sm text-gray-400 flex-shrink-0">#${rank+1}</span>
+                  ${r.c.logo_url?`<img data-color-logo src="${esc(r.c.logo_url)}" class="w-10 h-10 rounded-full object-cover border-2 flex-shrink-0 bg-white" style="border-color:${esc(swatch)}"><div data-color-logo-fallback class="hidden w-10 h-10 rounded-full items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`:`<div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`}
+                  <b class="text-sm truncate" style="color:${esc(swatch)}">สี${esc(r.canonicalName)}</b>
+                </div>
+                <div class="flex items-center gap-3 flex-shrink-0">
+                  <span class="px-3.5 py-1.5 rounded-xl bg-gray-900 text-yellow-400 font-black text-sm">${r.grand.toLocaleString('th-TH')}</span>
+                  <span class="text-gray-400">${expanded?'▲':'▼'}</span>
+                </div>
+              </button>
+              ${expanded?`<div class="p-4 border-t bg-gray-50 space-y-4">
+                <div class="grid sm:grid-cols-2 gap-3">
+                  ${bar('🕌 พาเหรด/ความร่วมมือสี',Number(r.t.parade_total)||0,maxParade)}
+                  ${bar('📣 หน้าเว็บเพจ',Number(r.t.page_total)||0,maxPage)}
+                  ${bar('🎨 วันเข้าสี/วันกีฬาสีจริง',Number(r.t.color_eval_total)||0,maxColorEval)}
+                  ${bar('🧹 วิชาการสะสม',Number(r.t.academic_total)||0,100)}
+                  ${bar('🏃 กีฬาสะสม',Number(r.t.sport_score_total)||0,150)}
+                </div>
+                <div class="flex flex-wrap gap-2 text-xs font-bold">
+                  <span class="px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-700">🥇 ทอง ${Number(r.t.gold_count)||0}</span>
+                  <span class="px-3 py-1.5 rounded-full bg-gray-100 text-gray-600">🥈 เงิน ${Number(r.t.silver_count)||0}</span>
+                  <span class="px-3 py-1.5 rounded-full bg-orange-50 text-orange-700">🥉 ทองแดง ${Number(r.t.bronze_count)||0}</span>
+                </div>
+                <div class="border-t pt-3">
+                  <p class="text-[10px] uppercase tracking-wider font-bold text-gray-400 mb-2">รายละเอียดคะแนนแยกหัวข้อ (เฉลี่ยจากผู้ประเมินทุกคน)</p>
+                  ${bd.length?`<div class="space-y-1.5">${bd.map(x=>`<div class="flex items-center justify-between gap-2 bg-white border rounded-lg px-3 py-2"><span class="text-xs text-gray-600">${esc(EVAL_CATEGORY_LABEL[x.crit.category]?.split(' ')[0]||'')} ${esc(x.crit.name)}</span><b class="text-xs">${x.avg} / ${Number(x.crit.max_score)}</b></div>`).join('')}</div>`:'<p class="text-xs text-gray-400 text-center py-3">ยังไม่มีผู้ประเมินให้คะแนน</p>'}
+                </div>
+              </div>`:''}
+            </div>`
+          }).join('')}
+        </div>
+      </div>`
+
+      el.querySelectorAll('[data-sum-gender]').forEach(b=>b.onclick=()=>{gender=b.dataset.sumGender;expandedId=null;draw()})
+      el.querySelectorAll('[data-toggle-expand]').forEach(b=>b.onclick=()=>{const id=b.dataset.toggleExpand;expandedId=expandedId===id?null:id;draw()})
+      el.querySelectorAll('[data-color-logo]').forEach(img=>img.onerror=()=>{img.classList.add('hidden');const fb=img.nextElementSibling;fb?.classList.remove('hidden');fb?.classList.add('flex')})
+    }
+    draw()
+  } catch(e) { console.error(e); el.innerHTML=missing() }
+}
+
 export async function renderShirtVoteSettings(gender='ชาย') {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลด...</div>'
   try {

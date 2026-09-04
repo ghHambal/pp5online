@@ -26,7 +26,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.655'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, renderSportsScoreSummary, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.656'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -257,6 +257,7 @@ const ROUTES = {
   'sports-fund-admin': () => renderSportsFundAdmin(),
   'sports-overview-admin': () => renderSportsOverviewAdmin(),
   'sports-evaluation': () => renderSportsEvaluationWorkspace(),
+  'sports-score-summary': () => renderSportsScoreSummary(),
   'shirt-vote-settings': () => renderShirtVoteSettings(),
   'shirt-vote-dashboard': () => renderShirtVoteDashboard(),
   'my-team-workspace': () => openMyTeamWorkspace(),
@@ -741,6 +742,7 @@ async function _applyRoleMenus() {
   // js/teacher-views.js) ใช้ตัดสินใจได้เลยโดยไม่ต้อง query ซ้ำ — ต้องคำนวณเสร็จก่อน navigate('overview')
   // เสมอ (ดูจุดเรียก _applyRoleMenus ใน DOMContentLoaded ท้ายไฟล์ ซึ่งอยู่ก่อน navigate('overview') เสมอ)
   const canSeeSports = _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false
+  toggle('menu-sports-score-summary', !!canSeeSports)
   window._teacherOverviewSystems = [
     { key: 'council',            show: cfg.council_visible_to_all !== 'false' || _isAlsoAdmin || isExecutive, emoji: '🏛️', label: 'สภา<br>นักเรียน',       href: 'council.html' },
     { key: 'terangganu',         show: campAccess?.is_manager === true || campAccess?.teacher_participant === true, emoji: '⚜️', label: 'ค่าย<br>TERANGGANU', href: 'terangganu.html' },
@@ -753,6 +755,7 @@ async function _applyRoleMenus() {
     { key: 'sports-fund',        show: !!isSportsManager,                     emoji: '💰', label: 'บัญชีเงิน<br>กีฬาสี',        nav: 'sports-fund-admin' },
     { key: 'sports-overview',    show: !!isSportsManager,                     emoji: '📊', label: 'ภาพรวม<br>กีฬาสี',          nav: 'sports-overview-admin' },
     { key: 'sports-evaluation',  show: !!isSportsEvaluator,                   emoji: '🧑‍⚖️', label: 'ประเมิน<br>กีฬาสี',         nav: 'sports-evaluation' },
+    { key: 'sports-score-summary', show: !!canSeeSports,                      emoji: '🏅', label: 'สรุปคะแนน<br>ทุกสี',        nav: 'sports-score-summary' },
     { key: 'shirt-vote',         show: !!(isSportsManager || isShirtVoteManager), emoji: '🗳️', label: 'ผลโหวต<br>แบบเสื้อ',    nav: 'shirt-vote-dashboard' },
     { key: 'qr-print',           show: _isQrReissueManager,                   emoji: '🎫', label: 'พิมพ์/คำขอ<br>QR',         nav: 'student-qr-print' },
     { key: 'prayer-score',       show: hasPrayer,                             emoji: '🕌', label: 'คะแนน<br>ศาสนา',           nav: 'prayer-score' },
@@ -2846,7 +2849,7 @@ function _showShirtSizeReminderPopup() {
   document.body.appendChild(wrap)
   wrap.querySelector('#ssrp-go').addEventListener('click', () => {
     wrap.remove()
-    import('./sports-portals.js?v=10.22.655').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+    import('./sports-portals.js?v=10.22.656').then(m => m.openTeacherShirtSizeModal?.(_teacher))
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
 }
