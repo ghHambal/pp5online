@@ -1661,9 +1661,14 @@ export async function renderSportsOverviewAdmin() {
   const el=main(); el.innerHTML='<div class="py-16 text-center text-gray-400">กำลังโหลดภาพรวมกีฬาสี...</div>'
   try {
     const {event}=await context()
-    const [{data:ov,error},{data:campCalendar}]=await Promise.all([
+    const [{data:ov,error},{data:campCalendar},{data:criteria},{data:entries},{data:pp5Evaluators},{data:azizJudges},{data:teachersList}]=await Promise.all([
       supabase.rpc('get_sports_admin_overview',{p_event:event.id}),
       supabase.from('work_calendar_events').select('id,label,event_date,end_date').or('label.ilike.%เข้าสี%,label.ilike.%กีฬาสี%,label.ilike.%วันงาน%'),
+      supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('category').order('display_order'),
+      supabase.from('sports_score_entries').select('criteria_id,team_color_id,judge_username,score,updated_at').eq('event_id',event.id),
+      supabase.from('sports_score_evaluators').select('*').eq('event_id',event.id).eq('is_active',true),
+      supabase.from('sports_evaluation_judges').select('id,name,username,role,criteria_id').eq('event_id',event.id),
+      supabase.from('teachers').select('full_name,profile_id').order('full_name'),
     ])
     if(error) throw error
     const colors=ov?.colors||[], attendance=ov?.attendance||[], dues=ov?.dues||[], fund=ov?.fund||[]
@@ -1722,12 +1727,59 @@ export async function renderSportsOverviewAdmin() {
       </table></div>`
     }
 
+    // แท็บ "การประเมิน" — สถานะความครบถ้วนของเกณฑ์ประเมิน (กี่สีจากทั้งหมดมีคะแนนแล้ว) + รายชื่อ
+    // ผู้ประเมินทุกคนไม่ว่าจะมาจากฝั่งไหน (ครู ปพ.5 ผ่าน sports_score_evaluators หรือกรรมการ
+    // AZIZGAMES เดิมผ่าน sports_evaluation_judges) รวมกันเป็นรายการเดียว จับคู่ด้วย judge_username
+    // เดียวกับที่ sports_score_entries ใช้ (ปพ.5 = 'pp5:'+profile_id, AZIZGAMES = username เดิม)
+    const teacherByProfile2=new Map((teachersList||[]).map(t=>[t.profile_id,t]))
+    const pp5ByProfile=new Map()
+    ;(pp5Evaluators||[]).forEach(ev=>{
+      if(!pp5ByProfile.has(ev.profile_id)) pp5ByProfile.set(ev.profile_id,new Set())
+      pp5ByProfile.get(ev.profile_id).add(ev.category)
+    })
+    const roster=[
+      ...[...pp5ByProfile.entries()].map(([pid,cats])=>({name:teacherByProfile2.get(pid)?.full_name||'ไม่พบชื่อ',source:'ครู ปพ.5',categories:[...cats],judgeUsername:'pp5:'+pid})),
+      ...(azizJudges||[]).map(j=>({name:j.name,source:'กรรมการ AZIZGAMES',categories:[j.role==='colorEval'?'color_eval':j.role],judgeUsername:j.username})),
+    ]
+    const entriesByJudge=new Map()
+    ;(entries||[]).forEach(e=>{
+      if(!entriesByJudge.has(e.judge_username)) entriesByJudge.set(e.judge_username,[])
+      entriesByJudge.get(e.judge_username).push(e)
+    })
+    const totalColors=colors.length||8
+    const criteriaCoverage=(criteria||[]).map(crit=>{
+      const rows=(entries||[]).filter(e=>e.criteria_id===crit.id)
+      const colorsScored=new Set(rows.map(e=>e.team_color_id)).size
+      const judgesCount=new Set(rows.map(e=>e.judge_username)).size
+      const avg=rows.length?Math.round(rows.reduce((s,e)=>s+Number(e.score),0)/rows.length*100)/100:0
+      return {crit,colorsScored,judgesCount,avg,submitted:rows.length}
+    })
+    const renderEvaluationTab=()=>`<div class="space-y-6">
+      <div>
+        <h3 class="font-bold text-sm mb-3">📋 ความครบถ้วนของเกณฑ์ (${totalColors} สี)</h3>
+        <div class="overflow-x-auto"><table class="w-full text-sm">
+          <thead><tr class="border-b bg-gray-50"><th class="p-2 text-left">หัวข้อ</th><th class="p-2 text-center">สีที่มีคะแนน</th><th class="p-2 text-center">ผู้ประเมิน</th><th class="p-2 text-center">เฉลี่ย</th></tr></thead>
+          <tbody>${criteriaCoverage.map(x=>`<tr class="border-b"><td class="p-2">${esc(EVAL_CATEGORY_LABEL[x.crit.category]?.split(' ')[0]||'')} ${esc(x.crit.name)}</td><td class="p-2 text-center ${x.colorsScored<totalColors?'text-amber-600 font-bold':'text-emerald-600 font-bold'}">${x.colorsScored}/${totalColors}</td><td class="p-2 text-center">${x.judgesCount}</td><td class="p-2 text-center font-bold">${x.submitted?x.avg+' / '+Number(x.crit.max_score):'—'}</td></tr>`).join('')||'<tr><td colspan="4" class="p-6 text-center text-gray-400">ยังไม่มีหัวข้อเกณฑ์ในระบบ</td></tr>'}</tbody>
+        </table></div>
+      </div>
+      <div>
+        <h3 class="font-bold text-sm mb-3">🧑‍⚖️ ผู้ประเมิน (${roster.length} คน)</h3>
+        <div class="space-y-2">${roster.map(r=>{
+          const mine=entriesByJudge.get(r.judgeUsername)||[]
+          const submitted=mine.length
+          const lastAt=submitted?mine.reduce((m,e)=>e.updated_at>m?e.updated_at:m,mine[0].updated_at):null
+          return `<div class="flex items-center justify-between gap-3 bg-gray-50 rounded-xl p-3"><div class="min-w-0"><b class="text-sm block truncate">${esc(r.name)}</b><p class="text-xs text-gray-500 mt-0.5">${esc(r.source)} · ${r.categories.map(c=>esc(EVAL_CATEGORY_LABEL[c]||c)).join(', ')}</p></div><div class="text-right flex-shrink-0"><span class="px-3 py-1 rounded-full text-xs font-bold ${submitted?'bg-emerald-50 text-emerald-700':'bg-gray-100 text-gray-400'}">${submitted?submitted+' รายการ':'ยังไม่ส่งคะแนน'}</span>${lastAt?`<p class="text-[10px] text-gray-400 mt-1">ล่าสุด ${new Date(lastAt).toLocaleDateString('th-TH',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})}</p>`:''}</div></div>`
+        }).join('')||'<p class="text-sm text-gray-400 text-center py-6">ยังไม่มีผู้ประเมินในระบบ</p>'}</div>
+      </div>
+    </div>`
+
     el.innerHTML=`<div class="max-w-6xl mx-auto space-y-5">
-      <div><h1 class="text-2xl font-bold">📊 ภาพรวมกีฬาสี (แอดมิน)</h1><p class="text-sm text-gray-500">สรุปเช็คชื่อรายวัน ค่าบำรุงสี และบัญชีของทุกสี เทียบกันในหน้าเดียว</p></div>
-      <div id="sports-ov-tabs" class="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
+      <div><h1 class="text-2xl font-bold">📊 ภาพรวมกีฬาสี (แอดมิน)</h1><p class="text-sm text-gray-500">สรุปเช็คชื่อรายวัน ค่าบำรุงสี บัญชี และการประเมินของทุกสี เทียบกันในหน้าเดียว</p></div>
+      <div id="sports-ov-tabs" class="inline-flex flex-wrap p-1 rounded-xl bg-gray-100 gap-1">
         <button type="button" data-ov-tab="attendance" class="px-4 py-2 rounded-lg text-sm font-bold transition">📷 เช็คชื่อรายวัน</button>
         <button type="button" data-ov-tab="dues" class="px-4 py-2 rounded-lg text-sm font-bold transition">💰 ค่าบำรุงสี</button>
         <button type="button" data-ov-tab="ledger" class="px-4 py-2 rounded-lg text-sm font-bold transition">📒 บัญชีสี</button>
+        <button type="button" data-ov-tab="evaluation" class="px-4 py-2 rounded-lg text-sm font-bold transition">🧑‍⚖️ การประเมิน</button>
       </div>
       <section class="bg-white border rounded-2xl p-5"><div id="sports-ov-body"></div></section>
     </div>`
@@ -1738,7 +1790,7 @@ export async function renderSportsOverviewAdmin() {
         const active=b.dataset.ovTab===tab
         b.className=`px-4 py-2 rounded-lg text-sm font-bold transition ${active?'bg-indigo-600 text-white':'text-gray-600 hover:bg-gray-200'}`
       })
-      el.querySelector('#sports-ov-body').innerHTML=tab==='attendance'?renderAttendanceTab():tab==='dues'?renderDuesTab():renderLedgerTab()
+      el.querySelector('#sports-ov-body').innerHTML=tab==='attendance'?renderAttendanceTab():tab==='dues'?renderDuesTab():tab==='ledger'?renderLedgerTab():renderEvaluationTab()
     }
     el.querySelectorAll('[data-ov-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.ovTab;render()})
     render()
