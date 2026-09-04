@@ -1793,7 +1793,10 @@ export async function renderSportsEvaluationWorkspace() {
     const myCriteria=(criteria||[]).filter(c=>assignedCategories.has(c.category)||assignedCriteriaIds.has(c.id))
 
     const myCategories=[...new Set(myCriteria.map(c=>c.category))]
-    let gender='M', settingsOpen=false, evalCategory=myCategories[0]||null
+    let gender='M', settingsOpen=false, evalCategory=myCategories[0]||null, evalSession=null
+    // ตัดชื่อหัวข้อที่ตั้งแบบ "รอบ/วัน - หัวข้อย่อย" (เช่น "เข้าสีครั้งที่ 1 - การซ้อมกีฬา") เอาส่วน
+    // หน้า " - " มาเป็นชื่อรอบ ไว้จัดกลุ่มให้เลือกทีละรอบ กันหัวข้อทั้งหมวดยาวเป็นสิบข้อโผล่พร้อมกัน
+    const sessionOf=name=>{ const i=String(name||'').indexOf(' - '); return i===-1?name:name.slice(0,i) }
     let teacherPicker=null
 
     // การ์ดต่อสี (โลโก้+สีปกติ+ช่องกรอกคะแนนแยกหัวข้อ) อ่านง่ายกว่าตารางยาวๆ โดยเฉพาะบนมือถือ
@@ -1801,6 +1804,13 @@ export async function renderSportsEvaluationWorkspace() {
     const scoringSection=()=>{
       if(!myCriteria.length) return isAdmin?'':`<section class="bg-white border rounded-2xl p-8 text-center"><p class="text-gray-400">คุณยังไม่ได้รับมอบหมายให้ประเมินหมวดใด — ติดต่อแอดมินเพื่อขอสิทธิ์</p></section>`
       const catCriteria=myCriteria.filter(c=>c.category===evalCategory)
+      // จัดกลุ่มหัวข้อในหมวดนี้ตามรอบ/วัน แล้วเลือกโชว์ทีละรอบผ่านดรอปดาวน์ — ถ้ามีรอบเดียว
+      // (ไม่มี " - " ในชื่อเลยสักหัวข้อ) ก็โชว์ทั้งหมดตรงๆ ไม่ต้องมีดรอปดาวน์ให้รก
+      const sessionMap=new Map()
+      catCriteria.forEach(crit=>{ const s=sessionOf(crit.name); if(!sessionMap.has(s))sessionMap.set(s,[]); sessionMap.get(s).push(crit) })
+      const sessionNames=[...sessionMap.keys()]
+      if(!evalSession||!sessionNames.includes(evalSession)) evalSession=sessionNames[0]||null
+      const sessionCriteria=sessionNames.length>1?(sessionMap.get(evalSession)||[]):catCriteria
       const colorsForGender=(colors||[]).filter(c=>c.gender===gender)
       return `<section class="bg-white border rounded-2xl p-5">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
@@ -1811,6 +1821,7 @@ export async function renderSportsEvaluationWorkspace() {
           </div>
         </div>
         ${myCategories.length>1?`<div class="flex flex-wrap gap-2 mb-4">${myCategories.map(cat=>`<button type="button" data-eval-cattab="${cat}" class="px-4 py-2 rounded-xl text-xs font-bold border transition ${cat===evalCategory?'bg-indigo-600 text-white border-indigo-600':'text-gray-600 border-gray-200 hover:bg-gray-50'}">${esc(EVAL_CATEGORY_LABEL[cat]||cat)}</button>`).join('')}</div>`:''}
+        ${sessionNames.length>1?`<div class="mb-4"><label class="text-xs font-bold text-gray-600 block mb-1.5">📅 เลือกรอบ/วันที่จะประเมิน</label><select id="eval-session-select" class="w-full sm:w-80 border rounded-xl px-3 py-2.5 text-sm font-bold">${sessionNames.map(s=>`<option value="${esc(s)}" ${s===evalSession?'selected':''}>${esc(s)}</option>`).join('')}</select></div>`:''}
         <div class="grid sm:grid-cols-2 gap-3">
           ${colorsForGender.map((c,idx)=>{
             const canonicalName=(gender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M)[idx]||c.name
@@ -1822,10 +1833,12 @@ export async function renderSportsEvaluationWorkspace() {
                 <b class="text-sm" style="color:${esc(swatch)}">สี${esc(canonicalName)}</b>
               </div>
               <div class="p-3 space-y-2 bg-white">
-                ${catCriteria.map(crit=>{
+                ${sessionCriteria.map(crit=>{
                   const v=scoreMap.get(`${crit.id}|${c.id}`)
+                  const critSession=sessionOf(crit.name)
+                  const topicLabel=(sessionNames.length>1&&critSession!==crit.name)?crit.name.slice(critSession.length+3):crit.name
                   return `<div class="flex items-center justify-between gap-2">
-                    <label class="text-xs text-gray-600 flex-1">${esc(crit.name)}</label>
+                    <label class="text-xs text-gray-600 flex-1">${esc(topicLabel)}</label>
                     <div class="flex items-center gap-1 flex-shrink-0">
                       <input type="number" min="0" max="${Number(crit.max_score)}" value="${v??''}" data-score-input data-crit="${crit.id}" data-color="${c.id}" class="w-16 border rounded-lg px-2 py-1.5 text-center text-sm">
                       <span class="text-[10px] text-gray-400 w-10">/ ${Number(crit.max_score)}</span>
@@ -1901,6 +1914,7 @@ export async function renderSportsEvaluationWorkspace() {
       el.querySelectorAll('[data-eval-gender]').forEach(b=>b.onclick=()=>{gender=b.dataset.evalGender;draw()})
       el.querySelectorAll('[data-eval-cattab]').forEach(b=>b.onclick=()=>{evalCategory=b.dataset.evalCattab;draw()})
       el.querySelectorAll('[data-color-logo]').forEach(img=>img.onerror=()=>{img.classList.add('hidden');const fb=img.nextElementSibling;fb?.classList.remove('hidden');fb?.classList.add('flex')})
+      el.querySelector('#eval-session-select')?.addEventListener('change',e=>{evalSession=e.target.value;draw()})
 
       el.querySelector('#eval-submit')?.addEventListener('click',async()=>{
         const rows=[]
