@@ -846,8 +846,147 @@ export function createTeacherMultiSelect({ wrap, chipsWrap, teachers, value = []
   }
 }
 
+// ─── Searchable Student Multi-Select ──────────────────────────────────────────
+// ใช้เลือกนักเรียนได้หลายคน — ค้นหาด้วยชื่อหรือรหัสนักเรียน คลิกเพื่อเพิ่มลงรายการด้านล่าง
+//
+// การใช้งาน:
+//   const sel = createStudentMultiSelect({ wrap: el, students, value: [1,2,3] })
+//   sel.getValue()    → array ของ student id
+//   sel.setValue(ids) → เซตค่า
+export function createStudentMultiSelect({ wrap, chipsWrap, students, value = [], placeholder = 'ค้นหาชื่อหรือรหัสนักเรียน...' }) {
+  // ── state ──────────────────────────────────────────────────────────────────
+  let _selectedIds = new Set((value ?? []).map(id => +id))
+  let _open = false
+
+  // ── DOM ────────────────────────────────────────────────────────────────────
+  wrap.style.position = 'relative'
+  wrap.innerHTML = `
+    <div class="ts-input flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2.5 cursor-pointer bg-white hover:border-indigo-300 transition" tabindex="0">
+      <span class="ts-display flex-1 text-sm text-gray-400">＋ ค้นหาเพื่อเพิ่มนักเรียน</span>
+      <svg class="ts-arrow w-4 h-4 text-gray-400 flex-shrink-0 transition-transform" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z"/></svg>
+    </div>
+    <div class="ts-dropdown absolute left-0 right-0 z-[9999] mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden hidden">
+      <div class="p-2 border-b border-gray-100">
+        <input class="ts-search w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300" placeholder="${placeholder}" autocomplete="off" />
+      </div>
+      <ul class="ts-list max-h-52 overflow-y-auto"></ul>
+    </div>
+    ${chipsWrap ? '' : '<div class="ts-chips mt-2 space-y-1.5"></div>'}`
+
+  const inputEl  = wrap.querySelector('.ts-input')
+  const dropdown = wrap.querySelector('.ts-dropdown')
+  const searchEl = wrap.querySelector('.ts-search')
+  const listEl   = wrap.querySelector('.ts-list')
+  const chipsEl  = chipsWrap ?? wrap.querySelector('.ts-chips')
+  const arrowEl  = wrap.querySelector('.ts-arrow')
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+  function _fmtStudent(s) {
+    return `${s.full_name ?? ''}${s.student_code ? ` (${s.student_code})` : ''}`
+  }
+
+  function _renderChips() {
+    const selected = students.filter(s => _selectedIds.has(s.id))
+    const countLabel = chipsWrap ? `<p class="text-xs font-semibold text-gray-700 mb-2">นักเรียนที่เลือก (${selected.length} คน)</p>` : ''
+    if (!selected.length) {
+      chipsEl.innerHTML = countLabel + `<p class="text-xs text-gray-400 px-1 py-1">ยังไม่ได้เลือก</p>`
+      return
+    }
+    chipsEl.innerHTML = countLabel + `<div class="space-y-1.5">${selected.map(s => `
+      <div data-id="${s.id}" class="flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-lg px-3 py-2">
+        ${s.image_url
+          ? `<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" />`
+          : `<div class="w-6 h-6 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center text-xs font-bold flex-shrink-0">${(s.full_name ?? '?').charAt(0)}</div>`}
+        <span class="flex-1 text-sm text-gray-700 truncate">${s.full_name ?? ''}${s.student_code ? `<span class="ml-1 text-xs text-gray-400 font-mono">${s.student_code}</span>` : ''}</span>
+        <button type="button" class="ts-chip-remove text-gray-300 hover:text-red-500 text-lg leading-none">&times;</button>
+      </div>`).join('')}</div>`
+
+    chipsEl.querySelectorAll('.ts-chip-remove').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = +btn.closest('[data-id]').dataset.id
+        _selectedIds.delete(id)
+        _renderChips()
+        if (_open) _renderList(searchEl.value.trim())
+      })
+    })
+  }
+
+  function _renderList(q = '') {
+    const lq = q.toLowerCase()
+    const filtered = q
+      ? students.filter(s => !_selectedIds.has(s.id) &&
+          ((s.full_name ?? '').toLowerCase().includes(lq) || String(s.student_code ?? '').includes(q)))
+      : []
+    if (!q) {
+      listEl.innerHTML = `<li class="px-4 py-3 text-sm text-gray-400 text-center">พิมพ์ชื่อหรือรหัสเพื่อค้นหา</li>`
+      return
+    }
+    if (!filtered.length) {
+      listEl.innerHTML = `<li class="px-4 py-3 text-sm text-gray-400 text-center">ไม่พบนักเรียน</li>`
+      return
+    }
+    listEl.innerHTML = filtered.slice(0, 50).map(s => `
+      <li data-id="${s.id}" class="ts-opt px-4 py-2.5 text-sm cursor-pointer hover:bg-teal-50 flex items-center gap-2 text-gray-700">
+        ${s.image_url
+          ? `<img src="${s.image_url}" class="w-6 h-6 rounded-full object-cover flex-shrink-0" />`
+          : `<div class="w-6 h-6 rounded-full bg-teal-100 text-teal-600 flex items-center justify-center text-xs font-bold flex-shrink-0">${(s.full_name ?? '?').charAt(0)}</div>`}
+        <span class="truncate">${s.full_name ?? ''}${s.student_code ? `<span class="ml-1 text-xs text-gray-400 font-mono">${s.student_code}</span>` : ''}</span>
+        ${s.main_room ? `<span class="ml-auto text-[11px] text-gray-400 flex-shrink-0">${s.main_room}</span>` : ''}
+      </li>`).join('')
+
+    listEl.querySelectorAll('.ts-opt').forEach(li => {
+      li.addEventListener('mousedown', e => {
+        e.preventDefault()
+        const id = +li.dataset.id
+        _selectedIds.add(id)
+        searchEl.value = ''
+        _renderList()
+        _renderChips()
+        wrap.dispatchEvent(new CustomEvent('ts:change', { detail: { ids: [..._selectedIds] } }))
+        searchEl.focus()
+      })
+    })
+  }
+
+  function _open_() {
+    _open = true
+    dropdown.classList.remove('hidden')
+    arrowEl.style.transform = 'rotate(180deg)'
+    searchEl.value = ''
+    _renderList()
+    setTimeout(() => searchEl.focus(), 50)
+  }
+
+  function _close() {
+    _open = false
+    dropdown.classList.add('hidden')
+    arrowEl.style.transform = ''
+  }
+
+  // ── events ─────────────────────────────────────────────────────────────────
+  inputEl.addEventListener('click', () => _open ? _close() : _open_())
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _open ? _close() : _open_() } })
+  searchEl.addEventListener('input', () => _renderList(searchEl.value.trim()))
+  document.addEventListener('mousedown', e => { if (_open && !wrap.contains(e.target)) _close() }, true)
+
+  _renderChips()
+
+  // ── public API ─────────────────────────────────────────────────────────────
+  return {
+    getValue: () => [..._selectedIds],
+    setValue: (ids) => {
+      _selectedIds = new Set((ids ?? []).map(id => +id))
+      _renderChips()
+      if (_open) _renderList(searchEl.value.trim())
+    },
+  }
+}
+
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.659': [
+    '🎯 หน้าประกาศ (แอดมิน+ผู้บริหาร) เพิ่มตัวเลือก "เจาะจงเฉพาะบุคคล" — ค้นหาแล้วเลือกครู/นักเรียนเป็นรายคนได้ นอกเหนือจากกลุ่มเป้าหมายทั้งหมด/ครู/นักเรียนแบบเดิม',
+  ],
   '10.22.658': [
     '🧑‍⚖️ รวมทุกอย่างเรื่องประเมินกีฬาสีไว้ในหน้าเดียว — หน้า "ประเมินกีฬาสี" ตอนนี้มี 4 แท็บ: ให้คะแนน / สรุปคะแนนทุกสี / สถานะผู้ประเมิน (แอดมิน) / ตั้งค่า (แอดมิน) ยกเลิกหน้า "สรุปคะแนนทุกสี" แยกและแท็บ "การประเมิน" ในหน้าภาพรวมกีฬาสี ที่แยกไว้ก่อนหน้านี้',
   ],

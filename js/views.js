@@ -35,7 +35,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
-import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect } from './ui.js'
+import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
          openSubjectModal, handleDeleteSubject,
          openDeptModal, handleDeleteDept,
@@ -8603,6 +8603,10 @@ const _ANN_AUDIENCE_BADGE = {
   futsal_player: '<span class="px-2 py-0.5 bg-pink-100 text-pink-700 rounded-full text-[11px] font-bold">⚽ นักกีฬาฟุตซอลเท่านั้น</span>',
 }
 const _annAudienceBadge = a => _ANN_AUDIENCE_BADGE[a] ?? ''
+const _annTargetBadge = a => {
+  const n = (a.target_teacher_ids?.length ?? 0) + (a.target_student_ids?.length ?? 0)
+  return n ? `<span class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[11px] font-bold">🎯 เจาะจง ${n} คน</span>` : ''
+}
 
 // ยิง push notification จริงไปหากลุ่มเป้าหมายเมื่อมีประกาศใหม่ (Edge Function 'send-push')
 // เป็นของเสริม — ถ้ายิงไม่สำเร็จ (เช่นยังไม่มีใครสมัครรับ) ไม่บล็อกการบันทึกประกาศหลัก
@@ -8617,6 +8621,16 @@ async function _sendAnnouncementPush(title, body, audience = 'all') {
       body: { title: `📢 ${title}`, body: (body ?? '').slice(0, 150), url: target === 'all_students' ? 'student.html' : 'teacher.html', target },
     })))
   } catch { /* เงียบไว้ ไม่กระทบผู้ใช้ */ }
+}
+
+// แคชรายชื่อครู/นักเรียนไว้ใช้กับตัวเลือก "เจาะจงเฉพาะบุคคล" ในฟอร์มสร้าง/แก้ไขประกาศ
+// (โหลดครั้งเดียวต่อการเปิดหน้า ไม่ต้องยิงซ้ำทุกครั้งที่เปิดโมดัล)
+let _annPeoplePromise = null
+function _getAnnPeople() {
+  if (!_annPeoplePromise) _annPeoplePromise = Promise.all([getTeachers(), getStudents()])
+    .then(([teachers, students]) => ({ teachers, students }))
+    .catch(() => ({ teachers: [], students: [] }))
+  return _annPeoplePromise
 }
 
 export async function renderAnnouncements() {
@@ -8688,6 +8702,7 @@ export async function renderAnnouncements() {
               ${a.ann_type === 'training' ? `<span class="px-2 py-0.5 bg-violet-100 text-violet-700 rounded-full text-[11px] font-bold">🎓 อบรม/กิจกรรม</span>` : ''}
               ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">⭐ ปักหมุด</span>` : ''}
               ${_annAudienceBadge(a.audience)}
+              ${_annTargetBadge(a)}
               ${a.video_url ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[11px] font-bold">🎥 มีวิดีโอ</span>` : ''}
             </div>
             <h3 class="font-bold text-gray-800 text-[15px] leading-snug">${_esc(a.title)}</h3>
@@ -8887,6 +8902,20 @@ export async function renderAnnouncements() {
               <button type="button" data-audience="futsal_player" class="ann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'futsal_player' ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-gray-600 border-gray-200 hover:border-pink-300'}">⚽ นักกีฬาฟุตซอล</button>
             </div>
           </div>
+          <!-- เจาะจงเฉพาะบุคคล -->
+          <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-3">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">🎯 เจาะจงเฉพาะบุคคล <span class="text-gray-300 font-normal normal-case">(ไม่บังคับ — ไม่เลือกใครเลย = แสดงตามกลุ่มเป้าหมายด้านบนตามปกติ)</span></p>
+            <div>
+              <label class="block text-[11px] font-medium text-gray-500 mb-1">เจาะจงครู (รหัสหรือชื่อ)</label>
+              <div id="ann-target-teachers-chips" class="mb-2"></div>
+              <div id="ann-target-teachers-wrap"></div>
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-gray-500 mb-1">เจาะจงนักเรียน (รหัสหรือชื่อ)</label>
+              <div id="ann-target-students-chips" class="mb-2"></div>
+              <div id="ann-target-students-wrap"></div>
+            </div>
+          </div>
           <!-- Training fields -->
           <div id="ann-training-fields" class="${item?.ann_type === 'training' ? '' : 'hidden'} space-y-3 bg-violet-50 rounded-2xl p-4 border border-violet-100">
             <div>
@@ -8973,6 +9002,24 @@ export async function renderAnnouncements() {
     m.querySelector('#ann-modal-close').onclick = close
     m.querySelector('#ann-modal-cancel').onclick = close
     m.addEventListener('click', e => { if (e.target === m) close() })
+
+    // เจาะจงเฉพาะบุคคล
+    let _annTargetTeacherSel = null, _annTargetStudentSel = null
+    _getAnnPeople().then(({ teachers, students }) => {
+      if (!document.body.contains(m)) return
+      _annTargetTeacherSel = createTeacherMultiSelect({
+        wrap: m.querySelector('#ann-target-teachers-wrap'),
+        chipsWrap: m.querySelector('#ann-target-teachers-chips'),
+        teachers,
+        value: item?.target_teacher_ids ?? [],
+      })
+      _annTargetStudentSel = createStudentMultiSelect({
+        wrap: m.querySelector('#ann-target-students-wrap'),
+        chipsWrap: m.querySelector('#ann-target-students-chips'),
+        students,
+        value: item?.target_student_ids ?? [],
+      })
+    })
 
     // suggestion chips
     const _TITLE_CHIPS = ['ประชุมครูประจำเดือน','แจ้งกำหนดส่งแบบฟอร์ม','ขอความร่วมมือ','แจ้งกำหนดการสอบ','แจ้งปฏิทินกิจกรรม']
@@ -9133,6 +9180,8 @@ export async function renderAnnouncements() {
       const videoUrl    = m.querySelector('#ann-video-url').value.trim() || null
       const eventLocation = annType === 'training' ? (m.querySelector('#ann-event-location').value.trim() || null) : null
       const scheduleFilter = m.querySelector('.ann-filter-btn.bg-violet-600')?.dataset.filter ?? (item?.schedule_filter ?? 'all')
+      const targetTeacherIds = _annTargetTeacherSel?.getValue() ?? (item?.target_teacher_ids ?? [])
+      const targetStudentIds = _annTargetStudentSel?.getValue() ?? (item?.target_student_ids ?? [])
       if (annType === 'training') {
         if (!eventLocation) { showToast('กรุณาระบุสถานที่','warning'); return }
         const sessions = _getAnnSessions(m, 'ann')
@@ -9144,12 +9193,12 @@ export async function renderAnnouncements() {
         btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
         try {
           if (isEdit) {
-            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, videoUrl, audience })
+            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, videoUrl, audience, targetTeacherIds, targetStudentIds })
           } else if (sessions.length > 1) {
-            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, videoUrl, audience })))
+            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, videoUrl, audience, targetTeacherIds, targetStudentIds })))
             showToast(`สร้าง ${sessions.length} ประกาศสำเร็จ ✅`, 'success')
           } else {
-            await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, videoUrl, audience })
+            await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: annFileUrl, videoUrl, audience, targetTeacherIds, targetStudentIds })
             showToast('บันทึกสำเร็จ ✅', 'success')
           }
           close(); await onDone()
@@ -9162,8 +9211,8 @@ export async function renderAnnouncements() {
       const btn = m.querySelector('#ann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl, videoUrl, audience })
-        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl, videoUrl, audience })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl, videoUrl, audience, targetTeacherIds, targetStudentIds })
+        else        await createAnnouncement({ title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: annFileUrl, videoUrl, audience, targetTeacherIds, targetStudentIds })
         if (!isEdit && isActive) _sendAnnouncementPush(title, body, audience)
         showToast('บันทึกสำเร็จ ✅','success'); close(); await onDone()
       } catch(e) {
@@ -9281,6 +9330,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
               ${a.priority > 0 ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[11px] font-bold">⭐ ปักหมุด</span>` : ''}
               ${a.requires_ack ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[11px] font-bold">🔔 ต้องรับทราบ</span>` : ''}
               ${_annAudienceBadge(a.audience)}
+              ${_annTargetBadge(a)}
               ${a.video_url ? `<span class="px-2 py-0.5 bg-rose-100 text-rose-600 rounded-full text-[11px] font-bold">🎥 มีวิดีโอ</span>` : ''}
               ${_dueBadge(a.due_date)}
             </div>
@@ -9545,6 +9595,20 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
               <button type="button" data-audience="futsal_player" class="sann-audience-btn flex-1 py-2 rounded-xl text-sm font-semibold border transition ${item?.audience === 'futsal_player' ? 'bg-pink-600 text-white border-pink-600' : 'bg-white text-gray-600 border-gray-200 hover:border-pink-300'}">⚽ นักกีฬาฟุตซอล</button>
             </div>
           </div>
+          <!-- เจาะจงเฉพาะบุคคล -->
+          <div class="bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-3">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">🎯 เจาะจงเฉพาะบุคคล <span class="text-gray-300 font-normal normal-case">(ไม่บังคับ — ไม่เลือกใครเลย = แสดงตามกลุ่มเป้าหมายด้านบนตามปกติ)</span></p>
+            <div>
+              <label class="block text-[11px] font-medium text-gray-500 mb-1">เจาะจงครู (รหัสหรือชื่อ)</label>
+              <div id="sann-target-teachers-chips" class="mb-2"></div>
+              <div id="sann-target-teachers-wrap"></div>
+            </div>
+            <div>
+              <label class="block text-[11px] font-medium text-gray-500 mb-1">เจาะจงนักเรียน (รหัสหรือชื่อ)</label>
+              <div id="sann-target-students-chips" class="mb-2"></div>
+              <div id="sann-target-students-wrap"></div>
+            </div>
+          </div>
           <!-- Training fields (แสดงเมื่อเลือก อบรม) -->
           <div id="sann-training-fields" class="${item?.ann_type === 'training' ? '' : 'hidden'} space-y-3 bg-violet-50 rounded-2xl p-4 border border-violet-100">
             <div>
@@ -9631,6 +9695,24 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
     m.querySelector('#sann-modal-close').onclick = close
     m.querySelector('#sann-modal-cancel').onclick = close
     m.addEventListener('click', e => { if (e.target === m) close() })
+
+    // เจาะจงเฉพาะบุคคล
+    let _sannTargetTeacherSel = null, _sannTargetStudentSel = null
+    _getAnnPeople().then(({ teachers, students }) => {
+      if (!document.body.contains(m)) return
+      _sannTargetTeacherSel = createTeacherMultiSelect({
+        wrap: m.querySelector('#sann-target-teachers-wrap'),
+        chipsWrap: m.querySelector('#sann-target-teachers-chips'),
+        teachers,
+        value: item?.target_teacher_ids ?? [],
+      })
+      _sannTargetStudentSel = createStudentMultiSelect({
+        wrap: m.querySelector('#sann-target-students-wrap'),
+        chipsWrap: m.querySelector('#sann-target-students-chips'),
+        students,
+        value: item?.target_student_ids ?? [],
+      })
+    })
 
     // hint + suggestion chips
     const _TITLE_CHIPS = [
@@ -9802,6 +9884,8 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const videoUrl    = m.querySelector('#sann-video-url').value.trim() || null
       const eventLocation = annType === 'training' ? (m.querySelector('#sann-event-location').value.trim() || null) : null
       const scheduleFilter = m.querySelector('.sann-filter-btn.bg-violet-600')?.dataset.filter ?? (item?.schedule_filter ?? 'all')
+      const targetTeacherIds = _sannTargetTeacherSel?.getValue() ?? (item?.target_teacher_ids ?? [])
+      const targetStudentIds = _sannTargetStudentSel?.getValue() ?? (item?.target_student_ids ?? [])
       if (annType === 'training') {
         if (!eventLocation) { showToast('กรุณาระบุสถานที่','warning'); return }
         const sessions = _getAnnSessions(m, 'sann')
@@ -9813,12 +9897,12 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
         btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
         try {
           if (isEdit) {
-            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, videoUrl, audience })
+            await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, videoUrl, audience, targetTeacherIds, targetStudentIds })
           } else if (sessions.length > 1) {
-            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, videoUrl, audience })))
+            await Promise.all(sessions.map(s => createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: s.date, eventPeriods: s.periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, videoUrl, audience, targetTeacherIds, targetStudentIds })))
             showToast(`สร้าง ${sessions.length} ประกาศสำเร็จ ✅`, 'success')
           } else {
-            await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, videoUrl, audience })
+            await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, eventDate: sessions[0].date, eventPeriods: sessions[0].periods, eventLocation, scheduleFilter, fileUrl: sannFileUrl, videoUrl, audience, targetTeacherIds, targetStudentIds })
             showToast('บันทึกสำเร็จ ✅', 'success')
           }
           close(); await _renderList()
@@ -9832,8 +9916,8 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const btn = m.querySelector('#sann-modal-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: sannFileUrl, videoUrl, audience })
-        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, fileUrl: sannFileUrl, videoUrl, audience })
+        if (isEdit) await updateAnnouncement(item.id, { title, body, isActive, priority, requiresAck, dueDate, annType, fileUrl: sannFileUrl, videoUrl, audience, targetTeacherIds, targetStudentIds })
+        else        await createAnnouncement({ title, body, isActive, priority, teacherId: teacher.id, creatorRole, requiresAck, dueDate, annType, fileUrl: sannFileUrl, videoUrl, audience, targetTeacherIds, targetStudentIds })
         if (!isEdit && isActive) _sendAnnouncementPush(title, body, audience)
         showToast('บันทึกสำเร็จ ✅','success'); close(); await _renderList()
       } catch(e) {

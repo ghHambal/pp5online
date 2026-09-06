@@ -3532,14 +3532,19 @@ export async function getAllAnnouncements() {
   return data ?? []
 }
 
-export async function getActiveAnnouncements(forRole = null) {
+export async function getActiveAnnouncements(forRole = null, viewerId = null) {
   // เฉพาะประกาศจากแอดมิน/ผู้บริหาร (ไม่ใช่ประกาศห้องเรียนของครู)
   let q = supabase.from('announcements')
-    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, file_url, video_url, audience, teachers(id, full_name)')
+    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, file_url, video_url, audience, target_teacher_ids, target_student_ids, teachers(id, full_name)')
     .eq('is_active', true)
     .is('target_class_ids', null)
-  if (forRole === 'teacher') q = q.in('audience', ['all', 'teacher'])
-  else if (forRole === 'student') q = q.in('audience', ['all', 'student', 'futsal_player'])
+  if (forRole === 'teacher') {
+    q = q.in('audience', ['all', 'teacher'])
+    if (viewerId != null) q = q.or(`target_teacher_ids.is.null,target_teacher_ids.cs.{${viewerId}}`)
+  } else if (forRole === 'student') {
+    q = q.in('audience', ['all', 'student', 'futsal_player'])
+    if (viewerId != null) q = q.or(`target_student_ids.is.null,target_student_ids.cs.{${viewerId}}`)
+  }
   const { data, error } = await q
     .order('priority', { ascending: false })
     .order('created_at', { ascending: false })
@@ -3547,7 +3552,7 @@ export async function getActiveAnnouncements(forRole = null) {
   return data ?? []
 }
 
-export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all', targetClassIds = null, fileUrl = null, videoUrl = null, deadlineAt = null, attachmentUrls = null, audience = 'all' }) {
+export async function createAnnouncement({ title, body, isActive = true, priority = 0, teacherId = null, creatorRole = null, requiresAck = false, dueDate = null, annType = 'general', eventDate = null, eventPeriods = null, eventLocation = null, scheduleFilter = 'all', targetClassIds = null, fileUrl = null, videoUrl = null, deadlineAt = null, attachmentUrls = null, audience = 'all', targetTeacherIds = null, targetStudentIds = null }) {
   const { data, error } = await supabase.from('announcements')
     .insert({ title, body, is_active: isActive, priority,
               created_by_teacher_id: teacherId,
@@ -3565,6 +3570,8 @@ export async function createAnnouncement({ title, body, isActive = true, priorit
               attachment_urls: attachmentUrls || null,
               deadline_at: deadlineAt || null,
               audience,
+              target_teacher_ids: targetTeacherIds?.length ? targetTeacherIds : null,
+              target_student_ids: targetStudentIds?.length ? targetStudentIds : null,
               updated_at: new Date().toISOString() })
     .select().single()
   if (error) throw error
@@ -3602,7 +3609,7 @@ export async function getClassAnnouncements(classId) {
   return data ?? []
 }
 
-export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter, targetClassIds, fileUrl, videoUrl, attachmentUrls, deadlineAt, audience }) {
+export async function updateAnnouncement(id, { title, body, isActive, priority, requiresAck, dueDate, annType, eventDate, eventPeriods, eventLocation, scheduleFilter, targetClassIds, fileUrl, videoUrl, attachmentUrls, deadlineAt, audience, targetTeacherIds, targetStudentIds }) {
   const payload = { updated_at: new Date().toISOString() }
   if (title           !== undefined) payload.title            = title
   if (body            !== undefined) payload.body             = body
@@ -3621,6 +3628,8 @@ export async function updateAnnouncement(id, { title, body, isActive, priority, 
   if (attachmentUrls  !== undefined) payload.attachment_urls  = attachmentUrls || null
   if (deadlineAt      !== undefined) payload.deadline_at      = deadlineAt || null
   if (audience        !== undefined) payload.audience         = audience
+  if (targetTeacherIds !== undefined) payload.target_teacher_ids = targetTeacherIds?.length ? targetTeacherIds : null
+  if (targetStudentIds !== undefined) payload.target_student_ids = targetStudentIds?.length ? targetStudentIds : null
   const { data, error } = await supabase.from('announcements')
     .update(payload).eq('id', id).select().single()
   if (error) throw error

@@ -2280,7 +2280,7 @@ function _exitSupervisorMode() {
 // ── ประกาศ (ป๊อบอัพกลางจอ) ───────────────────────────────────────────────────
 async function _loadAnnouncementBanners() {
   try {
-    const items = await getActiveAnnouncements('teacher')
+    const items = await getActiveAnnouncements('teacher', _teacher?.id ?? null)
     showAnnouncementPopups(items, 'pp5_ann_dismissed')
   } catch { /* ไม่ block */ }
 }

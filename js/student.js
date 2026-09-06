@@ -91,7 +91,7 @@ function _showShirtSizeReminderPopup() {
 // ── ประกาศ (ป๊อบอัพกลางจอ) ───────────────────────────────────────────────────
 async function _loadAnnouncementBanners() {
   try {
-    const items = (await getActiveAnnouncements('student'))
+    const items = (await getActiveAnnouncements('student', _student?.id ?? null))
       .filter(a => a.audience !== 'futsal_player' || _futsalRegistered)
     showAnnouncementPopups(items, `pp5_ann_dismissed_stu_${_student?.id ?? ''}`)
   } catch { /* ไม่ block */ }
