@@ -1,5 +1,5 @@
 import { getStats, getTeachers, getClasses, getStudents,
-         getSystemConfig, updateSystemConfig, getMasterSubjects,
+         getSystemConfig, updateSystemConfig, startNewSemester, getMasterSubjects,
          getDepartments, getPeriods, createSubject,
          updateClass, deleteClass,
          updateStudent, deleteStudent,
@@ -2416,6 +2416,18 @@ export async function renderSettings() {
           { key:'semester',    label:'ภาคเรียนที่',   type:'select', options:['1','2'] },
           { key:'academicYear',label:'ปีการศึกษา (พ.ศ.)', type:'text', placeholder:'เช่น 2568' },
         ]),
+        `<div id="start-new-semester-box" class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <p class="text-sm font-bold text-amber-900">🔄 ขึ้นภาคเรียนใหม่</p>
+          <p class="text-xs text-amber-800 mt-1.5 leading-relaxed">
+            สร้างห้องเรียนใหม่ (เปล่า ไม่มีคะแนน/คอลัมน์เดิม) ให้ทุกวิชาที่มีอยู่ในภาคเรียนปัจจุบัน แล้วลงทะเบียนนักเรียนอัตโนมัติตามห้องสามัญ/ห้องศาสนาปัจจุบัน —
+            <b>ห้องเรียนของภาคเรียนเก่าจะไม่ถูกลบ</b> ยังแก้ไขคะแนน/เช็คชื่อย้อนหลังได้ตามปกติ แต่จะไม่โชว์ในหน้า "ห้องเรียนของฉัน" อีกต่อไป (มีปุ่มดูย้อนหลังให้)
+          </p>
+          <p id="start-new-semester-target" class="text-xs text-amber-700 mt-2 font-mono"></p>
+          <button id="btn-start-new-semester" type="button"
+            class="mt-3 inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-sm">
+            🔄 ขึ้นภาคเรียนใหม่
+          </button>
+        </div>`,
         section('หน้าเข้าสู่ระบบ', [
           { key:'loginColor',  label:'สีพื้นหลัง Login',  type:'color' },
           { key:'loginLogoUrl',label:'โลโก้หน้า Login',   type:'upload' },
@@ -3219,6 +3231,31 @@ export async function renderSettings() {
           a.remove()
           URL.revokeObjectURL(url)
           showToast('ดาวน์โหลดเท็มเพลทแล้ว ✅', 'success')
+        })
+      }
+      const startNewSemBtn = document.getElementById('btn-start-new-semester')
+      const startNewSemTarget = document.getElementById('start-new-semester-target')
+      if (startNewSemBtn) {
+        const curSem  = parseInt(cfg.semester ?? 1)
+        const curYear = parseInt(cfg.academicYear ?? new Date().getFullYear() + 543)
+        const nextSem  = curSem === 1 ? 2 : 1
+        const nextYear = curSem === 1 ? curYear : curYear + 1
+        if (startNewSemTarget) startNewSemTarget.textContent = `ตอนนี้: ภาคเรียนที่ ${curSem}/${curYear}  →  จะขึ้นเป็น: ภาคเรียนที่ ${nextSem}/${nextYear}`
+        startNewSemBtn.addEventListener('click', async () => {
+          if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nระบบจะสร้างห้องเรียนใหม่ (เปล่า ไม่มีคะแนน/คอลัมน์เดิม) ให้ทุกวิชาที่มีอยู่ในภาคเรียนที่ ${curSem}/${curYear} แล้วลงทะเบียนนักเรียนอัตโนมัติตามห้องสามัญ/ห้องศาสนาปัจจุบัน\n\nห้องเรียนเทอมเก่าจะไม่ถูกลบ ยังแก้ไขคะแนน/เช็คชื่อย้อนหลังได้ตามปกติ`)) return
+          startNewSemBtn.disabled = true
+          startNewSemBtn.textContent = '⏳ กำลังดำเนินการ...'
+          try {
+            const result = await startNewSemester(nextYear, nextSem)
+            cfg.semester = String(nextSem)
+            cfg.academicYear = String(nextYear)
+            showToast(`ขึ้นภาคเรียนที่ ${nextSem}/${nextYear} สำเร็จ ✅ สร้างห้องเรียนใหม่ ${result.classes_created} ห้อง · ลงทะเบียนนักเรียนอัตโนมัติ ${result.students_enrolled} คน`, 'success')
+            renderTab('general')
+          } catch (e) {
+            showToast('ขึ้นภาคเรียนใหม่ไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+            startNewSemBtn.disabled = false
+            startNewSemBtn.textContent = '🔄 ขึ้นภาคเรียนใหม่'
+          }
         })
       }
       const _renderSyncLog = (log) => {

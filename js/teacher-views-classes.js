@@ -399,7 +399,8 @@ async function _openStudentManagerImpl(teacher, classId) {
   }
 }
 
-export async function renderMyClasses(teacher) {
+export async function renderMyClasses(teacher, opts = {}) {
+  const showAllTerms = opts.showAllTerms ?? false
   setActiveNav('my-classes')
   setTitle('ห้องเรียนของฉัน', 'classes')
   // กัน getMySubjects/getMyClasses ตกไปโหมด "ไม่ระบุครู" (คืนทุกวิชาทั้งระบบ) ถ้า teacher ยังโหลดไม่เสร็จ
@@ -442,8 +443,13 @@ export async function renderMyClasses(teacher) {
     const roomColorMap = Object.fromEntries((roomColorRows ?? []).map(r => [r.room_key, r.color_hex]))
     window._classCache  = Object.fromEntries(classes.map(c => [c.id, c]))
     window._classesFlat = classes
+    // ห้องเรียนเทอมก่อนหน้า (academic_year/semester ไม่ตรงกับปัจจุบัน) ซ่อนจากรายการหลักตามค่าเริ่มต้น
+    // แก้คะแนน/เช็คชื่อย้อนหลังยังทำได้ตามปกติ (ไม่ได้ลบข้อมูล) แค่ไม่โชว์ในหน้านี้จนกว่าจะกดดูย้อนหลัง
+    const isCurrentTerm = c => c.academic_year == null || (+c.academic_year === academicYear && +c.semester === semester)
+    const otherTermCount = classes.filter(c => !isCurrentTerm(c)).length
+    const visibleClasses = showAllTerms ? classes : classes.filter(isCurrentTerm)
     const courseGroupMap = new Map()
-    classes.forEach(c => {
+    visibleClasses.forEach(c => {
       const ms = c.master_subjects ?? {}
       const keyParts = [
         c.course_id ?? ms.id ?? '',
@@ -474,8 +480,14 @@ export async function renderMyClasses(teacher) {
         return String(a.masterSubject?.subject_name ?? '').localeCompare(String(b.masterSubject?.subject_name ?? ''), 'th')
       })
     setContent(`<div class="animate-fade">
-      <div class="mb-4"></div>
-      ${!classes.length ? `
+      <div class="mb-4">
+        ${otherTermCount > 0 ? `
+        <button id="toggle-term-view" type="button"
+          class="w-full text-left px-4 py-2.5 rounded-xl border border-dashed text-xs font-semibold transition ${showAllTerms ? 'border-indigo-200 bg-indigo-50 text-indigo-700' : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100'}">
+          ${showAllTerms ? '🔼 กำลังแสดงทุกภาคเรียน — คลิกเพื่อแสดงเฉพาะภาคเรียนปัจจุบัน' : `🔽 มีห้องเรียนภาคเรียนก่อนหน้าอีก ${otherTermCount} ห้อง — คลิกเพื่อแสดง (แก้ไขคะแนน/เช็คชื่อย้อนหลังได้ตามปกติ)`}
+        </button>` : ''}
+      </div>
+      ${!visibleClasses.length ? `
       <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-16 text-center text-gray-400">
         <p class="text-4xl mb-3">🏫</p>
         <p class="font-medium">ยังไม่มีห้องเรียน</p>
@@ -577,6 +589,7 @@ export async function renderMyClasses(teacher) {
         }).join('')}
       </div>`}
     </div>`)
+    document.getElementById('toggle-term-view')?.addEventListener('click', () => renderMyClasses(teacher, { showAllTerms: !showAllTerms }))
     window._openPP5Doc     = (classId) => openPP5Doc(classId)
     window._openExamDocsForClass = (classId) => _openExamDocsForClass(classId)
     window._openClassDetail = (classId) => renderClassDetail(teacher, classId, { classes, scheduleMap, linksByClass, periodMap, classrooms, copyCfg })

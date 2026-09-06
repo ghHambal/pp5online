@@ -49,6 +49,17 @@ export async function updateSystemConfig(key, value) {
   if (error) throw error
 }
 
+// ขึ้นภาคเรียนใหม่ทั้งโรงเรียน — เปลี่ยนปี/เทอมกลาง + สร้างห้องเรียนใหม่ (เปล่า ไม่มีคะแนน/คอลัมน์เดิม)
+// ให้ทุกวิชาที่มีอยู่ในเทอมปัจจุบัน แล้วลงทะเบียนนักเรียนอัตโนมัติตาม main_room/religion_room ปัจจุบัน
+export async function startNewSemester(newAcademicYear, newSemester) {
+  const { data, error } = await supabase.rpc('admin_start_new_semester', {
+    p_new_academic_year: newAcademicYear,
+    p_new_semester: newSemester,
+  })
+  if (error) throw error
+  return data
+}
+
 // ─── Teacher Profile (linked via profile_id) ─────────────────────────────────
 const _TEACHER_PROFILE_COLUMNS_BASE = 'id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, positions, position_dept_id, smart_classroom_free_class_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)'
 
