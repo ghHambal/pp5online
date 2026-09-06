@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f766e" />
+  <title>ค่ายลูกเสือ TERANGGANU 2026</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    body{font-family:'Sarabun',sans-serif;background:#f0fdfa;color:#0f172a}
+    .camp-card{background:#fff;border:1px solid #ccfbf1;border-radius:1.25rem;box-shadow:0 10px 30px rgba(15,118,110,.08)}
+    .camp-input{width:100%;border:1px solid #d1d5db;border-radius:.8rem;padding:.7rem .85rem;font-size:.875rem;background:#fff}
+    .camp-input:focus{outline:none;border-color:#14b8a6;box-shadow:0 0 0 3px rgba(20,184,166,.12)}
+    .camp-label{display:block;font-size:.75rem;font-weight:700;color:#475569;margin-bottom:.35rem}
+    .camp-btn{border-radius:.8rem;padding:.65rem 1rem;font-size:.82rem;font-weight:700;transition:.15s}
+    .camp-btn:active{transform:scale(.98)}
+    .camp-tab.active{background:#0f766e;color:white;box-shadow:0 5px 14px rgba(15,118,110,.2)}
+    @media print{#camp-header,#camp-nav,.no-print{display:none!important}body{background:#fff}.receipt-sheet{display:block!important}}
+  </style>
+  <script type="module" crossorigin src="/pp5online/assets/terangganu-M307Yhq-.js"></script>
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/supabase-BV-W2lsh.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/storage-D6nkcVz6.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/terangganu-api-C1IjZK4l.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/anti-pull-refresh-BGrI1pMY.js">
+  <link rel="stylesheet" crossorigin href="/pp5online/assets/main-Cep-5RXG.css">
+</head>
+<body class="min-h-screen">
+  <header id="camp-header" class="sticky top-0 z-40 bg-teal-900 text-white shadow-lg">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+      <a id="camp-back" href="index.html" class="w-9 h-9 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center">←</a>
+      <div class="w-10 h-10 rounded-xl bg-amber-400 text-teal-950 flex items-center justify-center text-xl">⚜️</div>
+      <div class="min-w-0 flex-1">
+        <h1 id="camp-title" class="font-bold truncate">ค่ายลูกเสือ TERANGGANU 2026</h1>
+        <p id="camp-subtitle" class="text-[11px] text-teal-200">ระบบสำรวจข้อมูลและชำระเงิน</p>
+      </div>
+      <span id="camp-role" class="hidden sm:inline-flex px-3 py-1 rounded-full bg-white/10 text-xs font-semibold"></span>
+    </div>
+  </header>
+
+  <nav id="camp-nav" class="hidden sticky top-[64px] z-30 bg-white/95 backdrop-blur border-b border-teal-100">
+    <div id="camp-tabs" class="max-w-6xl mx-auto px-3 py-2 flex gap-2 overflow-x-auto"></div>
+  </nav>
+
+  <main id="camp-content" class="max-w-6xl mx-auto px-4 py-6 pb-24">
+    <div class="text-center py-24 text-teal-700">
+      <div class="w-10 h-10 mx-auto rounded-full border-4 border-teal-100 border-t-teal-600 animate-spin"></div>
+      <p class="text-sm mt-4">กำลังโหลดระบบค่าย...</p>
+    </div>
+  </main>
+
+  <div id="camp-toast" class="hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] max-w-[90vw] px-4 py-2.5 rounded-xl text-white text-sm font-semibold shadow-xl"></div>
+</body>
+</html>

@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ปพ.5 ออนไลน์ — เข้าสู่ระบบ</title>
+  <link rel="manifest" id="pwa-manifest" href="/pp5online/manifest.json" />
+  <meta name="theme-color" content="#10b981" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="ปพ.5 ออนไลน์" />
+  <link rel="apple-touch-icon" id="apple-touch-icon" href="/pp5online/vite.svg" />
+
+  <!-- Google Fonts: Sarabun (Thai) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS (CDN) -->
+  
+
+  <!-- Custom styles -->
+  <script type="module" crossorigin src="/pp5online/assets/main-1c0JKBub.js"></script>
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/supabase-BV-W2lsh.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/theme-DIdoXkqD.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/ui-Dh03k4iX.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/anti-pull-refresh-BGrI1pMY.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/wen-sso-CcN06Rhh.js">
+  <link rel="stylesheet" crossorigin href="/pp5online/assets/main-Cep-5RXG.css">
+</head>
+
+<body class="login-bg flex items-center justify-center p-4">
+
+  <!-- ─── Login Card ────────────────────────────────────────────────────────── -->
+  <div class="login-card rounded-3xl shadow-2xl w-full max-w-md p-8 sm:p-10">
+
+    <!-- Logo + Title -->
+    <div class="flex flex-col items-center mb-8">
+      <div class="logo-ring mb-4">
+        <div class="logo-inner">
+          <img data-theme-logo src="" alt="" class="hidden w-full h-full object-contain rounded-full" />
+          <svg data-theme-logo-fallback class="w-9 h-9 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 14l9-5-9-5-9 5 9 5zm0 0v6m-4-4h8" />
+          </svg>
+        </div>
+      </div>
+
+      <h1 class="text-2xl font-bold text-gray-800 tracking-tight">ปพ.5 ออนไลน์</h1>
+      <p data-school-name class="text-sm text-gray-500 mt-1">ระบบสมุดคะแนนดิจิทัลสำหรับครู</p>
+    </div>
+
+    <!-- Login Form -->
+    <form id="login-form" novalidate class="space-y-5">
+
+      <!-- Login identifier -->
+      <div>
+        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">
+          อีเมล / ยูเซอร์เนม / รหัสครู
+        </label>
+        <input
+          id="email"
+          type="text"
+          autocomplete="username"
+          placeholder="teacher@school.ac.th หรือ 1095"
+          required
+          class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-400"
+        />
+        <p id="login-redirect-hint" class="hidden mt-1.5 text-xs text-orange-600 font-medium"></p>
+      </div>
+
+      <!-- Password -->
+      <div>
+        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+          รหัสผ่าน
+        </label>
+        <div class="relative">
+          <input
+            id="password"
+            type="password"
+            autocomplete="current-password"
+            placeholder="••••••••"
+            required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 pr-12 text-sm text-gray-800 placeholder-gray-400"
+          />
+          <button
+            type="button"
+            id="toggle-password"
+            class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg leading-none"
+            tabindex="-1"
+          >
+            <span id="eye-icon">👁️</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Forgot password -->
+      <div class="text-right -mt-2">
+        <button type="button" id="btn-forgot-pw" class="text-xs text-indigo-500 hover:text-indigo-700">ลืมรหัสผ่าน?</button>
+      </div>
+
+      <!-- Submit -->
+      <button
+        id="btn-login"
+        type="submit"
+        class="btn-primary w-full text-white font-semibold py-3 rounded-xl text-sm"
+      >
+        เข้าสู่ระบบ
+      </button>
+
+    </form>
+
+    <!-- Register toggle -->
+    <p class="text-center text-sm text-gray-500 mt-6">
+      ยังไม่มีบัญชี?
+      <button id="btn-show-register" type="button"
+        class="text-indigo-600 font-semibold hover:text-indigo-800 ml-1">
+        ลงทะเบียนเข้าใช้งาน
+      </button>
+    </p>
+
+    <!-- Student login link -->
+    <p class="text-center mt-3">
+      <a href="student-login.html"
+        class="text-xs text-gray-400 hover:text-emerald-600 transition">
+        🎒 สำหรับนักเรียน
+      </a>
+    </p>
+
+    <!-- Why use this? button -->
+    <div class="flex justify-center mt-4">
+      <button id="btn-why-pp5"
+        class="flex items-center gap-1.5 text-xs text-gray-400 hover:text-emerald-600 transition underline underline-offset-2">
+        ✨ ทำไมต้องใช้ ปพ.5 ออนไลน์?
+      </button>
+    </div>
+
+    <p data-dev-credit class="text-center text-[11px] text-gray-400 mt-4">พัฒนาโดย KruHambalWaji</p>
+    <p id="teacher-login-stats" class="text-center text-[10px] text-gray-300 mt-1"></p>
+  </div>
+
+  <!-- ─── Why PP5 Modal ──────────────────────────────────────────── -->
+  <div id="why-pp5-modal"
+    class="hidden fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+
+      <!-- Header -->
+      <div class="sticky top-0 bg-white rounded-t-3xl px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <h2 class="text-lg font-bold text-gray-800">ทำไมต้องใช้ ปพ.5 ออนไลน์?</h2>
+          <p class="text-xs text-gray-400 mt-0.5">ระบบสมุดคะแนนดิจิทัล ออกแบบมาเพื่อครูไทยโดยเฉพาะ</p>
+        </div>
+        <button id="btn-why-close"
+          class="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 text-lg flex-shrink-0">×</button>
+      </div>
+
+      <!-- Content -->
+      <div class="px-6 py-5 space-y-6">
+
+        <!-- Pain point header -->
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
+          <p class="text-sm font-semibold text-amber-800">📋 ครูยังต้องทำ ปพ.5 ด้วยมืออยู่ไหม?</p>
+          <p class="text-xs text-amber-600 mt-1">บันทึกคะแนน → พิมพ์ลงกระดาษ → คีย์เข้า Excel → ส่ง → แก้ใหม่ ซ้ำทุกเทอม</p>
+        </div>
+
+        <!-- Solution headline -->
+        <div class="text-center">
+          <p class="text-base font-bold text-emerald-700">ระบบนี้แก้ปัญหาทั้งหมดนั้น</p>
+          <p class="text-xs text-gray-500 mt-1">กรอกครั้งเดียว — ส่งทุกที่อัตโนมัติ</p>
+        </div>
+
+        <!-- Feature grid -->
+        <div class="grid grid-cols-2 gap-3">
+          <div class="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
+            <div class="text-2xl mb-2">📊</div>
+            <p class="text-xs font-bold text-emerald-800">Sync Google Sheet อัตโนมัติ</p>
+            <p class="text-[11px] text-emerald-600 mt-1">บันทึกคะแนน/เช็คชื่อในระบบ → ส่งลง Sheet ทันที ไม่ต้องพิมพ์ซ้ำ</p>
+          </div>
+          <div class="rounded-2xl bg-blue-50 border border-blue-100 p-4">
+            <div class="text-2xl mb-2">✅</div>
+            <p class="text-xs font-bold text-blue-800">เช็คชื่อ+คะแนนในที่เดียว</p>
+            <p class="text-[11px] text-blue-600 mt-1">ทุกวิชา ทุกห้อง จัดการผ่านมือถือได้ทุกที่ทุกเวลา</p>
+          </div>
+          <div class="rounded-2xl bg-purple-50 border border-purple-100 p-4">
+            <div class="text-2xl mb-2">🤖</div>
+            <p class="text-xs font-bold text-purple-800">AI ช่วยร่างคำอธิบายรายวิชา</p>
+            <p class="text-[11px] text-purple-600 mt-1">พิมพ์ชื่อบท → AI ค้นหลักสูตรแกนกลาง → ร่างให้อัตโนมัติ</p>
+          </div>
+          <div class="rounded-2xl bg-orange-50 border border-orange-100 p-4">
+            <div class="text-2xl mb-2">📄</div>
+            <p class="text-xs font-bold text-orange-800">เอกสาร ปพ.5 พร้อมพิมพ์</p>
+            <p class="text-[11px] text-orange-600 mt-1">สร้างเอกสารถูกต้องตามรูปแบบ ส่งงานได้ทันที</p>
+          </div>
+          <div class="rounded-2xl bg-teal-50 border border-teal-100 p-4">
+            <div class="text-2xl mb-2">🕌</div>
+            <p class="text-xs font-bold text-teal-800">รองรับระบบละหมาด</p>
+            <p class="text-[11px] text-teal-600 mt-1">บันทึกคะแนนละหมาด ติดตามนักเรียนรายสัปดาห์ ดูรายงานได้ทันที</p>
+          </div>
+          <div class="rounded-2xl bg-rose-50 border border-rose-100 p-4">
+            <div class="text-2xl mb-2">🎒</div>
+            <p class="text-xs font-bold text-rose-800">นักเรียนยื่นคำร้องออนไลน์</p>
+            <p class="text-[11px] text-rose-600 mt-1">ขอสอบชดเชยผ่านระบบ ครูอนุมัติ/ปฏิเสธพร้อมแจ้งเตือน</p>
+          </div>
+        </div>
+
+        <!-- Workflow visual -->
+        <div class="bg-gray-50 rounded-2xl p-4">
+          <p class="text-xs font-bold text-gray-600 mb-3 text-center">⚡ Workflow ที่ครูได้ทันที</p>
+          <div class="flex items-center justify-between text-center text-[10px] gap-1">
+            <div class="flex-1 bg-white rounded-xl p-2 border border-gray-100">
+              <div class="text-lg">🗓️</div>
+              <p class="font-semibold text-gray-700 mt-1">เปิดคอร์ส</p>
+              <p class="text-gray-400">1 ครั้ง/เทอม</p>
+            </div>
+            <div class="text-gray-300 text-base">→</div>
+            <div class="flex-1 bg-white rounded-xl p-2 border border-gray-100">
+              <div class="text-lg">📝</div>
+              <p class="font-semibold text-gray-700 mt-1">เช็คชื่อ/คะแนน</p>
+              <p class="text-gray-400">รายวัน</p>
+            </div>
+            <div class="text-gray-300 text-base">→</div>
+            <div class="flex-1 bg-white rounded-xl p-2 border border-gray-100">
+              <div class="text-lg">📊</div>
+              <p class="font-semibold text-gray-700 mt-1">ส่ง Sheet</p>
+              <p class="text-gray-400">อัตโนมัติ</p>
+            </div>
+            <div class="text-gray-300 text-base">→</div>
+            <div class="flex-1 bg-white rounded-xl p-2 border border-gray-100">
+              <div class="text-lg">📄</div>
+              <p class="font-semibold text-gray-700 mt-1">ส่ง ปพ.5</p>
+              <p class="text-gray-400">คลิกเดียว</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- CTA -->
+        <button id="btn-why-login"
+          class="w-full py-3.5 rounded-2xl btn-primary text-white font-bold text-sm">
+          เริ่มใช้งานฟรีเลย →
+        </button>
+        <p class="text-center text-[11px] text-gray-400">ฟรี 2 ห้องเรียน/วิชา — ไม่ต้องใช้บัตรเครดิต</p>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    ;(function() {
+      const modal   = document.getElementById('why-pp5-modal')
+      const btnOpen = document.getElementById('btn-why-pp5')
+      const btnClose= document.getElementById('btn-why-close')
+      const btnLogin= document.getElementById('btn-why-login')
+      btnOpen.addEventListener('click', () => modal.classList.remove('hidden'))
+      btnClose.addEventListener('click', () => modal.classList.add('hidden'))
+      btnLogin.addEventListener('click', () => {
+        modal.classList.add('hidden')
+        document.getElementById('login-identifier')?.focus()
+      })
+      modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden') })
+    })()
+  </script>
+
+  <!-- ─── Register Card ───────────────────────────────────────── -->
+  <div id="register-card"
+    class="login-card rounded-3xl shadow-2xl w-full max-w-md p-8 sm:p-10 hidden">
+
+    <div class="flex flex-col items-center mb-6">
+      <h1 class="text-2xl font-bold text-gray-800 tracking-tight">ลงทะเบียนเข้าใช้งาน</h1>
+      <p class="text-sm text-gray-500 mt-1">สมัครบัญชีสำหรับครู/บุคลากร</p>
+      <button type="button" id="btn-reg-tutorial"
+        class="mt-3 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-600
+               hover:bg-indigo-100 transition text-xs font-semibold">
+        📖 ดูคู่มือการลงทะเบียน
+      </button>
+    </div>
+
+    <form id="register-form" novalidate class="space-y-4">
+      <!-- รหัสครู (บนสุด + auto-fill) -->
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">รหัสครู <span class="text-xs text-gray-400">(ถ้ามี)</span></label>
+        <input id="reg-code" type="text" placeholder="เช่น 101" autocomplete="off"
+          class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 text-sm" />
+        <!-- teacher preview -->
+        <div id="reg-teacher-preview" class="hidden mt-2 flex items-center gap-2 px-3 py-2
+          bg-emerald-50 border border-emerald-200 rounded-xl text-sm text-emerald-700">
+          <span>✓</span>
+          <span id="reg-teacher-name" class="font-medium"></span>
+          <span id="reg-teacher-dept" class="text-xs text-emerald-500 ml-auto"></span>
+        </div>
+        <p id="reg-code-msg" class="hidden text-xs text-red-500 mt-1"></p>
+        <p class="text-xs text-gray-400 mt-1.5">
+          ยังไม่มีรหัสครู?
+          <button type="button" id="btn-request-code"
+            class="text-indigo-500 hover:text-indigo-700 underline font-medium">
+            ลงทะเบียนขอรหัสครู
+          </button>
+        </p>
+      </div>
+      <input type="hidden" id="reg-teacher-id" />
+
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">ชื่อ-นามสกุล <span class="text-red-400">*</span></label>
+        <div class="relative">
+          <input id="reg-name" type="text" autocomplete="off"
+            placeholder="พิมพ์ชื่อเพื่อค้นหา หรือกรอกเองได้เลย" required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 text-sm" />
+          <div id="reg-name-results"
+            class="hidden absolute z-20 left-0 right-0 top-full mt-1
+                   bg-white border border-gray-200 rounded-xl shadow-xl
+                   max-h-52 overflow-y-auto">
+          </div>
+        </div>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">อีเมล <span class="text-red-400">*</span></label>
+        <input id="reg-email" type="email" placeholder="teacher@school.ac.th" required
+          class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 text-sm" />
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">รหัสผ่าน <span class="text-red-400">*</span></label>
+        <input id="reg-password" type="password" placeholder="อย่างน้อย 6 ตัวอักษร" required
+          class="input-field w-full border border-gray-300 rounded-xl px-4 py-3 text-sm" />
+      </div>
+
+      <div id="reg-msg" class="hidden text-sm text-center py-3 rounded-xl"></div>
+
+      <button id="btn-register" type="submit"
+        class="btn-primary w-full text-white font-semibold py-3 rounded-xl text-sm">
+        สมัครสมาชิก
+      </button>
+    </form>
+
+    <p class="text-center text-sm text-gray-500 mt-5">
+      มีบัญชีแล้ว?
+      <button id="btn-show-login" type="button"
+        class="text-indigo-600 font-semibold hover:text-indigo-800 ml-1">
+        เข้าสู่ระบบ
+      </button>
+    </p>
+    <p data-dev-credit class="text-center text-[11px] text-gray-400 mt-4">พัฒนาโดย KruHambalWaji</p>
+  </div>
+
+  <!-- ─── Modal: ลงทะเบียนขอรหัสครู ─────────────────────────────────────── -->
+  <div id="modal-request-code"
+    class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+    <div class="login-card rounded-3xl shadow-2xl w-full max-w-md p-8">
+
+      <div class="flex flex-col items-center mb-6">
+        <div class="w-14 h-14 rounded-2xl bg-indigo-100 flex items-center justify-center mb-3">
+          <span class="text-2xl">🪪</span>
+        </div>
+        <h2 class="text-xl font-bold text-gray-800">ลงทะเบียนขอรหัสครู</h2>
+        <p class="text-sm text-gray-500 mt-1 text-center">
+          ระบบจะออกรหัสครูให้อัตโนมัติ<br/>
+          <span class="text-indigo-500 font-medium">ครูสามัญ → 1xx &nbsp;|&nbsp; ครูศาสนา → 2xx</span>
+        </p>
+      </div>
+
+      <form id="request-code-form" class="space-y-4">
+        <!-- คำนำหน้า + ชื่อ-นามสกุล -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-1">
+            ชื่อ-นามสกุล <span class="text-red-400">*</span>
+          </label>
+          <div class="flex gap-2">
+            <select id="rc-prefix"
+              class="input-field border border-gray-300 rounded-xl px-3 py-3 text-sm bg-white flex-shrink-0 w-36">
+              <option value="">-- คำนำหน้า --</option>
+              <option value="นาย">นาย</option>
+              <option value="นาง">นาง</option>
+              <option value="นางสาว">นางสาว</option>
+              <option value="ว่าที่ ร.ต.">ว่าที่ ร.ต.</option>
+              <option value="ว่าที่ ร.ต.หญิง">ว่าที่ ร.ต.หญิง</option>
+              <option value="อุสตาซ">อุสตาซ</option>
+              <option value="อุสตาซะฮ์">อุสตาซะฮ์</option>
+            </select>
+            <input id="rc-name" type="text" placeholder="ชื่อ-นามสกุล" required
+              class="input-field flex-1 border border-gray-300 rounded-xl px-4 py-3 text-sm" />
+          </div>
+          <p id="rc-prefix-msg" class="hidden text-xs text-red-500 mt-1">กรุณาเลือกคำนำหน้า</p>
+        </div>
+
+        <!-- ประเภทครู -->
+        <div>
+          <label class="block text-sm font-medium text-gray-700 mb-2">
+            ประเภทครู <span class="text-red-400">*</span>
+          </label>
+          <div class="grid grid-cols-2 gap-3">
+            <label id="rc-opt-saman"
+              class="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-indigo-400 bg-indigo-50 cursor-pointer transition">
+              <input type="radio" name="rc-category" value="สามัญ" checked class="accent-indigo-600" />
+              <span class="text-sm font-medium text-indigo-700">ครูสามัญ</span>
+            </label>
+            <label id="rc-opt-sasana"
+              class="flex items-center gap-2 px-4 py-3 rounded-xl border-2 border-gray-200 cursor-pointer transition">
+              <input type="radio" name="rc-category" value="ศาสนา" class="accent-indigo-600" />
+              <span class="text-sm font-medium text-gray-600">ครูศาสนา</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="rc-msg" class="hidden text-sm text-center py-3 rounded-xl"></div>
+
+        <div class="flex gap-3 pt-1">
+          <button type="button" id="btn-cancel-rc"
+            class="flex-1 py-3 rounded-xl text-sm font-medium border border-gray-300
+                   text-gray-600 hover:bg-gray-50 transition">
+            ยกเลิก
+          </button>
+          <button type="submit" id="btn-submit-rc"
+            class="flex-1 btn-primary text-white font-semibold py-3 rounded-xl text-sm">
+            ขอรหัสครู
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Auth logic (ES Module) -->
+  <!-- Modal: ลืมรหัสผ่าน (Forgot Password) -->
+  <div id="modal-forgot-pw" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade">
+    <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-5 relative">
+      <h3 class="font-bold text-gray-800 text-base mb-4 flex items-center gap-1.5">🔑 กู้คืนรหัสผ่านด้วยอีเมล</h3>
+      <button id="forgot-pw-close" class="absolute right-4 top-4 text-gray-400 hover:text-gray-600 text-lg">✕</button>
+      
+      <form id="forgot-pw-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">อีเมลผู้ใช้งาน</label>
+          <input id="forgot-email" type="email" placeholder="กรอกอีเมลของคุณที่ลงทะเบียนไว้" required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div id="forgot-pw-msg" class="hidden text-xs text-center py-2.5 rounded-xl"></div>
+        <button id="btn-submit-forgot" type="submit"
+          class="btn-primary w-full text-white font-semibold py-2.5 rounded-xl text-sm transition">
+          ขอลิงก์รีเซ็ตรหัสผ่าน
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: ตั้งรหัสผ่านใหม่ (Reset Password) -->
+  <div id="modal-reset-pw" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4 animate-fade">
+    <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-5 relative">
+      <h3 class="font-bold text-gray-800 text-base mb-4 flex items-center gap-1.5">🔒 ตั้งรหัสผ่านใหม่</h3>
+      
+      <form id="reset-pw-form" class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)</label>
+          <input id="reset-pw-new" type="password" placeholder="พิมพ์รหัสผ่านใหม่" required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-gray-500 mb-1">ยืนยันรหัสผ่านใหม่อีกครั้ง</label>
+          <input id="reset-pw-confirm" type="password" placeholder="พิมพ์ซ้ำอีกครั้ง" required
+            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
+        </div>
+        <div id="reset-pw-msg" class="hidden text-xs text-center py-2.5 rounded-xl"></div>
+        <button id="btn-submit-reset" type="submit"
+          class="btn-primary w-full text-white font-semibold py-2.5 rounded-xl text-sm transition">
+          บันทึกรหัสผ่านใหม่
+        </button>
+      </form>
+    </div>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="/pp5online/manifest.json" />
+  <meta name="theme-color" content="#10b981" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="ปพ.5 ออนไลน์" />
+  <link rel="apple-touch-icon" href="/pp5online/vite.svg" />
+  <title>ปพ.5 ออนไลน์ — ครูผู้สอน</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  
+  <style>
+    /* ซ่อน scrollbar ของ sidebar nav — คงเลื่อนได้แต่ไม่มีแถบ */
+    #sidebar nav::-webkit-scrollbar { display: none; }
+    #sidebar nav { scrollbar-width: none; -ms-overflow-style: none; }
+
+    /* โหมดเต็มจอสำหรับ Smart Classroom — ซ่อน sidebar+header ชั่วคราว คืนค่าเมื่อกดย้อนกลับ */
+    body.sc-fullscreen #sidebar { display: none !important; }
+    body.sc-fullscreen #app-main-col { margin-left: 0 !important; }
+    body.sc-fullscreen #app-main-col > header { display: none !important; }
+
+    /* ─── Smart Classroom: ปุ่ม/แท็บพรีเมี่ยม (โทนทอง+น้ำเงินเข้ม ให้เข้ากับมงกุฎ 👑) ─── */
+    .sc-tabbar {
+      background: #faf6ea;
+      border: 1px solid #f0e3bd;
+      border-radius: 9999px;
+      padding: 3px;
+      display: inline-flex;
+      gap: 2px;
+      flex-wrap: wrap;
+    }
+    .sc-tab-pill {
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #8a7a4a;
+      background: transparent;
+      border: none;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+    }
+    .sc-tab-pill:hover:not(.active) { background: rgba(169,120,26,0.10); color: #6d5a1f; }
+    .sc-tab-pill.active {
+      color: #fff;
+      background: linear-gradient(135deg,#d9b654,#a9781a 65%,#7a5810);
+      box-shadow: 0 3px 10px rgba(138,106,20,0.35), inset 0 1px 0 rgba(255,255,255,0.35);
+    }
+
+    .sc-btn-dark {
+      background: linear-gradient(135deg,#3730a3,#1e1b4b);
+      color: #fff;
+      border: none;
+      box-shadow: 0 3px 10px rgba(30,27,75,0.28), inset 0 1px 0 rgba(255,255,255,0.12);
+      transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    }
+    .sc-btn-dark:hover { filter: brightness(1.15); transform: translateY(-1px); box-shadow: 0 5px 14px rgba(30,27,75,0.34); }
+    .sc-btn-dark:active { transform: translateY(0); filter: brightness(1.05); }
+    .sc-btn-dark:disabled { opacity: .55; transform: none; filter: none; cursor: default; }
+
+    .sc-btn-gold {
+      background: linear-gradient(135deg,#eccf82,#c9a227 55%,#8a6a14);
+      color: #3b2a05;
+      border: 1px solid rgba(138,106,20,0.3);
+      box-shadow: 0 3px 10px rgba(138,106,20,0.28), inset 0 1px 0 rgba(255,255,255,0.5);
+      transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    }
+    .sc-btn-gold:hover { filter: brightness(1.05); transform: translateY(-1px); box-shadow: 0 5px 14px rgba(138,106,20,0.35); }
+    .sc-btn-gold:active { transform: translateY(0); }
+
+    /* Smart Classroom บนมือถือ: เมนูอ้างอิงต้องเข้าถึงได้ตลอด โดยไม่ต้องเลื่อนลงท้ายหน้า */
+    .sc-mobile-ref-nav, .sc-mobile-ref-head, .sc-desktop-quick-action { display: none; }
+    @media (max-width: 1023px) {
+      body.sc-fullscreen #content { padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)); }
+      .sc-mobile-ref-nav {
+        position: fixed;
+        z-index: 90;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 2px;
+        padding: 7px 6px calc(7px + env(safe-area-inset-bottom));
+        background: rgba(255,255,255,.97);
+        border-top: 1px solid #eadfbe;
+        box-shadow: 0 -6px 22px rgba(62,48,13,.12);
+        backdrop-filter: blur(14px);
+      }
+      .sc-mobile-ref-btn {
+        position: relative;
+        min-height: 52px;
+        border: 0;
+        border-radius: 13px;
+        background: transparent;
+        color: #756b50;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .sc-mobile-ref-btn .sc-mobile-ref-icon { display: block; margin-bottom: 4px; font-size: 18px; line-height: 1; }
+      .sc-mobile-ref-btn.active { color: #6d4a08; background: #fff3ce; }
+      .sc-mobile-ref-count {
+        position: absolute;
+        top: 2px;
+        right: calc(50% - 22px);
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        border-radius: 9999px;
+        background: #dc2626;
+        color: #fff;
+        font-size: 10px;
+        line-height: 18px;
+        text-align: center;
+        box-shadow: 0 1px 5px rgba(220,38,38,.35);
+      }
+      .sc-reference-panel { display: none; }
+      .sc-reference-panel.mobile-open {
+        display: block;
+        position: fixed;
+        z-index: 80;
+        inset: 0;
+        overflow-y: auto;
+        margin: 0;
+        padding: 16px 14px calc(6.25rem + env(safe-area-inset-bottom));
+        border: 0;
+        border-radius: 0;
+        background: #f8fafc;
+      }
+      .sc-reference-panel.mobile-open .sc-mobile-ref-head {
+        position: sticky;
+        z-index: 2;
+        top: -16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: -16px -14px 16px;
+        padding: 14px;
+        background: rgba(255,255,255,.97);
+        border-bottom: 1px solid #eadfbe;
+        backdrop-filter: blur(14px);
+      }
+      .sc-desktop-ref-tabs { display: none !important; }
+      .sc-mobile-app-section { display: none; }
+      .sc-mobile-app-section.mobile-active { display: block; }
+      .sc-mobile-ref-subtabs { display: flex; gap: 6px; overflow-x: auto; margin: 0 0 14px; padding: 2px 0 4px; }
+      .sc-mobile-ref-subtabs button { min-height: 40px; padding: 0 12px; border: 1px solid #eadfbe; border-radius: 12px; background: #fff; color: #756b50; font-size: 11px; font-weight: 700; white-space: nowrap; }
+      .sc-mobile-ref-subtabs button.active { background: #fff3ce; color: #6d4a08; border-color: #dfc36e; }
+    }
+    @media (min-width: 1024px) {
+      .sc-desktop-quick-action { display: inline-flex; }
+      .sc-mobile-app-section { display: block; }
+      .sc-desktop-ref-tabs {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .sc-desktop-ref-tabs .sc-reftab-btn {
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        background: #f8fafc;
+        color: #475569;
+        transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease, background .15s ease;
+      }
+      .sc-desktop-ref-tabs .sc-reftab-btn:hover {
+        transform: translateY(-1px);
+        border-color: #d6b85e;
+        background: #fffbeb;
+        box-shadow: 0 5px 14px rgba(138,106,20,.10);
+      }
+      .sc-desktop-ref-tabs .sc-reftab-btn.active {
+        border-color: #c69a28;
+        background: linear-gradient(145deg,#fff9e8,#fff);
+        color: #6d4a08;
+        box-shadow: 0 6px 18px rgba(138,106,20,.16), inset 0 0 0 1px rgba(201,162,39,.18);
+      }
+      .sc-ref-tab-icon {
+        width: 38px;
+        height: 38px;
+        flex: 0 0 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        font-size: 18px;
+      }
+      .sc-desktop-ref-tabs .sc-reftab-btn.active .sc-ref-tab-icon { border-color: #ead18b; background: #fff4cf; }
+      .sc-desktop-ref-tabs b { display: block; font-size: 12px; line-height: 1.25; }
+      .sc-desktop-ref-tabs small { display: block; margin-top: 3px; color: #94a3b8; font-size: 9px; line-height: 1.2; }
+    }
+
+    /* ─── Global CSS Tooltip (title attribute) ─── */
+    /* ยกเว้น th/td/tr เพื่อไม่ทับ position:sticky ของตาราง */
+    [title]:not(th):not(td):not(tr) { position: relative; }
+    [title]:not(th):not(td):not(tr)::after {
+      content: attr(title);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #f8fafc;
+      font-size: 11px;
+      font-family: inherit;
+      white-space: nowrap;
+      padding: 4px 9px;
+      border-radius: 6px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      z-index: 9999;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    [title]:not(th):not(td):not(tr):hover::after { opacity: 1; }
+  </style>
+  <script type="module" crossorigin src="/pp5online/assets/teacher-KgJrzLTQ.js"></script>
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/supabase-BV-W2lsh.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/ui-Dh03k4iX.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/api-1xsyVspL.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/browser-JP79f-a9.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/promptpay-CIuxvxIA.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/impersonation-C66q0Y-O.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/storage-D6nkcVz6.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/sports-portals.js_v_10.22-BrIjazIR.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/theme-DIdoXkqD.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/anti-pull-refresh-BGrI1pMY.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/push-notify-qsIWmalF.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/teacher-views-utils-B2Iz3UWp.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/wen-sso-CcN06Rhh.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/azfutsal-modal-wts4xj80.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/tutorial-FuIPnEx0.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/terangganu-api-C1IjZK4l.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/regrade-api-C8s-TuM0.js">
+  <link rel="stylesheet" crossorigin href="/pp5online/assets/main-Cep-5RXG.css">
+</head>
+
+<body class="bg-gray-50 flex h-screen overflow-hidden">
+
+  <!-- ─── Sidebar ──────────────────────────────────────────────────────────── -->
+  <div id="sidebar-overlay" class="hidden fixed inset-0 z-[60] bg-black/50"></div>
+  <aside id="sidebar"
+    class="w-64 bg-emerald-900 text-white flex flex-col flex-shrink-0
+           fixed inset-y-0 left-0 z-[70] shadow-2xl
+           -translate-x-full md:translate-x-0
+           transition-transform duration-200">
+
+    <!-- App Header -->
+    <div class="px-4 py-4 border-b border-emerald-800 flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <div id="school-logo-wrap" class="brand-logo-ring w-14 h-14 flex-shrink-0">
+          <div class="brand-logo-inner">
+            <img id="school-logo" src="" alt="" class="w-full h-full object-contain rounded-full hidden"/>
+            <span id="school-logo-fallback" class="text-xl">🏫</span>
+          </div>
+        </div>
+        <div class="min-w-0">
+          <h2 class="text-sm font-bold tracking-tight leading-tight">ปพ.5 ออนไลน์</h2>
+          <p id="sidebar-term" class="text-[11px] text-emerald-300 truncate">—</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Teacher Profile Mini (คลิกได้) -->
+    <div class="px-4 py-3 border-b border-emerald-800 flex items-center gap-3
+                cursor-pointer hover:bg-emerald-800 transition" onclick="window._navTo('profile')"
+         title="คลิกเพื่อแก้ไขโปรไฟล์">
+      <div id="t-avatar"
+        class="w-9 h-11 rounded-lg border border-emerald-300/40 shadow-sm bg-gradient-to-tr from-emerald-400 to-teal-400
+               flex items-center justify-center font-bold text-sm flex-shrink-0 overflow-hidden">
+        ?
+      </div>
+      <div class="min-w-0">
+        <p id="t-name" class="text-sm font-semibold truncate">—</p>
+        <p id="t-code" class="text-xs text-emerald-300 truncate">—</p>
+      </div>
+    </div>
+
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+      <a href="#" data-nav="announcements-view"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📢</span> ประกาศ
+        <span id="badge-ann" class="hidden ml-auto bg-amber-400 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold">!</span>
+      </a>
+      <a href="#" data-nav="work-calendar-view"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📅</span> ปฏิทินปฏิบัติงาน
+      </a>
+      <a href="council.html" id="menu-council"
+        class="hidden items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🏛️</span> ระบบสภานักเรียน
+      </a>
+      <a href="terangganu.html" id="menu-terangganu"
+        class="hidden items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>⚜️</span> ค่าย TERANGGANU 2026
+      </a>
+      <a href="regrade.html" id="menu-regrade"
+        class="hidden items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📋</span> แก้ค้างเก่า
+      </a>
+      <a href="#" id="menu-sports-shortcut" data-nav="sports"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🏆</span> ระบบกีฬาสี
+      </a>
+      <a href="#" data-nav="certificates"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🏅</span> ระบบเกียรติบัตร
+      </a>
+      <a href="#" id="menu-advisor-students" data-nav="advisor-students"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>👥</span> นักเรียนที่ปรึกษา
+      </a>
+      <a href="#" id="menu-my-team" data-nav="my-team-workspace"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🛡️</span> จัดการสีของฉัน
+      </a>
+      <a href="#" id="menu-shirt-summary" data-nav="shirt-summary"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📦</span> สรุปยอดเสื้อกีฬาสี
+      </a>
+      <a href="#" id="menu-sports-fund-admin" data-nav="sports-fund-admin"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>💰</span> บัญชีเงินกีฬาสี
+      </a>
+      <a href="#" id="menu-sports-overview-admin" data-nav="sports-overview-admin"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📊</span> ภาพรวมกีฬาสี
+      </a>
+      <a href="#" id="menu-sports-evaluation" data-nav="sports-evaluation"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🧑‍⚖️</span> ประเมินกีฬาสี
+      </a>
+      <a href="#" id="menu-shirt-vote-dashboard" data-nav="shirt-vote-dashboard"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🗳️</span> ผลโหวตแบบเสื้อ
+      </a>
+      <a href="#" id="menu-qr-reissue-requests" data-nav="student-qr-print"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🎫</span> พิมพ์/คำขอ QR Code
+      </a>
+      <div class="border-t border-emerald-800/50 my-1"></div>
+      <p class="px-4 pt-1 pb-1 text-xs text-emerald-400 uppercase tracking-widest">รายวิชา</p>
+      <a href="#" data-nav="overview"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               bg-emerald-800 text-white">
+        <span>📊</span> ภาพรวม
+      </a>
+      <a href="#" id="menu-my-courses" data-nav="my-courses"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📖</span> คอร์สวิชาของฉัน
+      </a>
+      <a href="#" id="menu-my-classes" data-nav="my-classes"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🏫</span> ห้องเรียนของฉัน
+      </a>
+      <a href="#" id="menu-dashboard"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📈</span> Dashboard ห้องเรียน
+      </a>
+
+      <!-- งานรายภาคเรียน (หัวข้อแสดงเสมอ, รายการแสดงตามบทบาท) -->
+      <div id="sem-work-section">
+        <p class="px-4 pt-3 pb-1 text-xs text-emerald-400 uppercase tracking-widest">งานรายภาคเรียน</p>
+        <a id="menu-life-skill" href="#" data-nav="life-skill-score"
+          class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🌱</span> บันทึกคะแนนทักษะชีวิต
+        </a>
+        <a id="menu-reading" href="#" data-nav="reading-score"
+          class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📖</span> บันทึกคะแนนอ่านคิดวิเคราะห์
+        </a>
+        <a id="menu-prayer" href="#" data-nav="prayer-score"
+          class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🕌</span> บันทึกคะแนนละหมาด
+        </a>
+      </div>
+
+      <!-- งานรายวัน — เครื่องมือรายห้อง/รายนักเรียนทั้งหมด ซ่อนให้บัญชี "ผู้บริหาร" ล้วนๆ
+           (ไม่มีภาระสอน) เพื่อลดเมนูที่ไม่เกี่ยวข้อง (v10.22.560) -->
+      <div id="daily-work-section">
+        <p class="px-4 pt-3 pb-1 text-xs text-emerald-400 uppercase tracking-widest">งานรายวัน</p>
+        <a href="#" id="btn-quick-attendance"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>✅</span> เช็คชื่อ
+        </a>
+        <a href="#" id="btn-quick-grades"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📝</span> บันทึกคะแนน
+        </a>
+        <a href="#" data-nav="requests"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🔔</span> คำร้องนักเรียน
+          <span id="badge-requests" class="hidden ml-auto bg-red-500 text-white text-xs
+                 rounded-full w-5 h-5 flex items-center justify-center font-bold">0</span>
+        </a>
+        <a href="#" data-nav="schedule"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🗓️</span> ตารางสอน
+        </a>
+        <a href="#" data-nav="flashcards"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🃏</span> บัตรคำศัพท์ (Flash Cards)
+        </a>
+        <a href="#" data-nav="quiz-system"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📝</span> แบบทดสอบออนไลน์ (Quiz)
+        </a>
+        <a href="#" data-nav="exam-docs"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📄</span> เอกสารช่วงสอบ
+        </a>
+        <a href="#" data-nav="student-qr-print"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🖨️</span> พิมพ์ QR Code นักเรียน
+        </a>
+        <a href="#" data-nav="student-leave-scanner"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📋</span> ตรวจสอบใบอนุญาตออกนอกห้อง
+        </a>
+      </div>
+      <a href="#" data-nav="tutorial"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📖</span> คู่มือการใช้งาน
+      </a>
+    </nav>
+
+    <!-- ช่องทางติดต่อ (โหลดโดย loadSidebarHeader) -->
+    <div id="sidebar-contact" class="hidden px-4 py-3 border-t border-emerald-800 flex-shrink-0"></div>
+
+    <div class="p-3 border-t border-emerald-800 flex-shrink-0">
+      <button id="btn-logout"
+        class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm
+               font-medium text-emerald-200 hover:bg-red-500 hover:text-white transition">
+        🚪 ออกจากระบบ
+      </button>
+      <div class="mt-2 text-center">
+        <p class="text-[10px] text-emerald-600 leading-relaxed">
+          พัฒนาโดย <span class="text-emerald-400 font-medium">KruHambalWaji</span><br/>
+          ปพ.5 ออนไลน์ © 2026 <span id="app-version" class="text-emerald-700"></span>
+        </p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── Main ─────────────────────────────────────────────────────────────── -->
+  <div id="app-main-col" class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden md:ml-64">
+
+    <header class="bg-white shadow-sm h-16 flex items-center justify-between px-5 z-20 flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <button id="btn-menu" class="md:hidden text-gray-500 hover:text-emerald-600 text-xl p-1">☰</button>
+        <h1 id="page-title" class="text-lg font-bold text-gray-800">ภาพรวม</h1>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="btn-quick-leave-scanner"
+          title="เปิดเมนูสแกน"
+          aria-label="เปิดเมนูสแกน"
+          class="w-11 h-11 flex items-center justify-center rounded-xl text-[22px] leading-none
+                 bg-emerald-600 border border-emerald-700 text-white
+                 shadow-[0_5px_0_#047857,0_9px_18px_rgba(5,150,105,0.24)]
+                 hover:bg-emerald-700 hover:-translate-y-0.5
+                 active:translate-y-[3px] active:shadow-[0_2px_0_#047857,0_4px_10px_rgba(5,150,105,0.18)] transition">
+          <span aria-hidden="true">📷</span>
+        </button>
+        <button id="btn-refresh"
+          onclick="window._refreshCurrentView && window._refreshCurrentView()"
+          title="รีเฟรชหน้านี้"
+          class="w-8 h-8 flex items-center justify-center rounded-full text-gray-400
+                 hover:bg-emerald-50 hover:text-emerald-600 transition text-base">
+          ↺
+        </button>
+        <div class="text-right hidden sm:block">
+          <p id="user-name" class="text-sm font-semibold text-gray-800">—</p>
+          <p id="user-role-label" class="text-xs text-emerald-500">ครูผู้สอน</p>
+        </div>
+        <div id="user-avatar"
+          class="w-8 h-10 bg-gradient-to-tr from-emerald-500 to-teal-500 text-white border border-emerald-300/40
+                 rounded-lg flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden">
+          ?
+        </div>
+      </div>
+    </header>
+
+    <!-- Impersonation Banner -->
+    <div id="impersonation-banner" class="hidden flex-shrink-0 bg-red-600 text-white px-5 py-2.5 flex items-center justify-between gap-3 z-30">
+      <div class="flex items-center gap-2 text-sm font-medium">
+        <span class="text-lg">🎭</span>
+        <span>กำลังสวมบทบาทเป็น <strong id="impersonation-name"></strong></span>
+        <span class="text-red-200 text-xs hidden sm:inline">— เมนู ข้อมูล และการบันทึกใช้สิทธิ์ของครูคนนี้</span>
+      </div>
+      <button id="impersonation-exit"
+        class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-sm font-semibold transition">
+        ← ออกจากโหมดนี้
+      </button>
+    </div>
+
+    <main class="flex-1 overflow-y-auto p-5 sm:p-6">
+      <div id="main-content">
+        <!-- rendered by teacher-views.js -->
+      </div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+
+</body>
+</html>
