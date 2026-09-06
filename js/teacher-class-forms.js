@@ -99,9 +99,14 @@ export async function renderClassForm(teacher, course, opts = {}) {
   const gradePrefix = course.grade_level
   const isReligionGrade = /^(PR|อก|อป)/i.test(gradePrefix ?? '')
 
-  // กรองห้องที่มีอยู่ในคอร์สนี้แล้วออก (เฉพาะตอน clone)
+  // กรองห้องที่มีอยู่ในคอร์สนี้แล้วออก (เฉพาะตอน clone) — เทียบเฉพาะห้องของเทอม/ปีการศึกษาปัจจุบันเท่านั้น
+  // (ห้องชื่อเดียวกันจากเทอมก่อนไม่นับว่า "ถูกใช้แล้ว" เพื่อให้ clone ห้องเดิมสำหรับเทอมใหม่ได้)
+  const curYear = parseInt(termCfg.academicYear)
+  const curSem  = parseInt(termCfg.semester)
   const usedRooms = cloneFrom
-    ? new Set((window._classesFlat ?? []).filter(c => c.course_id === course.id).map(c => c.class_name))
+    ? new Set((window._classesFlat ?? [])
+        .filter(c => c.course_id === course.id && +c.academic_year === curYear && +c.semester === curSem)
+        .map(c => c.class_name))
     : new Set()
   const allRooms = gradePrefix
     ? (isReligionGrade
