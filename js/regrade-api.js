@@ -19,6 +19,20 @@ export async function updateRegradeConfig(updates) {
   if (error) throw error
 }
 
+// ส่งสรุปรายวิชาที่ติดของห้องเรียนหนึ่งๆ (จากหน้าบันทึกคะแนน pp5 ปกติ) เข้าระบบแก้ค้างเก่า
+// เรียกจาก js/teacher-views-grades.js ซึ่งคำนวณรายชื่อนักเรียนที่ติดไว้แล้ว (ตรงกับที่โชว์บนจอเป๊ะ)
+// failingList: [{ student_id, grade_failed_at }] — RPC ฝั่ง Postgres จะ join หา subject/teacher/semester
+// เองจาก class_id (ไม่เชื่อค่าที่ client ส่งมานอกจาก student_id/grade_failed_at) แล้ว upsert เข้า
+// regrade_subjects (source='live', ON CONFLICT DO NOTHING — กดซ้ำได้ปลอดภัย ไม่ทับสถานะที่มีอยู่แล้ว)
+export async function submitClassGradesToRegrade(classId, failingList) {
+  const { data, error } = await supabase.rpc('submit_class_grades_to_regrade', {
+    p_class_id: classId,
+    p_failing: failingList,
+  })
+  if (error) throw error
+  return data
+}
+
 // ─── ตัวตนผู้ใช้ปัจจุบัน ──────────────────────────────────────────────────────
 export async function getMyStudentRow() {
   const { data: { session } } = await supabase.auth.getSession()

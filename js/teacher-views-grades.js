@@ -8,6 +8,7 @@ import {
   getReadingScoreColumns, getReadingScores,
   getTeacherExamRequests, updateExamResult, reviewExamRequest,
 } from './api.js'
+import { getRegradeConfig, submitClassGradesToRegrade } from './regrade-api.js'
 import { showToast } from './ui.js'
 import { supabase } from './supabase.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
@@ -66,7 +67,7 @@ export async function renderGradesGrid(teacher, classData) {
   try {
     // ถ้า virtual class (มี source_class_id) → ดึง score columns + scores จาก source
     const scoreClassId = classData.source_class_id ?? classData.id
-    const [students, rawCols, rawScoreRows, midSheetOpts, finSheetOpts, regularSheetOpts, sysCfg, allMyClasses] = await Promise.all([
+    const [students, rawCols, rawScoreRows, midSheetOpts, finSheetOpts, regularSheetOpts, sysCfg, allMyClasses, regradeCfg] = await Promise.all([
       getClassStudents(classData.id),
       getScoreColumns(scoreClassId),
       getStudentScores(scoreClassId),
@@ -75,7 +76,11 @@ export async function renderGradesGrid(teacher, classData) {
       getSheetColumnOptions(classData.id, 'ระหว่างเรียน'),
       getSystemConfig().catch(()=>({})),
       teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
+      getRegradeConfig().catch(()=>({})),
     ])
+    // ปุ่ม "ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า" โชว์เฉพาะตั้งแต่วันที่แอดมินตั้งไว้ใน regrade_config เท่านั้น
+    const showRegradeSubmitBtn = !!regradeCfg.live_submit_open_date
+      && new Date().toISOString().slice(0, 10) >= regradeCfg.live_submit_open_date
     applyReadingGradesFromConfig(sysCfg)
 
     // ตรวจหาวิชาเดียวกันในห้องอื่น (หน่วงหลัง render)
@@ -546,7 +551,35 @@ export async function renderGradesGrid(teacher, classData) {
           ${_tBtn('forceGrade','บังคับเกรด',toggleForceGrade,'bg-rose-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-gray-200')}
           ${_tBtn('bonus','⭐ คะแนนเก็บ/พิเศษ',showBonusCols,'bg-amber-500 text-white shadow-sm','bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100')}
           ${showBonusCols && bonusCols.length ? _tBtn('formula-link','🔗 เชื่อมสูตร',showFormulaLink,'bg-violet-500 text-white shadow-sm','bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100') : ''}
+          ${showRegradeSubmitBtn ? `
+          <div class="w-px h-5 bg-gray-200 mx-1 self-center"></div>
+          <button id="btn-submit-regrade" type="button"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-pink-600 text-white shadow-sm hover:bg-pink-700 transition">
+            📤 ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า
+          </button>` : ''}
         </div>`
+      document.getElementById('btn-submit-regrade')?.addEventListener('click', async () => {
+        const btn = document.getElementById('btn-submit-regrade')
+        const failing = students
+          .map(s => {
+            const { grade } = _calcGradeRow(s.id)
+            const forced = scoreMap[s.id]?.['__force'] ?? ''
+            const gradeFailedAt = forced || (grade === 0 ? '0' : '')
+            return gradeFailedAt ? { student_id: s.id, grade_failed_at: gradeFailedAt } : null
+          })
+          .filter(Boolean)
+        if (!failing.length) { showToast('ไม่มีนักเรียนติดในห้องนี้ตอนนี้', 'info'); return }
+        if (!confirm(`พบนักเรียนติด ${failing.length} คนในห้องนี้ ยืนยันส่งเข้าระบบแก้ค้างเก่าเลยไหม? (รายชื่อที่เคยส่งไปแล้วจะไม่ถูกส่งซ้ำ)`)) return
+        btn.disabled = true; btn.textContent = 'กำลังส่ง...'
+        try {
+          const result = await submitClassGradesToRegrade(classData.id, failing)
+          showToast(`ส่งสำเร็จ ✅ พบติด ${result.total_failing} คน — เพิ่มเข้าระบบใหม่ ${result.submitted} คน (ที่เหลือมีอยู่แล้ว)`, 'success')
+        } catch (e) {
+          showToast('ส่งไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        } finally {
+          btn.disabled = false; btn.textContent = '📤 ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า'
+        }
+      })
       bar.querySelectorAll('.grade-toggle').forEach(btn=>{
         btn.addEventListener('click',()=>{
           const t=btn.dataset.toggle
