@@ -719,13 +719,13 @@ export async function advisorRemoveStudentFromRoom(studentId, category) {
 export async function getClassStudents(classId) {
   const { data, error } = await supabase
     .from('class_students')
-    .select('is_active, special_result, students ( id, profile_id, student_code, full_name, image_url, main_room, religion_room, gender, house_color, sports_shirt_size )')
+    .select('id, is_active, special_result, students ( id, profile_id, student_code, full_name, image_url, main_room, religion_room, gender, house_color, sports_shirt_size )')
     .eq('class_id', classId)
     .order('students(student_code)')
   if (error) throw error
   return (data ?? [])
     .filter(r => r.is_active !== false)
-    .map(r => r.students ? { ...r.students, special_result: r.special_result ?? null } : null)
+    .map(r => r.students ? { ...r.students, special_result: r.special_result ?? null, enrollment_id: r.id } : null)
     .filter(Boolean)
 }
 

@@ -7,6 +7,7 @@ import {
   syncAutoAttendanceScoreColumns, setColumnAutoAttendanceSync,
   getReadingScoreColumns, getReadingScores,
   getTeacherExamRequests, updateExamResult, reviewExamRequest,
+  updateClassStudentSpecialResult,
 } from './api.js'
 import { getRegradeConfig, submitClassGradesToRegrade } from './regrade-api.js'
 import { showToast } from './ui.js'
@@ -273,6 +274,13 @@ export async function renderGradesGrid(teacher, classData) {
         final: r.final_score ?? r.original_score,
         history: r.score_history ?? [],
       }
+    }
+    // โหลดค่า "บังคับเกรด" ที่เคยบันทึกไว้จริงใน class_students.special_result เข้ามาตั้งต้น
+    // (เดิมค่านี้ไม่เคย load/save ลงฐานข้อมูลเลย เป็นแค่ state ชั่วคราวในหน้าจอ รีเฟรชแล้วหาย)
+    for (const s of students) {
+      if (!s.special_result) continue
+      if (!scoreMap[s.id]) scoreMap[s.id] = {}
+      scoreMap[s.id]['__force'] = s.special_result
     }
     const _getScore = (sid, colId) => scoreMap[sid]?.[colId]?.final ?? scoreMap[sid]?.[colId]?.orig ?? null
     const _hasHistory = (sid, colId) => (scoreMap[sid]?.[colId]?.history?.length ?? 0) > 1
@@ -1623,13 +1631,22 @@ export async function renderGradesGrid(teacher, classData) {
             </div>
           </div>`
         document.body.appendChild(pop)
-        pop.addEventListener('click', e2 => {
+        pop.addEventListener('click', async e2 => {
           const btn = e2.target.closest('.force-pick')
           if (!btn && e2.target === pop) { pop.remove(); return }
           if (!btn) return
           const grade = btn.dataset.grade
+          btn.disabled = true
+          try {
+            await updateClassStudentSpecialResult(st?.enrollment_id, grade)
+          } catch (err) {
+            showToast('บันทึกบังคับเกรดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            btn.disabled = false
+            return
+          }
           if(!scoreMap[sid])scoreMap[sid]={}
           scoreMap[sid]['__force'] = grade
+          if (st) st.special_result = grade || null
           const {grade: calcGrade} = _calcGradeRow(sid)
           const gEl = document.getElementById(`ggrade-${sid}`)
           if(gEl) gEl.textContent = grade || (calcGrade>0?calcGrade.toFixed(1):'0')
