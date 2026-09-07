@@ -7,7 +7,7 @@ import {
   syncAutoAttendanceScoreColumns, setColumnAutoAttendanceSync,
   getReadingScoreColumns, getReadingScores,
   getTeacherExamRequests, updateExamResult, reviewExamRequest,
-  updateClassStudentSpecialResult,
+  updateClassStudentSpecialResult, exportClassGradesToGradeOnline,
 } from './api.js'
 import { getRegradeConfig, submitClassGradesToRegrade } from './regrade-api.js'
 import { showToast } from './ui.js'
@@ -49,6 +49,89 @@ function _gradeToKhuna(grade) {
   if (grade >= 2.5) return { label: 'ดี',       cls: 'text-blue-600' }
   if (grade >= 1.0) return { label: 'ผ่าน',     cls: 'text-amber-500' }
   return { label: 'ไม่ผ่าน', cls: 'text-red-600' }
+}
+
+// ─── ส่งเข้า GradeOnline (ระบบทะเบียนภายนอก) — ใช้ฟรี 1 ห้องต่อครู, ระดับสนับสนุน 2+ ไม่จำกัด ──
+// แพทเทิร์นเดียวกับ _checkStudentCareRoomAccess ในหน้าเช็คชื่อ (js/teacher-views-attendance.js)
+// แค่แยกคีย์ localStorage เป็นคนละก้อน เพราะเป็นฟีเจอร์คนละตัว โควต้าไม่ปนกัน
+function _checkGradeOnlineRoomAccess(teacherId, className, isSupported) {
+  if (isSupported) return { allowed: true, claimedRoom: null }
+  let claimedRoom = null
+  try { claimedRoom = localStorage.getItem(`pp5_gradeonline_room_${teacherId}`) } catch (e) {}
+  if (!claimedRoom || claimedRoom === className) return { allowed: true, claimedRoom }
+  return { allowed: false, claimedRoom }
+}
+
+function _claimGradeOnlineRoom(teacherId, className) {
+  try { localStorage.setItem(`pp5_gradeonline_room_${teacherId}`, className) } catch (e) {}
+}
+
+function _openGradeOnlineRoomPaywall(claimedRoom, wantedRoom) {
+  document.getElementById('gol-room-paywall')?.remove()
+  const paywall = document.createElement('div')
+  paywall.id = 'gol-room-paywall'
+  paywall.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60'
+  paywall.innerHTML = `
+    <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl flex flex-col p-6 text-center gap-4 relative">
+      <button id="gol-pw-close" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+      <div class="text-6xl mt-4">🔒</div>
+      <p class="font-bold text-gray-800 text-lg">ใช้ครบโควต้าห้องฟรีแล้ว</p>
+      <p class="text-sm text-gray-500 leading-relaxed max-w-xs mx-auto">
+        ฟีเจอร์ส่งคะแนนเข้า GradeOnline ใช้ได้ฟรี <b>1 ห้องเรียน</b> ต่อครู 1 คน — ตอนนี้ผูกกับห้อง <b>${_htmlEsc(claimedRoom)}</b> ไว้แล้ว
+        ${wantedRoom ? `<br><br>ต้องการใช้กับห้อง <b>${_htmlEsc(wantedRoom)}</b> เพิ่ม` : ''}<br><br>
+        ร่วมสนับสนุนระบบระดับ 2 ขึ้นไปเพื่อใช้ได้ไม่จำกัดจำนวนห้องครับ (สรุปเกรดเข้าระบบแก้ค้างเก่ายังส่งได้ตามปกติ)
+      </p>
+      <button id="gol-pw-donate" class="mt-2 w-full py-3.5 rounded-2xl text-white font-bold text-sm shadow-lg hover:opacity-90 transition bg-gradient-to-r from-amber-500 to-orange-500">⭐ ดูรายละเอียด/สนับสนุนโครงการ</button>
+    </div>`
+  document.body.appendChild(paywall)
+  paywall.querySelector('#gol-pw-close').addEventListener('click', () => paywall.remove())
+  paywall.querySelector('#gol-pw-donate').addEventListener('click', () => {
+    paywall.remove()
+    document.getElementById('btn-donate-float')?.click()
+  })
+}
+
+// แสดงรหัสอ้างอิง (share_code) + ปุ่มบุ๊กมาร์กสำหรับดึงไปกรอกในหน้า GradeOnline
+// ใช้โค้ดแทนการเดา selector ห้อง/วันที่ของหน้าเว็บภายนอก (ต่างจากฝั่งเช็คชื่อที่หน้าระบบดูแล
+// มีตัวกรองห้อง/วันที่ให้ script อ่านค่าเองได้ แต่หน้า GradeOnline ไม่มี)
+function _openGradeOnlineResultModal(shareCode, count) {
+  document.getElementById('gol-result-modal')?.remove()
+  const wrap = document.createElement('div')
+  wrap.id = 'gol-result-modal'
+  wrap.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/60 p-4'
+  wrap.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[85vh] flex flex-col">
+      <div class="px-4 py-3 border-b flex items-center justify-between flex-shrink-0">
+        <h3 class="font-bold text-gray-800 text-sm">📤 ส่งคะแนนเข้า GradeOnline</h3>
+        <button id="gol-result-close" class="text-gray-400 hover:text-gray-700 text-lg leading-none">✕</button>
+      </div>
+      <div class="overflow-y-auto flex-1 px-4 py-4 space-y-4 text-sm text-gray-600">
+        <p class="text-xs text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2">เตรียมคะแนนไว้แล้ว ${count} คน — ใช้รหัสด้านล่างตอนกดปุ่มบุ๊กมาร์กในหน้า GradeOnline</p>
+        <div class="text-center bg-gray-50 rounded-xl py-3">
+          <p class="text-[11px] text-gray-400 mb-1">รหัสอ้างอิง</p>
+          <p class="text-2xl font-mono font-bold tracking-widest text-indigo-700">${_htmlEsc(shareCode)}</p>
+        </div>
+        <div class="text-center space-y-2">
+          <p class="text-xs">ยังไม่เคยติดตั้ง? <b>ลากปุ่มนี้</b> ไปวางที่แถบบุ๊กมาร์กของเบราว์เซอร์ (ทำครั้งเดียว)</p>
+          <a
+            class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold shadow-lg"
+            style="cursor:grab"
+            href="javascript:(function(){var s=document.createElement('script');s.src='https://ghhambal.github.io/pp5online/js/gradeonline-bridge-push.js?v='+Date.now();document.body.appendChild(s);})();"
+            onclick="alert('อย่ากดปุ่มนี้ตรงๆ นะครับ — ให้ลาก (drag) ปุ่มนี้ไปวางที่แถบบุ๊กมาร์กด้านบนของเบราว์เซอร์แทน'); return false;"
+          >📥 ดึงคะแนนเข้า GradeOnline</a>
+        </div>
+        <ol class="space-y-1.5 text-xs list-decimal list-inside">
+          <li>เปิดหน้า GradeOnline (azizstan.net) ไปที่วิชา/ห้องที่ต้องการกรอกคะแนน</li>
+          <li>กดปุ่มบุ๊กมาร์กที่ลากไว้ แล้ววางรหัสอ้างอิงด้านบนตอนที่ระบบถาม</li>
+          <li>สคริปต์จะกรอกคะแนนรวม+เกรดให้ทีละคนแบบไม่รีบ — <b>ตรวจสอบให้ดีก่อนกดปุ่มบันทึกของ GradeOnline เอง</b> (ไม่บันทึกให้อัตโนมัติ)</li>
+        </ol>
+        <p class="text-[11px] text-gray-400 text-center">ไม่เห็นแถบบุ๊กมาร์ก? กด ⌘/Ctrl+Shift+B เพื่อเปิดก่อน</p>
+      </div>
+    </div>`
+  document.body.appendChild(wrap)
+  const close = () => wrap.remove()
+  wrap.querySelector('#gol-result-close').onclick = close
+  wrap.onclick = e => { if (e.target === wrap) close() }
 }
 
 export async function renderGradesGrid(teacher, classData) {
@@ -564,6 +647,10 @@ export async function renderGradesGrid(teacher, classData) {
           <button id="btn-submit-regrade" type="button"
             class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-pink-600 text-white shadow-sm hover:bg-pink-700 transition">
             📤 ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า
+          </button>
+          <button id="btn-export-gradeonline" type="button"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white shadow-sm hover:bg-purple-700 transition">
+            📤 ส่งคะแนนเข้า GradeOnline
           </button>` : ''}
         </div>`
       document.getElementById('btn-submit-regrade')?.addEventListener('click', async () => {
@@ -586,6 +673,36 @@ export async function renderGradesGrid(teacher, classData) {
           showToast('ส่งไม่สำเร็จ: ' + (e.message ?? ''), 'error')
         } finally {
           btn.disabled = false; btn.textContent = '📤 ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า'
+        }
+      })
+      // ปุ่มเดียวกัน ส่งคะแนนรวม(เต็ม 100)+เกรดของทั้งห้องเข้า GradeOnline พร้อมกันไปเลย —
+      // กันด้วยโควต้าเดียวกับฝั่งเช็คชื่อ (ฟรี 1 ห้อง/ครู, สนับสนุนระดับ 2+ ไม่จำกัด) ไม่บล็อกการส่งเข้า
+      // ระบบแก้ค้างเก่าด้านบนถ้าไม่ผ่านโควต้า (อันนั้นเป็นงานส่วนกลางของโรงเรียน ส่งได้ทุกคน)
+      document.getElementById('btn-export-gradeonline')?.addEventListener('click', async () => {
+        const gBtn = document.getElementById('btn-export-gradeonline')
+        const isSupported = (window._pp5DonorTierIndex ?? 0) >= 2
+        const access = _checkGradeOnlineRoomAccess(teacher?.id, classData.class_name, isSupported)
+        if (!access.allowed) { _openGradeOnlineRoomPaywall(access.claimedRoom, classData.class_name); return }
+        const records = students.map(s => {
+          const { pct, grade } = _calcGradeRow(s.id)
+          const forced = scoreMap[s.id]?.['__force'] || ''
+          return {
+            studentCode: s.student_code, studentName: s.full_name,
+            total: Math.round(pct * 10) / 10,
+            grade: forced || (grade > 0 ? String(grade) : '0'),
+          }
+        })
+        if (!confirm(`เตรียมส่งคะแนนรวม(เต็ม 100)+เกรดของนักเรียน ${records.length} คนในห้องนี้ไปรอที่ GradeOnline ยืนยันไหม?`)) return
+        gBtn.disabled = true; gBtn.textContent = 'กำลังเตรียมข้อมูล...'
+        try {
+          const shareCode = await exportClassGradesToGradeOnline(
+            classData.id, teacher?.id, ms?.subject_name, classData.class_name, records)
+          if (!isSupported && !access.claimedRoom) _claimGradeOnlineRoom(teacher?.id, classData.class_name)
+          _openGradeOnlineResultModal(shareCode, records.length)
+        } catch (e) {
+          showToast('เตรียมข้อมูลไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        } finally {
+          gBtn.disabled = false; gBtn.textContent = '📤 ส่งคะแนนเข้า GradeOnline'
         }
       })
       bar.querySelectorAll('.grade-toggle').forEach(btn=>{

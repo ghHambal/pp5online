@@ -1206,6 +1206,26 @@ export async function exportAttendanceToStudentCare(mainRoom, checkDate, records
   if (error) throw error
 }
 
+// ส่งคะแนนรวม+เกรดของทั้งห้องออกไปรอให้บุ๊กมาร์ก gradeonline-bridge-push.js มาดึงไปกรอกใน
+// หน้า azizstan.net/regist/GradeOnline/Evaluate — ล้างของเก่าของห้องนี้ก่อนเสมอแล้วค่อยใส่ชุดใหม่
+// พร้อม share_code สุ่มใหม่ (หน้านั้นไม่มีตัวกรองห้อง/วันที่ให้ script อ่านเอง จึงต้องใช้โค้ดแทน)
+export async function exportClassGradesToGradeOnline(classId, teacherId, subjectName, mainRoom, records) {
+  const shareCode = Math.random().toString(36).slice(2, 8).toUpperCase()
+  const { error: delErr } = await supabase.from('pp5_grade_export').delete().eq('class_id', classId)
+  if (delErr) throw delErr
+  if (records.length) {
+    const rows = records.map(r => ({
+      teacher_id: teacherId, class_id: classId, share_code: shareCode,
+      subject_name: subjectName ?? null, main_room: mainRoom ?? null,
+      student_code: r.studentCode, student_name: r.studentName ?? null,
+      total: r.total, grade: r.grade,
+    }))
+    const { error } = await supabase.from('pp5_grade_export').insert(rows)
+    if (error) throw error
+  }
+  return shareCode
+}
+
 export async function getSchoolHolidaysFull(academicYear, semester) {
   const { data, error } = await supabase
     .from('school_holidays')
