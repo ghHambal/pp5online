@@ -846,11 +846,23 @@ function computeCardRecipients(level, type) {
     .sort((a, b) => b[type] - a[type] || a.name.localeCompare(b.name, 'th'))
 }
 
+// ปกติแต่ละระดับชั้นมีนัดชิงที่ 3 จริง (ผู้แพ้รองฯ 2 ทีมแข่งกัน) แต่บางปีตัดนัดนี้ออกและให้อันดับ 3 ร่วมกันทั้งสองทีมแทน
+// ม.ต้น 13 ทีม (มีบาย) ตัดนัดชิงที่ 3 มาโดยตลอด (มาจากผังการแข่งขัน) ส่วน ม.ปลายเป็นการตั้งค่าเปิด/ปิดได้จากแอดมิน (คีย์ JOINT_THIRD_HS)
+function isJointThirdLevel(level) {
+  if (level === 'MS') return hasMsFirstRoundBye()
+  if (level === 'HS') return cfg('JOINT_THIRD_HS', '0') === '1'
+  return false
+}
+function jointThirdSemifinalCodes(level) {
+  return level === 'MS' && hasMsFirstRoundBye() ? ['M18', 'M19'] : ['M22', 'M23']
+}
+
 function computeSummary(level) {
   const final = resolveMatch(level, FINAL_CODE[level])
-  const isJointThird = level === 'MS' && hasMsFirstRoundBye()
-  const third = isJointThird ? resolveMatch(level, 'M18') : resolveMatch(level, THIRD_CODE[level])
-  const secondThird = isJointThird ? resolveMatch(level, 'M19') : null
+  const isJointThird = isJointThirdLevel(level)
+  const [semiACode, semiBCode] = jointThirdSemifinalCodes(level)
+  const third = isJointThird ? resolveMatch(level, semiACode) : resolveMatch(level, THIRD_CODE[level])
+  const secondThird = isJointThird ? resolveMatch(level, semiBCode) : null
   const award = type => {
     const row = S.awards.find(item => item.level === level && item.award_type === type)
     const player = row ? S.players.find(item => String(item.student_id) === String(row.student_id)) : null
@@ -6067,6 +6079,11 @@ function bindEvents() {
       await SB.from('azfutsal_config').upsert({ key: 'REQUIRE_EVENTS_BEFORE_SCORE', value: cur ? '0' : '1' })
       await refresh(); return
     }
+    if (act === 'toggleJointThirdHS') {
+      const cur = cfg('JOINT_THIRD_HS', '0') === '1'
+      await SB.from('azfutsal_config').upsert({ key: 'JOINT_THIRD_HS', value: cur ? '0' : '1' })
+      await refresh(); azToast(cur ? 'ยกเลิกอันดับ 3 ร่วม ม.ปลายแล้ว — กลับไปใช้ผลนัดชิงที่ 3 (M24)' : 'เปิดอันดับ 3 ร่วม ม.ปลายแล้ว — ทีมแพ้รองฯ ทั้งสองคู่ได้อันดับ 3 ร่วมกัน'); return
+    }
     if (act === 'toggleCert') {
       const cur = cfg('CERT_ENABLED', '1') === '1'
       await SB.from('azfutsal_config').upsert({ key: 'CERT_ENABLED', value: cur ? '0' : '1' })
@@ -7025,6 +7042,15 @@ function adminOps() {
         </div>
         <div style="font-size:10.5px;color:#6b7280">ผังปัจจุบันวันแรก 27 นัด วันที่สอง 18 นัด · ม.ต้นไม่มีนัดชิงที่ 3 ผู้แพ้ M18/M19 ได้อันดับ 3 ร่วม และ M20 เป็นรอบชิงชนะเลิศ</div>
         <button data-act="saveAutoTime" style="margin-top:4px;width:100%;padding:10px;border-radius:10px;border:none;background:#22c55e;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">จัดตารางอัตโนมัติ 2 วัน</button>
+      </div>
+    `)}
+    ${box(`
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+        <div>
+          <div style="font-weight:700;font-size:14px">ตัดนัดชิงที่ 3 ม.ปลาย (ให้อันดับ 3 ร่วม)</div>
+          <div style="font-size:11px;color:#6b7280;margin-top:2px">เมื่อเปิด ระบบจะไม่ใช้ผลนัด M24 (ชิงที่ 3) มาคำนวณอันดับ 3 อีกต่อไป แต่จะให้ทีมที่แพ้รองฯ ทั้ง 2 คู่ (M22/M23) เป็น "อันดับ 3 ร่วม" ทั้งคู่ทันที ใช้ตอนสนามไม่พอ/หมดเวลาแข่งไม่ได้เล่นนัดชิงที่ 3 จริง</div>
+        </div>
+        <button data-act="toggleJointThirdHS" style="flex-shrink:0;font-size:11px;padding:6px 12px;border-radius:999px;border:none;font-weight:700;cursor:pointer;background:${cfg('JOINT_THIRD_HS', '0') === '1' ? '#dcfce7' : '#f3f4f6'};color:${cfg('JOINT_THIRD_HS', '0') === '1' ? '#16a34a' : '#6b7280'}">${cfg('JOINT_THIRD_HS', '0') === '1' ? 'เปิดอยู่' : 'ปิดอยู่'}</button>
       </div>
     `)}
     ${box(`
