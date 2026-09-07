@@ -33,7 +33,7 @@ import { openTimerModal } from './timer-overlay.js'
 import { _openRandomPickerModal, renderClassDetail, openClassPromptGenModal } from './teacher-views-classes.js'
 import { showToast, showQuizCloseChoice } from './ui.js'
 import { uploadAssignmentFile } from './storage.js'
-import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek, getMainContentRef, setMainContentRef } from './teacher-views-utils.js'
+import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek, openFullScreenGridOverlay } from './teacher-views-utils.js'
 import { supabase } from './supabase.js'
 import { publishGradebookUpdate } from './gradebook-sync.js'
 import { evalFormula, assignBonusVars } from './teacher-score-columns.js'
@@ -1930,30 +1930,23 @@ export async function renderSmartClassroom(teacher, classId) {
     wrap.querySelectorAll('[data-mobile-ref-tab]').forEach(btn => btn.addEventListener('click', () => _openRefTab(btn.dataset.mobileRefTab)))
   }
 
-  // ตาราง "คะแนน"/"เช็คชื่อ" ทั้งห้อง (async) ต่างจากแท็บอื่นที่คืน string ธรรมดา — ฝัง
-  // renderGradesGrid/renderAttendanceGrid ตรงๆ ผ่าน setMainContentRef (pattern เดียวกับ
-  // js/teacher-views-classes.js:1536-1557 ที่ฝังในแท็บหน้ารายละเอียดห้องเรียนอยู่แล้ว) เพื่อให้
-  // จัดการคะแนน/เช็คชื่อได้ครบทุกอย่างเหมือนหน้าข้างนอกทุกประการ ไม่ใช่แค่มุมมองอ่านอย่างเดียว
+  // ตาราง "คะแนน"/"เช็คชื่อ" ทั้งห้อง เปิดเป็นป๊อปอัพเต็มหน้าจอลอยทับแทนฝังขยายในแท็บ (ตารางกว้าง
+  // มาก ฝังในแท็บแคบๆ ใช้งานลำบาก) — ใช้ openFullScreenGridOverlay ตัวกลางร่วมกับ
+  // js/teacher-views-classes.js ที่ฝังแบบเดียวกันในหน้ารายละเอียดห้องเรียน เพื่อให้จัดการ
+  // คะแนน/เช็คชื่อได้ครบทุกอย่างเหมือนหน้าข้างนอกทุกประการ ไม่ใช่แค่มุมมองอ่านอย่างเดียว
   async function _loadEmbeddedFullView(tabKey, box) {
-    box.innerHTML = `<div class="flex justify-center py-12 text-gray-300">
-      <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
-        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-      </svg>
+    const label = tabKey === 'grades' ? 'คะแนน' : 'เช็คชื่อ'
+    box.innerHTML = `<div class="flex flex-col items-center justify-center py-12 gap-3">
+      <button id="sc-reopen-overlay" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">เปิดหน้าต่าง${label}อีกครั้ง</button>
     </div>`
-    const _savedMain = getMainContentRef()
-    setMainContentRef(box)
+    box.querySelector('#sc-reopen-overlay')?.addEventListener('click', () => _openRefTab(tabKey))
     try {
-      if (tabKey === 'grades') await renderGradesGrid(teacher, cls)
-      else await renderAttendanceGrid(teacher, cls)
+      await openFullScreenGridOverlay(tabKey === 'grades' ? renderGradesGrid : renderAttendanceGrid, teacher, cls)
     } catch (err) {
       console.error(err)
-      box.innerHTML = `<div class="p-6 text-red-400 text-sm text-center">โหลดข้อมูลไม่สำเร็จ</div>`
-    } finally {
-      setMainContentRef(_savedMain)
-      setActiveNav('my-classes')
-      setTitle('Smart Classroom')
     }
+    setActiveNav('my-classes')
+    setTitle('Smart Classroom')
   }
 
   async function _openRefTab(tabKey) {

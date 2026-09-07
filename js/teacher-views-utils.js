@@ -44,6 +44,52 @@ export function setContent(html) {
 export function getMainContentRef() { return _realMainContent }
 export function setMainContentRef(el) { _realMainContent = el }
 
+// เปิดฟังก์ชัน render ที่ปกติทับทั้งหน้า (เช่น renderAttendanceGrid/renderGradesGrid) ให้แสดงใน
+// ป๊อปอัพเต็มหน้าจอลอยทับแทนการฝังขยายอยู่ในหน้าเดิม — ไม่ต้องแก้ renderFn เอง redirect
+// setMainContentRef เข้า container ในป๊อปอัพชั่วคราว และครอบ window._backToClasses ไว้ด้วย เพราะ
+// renderAttendanceGrid/renderGradesGrid มีปุ่ม "← กลับ" ในตัวเรียกชื่อนี้อยู่แล้ว (ถ้าไม่ครอบไว้
+// กดแล้วจะเด้งไปหน้าอื่นจริงข้างใต้ป๊อปอัพ แทนที่จะแค่ปิดป๊อปอัพ)
+export async function openFullScreenGridOverlay(renderFn, ...args) {
+  document.getElementById('fsg-overlay')?.remove()
+  document.getElementById('fsg-close-btn')?.remove()
+  const overlay = document.createElement('div')
+  overlay.id = 'fsg-overlay'
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:200;background:#f9fafb;overflow-y:auto;'
+  overlay.innerHTML = `<div class="flex justify-center py-16 text-gray-300">
+    <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
+  </div>`
+  document.body.appendChild(overlay)
+
+  const closeBtn = document.createElement('button')
+  closeBtn.id = 'fsg-close-btn'
+  closeBtn.textContent = '✕'
+  closeBtn.title = 'ปิด'
+  closeBtn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:201;width:36px;height:36px;border-radius:9999px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:16px;color:#6b7280;cursor:pointer;'
+  document.body.appendChild(closeBtn)
+
+  const _savedMain = _realMainContent
+  const _savedBack = window._backToClasses
+  const close = () => {
+    overlay.remove()
+    closeBtn.remove()
+    _realMainContent = _savedMain
+    window._backToClasses = _savedBack
+  }
+  window._backToClasses = close
+  closeBtn.addEventListener('click', close)
+
+  _realMainContent = overlay
+  try {
+    await renderFn(...args)
+  } catch (err) {
+    close()
+    throw err
+  }
+}
+
 export const READING_GRADES = [
   { label: 'ดีเยี่ยม', min: 70, cls: 'text-emerald-700 bg-emerald-50' },
   { label: 'ดี',       min: 60, cls: 'text-blue-700 bg-blue-50' },

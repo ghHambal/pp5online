@@ -45,7 +45,7 @@ import {
   _DAYS_TH_SHORT, _DAYS_TH_FULL,
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
   _resolveGeminiKey, _transparentEdgeDarkLogo,
-  getMainContentRef, setMainContentRef, _generateSessions,
+  getMainContentRef, setMainContentRef, openFullScreenGridOverlay, _generateSessions,
 } from './teacher-views-utils.js'
 
 const EXAM_DOC_PENDING_CLASS_KEY = 'pp5_exam_docs_pending_class_id'
@@ -1527,24 +1527,39 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
       })
       const currentBox = document.getElementById('cd-tab-content')
       if (!currentBox) return
+
+      // เช็คชื่อ/คะแนน เปิดเป็นป๊อปอัพเต็มหน้าจอลอยทับแทนฝังขยายในหน้าเดิม (ผู้ใช้ขอ เพราะ
+      // ตารางเช็คชื่อ/คะแนนกว้างมาก ฝังอยู่ในแท็บแคบๆ ใช้งานลำบาก) — "จัดการนักเรียน" ยังฝัง
+      // อยู่ในหน้าเดิมเหมือนเดิม เพราะไม่ใช่ตารางกว้าง
+      if (tabId === 'attendance' || tabId === 'grades') {
+        const label = tabId === 'attendance' ? 'เช็คชื่อ' : 'คะแนน'
+        currentBox.innerHTML = `<div class="flex flex-col items-center justify-center py-12 gap-3">
+          <button id="cd-reopen-overlay" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">เปิดหน้าต่าง${label}อีกครั้ง</button>
+        </div>`
+        currentBox.querySelector('#cd-reopen-overlay')?.addEventListener('click', () => loadTab(tabId))
+        try {
+          await openFullScreenGridOverlay(tabId === 'attendance' ? renderAttendanceGrid : renderGradesGrid, teacher, cls)
+        } catch (err) {
+          console.error(err)
+        }
+        setActiveNav('my-classes')
+        setTitle('ห้องเรียน')
+        return
+      }
+
       currentBox.innerHTML = `<div class="flex justify-center py-12 text-gray-400">
         <svg class="animate-spin h-5 w-5 mr-2 text-emerald-400" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
         </svg> กำลังโหลด...
       </div>`
-      // redirect setContent → cd-tab-content ชั่วคราว
-      // เพื่อให้ _openStudentManager / renderAttendanceGrid / renderGradesGrid
-      // เขียนลง tab area แทนที่จะทับ header + tabs ทั้งหน้า
+      // redirect setContent → cd-tab-content ชั่วคราว เพื่อให้ _openStudentManager เขียนลง tab
+      // area แทนที่จะทับ header + tabs ทั้งหน้า
       const _savedMain = getMainContentRef()
       setMainContentRef(currentBox)
       try {
         if (tabId === 'students') {
           await window._openStudentManager(classId)
-        } else if (tabId === 'attendance') {
-          await renderAttendanceGrid(teacher, cls)
-        } else if (tabId === 'grades') {
-          await renderGradesGrid(teacher, cls)
         }
       } catch (err) {
         console.error(err)
