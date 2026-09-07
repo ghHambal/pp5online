@@ -381,11 +381,11 @@ export async function renderScoreColumns(teacher, classId, className, classData 
         ${renderTable(derived)}
       </div>
 
-      <!-- Override columns (ปรับคะแนนกลางภาค) -->
+      <!-- Override columns (ปรับคะแนน — เชื่อมกับคอลัมน์หลักไหนก็ได้ ไม่ได้จำกัดแค่กลางภาค) -->
       <div class="bg-white rounded-2xl border border-teal-100 shadow-sm overflow-hidden mb-4">
         <div class="flex items-center justify-between px-5 py-3 border-b border-teal-50 bg-teal-50/50">
           <div class="flex items-center gap-2">
-            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">🔄 คอลัมน์ปรับคะแนนกลางภาค</span>
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-700">🔄 คอลัมน์ปรับคะแนน</span>
             <span class="text-xs text-gray-400">ไม่นับใน 100 · นักเรียนไม่เห็น · ไม่ลงเอกสาร ปพ.5</span>
           </div>
           <button onclick="window._addOverrideCol()" class="text-xs text-teal-600 hover:text-teal-800 font-medium">＋ เพิ่ม</button>
@@ -447,7 +447,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
           </div>
           <!-- Link column section (shown only for override) -->
           <div id="sc-link-wrap" class="col-span-2 hidden">
-            <label class="block text-xs font-medium text-gray-600 mb-1">เชื่อมกับคอลัมน์กลางภาคหลัก <span class="text-red-400">*</span></label>
+            <label class="block text-xs font-medium text-gray-600 mb-1">เชื่อมกับคอลัมน์หลัก <span class="text-red-400">*</span></label>
             <select id="sc-link-col" class="${SELECT_CLS}">
               <option value="">— เลือกคอลัมน์ —</option>
             </select>
@@ -557,9 +557,9 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       }
       if (isOverride) {
         const linkSelect = document.getElementById('sc-link-col')
-        const midtermCols = regular.filter(c => c.assignment_type === 'กลางภาค' || c.assignment_type === 'midterm')
+        // เชื่อมกับคอลัมน์หลักได้ทุกหมวด (ระหว่างเรียน/กลางภาค/ปลายภาค) ไม่จำกัดแค่กลางภาคแล้ว
         linkSelect.innerHTML = '<option value="">— เลือกคอลัมน์ —</option>' +
-          midtermCols.map(c => `<option value="${c.id}">${c.assignment_name} (เต็ม ${c.max_score ?? '—'})</option>`).join('')
+          regular.map(c => `<option value="${c.id}">${c.assignment_name} (${c.assignment_type ?? '—'} · เต็ม ${c.max_score ?? '—'})</option>`).join('')
         linkSelect.value = ''
         document.getElementById('sc-override-mode').value = 'max'
         _updateOverrideModeHint()
@@ -571,7 +571,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
     window._addScoreCol = (type) => _openForm('regular', `เพิ่มคอลัมน์หลัก — ${type}`, type)
     window._addBonusCol = ()     => _openForm('bonus',   'เพิ่มคอลัมน์พิเศษ (Bonus)')
     window._addDerivedCol = ()   => _openForm('derived', 'เพิ่มคอลัมน์อ้างอิงสูตร')
-    window._addOverrideCol = () => _openForm('override', 'เพิ่มคอลัมน์ปรับคะแนนกลางภาค')
+    window._addOverrideCol = () => _openForm('override', 'เพิ่มคอลัมน์ปรับคะแนน')
 
     document.getElementById('sc-link-col')?.addEventListener('change', e => {
       const linkedId = Number(e.target.value)
@@ -682,7 +682,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       if (!name) { showToast('กรุณากรอกชื่อรายการ', 'warning'); return }
       if (ctype === 'derived' && !max) { showToast('คอลัมน์อ้างอิงสูตรต้องระบุคะแนนเต็ม', 'warning'); return }
       if (ctype === 'derived' && !formula) { showToast('กรุณากรอกสูตรคำนวณ', 'warning'); return }
-      if (ctype === 'override' && !linkColumnId) { showToast('กรุณาเลือกคอลัมน์กลางภาคที่จะเชื่อม', 'warning'); return }
+      if (ctype === 'override' && !linkColumnId) { showToast('กรุณาเลือกคอลัมน์ที่จะเชื่อม', 'warning'); return }
 
       // Build formula_refs from bonusWithVars
       const formulaRefs = ctype === 'derived'

@@ -2948,7 +2948,7 @@ export async function reviewExamRequest(id, { status, teacher_comment }) {
   if (error) throw error
 }
 
-// ใช้ตอนคอลัมน์ "ปรับคะแนนกลางภาค" (override) มีค่าใหม่ — เรียกร่วมกันทั้งหน้ากรอกคะแนนกริด
+// ใช้ตอนคอลัมน์ "ปรับคะแนน" (override — เชื่อมกับคอลัมน์หลักไหนก็ได้ ไม่จำกัดแค่กลางภาค) มีค่าใหม่ — เรียกร่วมกันทั้งหน้ากรอกคะแนนกริด
 // (teacher-views-grades.js: _applyOverrideIfNeeded) และหน้าตรวจคำร้องสอบซ่อม/แก้ (updateExamResult
 // ด้านล่าง) กันตรรกะสองจุดเพี้ยนไปคนละทาง — รองรับ 2 โหมด:
 //   'max' (ค่าเริ่มต้น) — เขียนทับคอลัมน์หลักเฉพาะตอนคะแนนใหม่สูงกว่าเท่านั้น (ตรรกะเดิม)
@@ -3004,7 +3004,7 @@ export async function updateExamResult(id, { exam_attended, exam_score, studentI
     }, { onConflict: 'student_id,assignment_id' })
     if (scoreError) throw scoreError
 
-    // คอลัมน์ "ปรับคะแนนกลางภาค" เป็นคอลัมน์พักคะแนนที่เชื่อมกับคอลัมน์หลัก
+    // คอลัมน์ "ปรับคะแนน" เป็นคอลัมน์พักคะแนนที่เชื่อมกับคอลัมน์หลัก
     if (selectedColumn?.column_type === 'override' && selectedColumn.link_column_id) {
       const { data: linkedCol } = await supabase
         .from('class_score_columns').select('max_score').eq('id', selectedColumn.link_column_id).maybeSingle()

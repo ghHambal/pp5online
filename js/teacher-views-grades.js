@@ -929,7 +929,7 @@ export async function renderGradesGrid(teacher, classData) {
           </div>
           <div>
             <div class="flex items-center justify-between mb-2">
-              <h4 class="font-semibold text-teal-700 text-sm">🔄 ปรับคะแนนกลางภาค <span class="font-normal text-gray-400">(${overrideCols.length} คอลัมน์)</span></h4>
+              <h4 class="font-semibold text-teal-700 text-sm">🔄 ปรับคะแนน <span class="font-normal text-gray-400">(${overrideCols.length} คอลัมน์)</span></h4>
             </div>
             <p class="text-[11px] text-gray-400 mb-1.5">ไม่นับใน 100 · นักเรียนไม่เห็น · ไม่ลงเอกสาร ปพ.5</p>
             <div id="mcm-override-list" class="space-y-1.5">${overrideCols.map(overrideColRow).join('')}</div>
@@ -1147,7 +1147,7 @@ export async function renderGradesGrid(teacher, classData) {
             const colId = parseInt(btn.dataset.colid)
             const col = overrideCols.find(c => c.id === colId)
             _mcmConfirm(
-              `ลบคอลัมน์ปรับคะแนน <span class="font-semibold">"${col?.assignment_name||'คอลัมน์นี้'}"</span>?<br/><span class="text-xs text-red-500">คะแนนที่บันทึกไว้จะถูกลบด้วย (คะแนนในคอลัมน์กลางภาคหลักที่เคยปรับไปแล้วจะไม่ถูกย้อนกลับ)</span>`,
+              `ลบคอลัมน์ปรับคะแนน <span class="font-semibold">"${col?.assignment_name||'คอลัมน์นี้'}"</span>?<br/><span class="text-xs text-red-500">คะแนนที่บันทึกไว้จะถูกลบด้วย (คะแนนในคอลัมน์หลักที่เคยปรับไปแล้วจะไม่ถูกย้อนกลับ)</span>`,
               async () => {
                 try {
                   await deleteScoreColumn(colId)
@@ -1168,25 +1168,32 @@ export async function renderGradesGrid(teacher, classData) {
       // ── Add override column ──
       modal.querySelector('#mcm-add-override')?.addEventListener('click', () => {
         document.getElementById('quick-add-override-mcm')?.remove()
-        const midtermCols = regularCols.filter(c => c.assignment_type === 'กลางภาค' || c.assignment_type === 'midterm')
+        // เชื่อมกับคอลัมน์หลักได้ทุกหมวด (ระหว่างเรียน/กลางภาค/ปลายภาค) ไม่จำกัดแค่กลางภาคแล้ว
+        const linkableCols = regularCols
         const pop = document.createElement('div')
         pop.id = 'quick-add-override-mcm'
         pop.className = 'fixed inset-0 z-[700] flex items-center justify-center bg-black/40 p-4'
         pop.innerHTML = `
           <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xs p-5 space-y-3">
-            <h3 class="font-bold text-teal-700">🔄 เพิ่มคอลัมน์ปรับคะแนนกลางภาค</h3>
+            <h3 class="font-bold text-teal-700">🔄 เพิ่มคอลัมน์ปรับคะแนน</h3>
             <div>
               <label class="text-xs font-medium text-gray-600 mb-1 block">ชื่อคอลัมน์ <span class="text-red-400">*</span></label>
               <input id="qom-name" type="text" placeholder="เช่น คะแนนสอบปรับ"
                 class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-200"/>
             </div>
             <div>
-              <label class="text-xs font-medium text-gray-600 mb-1 block">เชื่อมกับคอลัมน์กลางภาคหลัก <span class="text-red-400">*</span></label>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">เชื่อมกับคอลัมน์หลัก <span class="text-red-400">*</span></label>
               <select id="qom-link" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-200">
                 <option value="">— เลือกคอลัมน์ —</option>
-                ${midtermCols.map(c => `<option value="${c.id}">${_htmlEsc(c.assignment_name)} (เต็ม ${c.max_score ?? '—'})</option>`).join('')}
+                ${linkableCols.map(c => `<option value="${c.id}">${_htmlEsc(c.assignment_name)} (${_htmlEsc(c.assignment_type ?? '—')} · เต็ม ${c.max_score ?? '—'})</option>`).join('')}
               </select>
-              <p class="text-[11px] text-gray-400 mt-1">ถ้าคะแนนคอลัมน์นี้สูงกว่าคอลัมน์ที่เลือก ระบบจะเขียนทับคะแนนจริงในคอลัมน์หลักให้อัตโนมัติทันที</p>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-gray-600 mb-1 block">วิธีปรับคะแนน</label>
+              <select id="qom-mode" class="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-teal-200">
+                <option value="max">ใช้คะแนนที่มากกว่า (เขียนทับเฉพาะตอนคะแนนใหม่สูงกว่า)</option>
+                <option value="add">บวกเพิ่มจากคะแนนตั้งต้น (คะแนนใหม่ = คะแนนตั้งต้น + คอลัมน์นี้เสมอ)</option>
+              </select>
             </div>
             <div class="flex gap-3 pt-1">
               <button id="qom-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
@@ -1199,15 +1206,16 @@ export async function renderGradesGrid(teacher, classData) {
         pop.querySelector('#qom-save').addEventListener('click', async () => {
           const name = pop.querySelector('#qom-name').value.trim()
           const linkId = Number(pop.querySelector('#qom-link').value) || null
+          const mode = pop.querySelector('#qom-mode').value === 'add' ? 'add' : 'max'
           if (!name) { showToast('กรุณากรอกชื่อคอลัมน์', 'warning'); return }
-          if (!linkId) { showToast('กรุณาเลือกคอลัมน์กลางภาคที่จะเชื่อม', 'warning'); return }
-          const linked = midtermCols.find(c => c.id === linkId)
+          if (!linkId) { showToast('กรุณาเลือกคอลัมน์ที่จะเชื่อม', 'warning'); return }
+          const linked = linkableCols.find(c => c.id === linkId)
           const btn = pop.querySelector('#qom-save')
           btn.disabled = true; btn.textContent = '⏳'
           try {
             await createScoreColumn({ class_id: classData.id, assignment_name: name,
               assignment_type: 'คะแนนพิเศษ', sheet_column: '', max_score: linked?.max_score ?? null,
-              column_type: 'override', link_column_id: linkId })
+              column_type: 'override', link_column_id: linkId, override_mode: mode })
             pop.remove()
             modal.remove()
             renderGradesGrid(teacher, classData)
@@ -1457,7 +1465,7 @@ export async function renderGradesGrid(teacher, classData) {
           <th colspan="${finalCols.length+1}" class="${thBase} bg-purple-600 text-white font-semibold py-1.5">
             📙 ปลายภาค${finMax>0?' (เต็ม '+finMax+')':''}</th>
           ${derivedCols.length ? `<th colspan="${derivedCols.length}" class="${thBase} bg-indigo-600 text-white font-semibold py-1.5">🧮 อ้างอิงสูตร</th>` : ''}
-          ${overrideCols.length ? `<th colspan="${overrideCols.length}" class="${thBase} bg-teal-600 text-white font-semibold py-1.5">🔄 ปรับคะแนนกลางภาค</th>` : ''}
+          ${overrideCols.length ? `<th colspan="${overrideCols.length}" class="${thBase} bg-teal-600 text-white font-semibold py-1.5">🔄 ปรับคะแนน</th>` : ''}
           ${showBonusCols ? `<th colspan="${bonusCols.length+1}" class="${thBase} bg-amber-500 text-white font-semibold py-1.5">⭐ คะแนนเก็บ/พิเศษ</th>` : ''}
           <th class="${thBase} bg-amber-50 font-semibold text-amber-700 text-xs" style="min-width:58px" rowspan="3">รวม<div class="text-[9px] font-normal text-amber-400">/${midMax+finMax+(derivedCols.reduce((s,c)=>s+(parseFloat(c.max_score)||0),0))||'?'}</div></th>
           <th class="${thBase} bg-purple-50 font-semibold text-purple-700 text-xs" style="min-width:50px" rowspan="3">เกรด</th>
@@ -1594,7 +1602,7 @@ export async function renderGradesGrid(teacher, classData) {
         <thead>${head}</thead><tbody>${body}</tbody></table>`
       const tbl = wrap.querySelector('table')
 
-      // ── คอลัมน์ปรับคะแนนกลางภาค: เทียบ/บวกกับคอลัมน์ที่เชื่อมไว้ (link_column_id) ตามโหมด
+      // ── คอลัมน์ปรับคะแนน: เทียบ/บวกกับคอลัมน์ที่เชื่อมไว้ (link_column_id) ตามโหมด
       // override_mode ของคอลัมน์นี้ — ใช้ applyScoreOverride ตัวกลางร่วมกับหน้าตรวจคำร้องสอบซ่อม/แก้ ──
       const _applyOverrideIfNeeded = async (sid, overrideColId) => {
         const col = colById[overrideColId]
@@ -1627,7 +1635,7 @@ export async function renderGradesGrid(teacher, classData) {
         if (tEl) tEl.textContent = total > 0 ? total : '—'
         if (gEl) gEl.textContent = fg || (grade > 0 ? grade.toFixed(1) : '0')
         if (kEl) { kEl.textContent = khuna.label; kEl.className = `border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${khuna.cls}` }
-        showToast(`ปรับคะแนนกลางภาคอัตโนมัติ → ${result.score} (จากคอลัมน์ปรับคะแนน) ✅`, 'success')
+        showToast(`ปรับคะแนนอัตโนมัติ → ${result.score} (จากคอลัมน์ปรับคะแนน) ✅`, 'success')
       }
 
       // ── Score input + force grade (single listener on table, not wrap) ──

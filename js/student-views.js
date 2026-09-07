@@ -19,7 +19,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.670'
+import { APP_VERSION } from './version.js?v=10.22.671'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -2312,7 +2312,7 @@ export async function renderExamRequestForm(student, classId) {
       : Promise.resolve([]),
     getSchoolPeriods().catch(()=>[]),
   ])
-  // คอลัมน์ override (ปรับคะแนนกลางภาค) เป็น helper ภายในของครู ไม่ให้นักเรียนเห็น
+  // คอลัมน์ override (ปรับคะแนน) เป็น helper ภายในของครู ไม่ให้นักเรียนเห็น
   const columns = columnsRaw.filter(c => c.column_type !== 'override')
 
   // Build schedule lookup: { 'day_period': entry }, including multi-period spans.
