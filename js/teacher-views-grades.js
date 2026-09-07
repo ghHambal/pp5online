@@ -8,6 +8,7 @@ import {
   getReadingScoreColumns, getReadingScores,
   getTeacherExamRequests, updateExamResult, reviewExamRequest,
   updateClassStudentSpecialResult, exportClassGradesToGradeOnline,
+  applyScoreOverride,
 } from './api.js'
 import { getRegradeConfig, submitClassGradesToRegrade } from './regrade-api.js'
 import { showToast } from './ui.js'
@@ -1593,25 +1594,26 @@ export async function renderGradesGrid(teacher, classData) {
         <thead>${head}</thead><tbody>${body}</tbody></table>`
       const tbl = wrap.querySelector('table')
 
-      // ── คอลัมน์ปรับคะแนนกลางภาค: เทียบกับคอลัมน์ที่เชื่อมไว้ (link_column_id)
-      // ถ้าคะแนนคอลัมน์นี้สูงกว่า ให้เขียนทับคะแนนจริงในคอลัมน์หลักทันที (one-directional) ──
+      // ── คอลัมน์ปรับคะแนนกลางภาค: เทียบ/บวกกับคอลัมน์ที่เชื่อมไว้ (link_column_id) ตามโหมด
+      // override_mode ของคอลัมน์นี้ — ใช้ applyScoreOverride ตัวกลางร่วมกับหน้าตรวจคำร้องสอบซ่อม/แก้ ──
       const _applyOverrideIfNeeded = async (sid, overrideColId) => {
         const col = colById[overrideColId]
         if (!col || col.column_type !== 'override' || !col.link_column_id) return
         const overrideScore = scoreMap[sid]?.[overrideColId]?.final
         if (overrideScore == null) return
         const mainColId = col.link_column_id
-        const mainScore = scoreMap[sid]?.[mainColId]?.final
-        if (mainScore != null && mainScore >= overrideScore) return
-
         const mainMax = colById[mainColId]?.max_score
-        const result = await saveStudentScore(classData.id, sid, mainColId, overrideScore, { max: typeof mainMax === 'number' ? mainMax : null })
-        if (!result) return
-        scoreMap[sid][mainColId] = { orig: result.history[0]?.d ?? result.final, retake: null, final: result.final, history: result.history }
+
+        const result = await applyScoreOverride({
+          studentId: sid, mainColumnId: mainColId, overrideValue: overrideScore,
+          overrideMode: col.override_mode, mainMaxScore: typeof mainMax === 'number' ? mainMax : null,
+        })
+        if (!result.applied) return
+        scoreMap[sid][mainColId] = { orig: result.history[0]?.d ?? result.score, retake: null, final: result.score, history: result.history }
 
         const mainInp = wrap.querySelector(`.grade-input[data-sid="${sid}"][data-col="${mainColId}"]`)
         if (mainInp) {
-          mainInp.value = result.final !== null ? String(result.final) : ''
+          mainInp.value = result.score !== null ? String(result.score) : ''
           mainInp.style.boxShadow = '0 0 0 2px #059669,0 0 10px rgba(5,150,105,.45)'
           mainInp.style.background = '#f0fdf4'
           setTimeout(() => { mainInp.style.boxShadow = ''; mainInp.style.background = '' }, 900)
@@ -1625,7 +1627,7 @@ export async function renderGradesGrid(teacher, classData) {
         if (tEl) tEl.textContent = total > 0 ? total : '—'
         if (gEl) gEl.textContent = fg || (grade > 0 ? grade.toFixed(1) : '0')
         if (kEl) { kEl.textContent = khuna.label; kEl.className = `border border-emerald-100 text-center bg-emerald-50 text-xs font-medium ${khuna.cls}` }
-        showToast(`ปรับคะแนนกลางภาคอัตโนมัติ → ${result.final} (จากคอลัมน์ปรับคะแนน) ✅`, 'success')
+        showToast(`ปรับคะแนนกลางภาคอัตโนมัติ → ${result.score} (จากคอลัมน์ปรับคะแนน) ✅`, 'success')
       }
 
       // ── Score input + force grade (single listener on table, not wrap) ──

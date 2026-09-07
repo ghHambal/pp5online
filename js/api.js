@@ -1462,7 +1462,7 @@ export async function savePrayerCell(teacherId, studentId, room, checkDate, stat
 export async function getScoreColumns(classId) {
   const { data, error } = await supabase
     .from('class_score_columns')
-    .select('id, assignment_name, assignment_type, sheet_column, max_score, column_type, formula, formula_refs, bonus_formula, bonus_formula_refs, sort_order, link_column_id, auto_attendance_sync')
+    .select('id, assignment_name, assignment_type, sheet_column, max_score, column_type, formula, formula_refs, bonus_formula, bonus_formula_refs, sort_order, link_column_id, override_mode, auto_attendance_sync')
     .eq('class_id', classId)
     .order('sort_order', { ascending: true, nullsFirst: false })
     .order('id', { ascending: true })
@@ -2948,12 +2948,52 @@ export async function reviewExamRequest(id, { status, teacher_comment }) {
   if (error) throw error
 }
 
+// ใช้ตอนคอลัมน์ "ปรับคะแนนกลางภาค" (override) มีค่าใหม่ — เรียกร่วมกันทั้งหน้ากรอกคะแนนกริด
+// (teacher-views-grades.js: _applyOverrideIfNeeded) และหน้าตรวจคำร้องสอบซ่อม/แก้ (updateExamResult
+// ด้านล่าง) กันตรรกะสองจุดเพี้ยนไปคนละทาง — รองรับ 2 โหมด:
+//   'max' (ค่าเริ่มต้น) — เขียนทับคอลัมน์หลักเฉพาะตอนคะแนนใหม่สูงกว่าเท่านั้น (ตรรกะเดิม)
+//   'add' — บวกเข้ากับ "คะแนนตั้งต้น" ของคอลัมน์หลัก (pre_override_base จำไว้ครั้งแรกที่ปรับ
+//   เท่านั้น ไม่แตะซ้ำอีก) เพื่อไม่ให้บวกซ้ำสะสมทุกครั้งที่ครูแก้ค่าคอลัมน์ปรับใหม่
+export async function applyScoreOverride({ studentId, mainColumnId, overrideValue, overrideMode, mainMaxScore }) {
+  const { data: mainRow, error: readErr } = await supabase
+    .from('student_scores')
+    .select('original_score, final_score, pre_override_base')
+    .eq('student_id', studentId).eq('assignment_id', mainColumnId)
+    .maybeSingle()
+  if (readErr) throw readErr
+  const currentMain = mainRow?.final_score ?? mainRow?.original_score ?? null
+  const value = Number(overrideValue)
+
+  if (overrideMode === 'add') {
+    const baseline = mainRow?.pre_override_base ?? currentMain ?? 0
+    let newScore = Number(baseline) + value
+    if (typeof mainMaxScore === 'number') newScore = Math.min(newScore, mainMaxScore)
+    newScore = Math.max(newScore, 0)
+    const history = [{ d: newScore, at: new Date().toISOString() }]
+    const { error } = await supabase.from('student_scores').upsert({
+      student_id: studentId, assignment_id: mainColumnId,
+      original_score: newScore, final_score: newScore, score_history: history, pre_override_base: baseline,
+    }, { onConflict: 'student_id,assignment_id' })
+    if (error) throw error
+    return { score: newScore, applied: true, history }
+  }
+
+  if (currentMain != null && Number(currentMain) >= value) return { score: currentMain, applied: false }
+  const history = [{ d: value, at: new Date().toISOString() }]
+  const { error } = await supabase.from('student_scores').upsert({
+    student_id: studentId, assignment_id: mainColumnId,
+    original_score: value, final_score: value, score_history: history,
+  }, { onConflict: 'student_id,assignment_id' })
+  if (error) throw error
+  return { score: value, applied: true, history }
+}
+
 export async function updateExamResult(id, { exam_attended, exam_score, studentId, assignmentId }) {
   let linkedColumnId = null
   if (exam_attended && exam_score != null && assignmentId && studentId) {
     const { data: selectedColumn, error: columnError } = await supabase
       .from('class_score_columns')
-      .select('id, column_type, link_column_id')
+      .select('id, column_type, link_column_id, override_mode')
       .eq('id', assignmentId)
       .maybeSingle()
     if (columnError) throw columnError
@@ -2964,27 +3004,16 @@ export async function updateExamResult(id, { exam_attended, exam_score, studentI
     }, { onConflict: 'student_id,assignment_id' })
     if (scoreError) throw scoreError
 
-    // คอลัมน์ “ปรับคะแนนกลางภาค” เป็นคอลัมน์พักคะแนนที่เชื่อมกับคอลัมน์หลัก
-    // ใช้กติกาเดียวกับหน้าคะแนน: เขียนทับคอลัมน์หลักเมื่อคะแนนใหม่สูงกว่าเท่านั้น
+    // คอลัมน์ "ปรับคะแนนกลางภาค" เป็นคอลัมน์พักคะแนนที่เชื่อมกับคอลัมน์หลัก
     if (selectedColumn?.column_type === 'override' && selectedColumn.link_column_id) {
-      const { data: linkedScore, error: linkedReadError } = await supabase
-        .from('student_scores')
-        .select('original_score, final_score')
-        .eq('student_id', studentId)
-        .eq('assignment_id', selectedColumn.link_column_id)
-        .maybeSingle()
-      if (linkedReadError) throw linkedReadError
-      const currentLinkedScore = linkedScore?.final_score ?? linkedScore?.original_score
-      if (currentLinkedScore == null || Number(currentLinkedScore) < Number(exam_score)) {
-        const { error: linkedWriteError } = await supabase.from('student_scores').upsert({
-          student_id: studentId,
-          assignment_id: selectedColumn.link_column_id,
-          original_score: exam_score,
-          final_score: exam_score,
-        }, { onConflict: 'student_id,assignment_id' })
-        if (linkedWriteError) throw linkedWriteError
-        linkedColumnId = selectedColumn.link_column_id
-      }
+      const { data: linkedCol } = await supabase
+        .from('class_score_columns').select('max_score').eq('id', selectedColumn.link_column_id).maybeSingle()
+      const overrideResult = await applyScoreOverride({
+        studentId, mainColumnId: selectedColumn.link_column_id,
+        overrideValue: exam_score, overrideMode: selectedColumn.override_mode,
+        mainMaxScore: linkedCol?.max_score,
+      })
+      if (overrideResult.applied) linkedColumnId = selectedColumn.link_column_id
     }
   }
   const { error } = await supabase.from('exam_requests')

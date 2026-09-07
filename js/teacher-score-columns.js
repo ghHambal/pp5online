@@ -390,9 +390,10 @@ export async function renderScoreColumns(teacher, classId, className, classData 
           </div>
           <button onclick="window._addOverrideCol()" class="text-xs text-teal-600 hover:text-teal-800 font-medium">＋ เพิ่ม</button>
         </div>
-        ${renderTable(override, c => c.link_column_id
+        ${renderTable(override, c => (c.link_column_id
           ? ` <span class="ml-1 text-[10px] text-teal-500">🔗 → ${window._scoreColCache?.[c.link_column_id]?.assignment_name ?? '—'}</span>`
-          : ` <span class="ml-1 text-[10px] text-red-400">⚠️ ยังไม่ได้เชื่อมคอลัมน์</span>`)}
+          : ` <span class="ml-1 text-[10px] text-red-400">⚠️ ยังไม่ได้เชื่อมคอลัมน์</span>`)
+          + (c.override_mode === 'add' ? ` <span class="ml-1 text-[10px] text-amber-500">➕ บวกเพิ่ม</span>` : ''))}
       </div>
 
       <!-- Bonus columns (toggle) -->
@@ -450,7 +451,12 @@ export async function renderScoreColumns(teacher, classId, className, classData 
             <select id="sc-link-col" class="${SELECT_CLS}">
               <option value="">— เลือกคอลัมน์ —</option>
             </select>
-            <p class="text-[11px] text-gray-400 mt-1">ถ้าคะแนนในคอลัมน์นี้สูงกว่าคอลัมน์ที่เลือก ระบบจะเขียนทับคะแนนจริงในคอลัมน์หลักให้อัตโนมัติทันที</p>
+            <label class="block text-xs font-medium text-gray-600 mb-1 mt-3">วิธีปรับคะแนน</label>
+            <select id="sc-override-mode" class="${SELECT_CLS}">
+              <option value="max">ใช้คะแนนที่มากกว่า (เขียนทับเฉพาะตอนคะแนนใหม่สูงกว่า)</option>
+              <option value="add">บวกเพิ่มจากคะแนนตั้งต้น (คะแนนใหม่ = คะแนนตั้งต้น + คอลัมน์นี้เสมอ)</option>
+            </select>
+            <p id="sc-override-mode-hint" class="text-[11px] text-gray-400 mt-1">ถ้าคะแนนในคอลัมน์นี้สูงกว่าคอลัมน์ที่เลือก ระบบจะเขียนทับคะแนนจริงในคอลัมน์หลักให้อัตโนมัติทันที</p>
           </div>
           <!-- Formula section (shown only for derived) -->
           <div id="sc-formula-section" class="col-span-2 hidden">
@@ -555,6 +561,8 @@ export async function renderScoreColumns(teacher, classId, className, classData 
         linkSelect.innerHTML = '<option value="">— เลือกคอลัมน์ —</option>' +
           midtermCols.map(c => `<option value="${c.id}">${c.assignment_name} (เต็ม ${c.max_score ?? '—'})</option>`).join('')
         linkSelect.value = ''
+        document.getElementById('sc-override-mode').value = 'max'
+        _updateOverrideModeHint()
       }
       document.getElementById('sc-form-wrap').classList.remove('hidden')
       document.getElementById('sc-name').focus()
@@ -571,6 +579,16 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       document.getElementById('sc-max').value = linked?.max_score ?? ''
     })
 
+    const _updateOverrideModeHint = () => {
+      const mode = document.getElementById('sc-override-mode')?.value
+      const hint = document.getElementById('sc-override-mode-hint')
+      if (!hint) return
+      hint.textContent = mode === 'add'
+        ? 'คะแนนคอลัมน์หลักใหม่ = คะแนนตั้งต้นของนักเรียนคนนั้น + คะแนนในคอลัมน์นี้เสมอ (ไม่บวกซ้ำสะสมตอนแก้ค่าซ้ำ)'
+        : 'ถ้าคะแนนในคอลัมน์นี้สูงกว่าคอลัมน์ที่เลือก ระบบจะเขียนทับคะแนนจริงในคอลัมน์หลักให้อัตโนมัติทันที'
+    }
+    document.getElementById('sc-override-mode')?.addEventListener('change', _updateOverrideModeHint)
+
     window._editScoreCol = (id) => {
       const c = window._scoreColCache?.[id]
       if (!c) return
@@ -586,6 +604,8 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       }
       if (ctype === 'override' && c.link_column_id) {
         document.getElementById('sc-link-col').value = String(c.link_column_id)
+        document.getElementById('sc-override-mode').value = c.override_mode === 'add' ? 'add' : 'max'
+        _updateOverrideModeHint()
       }
     }
 
@@ -657,6 +677,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
       const max    = maxVal ? (parseFloat(maxVal) || null) : null
       const formula = ctype === 'derived' ? (document.getElementById('sc-formula').value.trim() || null) : null
       const linkColumnId = ctype === 'override' ? (Number(document.getElementById('sc-link-col')?.value) || null) : null
+      const overrideMode = ctype === 'override' ? (document.getElementById('sc-override-mode')?.value === 'add' ? 'add' : 'max') : null
 
       if (!name) { showToast('กรุณากรอกชื่อรายการ', 'warning'); return }
       if (ctype === 'derived' && !max) { showToast('คอลัมน์อ้างอิงสูตรต้องระบุคะแนนเต็ม', 'warning'); return }
@@ -675,7 +696,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
           assignment_type: (ctype === 'bonus' || ctype === 'derived' || ctype === 'override') ? 'คะแนนพิเศษ' : type,
           sheet_column: col, max_score: max,
           column_type: ctype, formula, formula_refs: formulaRefs,
-          link_column_id: linkColumnId,
+          link_column_id: linkColumnId, override_mode: overrideMode,
         }
         if (id) await updateScoreColumn(Number(id), payload)
         else    await createScoreColumn({ ...payload, class_id: classId })
