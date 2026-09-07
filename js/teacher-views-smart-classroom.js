@@ -23,8 +23,9 @@ import {
 import { openScoreScanner } from './score-qr-scanner.js'
 import {
   openAttendanceScanSetup, _openLeaveRequestModal, _openLeaveQuotaModal,
-  _openAttendanceModalForSession,
+  _openAttendanceModalForSession, renderAttendanceGrid,
 } from './teacher-views-attendance.js'
+import { renderGradesGrid } from './teacher-views-grades.js'
 import { openQuizMonitor } from './teacher-views-quiz-monitor.js'
 import { openQuizAnalytics } from './teacher-views-quiz-analytics.js'
 import { openClassDashboard } from './teacher-views-dashboard.js'
@@ -32,7 +33,7 @@ import { openTimerModal } from './timer-overlay.js'
 import { _openRandomPickerModal, renderClassDetail, openClassPromptGenModal } from './teacher-views-classes.js'
 import { showToast, showQuizCloseChoice } from './ui.js'
 import { uploadAssignmentFile } from './storage.js'
-import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek } from './teacher-views-utils.js'
+import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek, getMainContentRef, setMainContentRef } from './teacher-views-utils.js'
 import { supabase } from './supabase.js'
 import { publishGradebookUpdate } from './gradebook-sync.js'
 import { evalFormula, assignBonusVars } from './teacher-score-columns.js'
@@ -984,6 +985,8 @@ export async function renderSmartClassroom(teacher, classId) {
     { key: 'syllabus',    icon: '📘', label: 'กำหนดการสอน',   mobileLabel: 'การสอน', desc: 'วางหัวข้อทั้งภาคเรียน' },
     { key: 'plans',       icon: '📝', label: 'แผนการสอน',      mobileLabel: 'แผน', desc: 'สร้างแผนหน้าเดียวรายครั้ง' },
     { key: 'assignments', icon: '📚', label: 'งานที่มอบหมาย', mobileLabel: 'งาน', desc: 'สั่งงานและติดตามการส่ง' },
+    { key: 'grades',      icon: '📊', label: 'คะแนน',          mobileLabel: 'คะแนน', desc: 'บันทึก/จัดการคะแนนทั้งห้อง' },
+    { key: 'attendance',  icon: '✅', label: 'เช็คชื่อ',        mobileLabel: 'เช็คชื่อ', desc: 'เช็คชื่อ/ใบลา/ประวัติทั้งห้อง' },
   ]
   const MOBILE_GROUPS = [
     { key: 'room', icon: '👥', label: 'ห้อง' },
@@ -1894,6 +1897,8 @@ export async function renderSmartClassroom(teacher, classId) {
       <button id="sc-mobile-more-dashboard" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">📈<br>Dashboard</button>
       <button id="sc-mobile-more-switch" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">🔀<br>สลับห้อง</button>
       <button id="sc-mobile-more-exam" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">📋<br>คิวสอบ</button>
+      <button id="sc-mobile-more-grades" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">📊<br>คะแนน</button>
+      <button id="sc-mobile-more-attendance" class="min-h-[76px] rounded-xl border border-gray-100 bg-white text-xs font-bold text-gray-700">✅<br>เช็คชื่อ</button>
     </div>
     <div id="sc-mobile-exam-preview">
       <p class="text-xs font-bold text-gray-600 mb-2">📋 คิวคำร้องสอบย้อนหลัง</p>
@@ -1907,6 +1912,8 @@ export async function renderSmartClassroom(teacher, classId) {
     document.getElementById('sc-mobile-more-dashboard')?.addEventListener('click', () => document.getElementById('sc-dashboard')?.click())
     document.getElementById('sc-mobile-more-switch')?.addEventListener('click', () => document.getElementById('sc-switch-class')?.click())
     document.getElementById('sc-mobile-more-exam')?.addEventListener('click', () => document.getElementById('sc-mobile-exam-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+    document.getElementById('sc-mobile-more-grades')?.addEventListener('click', () => _openRefTab('grades'))
+    document.getElementById('sc-mobile-more-attendance')?.addEventListener('click', () => _openRefTab('attendance'))
   }
 
   function _paintMobileGroupNav() {
@@ -1923,16 +1930,48 @@ export async function renderSmartClassroom(teacher, classId) {
     wrap.querySelectorAll('[data-mobile-ref-tab]').forEach(btn => btn.addEventListener('click', () => _openRefTab(btn.dataset.mobileRefTab)))
   }
 
-  function _openRefTab(tabKey) {
+  // ตาราง "คะแนน"/"เช็คชื่อ" ทั้งห้อง (async) ต่างจากแท็บอื่นที่คืน string ธรรมดา — ฝัง
+  // renderGradesGrid/renderAttendanceGrid ตรงๆ ผ่าน setMainContentRef (pattern เดียวกับ
+  // js/teacher-views-classes.js:1536-1557 ที่ฝังในแท็บหน้ารายละเอียดห้องเรียนอยู่แล้ว) เพื่อให้
+  // จัดการคะแนน/เช็คชื่อได้ครบทุกอย่างเหมือนหน้าข้างนอกทุกประการ ไม่ใช่แค่มุมมองอ่านอย่างเดียว
+  async function _loadEmbeddedFullView(tabKey, box) {
+    box.innerHTML = `<div class="flex justify-center py-12 text-gray-300">
+      <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
+        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+      </svg>
+    </div>`
+    const _savedMain = getMainContentRef()
+    setMainContentRef(box)
+    try {
+      if (tabKey === 'grades') await renderGradesGrid(teacher, cls)
+      else await renderAttendanceGrid(teacher, cls)
+    } catch (err) {
+      console.error(err)
+      box.innerHTML = `<div class="p-6 text-red-400 text-sm text-center">โหลดข้อมูลไม่สำเร็จ</div>`
+    } finally {
+      setMainContentRef(_savedMain)
+      setActiveNav('my-classes')
+      setTitle('Smart Classroom')
+    }
+  }
+
+  async function _openRefTab(tabKey) {
     if (!REF_TABS.some(t => t.key === tabKey)) return
     _refTab = tabKey
     _paintRefTabs()
-    document.getElementById('sc-reftab-body').innerHTML = _refTabBodyHTML(_refTab)
-    _wireRefTabBody()
     _paintMobileRefSubtabs()
     if (window.matchMedia('(max-width: 1023px)').matches) {
       document.getElementById('sc-reference-panel')?.classList.add('mobile-open')
     }
+    const box = document.getElementById('sc-reftab-body')
+    if (!box) return
+    if (tabKey === 'grades' || tabKey === 'attendance') {
+      await _loadEmbeddedFullView(tabKey, box)
+      return
+    }
+    box.innerHTML = _refTabBodyHTML(_refTab)
+    _wireRefTabBody()
   }
 
   function _setMobileGroup(groupKey) {

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.648'
+import { APP_VERSION } from './version.js?v=10.22.669'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -984,6 +984,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.669': [
+    '📊 Smart Classroom: เพิ่มแท็บ "คะแนน" และ "เช็คชื่อ" ทั้งห้อง จัดการได้ครบเหมือนหน้าปกตินอก Smart Classroom ทุกอย่าง (เพิ่ม/แก้คอลัมน์คะแนน, กรอกคะแนน, เช็คชื่อ, ใบลา, ประวัติ) — เดิมดูได้แค่ทีละคนผ่านป๊อปอัพนักเรียนเท่านั้น',
+  ],
   '10.22.668': [
     '📤 หน้าบันทึกคะแนน เพิ่มปุ่ม "ส่งคะแนนเข้า GradeOnline" คู่กับปุ่มส่งเข้าระบบแก้ค้างเก่า — เตรียมคะแนนรวม(เต็ม 100)+เกรดทั้งห้องพร้อมรหัสอ้างอิง ให้บุ๊กมาร์กใหม่ (gradeonline-bridge-push.js) ไปกรอกอัตโนมัติที่หน้า GradeOnline ของฝ่ายทะเบียน ใช้ฟรี 1 ห้อง/ครู สนับสนุนระดับ 2+ ไม่จำกัด',
   ],
