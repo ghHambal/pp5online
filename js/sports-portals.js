@@ -808,6 +808,25 @@ async function _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames,select
       const s=students.find(st=>Number(st.id)===Number(c.student_id)),photo=s?.image_url||s?.photo_url
       return `<div class="rounded-xl border border-gray-200 bg-gray-50 p-3 flex items-center gap-3 opacity-75">${photo?`<img src="${esc(photo)}" class="w-9 h-11 rounded-lg object-cover border bg-gray-100 grayscale">`:`<div class="w-9 h-11 rounded-lg bg-gray-200 text-gray-500 grid place-items-center font-bold">${esc((s?.full_name||'?').charAt(0))}</div>`}<div class="min-w-0 flex-1"><b class="text-sm text-gray-600 truncate block">${esc(s?.full_name||'(ไม่พบนักเรียน)')}</b><p class="text-[11px] text-gray-500">${esc(s?.student_code||'')} · ${esc(s?.main_room||'—')} · ${Number(c.amount).toLocaleString('th-TH')} บาท</p><p class="text-[10px] text-gray-400">รับเมื่อ ${new Date(c.paid_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})} โดย ${esc(c.collector_name||'—')}</p><p class="text-[10px] text-red-500">ยกเลิกเมื่อ ${new Date(c.cancelled_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})} โดย ${esc(c.canceller_name||'—')}</p></div><span class="text-xs font-bold text-gray-400 flex-shrink-0">ยกเลิกแล้ว</span></div>`
     }
+    const confirmCancelPayment=(studentName,amount)=>new Promise(resolve=>{
+      document.getElementById('advisor-shirt-pay-cancel-confirm')?.remove()
+      const m=document.createElement('div');m.id='advisor-shirt-pay-cancel-confirm';m.className='fixed inset-0 z-[400] bg-black/70 flex items-center justify-center p-6'
+      m.innerHTML=`<div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center border-4 border-red-500">
+        <div class="text-5xl mb-2">⚠️</div>
+        <h3 class="font-black text-red-600 text-lg">ยืนยันการยกเลิกรับชำระ</h3>
+        <p class="text-sm text-gray-700 mt-2">ยกเลิกรายการรับชำระค่าเสื้อของ<br><b class="text-gray-900">${esc(studentName)}</b> (${Number(amount||0).toLocaleString('th-TH')} บาท) ใช่หรือไม่?</p>
+        <p class="text-xs text-red-500 font-semibold mt-3 bg-red-50 border border-red-200 rounded-xl p-2">นักเรียนจะกลับไปอยู่กลุ่ม "ยังไม่ชำระ" ทันที ระบบจะเก็บประวัติการยกเลิกนี้ไว้ในแท็บ "ยกเลิก" ตรวจสอบย้อนหลังได้</p>
+        <div class="flex gap-2 mt-5">
+          <button id="advisor-shirt-pay-cancel-no" class="flex-1 py-3 rounded-2xl bg-gray-100 text-gray-700 font-bold text-sm">ไม่ยกเลิก</button>
+          <button id="advisor-shirt-pay-cancel-yes" class="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-bold text-sm">ยืนยันยกเลิก</button>
+        </div>
+      </div>`
+      document.body.appendChild(m)
+      const close=result=>{m.remove();resolve(result)}
+      m.querySelector('#advisor-shirt-pay-cancel-yes').onclick=()=>close(true)
+      m.querySelector('#advisor-shirt-pay-cancel-no').onclick=()=>close(false)
+      m.onclick=e=>{if(e.target===m)close(false)}
+    })
     const renderList=()=>{
       body.querySelectorAll('[data-shirt-pay-filter]').forEach(b=>{const active=b.dataset.shirtPayFilter===filter;b.className=`px-3 py-1.5 rounded-lg text-xs font-bold ${active?'bg-white text-violet-700 shadow':'text-gray-500'}`})
       const listEl=body.querySelector('#advisor-shirt-pay-list')
@@ -818,7 +837,8 @@ async function _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames,select
       const list=students.filter(s=>filter==='all'||(filter==='paid'?!!paidOf(s.id):!paidOf(s.id)))
       listEl.innerHTML=list.map(studentRow).join('')||'<p class="md:col-span-2 text-sm text-gray-400 text-center py-8">ไม่พบรายการ</p>'
       listEl.querySelectorAll('[data-shirt-pay-cancel]').forEach(b=>b.onclick=async()=>{
-        if(!confirm(`ยกเลิกรายการรับชำระค่าเสื้อของ ${b.dataset.studentName}? (ระบบจะเก็บประวัติไว้ในแท็บ "ยกเลิก" และให้รับชำระใหม่ได้)`))return
+        const amount=payments.find(p=>String(p.id)===String(b.dataset.shirtPayCancel))?.amount
+        if(!await confirmCancelPayment(b.dataset.studentName,amount))return
         const {data,error}=await supabase.rpc('cancel_religion_advisor_shirt_payment',{p_payment:b.dataset.shirtPayCancel})
         if(error||!data){toast(error?.message||'ยกเลิกไม่สำเร็จ','error');return}
         const cancelledPayment=payments.find(p=>String(p.id)===String(b.dataset.shirtPayCancel))
