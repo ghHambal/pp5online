@@ -155,6 +155,11 @@ export async function renderAttendanceGrid(teacher, classData) {
                    hover:bg-indigo-700 transition flex items-center gap-1">
             📊 <span class="hidden sm:inline">สถิติ</span>
           </button>
+          <button id="btn-att-check-all"
+            class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg font-medium
+                   hover:bg-emerald-700 transition flex items-center gap-1">
+            ✅ <span class="hidden sm:inline">เช็คทั้งหมด</span>
+          </button>
           <button id="btn-leave-quota"
             class="px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-lg font-semibold
                    hover:bg-amber-100 transition flex items-center gap-1">
@@ -278,6 +283,15 @@ export async function renderAttendanceGrid(teacher, classData) {
     // Stats button
     document.getElementById('btn-att-stats')?.addEventListener('click', () => {
       _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
+    })
+
+    // เช็คชื่อทั้งหมด — เลือกช่วงวันที่ + สถานะ แล้วเติมเฉพาะช่องที่ยังว่างอยู่
+    document.getElementById('btn-att-check-all')?.addEventListener('click', () => {
+      if (!sessions.length) { showToast('ห้องนี้ยังไม่มีคาบเรียนให้เช็คชื่อ', 'warning'); return }
+      _openBulkCheckAllModal({
+        students, sessions, attMap, holidaySet, saveClassId, saveSessN,
+        onDone: () => renderAttendanceGrid(teacher, classData),
+      })
     })
 
     const openLeaveQuotaModal = () => {
@@ -734,6 +748,141 @@ export function _openLeaveQuotaModal(classData, currentMax, currentMaxPerWeek, o
       showToast('บันทึกโควต้าไม่สำเร็จ: ' + (err.message ?? ''), 'error')
     }
   })
+}
+
+// เช็คชื่อทั้งหมด — เลือกช่วงวันที่ + สถานะ แล้วเติมเฉพาะช่องที่ยังว่างอยู่ (ไม่ทับช่องที่เช็คไว้แล้ว)
+function _openBulkCheckAllModal({ students, sessions, attMap, holidaySet, saveClassId, saveSessN, onDone }) {
+  document.getElementById('bulk-checkall-modal')?.remove()
+  const minDs = sessions[0].ds
+  const maxDs = sessions[sessions.length - 1].ds
+  let selectedStatus = null
+  let pendingRecords = []
+
+  const modal = document.createElement('div')
+  modal.id = 'bulk-checkall-modal'
+  modal.className = 'fixed inset-0 z-[85] flex items-center justify-center bg-black/50 p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-4 animate-fade">
+      <div class="flex items-center justify-between border-b pb-3">
+        <div>
+          <h3 class="font-bold text-gray-800 text-sm">✅ เช็คชื่อทั้งหมด</h3>
+          <p class="text-[11px] text-gray-400 mt-0.5">เติมเฉพาะช่องที่ยังไม่ได้เช็คชื่อ — ช่องที่เช็คไว้แล้วจะไม่ถูกเปลี่ยน</p>
+        </div>
+        <button id="btn-bulk-checkall-close" class="text-gray-400 hover:text-gray-700 text-lg">✕</button>
+      </div>
+      <div class="space-y-2">
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">ช่วงวันที่</label>
+        <div class="flex items-center gap-2">
+          <input type="date" id="bulk-checkall-from" min="${minDs}" max="${maxDs}" value="${minDs}"
+            class="flex-1 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500" />
+          <span class="text-gray-400 text-xs flex-shrink-0">ถึง</span>
+          <input type="date" id="bulk-checkall-to" min="${minDs}" max="${maxDs}" value="${maxDs}"
+            class="flex-1 border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500" />
+        </div>
+        <button id="btn-bulk-checkall-fullterm" type="button" class="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">เลือกทั้งเทอม</button>
+      </div>
+      <div class="space-y-2 border-t pt-3">
+        <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider">เช็คเป็นสถานะ</label>
+        <div class="grid grid-cols-5 gap-1.5">
+          ${Object.entries(ATT_STATUS).map(([key, cfg]) => `
+            <button type="button" data-status="${key}"
+              class="bulk-checkall-status-btn py-2.5 rounded-xl border-2 border-gray-200 bg-white hover:bg-gray-50 transition">
+              <span class="${cfg.color} text-base">${cfg.label}</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+      <div id="bulk-checkall-preview" class="text-xs text-center text-gray-500 bg-gray-50 rounded-xl py-2.5 px-3 leading-relaxed"></div>
+      <button id="btn-bulk-checkall-confirm" disabled
+        class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-xs font-bold rounded-xl shadow-md transition-all">
+        ยืนยันเช็คชื่อทั้งหมด
+      </button>
+    </div>
+  `
+  document.body.appendChild(modal)
+
+  const fromInput   = modal.querySelector('#bulk-checkall-from')
+  const toInput     = modal.querySelector('#bulk-checkall-to')
+  const preview     = modal.querySelector('#bulk-checkall-preview')
+  const confirmBtn  = modal.querySelector('#btn-bulk-checkall-confirm')
+  const statusBtns  = modal.querySelectorAll('.bulk-checkall-status-btn')
+
+  const recompute = () => {
+    const from = fromInput.value
+    const to   = toInput.value
+    if (!from || !to || from > to) {
+      pendingRecords = []
+      preview.textContent = 'กรุณาเลือกช่วงวันที่ให้ถูกต้อง'
+      confirmBtn.disabled = true
+      return
+    }
+    const targetSessions = sessions.filter(s => s.ds >= from && s.ds <= to && !holidaySet.has(s.ds))
+    pendingRecords = []
+    const studentSet = new Set()
+    if (selectedStatus) {
+      for (const s of students) {
+        for (const sess of targetSessions) {
+          const cur = attMap[s.id]?.[sess.n] ?? null
+          if (cur == null) {
+            pendingRecords.push({
+              class_id: saveClassId, student_id: s.id,
+              session_number: saveSessN(sess.n), check_date: sess.ds, status: selectedStatus,
+            })
+            studentSet.add(s.id)
+          }
+        }
+      }
+    }
+    if (!targetSessions.length) {
+      preview.textContent = 'ไม่มีคาบเรียนในช่วงวันที่นี้ (อาจตรงกับวันหยุดทั้งหมด)'
+      confirmBtn.disabled = true
+    } else if (!selectedStatus) {
+      preview.textContent = `พบ ${targetSessions.length} คาบในช่วงนี้ — กรุณาเลือกสถานะที่ต้องการเช็ค`
+      confirmBtn.disabled = true
+    } else if (!pendingRecords.length) {
+      preview.textContent = 'ไม่มีช่องว่างในช่วงวันที่นี้แล้ว (เช็คครบทุกคนทุกคาบแล้ว)'
+      confirmBtn.disabled = true
+    } else {
+      preview.innerHTML = `จะเช็คชื่อ <b class="text-gray-700">${pendingRecords.length}</b> ช่องว่าง
+        (${studentSet.size} นักเรียน × ${targetSessions.length} คาบ) เป็น
+        <span class="${ATT_STATUS[selectedStatus].color}">${ATT_STATUS[selectedStatus].label}</span>`
+      confirmBtn.disabled = false
+    }
+  }
+
+  modal.querySelector('#btn-bulk-checkall-close')?.addEventListener('click', () => modal.remove())
+  fromInput.addEventListener('change', recompute)
+  toInput.addEventListener('change', recompute)
+  modal.querySelector('#btn-bulk-checkall-fullterm')?.addEventListener('click', () => {
+    fromInput.value = minDs
+    toInput.value = maxDs
+    recompute()
+  })
+  statusBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedStatus = btn.dataset.status
+      statusBtns.forEach(b => b.classList.remove('border-emerald-500', 'bg-emerald-50'))
+      btn.classList.add('border-emerald-500', 'bg-emerald-50')
+      recompute()
+    })
+  })
+  confirmBtn.addEventListener('click', async () => {
+    if (!pendingRecords.length) return
+    confirmBtn.disabled = true
+    confirmBtn.textContent = 'กำลังบันทึก...'
+    try {
+      await saveAttendance(pendingRecords)
+      showToast(`เช็คชื่อทั้งหมดสำเร็จ ${pendingRecords.length} ช่อง ✅`, 'success')
+      modal.remove()
+      onDone?.()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      confirmBtn.disabled = false
+      confirmBtn.textContent = 'ยืนยันเช็คชื่อทั้งหมด'
+    }
+  })
+
+  recompute()
 }
 
 export function _openLeaveRequestModal(teacher, classData, studentId, studentName, studentImg, activeLeaveMap, leaveMaxActive, onSave) {
