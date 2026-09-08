@@ -154,6 +154,28 @@ export async function resetAttendanceDelegateFreeClass(teacherId) {
   if (error) throw error
 }
 
+// รายชื่อนักเรียนที่ได้รับมอบหมายเช็คชื่อแทนของห้องหนึ่งๆ — ครูเลือกเองอิสระ (ไม่ผูกกับ
+// หัวหน้าห้องจริงจาก classroom_leaders) ผ่านตาราง attendance_delegates ใหม่
+export async function getAttendanceDelegatesForClass(classId) {
+  const { data, error } = await supabase.from('attendance_delegates')
+    .select('id, student_id, students(id, full_name, student_code, image_url)')
+    .eq('class_id', classId)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function addAttendanceDelegate(classId, studentId) {
+  const { error } = await supabase.from('attendance_delegates')
+    .upsert({ class_id: classId, student_id: studentId }, { onConflict: 'class_id,student_id' })
+  if (error) throw error
+}
+
+export async function removeAttendanceDelegate(classId, studentId) {
+  const { error } = await supabase.from('attendance_delegates')
+    .delete().eq('class_id', classId).eq('student_id', studentId)
+  if (error) throw error
+}
+
 // ─── Donor Chat — แชทสำหรับครูผู้สนับสนุน ──────────────────────────────────────
 // สิทธิ์คำนวณจากยอดโดเนทเฉพาะภาคเรียนปัจจุบัน (donor_chat_min_tier_ok ฝั่ง SQL)
 // แยกจาก window._pp5DonorTierIndex เดิมที่เป็นยอดสะสมตลอดชีพ — ห้ามใช้ปนกัน
@@ -629,6 +651,19 @@ export async function getClasses() {
     .order('class_name')
   if (error) throw error
   return data ?? []
+}
+
+// อ่านหัวหน้า/รองหัวหน้าห้องของห้องเดียว (ตรงข้ามกับ getClassroomLeaders ที่ดึงทุกห้อง) — ใช้เป็น
+// suggestion ตอนครูมอบหมายเช็คชื่อแทนครู (attendance_delegates) ไม่ต้องดึงทั้งตาราง
+export async function getClassroomLeaderForRoom(className) {
+  if (!className) return null
+  const { data, error } = await supabase
+    .from('classroom_leaders')
+    .select('class_name, head_student_id, vice_head_student_id')
+    .eq('class_name', className)
+    .maybeSingle()
+  if (error) throw error
+  return data
 }
 
 export async function getClassroomLeaders() {

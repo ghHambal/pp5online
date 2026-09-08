@@ -318,24 +318,25 @@ export function isPeriodNow(period) {
   return nowSec >= toSec(period.start_time) && nowSec < toSec(period.end_time)
 }
 
-// ─── มอบหมายเช็คชื่อแทนครู — เฉพาะห้องที่เป็นหัวหน้า/รองหัวหน้าจริง (classroom_leaders
-// ของ main_room ตัวเอง) และครูเปิด attendance_delegate_enabled ไว้ ─────────────────────
+// ─── มอบหมายเช็คชื่อแทนครู — เฉพาะห้องที่ครูมอบหมายชื่อไว้จริงในตาราง attendance_delegates
+// (ครูเลือกเอง ไม่จำเป็นต้องเป็นหัวหน้า/รองหัวหน้าห้องจริง) และเปิด attendance_delegate_enabled ไว้ ──
 export async function getMyAttendanceDelegateClasses(student) {
-  if (!student?.main_room) return []
-  const role = await getStudentClassroomRole(student.main_room).catch(() => null)
-  const isLeader = role && (role.head_student_id === student.id || role.vice_head_student_id === student.id)
-  if (!isLeader) return []
-
-  const { data: classes, error } = await supabase
-    .from('classes')
+  if (!student?.id) return []
+  const { data: delegateRows, error: delErr } = await supabase
+    .from('attendance_delegates')
     .select(`
-      id, class_name, course_id, day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
-      master_subjects ( subject_name, subject_code, subject_group, credit, teachers(full_name) )
+      class_id,
+      classes!inner (
+        id, class_name, course_id, attendance_delegate_enabled,
+        day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
+        master_subjects ( subject_name, subject_code, subject_group, credit, teachers(full_name) )
+      )
     `)
-    .eq('class_name', student.main_room)
-    .eq('attendance_delegate_enabled', true)
-  if (error) throw error
-  if (!classes?.length) return []
+    .eq('student_id', student.id)
+    .eq('classes.attendance_delegate_enabled', true)
+  if (delErr) throw delErr
+  const classes = (delegateRows ?? []).map(r => r.classes).filter(Boolean)
+  if (!classes.length) return []
 
   const classIds = classes.map(c => c.id)
   const { rows } = await _getTodayScheduleRowsForClassIds(classIds)

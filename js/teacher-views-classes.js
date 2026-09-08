@@ -24,6 +24,7 @@ import {
   getAttendanceByDate,
   getQrReissueRequests, markQrReissueRequestPrinted, setQrReissueRequestStatus, deleteQrReissueRequest,
   getQrReissueManagers, grantQrReissueManager, revokeQrReissueManager, findTeacherForQrManagerGrant,
+  getAttendanceDelegatesForClass, addAttendanceDelegate, removeAttendanceDelegate, getClassroomLeaderForRoom,
 } from './api.js'
 import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
@@ -2755,11 +2756,14 @@ export async function _openRandomPickerModal(classId, cls, students, isDonorTeac
 async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksByClass, periodMap, scheduleMap, onSaved, initialTab = 'info') {
   document.getElementById('combined-edit-modal')?.remove()
 
-  // โหลด students + termCfg
-  const [classStudents, termCfg] = await Promise.all([
+  // โหลด students + termCfg + รายชื่อผู้ได้รับมอบหมายเช็คชื่อแทน + หัวหน้า/รองหัวหน้าห้องจริง (suggestion)
+  const [classStudents, termCfg, attendanceDelegates, classroomLeader] = await Promise.all([
     getClassStudents(cls.id).catch(() => []),
     getSystemConfig().catch(() => ({})),
+    getAttendanceDelegatesForClass(cls.id).catch(() => []),
+    getClassroomLeaderForRoom(cls.class_name).catch(() => null),
   ])
+  let _delegateList = attendanceDelegates.map(d => d.students).filter(Boolean)
 
   const TAB_STYLE = (active) =>
     active
@@ -2921,12 +2925,24 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
       <div class="border-t border-gray-100 pt-3">
         <label class="flex items-center justify-between gap-3 cursor-pointer">
           <span>
-            <span class="block text-xs font-semibold text-gray-600">🙋 ให้หัวหน้า/รองหัวหน้าห้องเช็คชื่อแทนได้</span>
-            <span class="block text-[11px] text-gray-400 mt-0.5">เฉพาะช่วงเวลาที่กำลังสอนคาบนี้จริง — อ้างอิงหัวหน้า/รองหัวหน้าห้องที่แอดมินตั้งไว้ (ไม่ใช่ "หัวหน้าห้อง" ด้านบน)</span>
+            <span class="block text-xs font-semibold text-gray-600">🙋 มอบหมายเช็คชื่อแทนครู</span>
+            <span class="block text-[11px] text-gray-400 mt-0.5">เลือกนักเรียนที่จะให้เช็คชื่อแทนได้เอง — เฉพาะช่วงเวลาที่กำลังสอนคาบนี้จริง</span>
           </span>
           <input id="cem-attendance-delegate" type="checkbox" class="w-5 h-5 flex-shrink-0" ${cls.attendance_delegate_enabled ? 'checked' : ''} />
         </label>
         <p id="cem-attendance-delegate-status" class="hidden text-xs font-medium mt-1.5"></p>
+
+        <div class="mt-3 space-y-2">
+          <div id="cem-delegate-chips" class="flex flex-wrap gap-1.5"></div>
+          <div id="cem-delegate-suggest" class="flex flex-wrap gap-1.5"></div>
+          <div class="relative">
+            <input id="cem-delegate-search" type="text" placeholder="พิมพ์รหัสหรือชื่อนักเรียนในห้องนี้เพื่อเพิ่ม..."
+              class="${INPUT_CLS} text-xs" autocomplete="off"
+              ${classStudents.length === 0 ? 'disabled' : ''} />
+            <div id="cem-delegate-results" class="hidden absolute z-20 left-0 right-0 top-full mt-1 max-h-52 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg"></div>
+          </div>
+          ${classStudents.length === 0 ? `<p class="text-xs text-amber-500">ยังไม่มีนักเรียนในห้อง จึงยังมอบหมายไม่ได้</p>` : ''}
+        </div>
       </div>
       <p id="cem-info-status" class="hidden text-xs font-medium text-emerald-600"></p>
     </div>`
@@ -3226,6 +3242,115 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
         if (delegateChk.checked !== !!cls.attendance_delegate_enabled) delegateChk.checked = !!cls.attendance_delegate_enabled
       }))
     })
+
+    // จัดการรายชื่อผู้ได้รับมอบหมายเช็คชื่อแทน — เพิ่ม/ลบนักเรียนคนไหนก็ได้อิสระ ไม่จำกัดแค่
+    // หัวหน้า/รองหัวหน้าห้อง (ผู้ใช้ขอให้กระจายภาระงานได้) — suggestion แนะนำหัวหน้า/รองหัวหน้า
+    // จริง (classroom_leaders) และหัวหน้าห้องตามฟอร์มนี้ (cls.head_student_id) ให้กดเพิ่มไวๆ
+    const delegateChipsEl   = modal.querySelector('#cem-delegate-chips')
+    const delegateSuggestEl = modal.querySelector('#cem-delegate-suggest')
+    const delegateSearchEl  = modal.querySelector('#cem-delegate-search')
+    const delegateResultsEl = modal.querySelector('#cem-delegate-results')
+
+    const _delegateIds = () => new Set(_delegateList.map(s => s.id))
+
+    const _renderDelegateChips = () => {
+      if (!delegateChipsEl) return
+      delegateChipsEl.innerHTML = !_delegateList.length
+        ? `<p class="text-xs text-gray-300">ยังไม่ได้มอบหมายใคร</p>`
+        : _delegateList.map(s => `
+          <span class="delegate-chip inline-flex items-center gap-1.5 pl-1 pr-2 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-xs font-semibold text-emerald-700" data-sid="${s.id}">
+            ${s.image_url
+              ? `<img src="${_htmlEsc(s.image_url)}" class="w-5 h-5 rounded-full object-cover" />`
+              : `<span class="w-5 h-5 rounded-full bg-emerald-200 flex items-center justify-center text-[10px]">${_htmlEsc((s.full_name ?? '?').charAt(0))}</span>`}
+            ${_htmlEsc(s.full_name)}
+            <button type="button" class="delegate-remove-btn text-emerald-400 hover:text-red-500 ml-0.5" data-sid="${s.id}">✕</button>
+          </span>`).join('')
+    }
+
+    const _renderDelegateSuggestions = () => {
+      if (!delegateSuggestEl) return
+      const already = _delegateIds()
+      const candidates = []
+      const _addCandidate = (sid, label) => {
+        if (!sid || already.has(Number(sid))) return
+        const s = classStudents.find(x => Number(x.id) === Number(sid))
+        if (!s || candidates.some(c => c.id === s.id)) return
+        candidates.push({ id: s.id, full_name: s.full_name, label })
+      }
+      _addCandidate(classroomLeader?.head_student_id, 'หัวหน้าห้อง')
+      _addCandidate(classroomLeader?.vice_head_student_id, 'รองหัวหน้าห้อง')
+      _addCandidate(cls.head_student_id, 'หัวหน้าห้องในฟอร์มนี้')
+      delegateSuggestEl.innerHTML = candidates.map(c => `
+        <button type="button" class="delegate-add-suggest-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-dashed border-gray-300 text-xs text-gray-500 hover:border-emerald-300 hover:text-emerald-600" data-sid="${c.id}">
+          ➕ ${_htmlEsc(c.full_name)} <span class="text-gray-300">(${_htmlEsc(c.label)})</span>
+        </button>`).join('')
+    }
+
+    const _addDelegate = async (studentId) => {
+      const s = classStudents.find(x => Number(x.id) === Number(studentId))
+      if (!s || _delegateIds().has(s.id)) return
+      _delegateList = [..._delegateList, s]
+      _renderDelegateChips(); _renderDelegateSuggestions()
+      try {
+        await addAttendanceDelegate(cls.id, s.id)
+      } catch (e) {
+        _delegateList = _delegateList.filter(x => x.id !== s.id)
+        _renderDelegateChips(); _renderDelegateSuggestions()
+        showToast('เพิ่มไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+      }
+    }
+    const _removeDelegate = async (studentId) => {
+      const removed = _delegateList.find(x => Number(x.id) === Number(studentId))
+      _delegateList = _delegateList.filter(x => Number(x.id) !== Number(studentId))
+      _renderDelegateChips(); _renderDelegateSuggestions()
+      try {
+        await removeAttendanceDelegate(cls.id, Number(studentId))
+      } catch (e) {
+        if (removed) _delegateList = [..._delegateList, removed]
+        _renderDelegateChips(); _renderDelegateSuggestions()
+        showToast('ลบไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+      }
+    }
+
+    delegateChipsEl?.addEventListener('click', e => {
+      const btn = e.target.closest('.delegate-remove-btn')
+      if (btn) _removeDelegate(btn.dataset.sid)
+    })
+    delegateSuggestEl?.addEventListener('click', e => {
+      const btn = e.target.closest('.delegate-add-suggest-btn')
+      if (btn) _addDelegate(btn.dataset.sid)
+    })
+    delegateSearchEl?.addEventListener('input', () => {
+      const q = delegateSearchEl.value.trim().toLowerCase()
+      if (!q) { delegateResultsEl.classList.add('hidden'); delegateResultsEl.innerHTML = ''; return }
+      const already = _delegateIds()
+      const matches = classStudents.filter(s =>
+        !already.has(s.id) &&
+        (String(s.student_code ?? '').toLowerCase().includes(q) || String(s.full_name ?? '').toLowerCase().includes(q))
+      ).slice(0, 8)
+      delegateResultsEl.innerHTML = !matches.length
+        ? `<p class="text-xs text-gray-300 px-3 py-2">ไม่พบนักเรียนที่ตรงกัน</p>`
+        : matches.map(s => `
+          <button type="button" class="delegate-result-btn w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-emerald-50 text-xs" data-sid="${s.id}">
+            ${s.image_url
+              ? `<img src="${_htmlEsc(s.image_url)}" class="w-6 h-6 rounded-full object-cover" />`
+              : `<span class="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center">👤</span>`}
+            <span class="font-semibold text-gray-700">${_htmlEsc(s.full_name)}</span>
+            <span class="text-gray-400">${_htmlEsc(s.student_code)}</span>
+          </button>`).join('')
+      delegateResultsEl.classList.remove('hidden')
+    })
+    delegateResultsEl?.addEventListener('click', e => {
+      const btn = e.target.closest('.delegate-result-btn')
+      if (!btn) return
+      _addDelegate(btn.dataset.sid)
+      delegateSearchEl.value = ''
+      delegateResultsEl.classList.add('hidden')
+      delegateResultsEl.innerHTML = ''
+    })
+
+    _renderDelegateChips()
+    _renderDelegateSuggestions()
 
     // auto-save on text input (debounced) + date change (immediate)
     ;['cem-classname','cem-skillgroup','cem-sheetid'].forEach(id => {

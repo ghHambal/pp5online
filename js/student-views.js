@@ -20,7 +20,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.680'
+import { APP_VERSION } from './version.js?v=10.22.681'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -489,18 +489,18 @@ export async function renderStudentOverview(student) {
     futsalVisible = false
   }
 
-  // ปุ่มเช็คชื่อแทนครู — เฉพาะหัวหน้า/รองหัวหน้าห้องจริง (isHead/isVice ด้านบน) และมีอย่างน้อย
-  // 1 ห้องที่ครูเปิดสิทธิ์มอบหมายไว้ — ไม่เช็คว่า "กำลังสอนอยู่ตอนนี้ไหม" ที่นี่ ให้หน้าเป้าหมาย
-  // (renderStudentAttendanceDelegate) เป็นคนกรองอีกที เพื่อให้ query จุดนี้เบาที่สุด
+  // ปุ่มเช็คชื่อแทนครู — เช็คว่ามีห้องไหนมอบหมายให้ตัวเองจริงไหม (ตาราง attendance_delegates —
+  // ครูเลือกใครก็ได้ ไม่จำกัดแค่หัวหน้า/รองหัวหน้าห้อง จึงเช็คตรงจากตารางนี้ ไม่ใช่ isHead/isVice
+  // อีกต่อไป) ไม่เช็คว่า "กำลังสอนอยู่ตอนนี้ไหม" ที่นี่ ให้หน้าเป้าหมาย (renderStudentAttendanceDelegate)
+  // เป็นคนกรองอีกที เพื่อให้ query จุดนี้เบาที่สุด
   let attendanceDelegateVisible = false
-  if (isHead || isVice) {
-    try {
-      const { data: adData } = await supabase.from('classes').select('id')
-        .eq('class_name', student.main_room).eq('attendance_delegate_enabled', true).limit(1)
-      attendanceDelegateVisible = !!adData?.length
-    } catch (_) {
-      attendanceDelegateVisible = false
-    }
+  try {
+    const { data: adData } = await supabase.from('attendance_delegates')
+      .select('id, classes!inner(attendance_delegate_enabled)')
+      .eq('student_id', student.id).eq('classes.attendance_delegate_enabled', true).limit(1)
+    attendanceDelegateVisible = !!adData?.length
+  } catch (_) {
+    attendanceDelegateVisible = false
   }
 
   setContent(`
