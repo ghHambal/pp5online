@@ -2663,6 +2663,7 @@ export async function renderSettings() {
                 ['👑','Smart Classroom — หน้าควบคุมขณะสอนสด รวมเครื่องมือทั้งหมด',4],
                 ['✨','ดึงข้อมูลการมาเรียนในระบบดูแลในคลิกเดียว',2],
                 ['💬','แชทครูผู้สนับสนุน — คุยตรงกับแอดมิน/ครูโดเนทคนอื่นแบบเรียลไทม์',1],
+                ['🙋','มอบหมายหัวหน้า/รองหัวหน้าห้องเช็คชื่อแทนครูได้ไม่จำกัดห้อง',3],
               ]
               const featRows = rawFeat
                 ? rawFeat.split('\n').filter(Boolean).map(l => {
@@ -3105,6 +3106,7 @@ export async function renderSettings() {
           ['🧭','AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา',3],
           ['⚡','Early Access ฟีเจอร์ใหม่ก่อนใคร',3],
           ['📲','แจ้งเตือนอัตโนมัติ Telegram/LINE',4],
+          ['🙋','มอบหมายหัวหน้า/รองหัวหน้าห้องเช็คชื่อแทนครูได้ไม่จำกัดห้อง',3],
         ]
         if (!raw) return defs.map(([icon,text,minTier])=>({icon,text,minTier}))
         return raw.split('\n').filter(Boolean).map(l=>{

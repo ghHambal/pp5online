@@ -301,6 +301,7 @@ const ROUTES = {
   prayer_scan_history: () => renderStudentPrayerScanHistory(_student),
   assignments: () => renderStudentAllAssignments(_student),
   'classroom-chat': () => import('./chat-classroom.js').then(m => m.renderStudentClassroomChat(_student)),
+  attendance_delegate: () => import('./student-views-attendance-delegate.js').then(m => m.renderStudentAttendanceDelegate(_student)),
 }
 
 function _navButtonHTML(view, icon, label, mode = 'main') {

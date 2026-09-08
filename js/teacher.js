@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.676'
+import { APP_VERSION } from './version.js?v=10.22.680'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -368,6 +368,7 @@ const _parseDonationFeatures = cfg => {
     ['👑', 'Smart Classroom — หน้าควบคุมขณะสอนสด รวมเครื่องมือทั้งหมด', 4],
     ['✨', 'ดึงข้อมูลการมาเรียนในระบบดูแลในคลิกเดียว',          2],
     ['💬', 'แชทครูผู้สนับสนุน — คุยตรงกับแอดมิน/ครูโดเนทคนอื่นแบบเรียลไทม์', 1],
+    ['🙋', 'มอบหมายหัวหน้า/รองหัวหน้าห้องเช็คชื่อแทนครูได้ไม่จำกัดห้อง', 3],
   ]
   const rows = raw ? raw.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
     const parts = line.split('|').map(s => s.trim())

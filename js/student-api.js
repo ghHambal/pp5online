@@ -1,4 +1,6 @@
 import { supabase } from './supabase.js'
+import { _generateSessions, _dateInputValue } from './teacher-views-utils.js'
+import { getClassSessionDOWs } from './api.js'
 
 // ─── Student Profile ──────────────────────────────────────────────────────────
 export async function getMyStudentProfile() {
@@ -248,6 +250,39 @@ export async function getHouseColorHex(colorName) {
 }
 
 // ─── Daily Schedule (for overview routine widget) ─────────────────────────────
+// หาคาบที่ตรงกับ "วันนี้" ของ class_ids ที่ระบุ (class_schedule_links → teacher_schedules
+// → school_periods) — แยกเป็น helper กลาง เพราะใช้ร่วมกันทั้ง getStudentDailySchedule
+// (ทุกวิชาที่ลงทะเบียน) และ getMyAttendanceDelegateClasses (เฉพาะห้องที่เปิดมอบหมายเช็คชื่อ)
+async function _getTodayScheduleRowsForClassIds(classIds) {
+  if (!classIds?.length) return { rows: [], hasAnyLink: new Set() }
+  const { data: links } = await supabase
+    .from('class_schedule_links')
+    .select('class_id, teacher_schedules(id, day_of_week, period_no, span_periods, subject_name, class_name)')
+    .in('class_id', classIds)
+
+  const todayDow = new Date().getDay() // 0=Sun, 1=Mon, ...
+  const hasAnyLink = new Set((links ?? []).map(l => l.class_id))
+
+  const scheduleRows = []
+  for (const link of links ?? []) {
+    const sched = link.teacher_schedules
+    if (!sched || sched.day_of_week !== todayDow) continue
+    scheduleRows.push({ classId: link.class_id, sched })
+  }
+
+  const { data: periods } = await supabase
+    .from('school_periods')
+    .select('period_no, start_time, end_time')
+    .order('period_no')
+  const periodMap = Object.fromEntries((periods ?? []).map(p => [p.period_no, p]))
+
+  const rows = scheduleRows
+    .map(({ classId, sched }) => ({ classId, sched, period: periodMap[sched.period_no] ?? null }))
+    .sort((a, b) => (a.sched.period_no ?? 0) - (b.sched.period_no ?? 0))
+
+  return { rows, hasAnyLink }
+}
+
 export async function getStudentDailySchedule(studentId) {
   // ดึง class_ids ทั้งหมดที่นักเรียนลงทะเบียน
   const { data: enrollment } = await supabase
@@ -258,32 +293,7 @@ export async function getStudentDailySchedule(studentId) {
 
   const classIds = enrollment.map(e => e.class_id)
   const classMap = Object.fromEntries(enrollment.map(e => [e.class_id, e.classes]))
-
-  // ดึง class_schedule_links พร้อม teacher_schedules และ school_periods
-  const { data: links } = await supabase
-    .from('class_schedule_links')
-    .select('class_id, teacher_schedules(id, day_of_week, period_no, span_periods, subject_name, class_name)')
-    .in('class_id', classIds)
-
-  const todayDow = new Date().getDay() // 0=Sun, 1=Mon, ...
-
-  // แยก class ที่มี link และไม่มี link (ไม่สนใจว่าวันนี้มีคาบไหม)
-  const hasAnyLink = new Set((links ?? []).map(l => l.class_id))
-
-  // หาเฉพาะคาบที่ตรงกับวันนี้
-  const scheduleRows = []
-  for (const link of links ?? []) {
-    const sched = link.teacher_schedules
-    if (!sched || sched.day_of_week !== todayDow) continue
-    scheduleRows.push({ classId: link.class_id, cls: classMap[link.class_id], sched })
-  }
-
-  // ดึงเวลาคาบจาก school_periods
-  const { data: periods } = await supabase
-    .from('school_periods')
-    .select('period_no, start_time, end_time')
-    .order('period_no')
-  const periodMap = Object.fromEntries((periods ?? []).map(p => [p.period_no, p]))
+  const { rows, hasAnyLink } = await _getTodayScheduleRowsForClassIds(classIds)
 
   // class ที่ไม่เคย link ตารางสอนเลย (ไม่ใช่แค่ไม่มีคาบวันนี้)
   const unlinked = enrollment
@@ -291,16 +301,62 @@ export async function getStudentDailySchedule(studentId) {
     .map(e => e.classes)
     .filter(Boolean)
 
-  // เรียงตามคาบ
-  const linked = scheduleRows
-    .map(({ cls, sched }) => ({
-      cls,
-      sched,
-      period: periodMap[sched.period_no] ?? null,
-    }))
-    .sort((a, b) => (a.sched.period_no ?? 0) - (b.sched.period_no ?? 0))
+  const linked = rows.map(({ classId, sched, period }) => ({ cls: classMap[classId], sched, period }))
 
   return { linked, unlinked }
+}
+
+// เวลาปัจจุบันอยู่ในช่วงคาบนี้ไหม (ใช้ร่วมกันทุกจุดที่ต้องเช็ค "กำลังเรียนอยู่ตอนนี้")
+export function isPeriodNow(period) {
+  if (!period?.start_time || !period?.end_time) return false
+  const toSec = t => {
+    const [h, m, s] = String(t).split(':').map(Number)
+    return (h || 0) * 3600 + (m || 0) * 60 + (s || 0)
+  }
+  const now = new Date()
+  const nowSec = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()
+  return nowSec >= toSec(period.start_time) && nowSec < toSec(period.end_time)
+}
+
+// ─── มอบหมายเช็คชื่อแทนครู — เฉพาะห้องที่เป็นหัวหน้า/รองหัวหน้าจริง (classroom_leaders
+// ของ main_room ตัวเอง) และครูเปิด attendance_delegate_enabled ไว้ ─────────────────────
+export async function getMyAttendanceDelegateClasses(student) {
+  if (!student?.main_room) return []
+  const role = await getStudentClassroomRole(student.main_room).catch(() => null)
+  const isLeader = role && (role.head_student_id === student.id || role.vice_head_student_id === student.id)
+  if (!isLeader) return []
+
+  const { data: classes, error } = await supabase
+    .from('classes')
+    .select(`
+      id, class_name, course_id, day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
+      master_subjects ( subject_name, subject_code, subject_group, credit, teachers(full_name) )
+    `)
+    .eq('class_name', student.main_room)
+    .eq('attendance_delegate_enabled', true)
+  if (error) throw error
+  if (!classes?.length) return []
+
+  const classIds = classes.map(c => c.id)
+  const { rows } = await _getTodayScheduleRowsForClassIds(classIds)
+  const rowsByClass = new Map()
+  rows.forEach(r => { if (!rowsByClass.has(r.classId)) rowsByClass.set(r.classId, r) })
+
+  const todayDs = _dateInputValue(new Date())
+
+  const result = []
+  for (const cls of classes) {
+    const row = rowsByClass.get(cls.id)
+    if (!row) continue // ไม่มีคาบวันนี้สำหรับห้องนี้
+    const ms = cls.master_subjects
+    const isACDMVOC = ms?.subject_group === 'ACDMVOC'
+    const dowPattern = await getClassSessionDOWs(cls.id).catch(() => [])
+    const sessions = _generateSessions(cls, ms?.credit ?? 1, dowPattern.length ? dowPattern : null, isACDMVOC)
+    const todaySession = sessions.find(s => s.ds === todayDs)
+    if (!todaySession) continue
+    result.push({ cls, ms, period: row.period, sessionNumber: todaySession.n, checkDate: todaySession.ds })
+  }
+  return result
 }
 
 // ─── All Announcements for student (across all enrolled classes) ──────────────

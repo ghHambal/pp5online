@@ -488,6 +488,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       ['🧭','AI วางไกด์ไลน์การสอนรายคาบแบบจับเวลา',3],
       ['⚡','Early Access ฟีเจอร์ใหม่ก่อนใคร',3],
       ['📲','แจ้งเตือนอัตโนมัติ Telegram/LINE',4],
+      ['🙋','มอบหมายหัวหน้า/รองหัวหน้าห้องเช็คชื่อแทนครูได้ไม่จำกัดห้อง',3],
     ]
     if (!raw) return defs.map(([icon,text,minTier]) => ({ icon, text, minTier }))
     return raw.split('\n').filter(Boolean).map(l => {

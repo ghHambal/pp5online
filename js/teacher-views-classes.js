@@ -2917,6 +2917,17 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
         </select>
         <p id="cem-source-info" class="hidden text-xs text-amber-600 mt-1"></p>
       </div>
+      <!-- มอบหมายเช็คชื่อแทนครู -->
+      <div class="border-t border-gray-100 pt-3">
+        <label class="flex items-center justify-between gap-3 cursor-pointer">
+          <span>
+            <span class="block text-xs font-semibold text-gray-600">🙋 ให้หัวหน้า/รองหัวหน้าห้องเช็คชื่อแทนได้</span>
+            <span class="block text-[11px] text-gray-400 mt-0.5">เฉพาะช่วงเวลาที่กำลังสอนคาบนี้จริง — อ้างอิงหัวหน้า/รองหัวหน้าห้องที่แอดมินตั้งไว้ (ไม่ใช่ "หัวหน้าห้อง" ด้านบน)</span>
+          </span>
+          <input id="cem-attendance-delegate" type="checkbox" class="w-5 h-5 flex-shrink-0" ${cls.attendance_delegate_enabled ? 'checked' : ''} />
+        </label>
+        <p id="cem-attendance-delegate-status" class="hidden text-xs font-medium mt-1.5"></p>
+      </div>
       <p id="cem-info-status" class="hidden text-xs font-medium text-emerald-600"></p>
     </div>`
   }
@@ -3188,6 +3199,33 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
     }
     headSel?.addEventListener('change', () => { updateHeadCard(); _scheduleInfoSave(true) })
     if (headSel?.value) updateHeadCard()
+
+    // มอบหมายเช็คชื่อแทนครู — gate ตามระดับโดเนท (ฟรี 1 ห้อง / ระดับ 3+ ไม่จำกัด) แยก save
+    // ทันทีจาก autosave ปกติ เพราะต้องเช็คสิทธิ์/เปิดโมดัลเลือกห้องฟรีก่อนบันทึกจริง
+    const delegateChk    = modal.querySelector('#cem-attendance-delegate')
+    const delegateStatus = modal.querySelector('#cem-attendance-delegate-status')
+    const _setDelegateStatus = (text, cls2) => {
+      if (!delegateStatus) return
+      delegateStatus.textContent = text
+      delegateStatus.className = `text-xs font-medium mt-1.5 ${cls2}`
+      delegateStatus.classList.remove('hidden')
+    }
+    delegateChk?.addEventListener('change', async () => {
+      const next = delegateChk.checked
+      delegateChk.disabled = true
+      _setDelegateStatus('⏳ กำลังบันทึก...', 'text-indigo-500')
+      import('./teacher-views-attendance-delegate.js').then(m => m.toggleAttendanceDelegateForClass(teacher, cls.id, next, (finalValue) => {
+        cls.attendance_delegate_enabled = finalValue
+        delegateChk.checked = finalValue
+        _setDelegateStatus(finalValue ? '✅ เปิดใช้งานแล้ว' : '● ปิดใช้งานแล้ว', finalValue ? 'text-emerald-600' : 'text-gray-400')
+      }).catch(() => {
+        delegateChk.checked = !next // revert ถ้า import ล้มเหลว
+      }).finally(() => {
+        delegateChk.disabled = false
+        // ถ้าไม่ปลดล็อกและติด paywall/เปิดโมดัลเลือกห้องฟรี checkbox ต้อง revert กลับตามค่าจริงใน cls
+        if (delegateChk.checked !== !!cls.attendance_delegate_enabled) delegateChk.checked = !!cls.attendance_delegate_enabled
+      }))
+    })
 
     // auto-save on text input (debounced) + date change (immediate)
     ;['cem-classname','cem-skillgroup','cem-sheetid'].forEach(id => {

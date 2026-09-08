@@ -20,7 +20,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.676'
+import { APP_VERSION } from './version.js?v=10.22.680'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -489,6 +489,20 @@ export async function renderStudentOverview(student) {
     futsalVisible = false
   }
 
+  // ปุ่มเช็คชื่อแทนครู — เฉพาะหัวหน้า/รองหัวหน้าห้องจริง (isHead/isVice ด้านบน) และมีอย่างน้อย
+  // 1 ห้องที่ครูเปิดสิทธิ์มอบหมายไว้ — ไม่เช็คว่า "กำลังสอนอยู่ตอนนี้ไหม" ที่นี่ ให้หน้าเป้าหมาย
+  // (renderStudentAttendanceDelegate) เป็นคนกรองอีกที เพื่อให้ query จุดนี้เบาที่สุด
+  let attendanceDelegateVisible = false
+  if (isHead || isVice) {
+    try {
+      const { data: adData } = await supabase.from('classes').select('id')
+        .eq('class_name', student.main_room).eq('attendance_delegate_enabled', true).limit(1)
+      attendanceDelegateVisible = !!adData?.length
+    } catch (_) {
+      attendanceDelegateVisible = false
+    }
+  }
+
   setContent(`
     <!-- Profile card -->
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-6 mb-4 flex items-center gap-4 sm:gap-6">
@@ -522,7 +536,7 @@ export async function renderStudentOverview(student) {
          เต็มแถว/แถบเมนูล่างถาวร (กีฬาสี) มาเป็นไอคอน -->
     <div class="mb-4">
       <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">ระบบอื่น ๆ</p>
-      ${[sportsVisible, futsalVisible, councilVisible, terangganuVisible, regradeVisible, student.can_scan_prayer].filter(Boolean).length + 1 > 5
+      ${[sportsVisible, futsalVisible, councilVisible, terangganuVisible, regradeVisible, student.can_scan_prayer, attendanceDelegateVisible].filter(Boolean).length + 1 > 5
         ? `<p class="text-[10px] text-gray-400 mb-1.5 px-0.5">👉 เลื่อนซ้าย-ขวาเพื่อดูระบบทั้งหมด</p>` : ''}
       <div class="flex gap-3 overflow-x-auto pb-1">
         ${renderIconTile({ id:'btn-stu-my-certificates', emoji:'🎖️', label:'เกียรติบัตร<br>ของฉัน', from:'#FCE7A8', to:'#E3B657' }, cfg.iconTileStyle)}
@@ -532,6 +546,7 @@ export async function renderStudentOverview(student) {
         ${terangganuVisible ? renderIconTile({ emoji:'⚜️', label:'ค่าย<br>TERANGGANU', from:'#B7ECDB', to:'#3F9C7E', onclick:`window.location.href='terangganu.html'` }, cfg.iconTileStyle) : ''}
         ${regradeVisible ? renderIconTile({ id:'student-regrade-tile', emoji:'📋', label:'แก้ค้างเก่า', from:'#FBD0D6', to:'#E0616F', badge:regradeWorkCount, onclick:`window.location.href='regrade.html'` }, cfg.iconTileStyle) : ''}
         ${student.can_scan_prayer ? renderIconTile({ emoji:'🗂️', label:'ประวัติ<br>การสแกน', from:'#B7ECDB', to:'#5FBFA3', onclick:`window._stuNav('prayer_scan_history')` }, cfg.iconTileStyle) : ''}
+        ${attendanceDelegateVisible ? renderIconTile({ id:'student-attendance-delegate-tile', emoji:'✅', label:'เช็คชื่อ<br>แทนครู', from:'#CDEBD6', to:'#4CA778', onclick:`window._stuNav('attendance_delegate')` }, cfg.iconTileStyle) : ''}
       </div>
     </div>
 

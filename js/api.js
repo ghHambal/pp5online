@@ -61,7 +61,7 @@ export async function startNewSemester(newAcademicYear, newSemester) {
 }
 
 // ─── Teacher Profile (linked via profile_id) ─────────────────────────────────
-const _TEACHER_PROFILE_COLUMNS_BASE = 'id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, positions, position_dept_id, smart_classroom_free_class_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)'
+const _TEACHER_PROFILE_COLUMNS_BASE = 'id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, positions, position_dept_id, smart_classroom_free_class_id, attendance_delegate_free_class_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)'
 
 // overview_prefs เป็นคอลัมน์ที่เพิ่มทีหลัง (patch_teacher_overview_prefs.sql) — ถ้าใครยังไม่ได้รัน
 // migration select จะ error "column does not exist" ทันที ต้อง fallback ตัดคอลัมน์นี้ออกแทนการ throw
@@ -109,6 +109,47 @@ export async function getSmartClassroomFreeAssignments() {
 export async function resetSmartClassroomFreeClass(teacherId) {
   const { error } = await supabase.from('teachers')
     .update({ smart_classroom_free_class_id: null })
+    .eq('id', teacherId)
+  if (error) throw error
+}
+
+// ─── มอบหมายเช็คชื่อแทนครู — ใช้ฟรี 1 ห้องสำหรับครูที่ยังไม่ถึงระดับโดเนทที่ปลดล็อก ──
+// (mirror ของ Smart Classroom free-class ด้านบนทุกประการ) ล็อกถาวรตั้งใจ ต้องแอดมิน
+// resetAttendanceDelegateFreeClass ถึงจะเปลี่ยนได้
+export async function setAttendanceDelegateFreeClass(teacherId, classId) {
+  const { data, error } = await supabase.from('teachers')
+    .update({ attendance_delegate_free_class_id: classId })
+    .eq('id', teacherId)
+    .is('attendance_delegate_free_class_id', null)
+    .select('attendance_delegate_free_class_id')
+    .maybeSingle()
+  if (error) throw error
+  return data // null = มีคนตั้งไปแล้วก่อนหน้า (race) — ผู้เรียกควร refetch โปรไฟล์ครู
+}
+
+export async function getAttendanceDelegateFreeAssignments() {
+  const { data, error } = await supabase.from('teachers')
+    .select('id, full_name, attendance_delegate_free_class_id, classes:teachers_attendance_delegate_free_class_id_fkey(id, class_name)')
+    .not('attendance_delegate_free_class_id', 'is', null)
+    .order('full_name')
+  if (error) throw error
+  return data ?? []
+}
+
+// ต่างจาก resetSmartClassroomFreeClass ตรงที่ต้องปิด attendance_delegate_enabled ของห้อง
+// เดิมด้วย ไม่งั้นสิทธิ์เช็คชื่อแทนจะยังค้างเปิดอยู่แม้ reset การจับจองห้องฟรีไปแล้ว
+export async function resetAttendanceDelegateFreeClass(teacherId) {
+  const { data: teacher, error: readErr } = await supabase.from('teachers')
+    .select('attendance_delegate_free_class_id').eq('id', teacherId).maybeSingle()
+  if (readErr) throw readErr
+  const oldClassId = teacher?.attendance_delegate_free_class_id
+  if (oldClassId) {
+    const { error: clsErr } = await supabase.from('classes')
+      .update({ attendance_delegate_enabled: false }).eq('id', oldClassId)
+    if (clsErr) throw clsErr
+  }
+  const { error } = await supabase.from('teachers')
+    .update({ attendance_delegate_free_class_id: null })
     .eq('id', teacherId)
   if (error) throw error
 }
@@ -386,7 +427,7 @@ export async function getMyClasses(teacherId) {
     .from('classes')
     .select(`
       id, course_id, class_name, skill_group, google_sheet_id, gas_url, head_student_id,
-      classroom_id, source_class_id, academic_year, semester,
+      classroom_id, source_class_id, academic_year, semester, attendance_delegate_enabled,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id ),
       students:students!fk_head_student ( full_name )
