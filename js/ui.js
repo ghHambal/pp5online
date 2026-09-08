@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.675'
+import { APP_VERSION } from './version.js?v=10.22.676'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -984,6 +984,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.676': [
+    '↩️ แท็บ "เช็คชื่อ"/"คะแนน" ในหน้ารายละเอียดห้องเรียน (นอก Smart Classroom) กลับไปเป็นแบบขยายฝังในหน้าเดิมตามปกติเหมือนก่อนหน้านี้ ไม่ใช่ป๊อบอัพเต็มจอ — ป๊อบอัพเต็มจอใช้เฉพาะใน Smart Classroom เท่านั้นตามที่ตั้งใจไว้แต่แรก',
+  ],
   '10.22.675': [
     '🐛 แก้บั๊กแท็บคะแนน/เช็คชื่อใน Smart Classroom (มือถือ) — ป๊อบอัพเต็มหน้าจอโผล่อยู่หลังแถบเมนูล่าง/แผงอ้างอิงของ Smart Classroom เอง ทำให้เห็นแต่ปุ่ม "เปิดหน้าต่างอีกครั้ง" ค้างอยู่ ตอนนี้ซ่อนแถบเมนูมือถือของ Smart Classroom ระหว่างเปิดป๊อบอัพให้แล้ว',
   ],
