@@ -54,7 +54,10 @@ export async function openFullScreenGridOverlay(renderFn, ...args) {
   document.getElementById('fsg-close-btn')?.remove()
   const overlay = document.createElement('div')
   overlay.id = 'fsg-overlay'
-  overlay.style.cssText = 'position:fixed;inset:0;z-index:200;background:#f9fafb;overflow-y:auto;'
+  // z-index 75: ต้องสูงกว่าไซด์บาร์เดสก์ท็อป (z-70, teacher.html) เพื่อคลุมทับได้ แต่ต้องต่ำกว่า
+  // ป๊อบอัพย่อยทุกตัวใน renderAttendanceGrid/renderGradesGrid เอง (ต่ำสุด z-80) ไม่งั้นป๊อบอัพ
+  // ที่เปิดจากข้างในจะไปโผล่อยู่หลังป๊อบอัพเต็มจอนี้แทน (เช่นปุ่ม "เช็คทั้งหมด" กดแล้วดูเหมือนไม่ขึ้น)
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:75;background:#f9fafb;overflow-y:auto;'
   overlay.innerHTML = `<div class="flex justify-center py-16 text-gray-300">
     <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -67,7 +70,7 @@ export async function openFullScreenGridOverlay(renderFn, ...args) {
   closeBtn.id = 'fsg-close-btn'
   closeBtn.textContent = '✕'
   closeBtn.title = 'ปิด'
-  closeBtn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:201;width:36px;height:36px;border-radius:9999px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:16px;color:#6b7280;cursor:pointer;'
+  closeBtn.style.cssText = 'position:fixed;top:12px;right:12px;z-index:76;width:36px;height:36px;border-radius:9999px;background:#fff;border:1px solid #e5e7eb;box-shadow:0 2px 8px rgba(0,0,0,.15);font-size:16px;color:#6b7280;cursor:pointer;'
   document.body.appendChild(closeBtn)
 
   const _savedMain = _realMainContent
