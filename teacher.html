@@ -24,6 +24,12 @@
     body.sc-fullscreen #app-main-col { margin-left: 0 !important; }
     body.sc-fullscreen #app-main-col > header { display: none !important; }
 
+    /* ป๊อบอัพเต็มหน้าจอ (แท็บคะแนน/เช็คชื่อ ฝังใน Smart Classroom) ต้องคลุมทับแถบเมนูมือถือ/
+       แผงอ้างอิงของ Smart Classroom ให้หมด — 2 อย่างนี้มี z-index (90/80) สูงกว่าป๊อบอัพเต็มจอ (75)
+       เพราะป๊อบอัพต้องอยู่ต่ำกว่าป๊อบอัพย่อยข้างในตัวมันเอง (ต่ำสุด z-80) จึงต้องซ่อนแทนแก้ที่ z-index */
+    body.fsg-overlay-open .sc-mobile-ref-nav,
+    body.fsg-overlay-open .sc-reference-panel.mobile-open { display: none !important; }
+
     /* ─── Smart Classroom: ปุ่ม/แท็บพรีเมี่ยม (โทนทอง+น้ำเงินเข้ม ให้เข้ากับมงกุฎ 👑) ─── */
     .sc-tabbar {
       background: #faf6ea;

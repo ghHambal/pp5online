@@ -65,6 +65,7 @@ export async function openFullScreenGridOverlay(renderFn, ...args) {
     </svg>
   </div>`
   document.body.appendChild(overlay)
+  document.body.classList.add('fsg-overlay-open')
 
   const closeBtn = document.createElement('button')
   closeBtn.id = 'fsg-close-btn'
@@ -78,6 +79,7 @@ export async function openFullScreenGridOverlay(renderFn, ...args) {
   const close = () => {
     overlay.remove()
     closeBtn.remove()
+    document.body.classList.remove('fsg-overlay-open')
     _realMainContent = _savedMain
     window._backToClasses = _savedBack
   }
