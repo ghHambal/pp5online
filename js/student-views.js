@@ -1656,31 +1656,61 @@ export async function renderStudentSubjects(student) {
   })
 }
 
-// ป๊อบอัพให้นักเรียนขอย้ายวิชาข้ามกลุ่มสามัญ/ศาสนาเอง (บางวิชาศาสนาตามหลักสูตรฝ่ายทะเบียนจัด
-// รหัสเป็นสามัญผิดกลุ่ม) — กดขอแล้วไม่มีผลทันที ต้องรอแอดมินตรวจสอบ+อนุมัติก่อนเสมอ
+// ป๊อบอัพให้นักเรียนขอย้ายวิชาข้ามกลุ่มสามัญ/ศาสนาเอง — มีแท็บสลับเหมือนหน้าหลัก "รายวิชาของฉัน"
+// ปุ่ม "ย้าย" โชว์เฉพาะแท็บศาสนาเท่านั้น เพราะกรณีที่เจอจริงคือวิชาที่แท้จริงเป็นสามัญ แต่ถูกจัด
+// เข้ากลุ่มศาสนาไปเพราะ teachers.category เป็นคุณสมบัติของ "ครูผู้สอน" ไม่ใช่ของ "ตัววิชา" เอง
+// (ครูหมวดศาสนาบางคนสอนวิชาสามัญด้วย) ฝั่งสามัญจึงไม่จำเป็นต้องมีปุ่มย้ายออก
+// กดขอแล้วไม่มีผลทันที ต้องรอแอดมินตรวจสอบ+อนุมัติก่อนเสมอ
 function _openSubjectGroupManager(student, classes, pendingReqByClass, isSasanaFn) {
   document.getElementById('subject-group-mgr')?.remove()
   const wrap = document.createElement('div')
   wrap.id = 'subject-group-mgr'
   wrap.className = 'fixed inset-0 z-[400] bg-white flex flex-col'
 
-  const _row = (c) => {
+  const _row = (c, showMoveBtn) => {
     const ms = c.master_subjects
-    const curGroup = isSasanaFn(c) ? 'sasana' : 'samai'
-    const otherGroup = curGroup === 'samai' ? 'sasana' : 'samai'
-    const otherLabel = otherGroup === 'sasana' ? '🕌 ศาสนา' : '📖 สามัญ'
     const pending = pendingReqByClass[c.id]
     return `
     <div class="flex items-center justify-between gap-3 border border-gray-100 rounded-xl p-3">
-      <div class="min-w-0">
-        <p class="font-semibold text-sm text-gray-800 truncate">${ms?.subject_name ?? '—'}</p>
-        <p class="text-[11px] text-gray-400">ปัจจุบัน: ${curGroup === 'sasana' ? '🕌 ศาสนา' : '📖 สามัญ'}</p>
-      </div>
+      <p class="font-semibold text-sm text-gray-800 truncate min-w-0">${ms?.subject_name ?? '—'}</p>
       ${pending
         ? `<span class="text-[11px] font-semibold text-amber-500 whitespace-nowrap flex-shrink-0">⏳ รอตรวจสอบ</span>`
-        : `<button class="sgm-move-btn text-[11px] font-semibold text-indigo-600 border border-indigo-200 rounded-lg px-2.5 py-1.5 hover:bg-indigo-50 whitespace-nowrap flex-shrink-0"
-            data-class-id="${c.id}" data-requested="${otherGroup}">ย้ายไป ${otherLabel}</button>`}
+        : (showMoveBtn
+          ? `<button class="sgm-move-btn text-[11px] font-semibold text-indigo-600 border border-indigo-200 rounded-lg px-2.5 py-1.5 hover:bg-indigo-50 whitespace-nowrap flex-shrink-0"
+              data-class-id="${c.id}" data-requested="samai">ย้ายไป 📖 สามัญ</button>`
+          : '')}
     </div>`
+  }
+
+  let activeTab = 'samai'
+  const _renderList = () => {
+    const filtered = classes.filter(c => (isSasanaFn(c) ? 'sasana' : 'samai') === activeTab)
+    const box = wrap.querySelector('#sgm-list')
+    box.innerHTML = filtered.length
+      ? filtered.map(c => _row(c, activeTab === 'sasana')).join('')
+      : `<p class="text-center text-gray-400 text-sm py-8">ไม่มีวิชาในกลุ่มนี้</p>`
+    box.querySelectorAll('.sgm-move-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const classId = Number(btn.dataset.classId)
+        const c = classes.find(x => x.id === classId)
+        if (!confirm(`ขอย้ายวิชา "${c?.master_subjects?.subject_name ?? ''}" ไปกลุ่ม 📖 สามัญ?\n(ต้องรอแอดมินตรวจสอบและอนุมัติก่อนจึงจะมีผลจริง)`)) return
+        btn.disabled = true; btn.textContent = 'กำลังส่ง...'
+        try {
+          await requestSubjectGroupChange(classId, 'samai')
+          notifySubjectGroupAdmins({
+            title: '🔀 มีคำขอย้ายกลุ่มวิชาใหม่',
+            body: `นักเรียนขอย้ายวิชา "${c?.master_subjects?.subject_name ?? ''}" ไปกลุ่ม 📖 สามัญ — รอตรวจสอบ`,
+            url: 'dashboard.html',
+          }).catch(() => {})
+          showToast('ส่งคำขอแล้ว รอแอดมินตรวจสอบ', 'success')
+          wrap.remove()
+          renderStudentSubjects(student)
+        } catch (e) {
+          showToast('ส่งคำขอไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+          btn.disabled = false; btn.textContent = 'ย้ายไป 📖 สามัญ'
+        }
+      })
+    })
   }
 
   wrap.innerHTML = `
@@ -1688,39 +1718,27 @@ function _openSubjectGroupManager(student, classes, pendingReqByClass, isSasanaF
       <button id="sgm-back" class="text-emerald-600 font-medium text-sm">← กลับ</button>
       <h3 class="font-bold text-gray-800 flex-1">🔧 จัดการกลุ่มรายวิชา</h3>
     </div>
-    <div class="px-4 pt-3 pb-1 flex-shrink-0">
-      <p class="text-[11px] text-gray-400 leading-relaxed">บางวิชาศาสนาตามหลักสูตร ฝ่ายทะเบียนอาจจัดไว้ผิดกลุ่ม — ขอย้ายได้ที่นี่ แต่จะยังไม่มีผลทันที ต้องรอแอดมินตรวจสอบและอนุมัติก่อนเสมอ</p>
+    <div class="px-4 pt-3 pb-2 flex-shrink-0 space-y-2">
+      <p class="text-[11px] text-gray-400 leading-relaxed">บางวิชาสามัญอาจถูกจัดเข้ากลุ่มศาสนาไปเพราะครูผู้สอนอยู่หมวดศาสนา — ขอย้ายกลับได้ที่นี่ แต่จะยังไม่มีผลทันที ต้องรอแอดมินตรวจสอบและอนุมัติก่อนเสมอ</p>
+      <div class="flex gap-2">
+        <button id="sgm-tab-samai" class="sgm-tab flex-1 py-2 rounded-xl text-sm font-semibold transition"></button>
+        <button id="sgm-tab-sasana" class="sgm-tab flex-1 py-2 rounded-xl text-sm font-semibold transition"></button>
+      </div>
     </div>
-    <div class="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-      ${classes.map(_row).join('')}
-    </div>`
+    <div id="sgm-list" class="flex-1 overflow-y-auto px-4 py-3 space-y-2"></div>`
   document.body.appendChild(wrap)
   wrap.querySelector('#sgm-back').addEventListener('click', () => wrap.remove())
 
-  wrap.querySelectorAll('.sgm-move-btn').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const classId = Number(btn.dataset.classId)
-      const requested = btn.dataset.requested
-      const c = classes.find(x => x.id === classId)
-      const label = requested === 'sasana' ? '🕌 ศาสนา' : '📖 สามัญ'
-      if (!confirm(`ขอย้ายวิชา "${c?.master_subjects?.subject_name ?? ''}" ไปกลุ่ม ${label}?\n(ต้องรอแอดมินตรวจสอบและอนุมัติก่อนจึงจะมีผลจริง)`)) return
-      btn.disabled = true; btn.textContent = 'กำลังส่ง...'
-      try {
-        await requestSubjectGroupChange(classId, requested)
-        notifySubjectGroupAdmins({
-          title: '🔀 มีคำขอย้ายกลุ่มวิชาใหม่',
-          body: `นักเรียนขอย้ายวิชา "${c?.master_subjects?.subject_name ?? ''}" ไปกลุ่ม ${label} — รอตรวจสอบ`,
-          url: 'dashboard.html',
-        }).catch(() => {})
-        showToast('ส่งคำขอแล้ว รอแอดมินตรวจสอบ', 'success')
-        wrap.remove()
-        renderStudentSubjects(student)
-      } catch (e) {
-        showToast('ส่งคำขอไม่สำเร็จ: ' + (e.message ?? ''), 'error')
-        btn.disabled = false; btn.textContent = `ย้ายไป ${label}`
-      }
-    })
-  })
+  const _refreshTabs = () => {
+    wrap.querySelector('#sgm-tab-samai').className = `sgm-tab flex-1 py-2 rounded-xl text-sm font-semibold transition ${activeTab==='samai' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500'}`
+    wrap.querySelector('#sgm-tab-samai').textContent = `📖 สามัญ (${classes.filter(c=>!isSasanaFn(c)).length})`
+    wrap.querySelector('#sgm-tab-sasana').className = `sgm-tab flex-1 py-2 rounded-xl text-sm font-semibold transition ${activeTab==='sasana' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500'}`
+    wrap.querySelector('#sgm-tab-sasana').textContent = `🕌 ศาสนา (${classes.filter(c=>isSasanaFn(c)).length})`
+  }
+  wrap.querySelector('#sgm-tab-samai').addEventListener('click', () => { activeTab = 'samai'; _refreshTabs(); _renderList() })
+  wrap.querySelector('#sgm-tab-sasana').addEventListener('click', () => { activeTab = 'sasana'; _refreshTabs(); _renderList() })
+  _refreshTabs()
+  _renderList()
 }
 
 // ─── ภาระงานของฉัน (ศูนย์รวมงานที่มอบหมายจากทุกวิชา) ──────────────────────────
