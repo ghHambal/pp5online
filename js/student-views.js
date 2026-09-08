@@ -12,9 +12,10 @@ import {
   getStudentClassroomRole,
   getMyActiveLeavePermission, getMyLeaveHistory,
   updateStudentEmail, getMyClassAssignments, getMyAllAssignments, submitAssignment, getClassSyllabus,
+  requestSubjectGroupChange, getMySubjectGroupRequests,
 } from './student-api.js'
 import { getThemeConfig } from './theme.js'
-import { getSystemConfig, submitQrReissueRequest, notifyQrReissueManagers } from './api.js'
+import { getSystemConfig, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
 import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputValue, renderIconTile } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
@@ -875,7 +876,7 @@ export async function renderStudentOverview(student) {
     // วิชาที่ครูยังกรอกคะแนนไม่ครบทุกช่อง — grade เป็น null โดยตั้งใจ (ยังไม่นับเข้า GPA)
     // โชว์ "ให้คะแนนแล้ว x/y ช่อง" แทนขีด — เพื่อไม่ให้ดูเหมือนสอบตก/ไม่มีข้อมูล
     const _incompleteChip = r => r.grade == null && r.totalCols > 0
-      ? `<span class="text-[10px] font-semibold text-amber-500 whitespace-nowrap">⏳ ${r.scoredCount}/${r.totalCols}</span>` : null
+      ? `<span class="text-[10px] font-semibold text-amber-500 whitespace-nowrap" title="ครูให้คะแนนแล้ว ${r.scoredCount}/${r.totalCols} ช่อง — วิชานี้ยังไม่ถูกนับเข้าเกรดเฉลี่ยจนกว่าจะครบ">⏳ ${r.scoredCount}/${r.totalCols} · ยังไม่นับเข้า GPA</span>` : null
 
     const _gpaTable = (rows, gpa, tabId) => {
       const graded       = rows.filter(r => r.grade != null)
@@ -1480,10 +1481,14 @@ export async function renderStudentSubjects(student) {
     </svg>
   </div>`)
 
-  const [classes, themeCfg] = await Promise.all([
+  const [classes, themeCfg, myGroupRequests] = await Promise.all([
     getMyEnrolledClasses(student.id).catch(()=>[]),
     getThemeConfig().catch(()=>({})),
+    getMySubjectGroupRequests(student.id).catch(()=>[]),
   ])
+  const pendingReqByClass = Object.fromEntries(
+    myGroupRequests.filter(r => r.status === 'pending').map(r => [r.class_id, r])
+  )
 
   // ดึง schedule links ทั้งหมดในครั้งเดียว
   const _DAY_TH = ['อา','จ','อ','พ','พฤ','ศ','ส']
@@ -1523,17 +1528,16 @@ export async function renderStudentSubjects(student) {
     return
   }
 
-  // Group into สามัญ (ACDM/ACDMVOC) and ศาสนา (AGM/AGMVOC)
-  const samai   = classes.filter(c => {
+  // Group into สามัญ (ACDM/ACDMVOC) and ศาสนา (AGM/AGMVOC) — เว้นแต่นักเรียนขอย้ายกลุ่มไว้แล้ว
+  // และแอดมินอนุมัติแล้ว (subject_group_override) ให้ใช้ค่านั้นแทนการคำนวณปกติ
+  const _isSasanaClass = c => {
+    if (c.subject_group_override) return c.subject_group_override === 'sasana'
     const sg = c.master_subjects?.subject_group ?? ''
     const cat = c.master_subjects?.teachers?.category ?? ''
-    return !( cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC' )
-  })
-  const satsana = classes.filter(c => {
-    const sg = c.master_subjects?.subject_group ?? ''
-    const cat = c.master_subjects?.teachers?.category ?? ''
-    return ( cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC' )
-  })
+    return cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC'
+  }
+  const samai   = classes.filter(c => !_isSasanaClass(c))
+  const satsana = classes.filter(c =>  _isSasanaClass(c))
 
   const viewMode = localStorage.getItem('studentSubjectsView') === 'grid' ? 'grid' : 'list'
   const isGrid = viewMode === 'grid'
@@ -1633,16 +1637,90 @@ export async function renderStudentSubjects(student) {
           class="px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${isGrid ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-400'}">กริด</button>
       </div>
     </div>
-    <div class="flex gap-2 mb-4">
+    <div class="flex gap-2 mb-2">
       <button type="button" onclick="window._stuSetSubjectGroup('samai')"
         class="flex-1 py-2 rounded-xl text-sm font-semibold transition ${groupMode==='samai' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500'}">📖 สามัญ (${samai.length})</button>
       <button type="button" onclick="window._stuSetSubjectGroup('sasana')"
         class="flex-1 py-2 rounded-xl text-sm font-semibold transition ${groupMode==='sasana' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-500'}">🕌 ศาสนา (${satsana.length})</button>
     </div>
+    <div class="flex justify-end mb-4">
+      <button id="btn-manage-subject-groups" type="button" class="text-xs text-indigo-600 font-semibold hover:text-indigo-800">🔧 จัดการกลุ่มรายวิชา</button>
+    </div>
     ${groupMode === 'samai'
       ? _renderSection('วิชาสามัญ', '📖', samai)
       : _renderSection('วิชาศาสนา', '🕌', satsana)}
   `)
+
+  document.getElementById('btn-manage-subject-groups')?.addEventListener('click', () => {
+    _openSubjectGroupManager(student, classes, pendingReqByClass, _isSasanaClass)
+  })
+}
+
+// ป๊อบอัพให้นักเรียนขอย้ายวิชาข้ามกลุ่มสามัญ/ศาสนาเอง (บางวิชาศาสนาตามหลักสูตรฝ่ายทะเบียนจัด
+// รหัสเป็นสามัญผิดกลุ่ม) — กดขอแล้วไม่มีผลทันที ต้องรอแอดมินตรวจสอบ+อนุมัติก่อนเสมอ
+function _openSubjectGroupManager(student, classes, pendingReqByClass, isSasanaFn) {
+  document.getElementById('subject-group-mgr')?.remove()
+  const wrap = document.createElement('div')
+  wrap.id = 'subject-group-mgr'
+  wrap.className = 'fixed inset-0 z-[400] bg-white flex flex-col'
+
+  const _row = (c) => {
+    const ms = c.master_subjects
+    const curGroup = isSasanaFn(c) ? 'sasana' : 'samai'
+    const otherGroup = curGroup === 'samai' ? 'sasana' : 'samai'
+    const otherLabel = otherGroup === 'sasana' ? '🕌 ศาสนา' : '📖 สามัญ'
+    const pending = pendingReqByClass[c.id]
+    return `
+    <div class="flex items-center justify-between gap-3 border border-gray-100 rounded-xl p-3">
+      <div class="min-w-0">
+        <p class="font-semibold text-sm text-gray-800 truncate">${ms?.subject_name ?? '—'}</p>
+        <p class="text-[11px] text-gray-400">ปัจจุบัน: ${curGroup === 'sasana' ? '🕌 ศาสนา' : '📖 สามัญ'}</p>
+      </div>
+      ${pending
+        ? `<span class="text-[11px] font-semibold text-amber-500 whitespace-nowrap flex-shrink-0">⏳ รอตรวจสอบ</span>`
+        : `<button class="sgm-move-btn text-[11px] font-semibold text-indigo-600 border border-indigo-200 rounded-lg px-2.5 py-1.5 hover:bg-indigo-50 whitespace-nowrap flex-shrink-0"
+            data-class-id="${c.id}" data-requested="${otherGroup}">ย้ายไป ${otherLabel}</button>`}
+    </div>`
+  }
+
+  wrap.innerHTML = `
+    <div class="flex items-center gap-3 px-4 py-4 border-b border-gray-100 flex-shrink-0">
+      <button id="sgm-back" class="text-emerald-600 font-medium text-sm">← กลับ</button>
+      <h3 class="font-bold text-gray-800 flex-1">🔧 จัดการกลุ่มรายวิชา</h3>
+    </div>
+    <div class="px-4 pt-3 pb-1 flex-shrink-0">
+      <p class="text-[11px] text-gray-400 leading-relaxed">บางวิชาศาสนาตามหลักสูตร ฝ่ายทะเบียนอาจจัดไว้ผิดกลุ่ม — ขอย้ายได้ที่นี่ แต่จะยังไม่มีผลทันที ต้องรอแอดมินตรวจสอบและอนุมัติก่อนเสมอ</p>
+    </div>
+    <div class="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+      ${classes.map(_row).join('')}
+    </div>`
+  document.body.appendChild(wrap)
+  wrap.querySelector('#sgm-back').addEventListener('click', () => wrap.remove())
+
+  wrap.querySelectorAll('.sgm-move-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const classId = Number(btn.dataset.classId)
+      const requested = btn.dataset.requested
+      const c = classes.find(x => x.id === classId)
+      const label = requested === 'sasana' ? '🕌 ศาสนา' : '📖 สามัญ'
+      if (!confirm(`ขอย้ายวิชา "${c?.master_subjects?.subject_name ?? ''}" ไปกลุ่ม ${label}?\n(ต้องรอแอดมินตรวจสอบและอนุมัติก่อนจึงจะมีผลจริง)`)) return
+      btn.disabled = true; btn.textContent = 'กำลังส่ง...'
+      try {
+        await requestSubjectGroupChange(classId, requested)
+        notifySubjectGroupAdmins({
+          title: '🔀 มีคำขอย้ายกลุ่มวิชาใหม่',
+          body: `นักเรียนขอย้ายวิชา "${c?.master_subjects?.subject_name ?? ''}" ไปกลุ่ม ${label} — รอตรวจสอบ`,
+          url: 'dashboard.html',
+        }).catch(() => {})
+        showToast('ส่งคำขอแล้ว รอแอดมินตรวจสอบ', 'success')
+        wrap.remove()
+        renderStudentSubjects(student)
+      } catch (e) {
+        showToast('ส่งคำขอไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        btn.disabled = false; btn.textContent = `ย้ายไป ${label}`
+      }
+    })
+  })
 }
 
 // ─── ภาระงานของฉัน (ศูนย์รวมงานที่มอบหมายจากทุกวิชา) ──────────────────────────

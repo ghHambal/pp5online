@@ -1574,6 +1574,51 @@ export async function setReligionGroupMembers(groupId, teacherIds) {
   }
 }
 
+// ─── คำขอย้ายกลุ่มวิชาสามัญ/ศาสนา (แอดมินตรวจสอบ) ──────────────────────────────
+export async function notifySubjectGroupAdmins({ title, body, url }) {
+  const adminIds = await getAdminProfileIds().catch(() => [])
+  await _notifyProfiles(adminIds, { title, body, url })
+}
+
+export async function getPendingSubjectGroupRequests() {
+  const { data, error } = await supabase.from('subject_group_requests')
+    .select('*, students(full_name, student_code, main_room)')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getAllSubjectGroupRequests() {
+  const { data, error } = await supabase.from('subject_group_requests')
+    .select('*, students(full_name, student_code, main_room)')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getCandidateClassesForGroupRequest(requestId) {
+  const { data, error } = await supabase.rpc('get_candidate_classes_for_group_request', {
+    p_request_id: requestId,
+  })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function approveSubjectGroupRequest(requestId, classIds) {
+  const { error } = await supabase.rpc('approve_subject_group_request', {
+    p_request_id: requestId, p_class_ids: classIds,
+  })
+  if (error) throw error
+}
+
+export async function rejectSubjectGroupRequest(requestId, comment) {
+  const { error } = await supabase.rpc('reject_subject_group_request', {
+    p_request_id: requestId, p_comment: comment || null,
+  })
+  if (error) throw error
+}
+
 // ─── School Periods ───────────────────────────────────────────────────────────
 export async function getPeriods() {
   const { data, error } = await supabase

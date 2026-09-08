@@ -32,7 +32,7 @@ export async function getMyEnrolledClasses(studentId) {
     .select(`
       class_id,
       classes (
-        id, class_name, skill_group, google_sheet_id,
+        id, class_name, skill_group, google_sheet_id, subject_group_override,
         day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
         master_subjects (
           id, subject_code, subject_name, dept, grade_level, credit, teacher_id, subject_group,
@@ -63,7 +63,7 @@ export async function getMyEnrolledClasses(studentId) {
   const { data: classes, error: classErr } = await supabase
     .from('classes')
     .select(`
-      id, class_name, skill_group, google_sheet_id,
+      id, class_name, skill_group, google_sheet_id, subject_group_override,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects (
         id, subject_code, subject_name, dept, grade_level, credit, teacher_id, subject_group,
@@ -347,7 +347,7 @@ export async function getStudentGPA(studentId) {
     .from('class_students')
     .select(`
       class_id,
-      classes(id, master_subjects(
+      classes(id, subject_group_override, master_subjects(
         subject_name, subject_code, credit, subject_group,
         teachers(full_name, category)
       ))
@@ -368,6 +368,7 @@ export async function getStudentGPA(studentId) {
       classId: cls.id, subjectName: ms.subject_name, subjectCode: ms.subject_code,
       credit: ms.credit ?? 1, grade: null, score: null, maxScore: null, scoredCount: 0, totalCols: 0,
       hasRetake: false, group: ms.subject_group, teacherCategory: ms.teachers?.category ?? '',
+      groupOverride: cls.subject_group_override ?? null,
       teacherName: ms.teachers?.full_name ?? '—'
     }
     const { data: scores } = await supabase
@@ -400,15 +401,35 @@ export async function getStudentGPA(studentId) {
       maxScore: maxTotal, hasRetake, pct: pct != null ? Math.round(pct) : null,
       scoredCount, totalCols: cols.length,
       group: ms.subject_group, teacherCategory: ms.teachers?.category ?? '',
+      groupOverride: cls.subject_group_override ?? null,
       teacherName: ms.teachers?.full_name ?? '—'
     }
   }))
 
   const valid = results.filter(Boolean)
-  const _isSasana = r => r.teacherCategory === 'ศาสนา' || ['AGM','AGMVOC'].includes(r.group)
+  const _isSasana = r => r.groupOverride
+    ? r.groupOverride === 'sasana'
+    : (r.teacherCategory === 'ศาสนา' || ['AGM','AGMVOC'].includes(r.group))
   const samai  = valid.filter(r => !_isSasana(r))
   const sasana = valid.filter(r =>  _isSasana(r))
   return { samai, sasana }
+}
+
+// ─── ขอย้ายวิชาข้ามกลุ่มสามัญ/ศาสนา (ต้องผ่านแอดมินอนุมัติก่อนมีผลจริง) ─────────
+export async function requestSubjectGroupChange(classId, requestedGroup) {
+  const { data, error } = await supabase.rpc('request_subject_group_change', {
+    p_class_id: classId, p_requested_group: requestedGroup,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function getMySubjectGroupRequests(studentId) {
+  const { data, error } = await supabase.from('subject_group_requests')
+    .select('id, class_id, subject_name, requested_group, status, created_at')
+    .eq('student_id', studentId)
+  if (error) throw error
+  return data ?? []
 }
 
 // ─── Class schedule links (day + period) for subject cards ───────────────────

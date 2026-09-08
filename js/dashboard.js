@@ -9,7 +9,7 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderClassroomsAdmin,
          renderAnnouncements, renderRolePermissions,
          renderHouseColors, renderDonations, renderWorkCalendar, renderFeedbackAdmin,
-         renderReligionGroups, renderClassroomLeaders } from './views.js'
+         renderReligionGroups, renderClassroomLeaders, renderSubjectGroupRequests } from './views.js'
 import { renderScheduleGrid, renderCourseDocLangConfig } from './teacher-views.js'
 import { renderExecOverview } from './views-exec-overview.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
@@ -17,7 +17,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
          getDepartments, createDepartment, updateDepartment, deleteDepartment,
          getPeriods, upsertPeriod, deletePeriod,
          getAllPaymentRequests, reviewPaymentRequest, approveTeacherQuota,
-         getAllAppFeedback } from './api.js'
+         getAllAppFeedback, getPendingSubjectGroupRequests } from './api.js'
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
@@ -573,6 +573,26 @@ async function _loadFeedbackBadge() {
   } catch { /* ไม่ critical */ }
 }
 
+// ─── Subject Group Requests Badge ──────────────────────────────────────────────
+async function _loadSubjectGroupBadge() {
+  try {
+    const pending = await getPendingSubjectGroupRequests()
+    const badge = document.getElementById('badge-subject-group')
+    if (!badge) return
+    if (pending.length > 0) {
+      badge.textContent = pending.length > 9 ? '9+' : pending.length
+      badge.classList.remove('hidden')
+      badge.classList.add('flex')
+    } else {
+      badge.classList.add('hidden')
+      badge.classList.remove('flex')
+    }
+  } catch { /* ไม่ critical */ }
+}
+
+// expose สำหรับ views.js ใช้หลังอนุมัติ/ปฏิเสธคำขอย้ายกลุ่มวิชา
+window._refreshSubjectGroupBadge = _loadSubjectGroupBadge
+
 // expose สำหรับ views.js ใช้หลังอ่าน/ลบ feedback
 window._refreshFeedbackBadge = _loadFeedbackBadge
 
@@ -836,6 +856,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'shirt-vote-dashboard': () => renderShirtVoteDashboard(),
     'donations':        () => renderDonations(),
     'feedback-admin':   () => renderFeedbackAdmin(),
+    'subject-group-requests': () => renderSubjectGroupRequests(),
     'donor-chat-admin': () => import('./teacher-views-donor-chat.js').then(m => m.renderDonorChatAdmin()),
     'student-qr-print': () => import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(null, null)),
     'classroom-leaders': () => renderClassroomLeaders(),
@@ -867,6 +888,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // โหลด badge จำนวน feedback ที่ยังไม่อ่าน
   _loadFeedbackBadge()
   setInterval(_loadFeedbackBadge, 60000) // refresh ทุก 1 นาที
+
+  // โหลด badge จำนวนคำขอย้ายกลุ่มวิชาที่รอตรวจสอบ
+  _loadSubjectGroupBadge()
+  setInterval(_loadSubjectGroupBadge, 60000) // refresh ทุก 1 นาที
 
   showPageLoader(false)
   window._adminNav = (view) => { if (routes[view]) routes[view]() }

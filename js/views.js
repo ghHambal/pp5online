@@ -32,7 +32,9 @@ import { getStats, getTeachers, getClasses, getStudents,
          advisorResetStudentPassword, markStudentPasswordResetNotice,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
-         updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle } from './api.js'
+         updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle,
+         getPendingSubjectGroupRequests, getAllSubjectGroupRequests, getCandidateClassesForGroupRequest,
+         approveSubjectGroupRequest, rejectSubjectGroupRequest } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect } from './ui.js'
@@ -12278,6 +12280,152 @@ function _showMemberSummaryPopup(group, members) {
 
   document.body.appendChild(overlay)
   overlay.querySelector('#mrg-summary-close').onclick = () => overlay.remove()
+}
+
+// ─── คำขอย้ายกลุ่มวิชาสามัญ/ศาสนา (นักเรียนขอ → แอดมินตรวจสอบ/อนุมัติ) ─────────
+export async function renderSubjectGroupRequests() {
+  setActiveNav('subject-group-requests')
+  document.getElementById('page-title').textContent = 'คำขอย้ายกลุ่มวิชา'
+
+  const _fmtDate = s => s ? new Date(s).toLocaleString('th-TH', { day:'numeric', month:'short', year:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—'
+  const _groupLabel = g => g === 'sasana' ? '🕌 ศาสนา' : '📖 สามัญ'
+  const STATUS_BADGE = {
+    pending:  { label: '🕐 รอตรวจสอบ', cls: 'bg-amber-100 text-amber-700' },
+    approved: { label: '✅ อนุมัติแล้ว', cls: 'bg-emerald-100 text-emerald-700' },
+    rejected: { label: '❌ ปฏิเสธแล้ว', cls: 'bg-red-100 text-red-600' },
+  }
+
+  setContent(`
+  <div class="max-w-3xl mx-auto animate-fade space-y-4">
+    <p class="text-xs text-gray-400">คำขอจากนักเรียนที่เห็นว่าวิชาบางวิชาถูกจัดกลุ่มสามัญ/ศาสนาผิดหลักสูตร — อนุมัติแล้วจะมีผลเฉพาะห้องที่คุณเลือกเท่านั้น</p>
+    <div class="flex items-center gap-2">
+      <button id="sgr-tab-pending" class="sgr-tab flex-1 py-2 rounded-xl text-sm font-semibold bg-indigo-600 text-white" data-tab="pending">รอตรวจสอบ</button>
+      <button id="sgr-tab-all" class="sgr-tab flex-1 py-2 rounded-xl text-sm font-semibold bg-gray-100 text-gray-500" data-tab="all">ทั้งหมด</button>
+    </div>
+    <div id="sgr-list" class="space-y-3">
+      <div class="text-center py-12 text-gray-400"><div class="animate-spin text-3xl mb-2">⏳</div><p class="text-sm">กำลังโหลด...</p></div>
+    </div>
+  </div>`)
+
+  let activeTab = 'pending'
+  const _load = async () => {
+    document.getElementById('sgr-list').innerHTML = `<div class="text-center py-12 text-gray-400"><div class="animate-spin text-3xl mb-2">⏳</div><p class="text-sm">กำลังโหลด...</p></div>`
+    const rows = activeTab === 'pending'
+      ? await getPendingSubjectGroupRequests().catch(() => [])
+      : await getAllSubjectGroupRequests().catch(() => [])
+    const list = document.getElementById('sgr-list')
+    if (!rows.length) {
+      list.innerHTML = `<div class="text-center py-16 text-gray-300"><p class="text-4xl mb-3">🔀</p><p class="text-sm">${activeTab === 'pending' ? 'ไม่มีคำขอรอตรวจสอบ' : 'ยังไม่มีคำขอ'}</p></div>`
+      return
+    }
+    list.innerHTML = rows.map(r => {
+      const st = STATUS_BADGE[r.status] ?? STATUS_BADGE.pending
+      return `
+      <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="font-semibold text-sm text-gray-800 truncate">${_htmlEsc(r.subject_name ?? '—')} <span class="text-xs text-gray-400 font-mono">${_htmlEsc(r.subject_code ?? '')}</span></p>
+            <p class="text-xs text-gray-500 mt-0.5">${_htmlEsc(r.students?.full_name ?? '—')} · ${_htmlEsc(r.students?.student_code ?? '')} · ${_htmlEsc(r.class_level ?? '')}</p>
+            <p class="text-xs text-gray-500 mt-1">${_groupLabel(r.current_group)} → ${_groupLabel(r.requested_group)}</p>
+            <p class="text-[11px] text-gray-400 mt-1">${_fmtDate(r.created_at)}</p>
+          </div>
+          <div class="flex flex-col items-end gap-2 flex-shrink-0">
+            <span class="text-[11px] font-medium px-2 py-0.5 rounded-full ${st.cls}">${st.label}</span>
+            ${r.status === 'pending' ? `<button class="sgr-review-btn text-xs font-semibold text-indigo-600 border border-indigo-200 rounded-lg px-3 py-1.5 hover:bg-indigo-50" data-id="${r.id}">ตรวจสอบ</button>` : ''}
+          </div>
+        </div>
+      </div>`
+    }).join('')
+    list.querySelectorAll('.sgr-review-btn').forEach(btn => {
+      btn.addEventListener('click', () => _openSgrReviewModal(rows.find(r => r.id === Number(btn.dataset.id)), _load))
+    })
+  }
+
+  document.querySelectorAll('.sgr-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTab = btn.dataset.tab
+      document.querySelectorAll('.sgr-tab').forEach(b => {
+        b.className = `sgr-tab flex-1 py-2 rounded-xl text-sm font-semibold ${b.dataset.tab === activeTab ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-500'}`
+      })
+      _load()
+    })
+  })
+
+  await _load()
+}
+
+function _openSgrReviewModal(req, onDone) {
+  if (!req) return
+  const overlay = document.createElement('div')
+  overlay.className = 'fixed inset-0 z-[9000] flex items-center justify-center bg-black/50 p-4'
+  overlay.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col">
+      <div class="px-5 pt-5 pb-3 border-b border-gray-100 flex-shrink-0">
+        <h3 class="font-bold text-gray-800">🔀 ตรวจสอบคำขอย้ายกลุ่มวิชา</h3>
+        <p class="text-xs text-gray-500 mt-1">${_htmlEsc(req.students?.full_name ?? '—')} ขอย้าย "${_htmlEsc(req.subject_name ?? '')}" ${req.current_group === 'sasana' ? '🕌 ศาสนา' : '📖 สามัญ'} → ${req.requested_group === 'sasana' ? '🕌 ศาสนา' : '📖 สามัญ'}</p>
+      </div>
+      <div class="flex-1 overflow-y-auto px-5 py-4">
+        <p class="text-xs text-gray-500 mb-2">เลือกห้องในระดับชั้น <b>${_htmlEsc(req.class_level ?? '')}</b> ที่จะให้มีผลจริง (ค่าเริ่มต้นเลือกทุกห้องที่สอนวิชารหัสเดียวกันไว้ให้แล้ว ปรับได้อิสระ):</p>
+        <div id="sgr-candidates" class="space-y-1.5">
+          <div class="text-center py-6 text-gray-400 text-sm">กำลังโหลดรายชื่อห้อง...</div>
+        </div>
+      </div>
+      <div class="px-5 py-4 border-t border-gray-100 flex-shrink-0 space-y-2">
+        <textarea id="sgr-comment" rows="2" placeholder="หมายเหตุ (ถ้าปฏิเสธ)" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm"></textarea>
+        <div class="flex gap-2">
+          <button id="sgr-reject" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-gray-100 text-gray-600 hover:bg-gray-200">ปฏิเสธ</button>
+          <button id="sgr-approve" class="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700">อนุมัติที่เลือก</button>
+        </div>
+        <button id="sgr-cancel" class="w-full text-xs text-gray-400 hover:text-gray-600">ปิด</button>
+      </div>
+    </div>`
+  document.body.appendChild(overlay)
+  const close = () => overlay.remove()
+  overlay.querySelector('#sgr-cancel').addEventListener('click', close)
+
+  getCandidateClassesForGroupRequest(req.id).then(candidates => {
+    const box = overlay.querySelector('#sgr-candidates')
+    if (!candidates.length) { box.innerHTML = `<p class="text-center text-gray-400 text-sm py-4">ไม่พบห้องที่สอนวิชารหัสนี้ในระดับชั้นเดียวกัน</p>`; return }
+    box.innerHTML = candidates.map(c => `
+      <label class="flex items-center gap-2.5 border border-gray-100 rounded-xl px-3 py-2 cursor-pointer hover:bg-gray-50">
+        <input type="checkbox" class="sgr-candidate-cb" value="${c.class_id}" checked />
+        <span class="flex-1 text-sm text-gray-700">${_htmlEsc(c.class_name ?? '')}</span>
+        <span class="text-[11px] text-gray-400">${c.student_count} คน · ${c.current_group === 'sasana' ? '🕌' : '📖'}</span>
+      </label>`).join('')
+  }).catch(() => {
+    overlay.querySelector('#sgr-candidates').innerHTML = `<p class="text-center text-red-400 text-sm py-4">โหลดรายชื่อห้องไม่สำเร็จ</p>`
+  })
+
+  overlay.querySelector('#sgr-approve').addEventListener('click', async (e) => {
+    const classIds = [...overlay.querySelectorAll('.sgr-candidate-cb:checked')].map(cb => Number(cb.value))
+    if (!classIds.length) { showToast('เลือกอย่างน้อย 1 ห้อง', 'warning'); return }
+    if (!confirm(`อนุมัติย้ายกลุ่มให้ ${classIds.length} ห้องที่เลือก?`)) return
+    e.target.disabled = true; e.target.textContent = 'กำลังบันทึก...'
+    try {
+      await approveSubjectGroupRequest(req.id, classIds)
+      showToast('อนุมัติแล้ว ✅', 'success')
+      window._refreshSubjectGroupBadge?.()
+      close(); onDone()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      e.target.disabled = false; e.target.textContent = 'อนุมัติที่เลือก'
+    }
+  })
+
+  overlay.querySelector('#sgr-reject').addEventListener('click', async (e) => {
+    if (!confirm('ปฏิเสธคำขอนี้?')) return
+    const comment = overlay.querySelector('#sgr-comment').value.trim()
+    e.target.disabled = true; e.target.textContent = 'กำลังบันทึก...'
+    try {
+      await rejectSubjectGroupRequest(req.id, comment)
+      showToast('ปฏิเสธคำขอแล้ว', 'success')
+      window._refreshSubjectGroupBadge?.()
+      close(); onDone()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      e.target.disabled = false; e.target.textContent = 'ปฏิเสธ'
+    }
+  })
 }
 
 export async function renderClassroomLeaders() {
