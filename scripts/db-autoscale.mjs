@@ -48,6 +48,11 @@ function saveState(state) {
   writeFileSync(STATE_PATH, JSON.stringify(state, null, 2))
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms))
+// resize สำเร็จแค่แปลว่า "คำสั่งเข้าคิวแล้ว" ไม่ใช่เครื่อง restart เสร็จจริง — รอสักพัก
+// ก่อนค่อยแจ้งเตือน กันไปคิวรีชนจังหวะที่ฐานข้อมูลกำลัง restart พอดี (เจอจริง: HTTP 520)
+const POST_RESIZE_SETTLE_MS = 15000
+
 async function mgmtFetch(path, options = {}) {
   const res = await fetch(`${MANAGEMENT_API}${path}`, {
     ...options,
@@ -222,6 +227,7 @@ async function main() {
       try {
         await setComputeTier(CEILING_TIER)
         state.lastAction = `upgrade -> ${CEILING_TIER} @ ${new Date().toISOString()}`
+        await sleep(POST_RESIZE_SETTLE_MS)
         await notify(
           '⚠️ ระบบ PP5 Online ปรับ compute อัตโนมัติ',
           'ตรวจพบระบบมีผู้ใช้งานพร้อมกันหนาแน่น (PostgREST/Database ไม่ปกติ) ได้อัปเกรด compute เป็น Medium ให้อัตโนมัติแล้วเพื่อรองรับโหลด หากพบว่าระบบยังโหลดช้าอยู่ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง'
@@ -245,6 +251,7 @@ async function main() {
         await setComputeTier(NORMAL_TIER)
         state.consecutiveHealthyChecks = 0
         state.lastAction = `downgrade -> ${NORMAL_TIER} @ ${new Date().toISOString()}`
+        await sleep(POST_RESIZE_SETTLE_MS)
         await notify(
           '✅ ระบบ PP5 Online กลับสู่ปกติแล้ว',
           'ระบบใช้งานได้ปกติต่อเนื่องมาสักพักแล้ว ได้ลด compute กลับเป็น Micro ให้อัตโนมัติเรียบร้อย'
