@@ -1,18 +1,19 @@
-name: DB Auto-scale
+name: DB Auto-scale (manual override — ตัวหลักคือ pg_cron ใน Supabase แล้ว)
 
-# ตรวจสุขภาพ PP5_Online (PostgREST/Database) ทุก 5 นาที
+# ⚠️ ปิด schedule trigger แล้ว (2026-09-09) — GitHub Actions schedule ไม่รันเอง
+# สม่ำเสมอ (รันเองอัตโนมัติได้แค่ 1 ครั้งใน ~5 ชม. แรก ทั้งที่ตั้งไว้ทุก 5 นาที)
+# ย้ายตัวจับเวลาหลักไปเป็น pg_cron ของ Supabase เอง (ดู
+# supabase/functions/autoscale-tick/ + patch_setup_autoscale_pg_cron.sql +
+# AUTOSCALE_HANDOFF.md) เก็บ workflow นี้ไว้เป็น manual override/debug เท่านั้น
+# (workflow_dispatch ยังใช้ได้ปกติ กดรันมือได้ทุกเมื่อ)
+#
+# ตรวจสุขภาพ PP5_Online (PostgREST/Database)
 # ไม่ปกติต่อเนื่อง -> อัปเกรด compute เป็น Medium อัตโนมัติ (เพดานสูงสุด)
 # ปกติต่อเนื่องนานพอ -> ลดกลับ Micro อัตโนมัติ
 # state (ตัวนับ) เก็บใน branch แยก "autoscale-state" ไม่แตะ main
 # เลยไม่ trigger deploy.yml
-#
-# หมายเหตุ: schedule ของ GitHub เจอปัญหาไม่รันเองต่อเนื่องสม่ำเสมอตอนติดตั้งใหม่
-# (2026-09-09) — commit นี้แตะไฟล์ workflow เพื่อลอง resync การจดจำตาราง cron ของ
-# GitHub (วิธีที่ community แนะนำเมื่อ schedule ค้าง)
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'
   workflow_dispatch:
     inputs:
       downgrade_after_healthy_checks:
