@@ -73,7 +73,7 @@ async function notify(message) {
 // shape จริงอาจต่างจาก doc เล็กน้อย ถือว่า "ไม่ปกติ" ถ้าเจอสัญญาณผิดปกติจุดใดจุดหนึ่ง
 // หรือถ้าตัว health-check เองล้มเหลว/timeout (ปลอดภัยไว้ก่อน)
 async function checkHealthy() {
-  const services = await mgmtFetch(`/projects/${PROJECT_REF}/health?services=rest,db&timeout_ms=8000`)
+  const services = await mgmtFetch(`/projects/${PROJECT_REF}/health?services=rest,db`)
   console.log('[health raw]', JSON.stringify(services))
   const list = Array.isArray(services) ? services : (services?.services ?? [])
   if (!list.length) throw new Error('health endpoint คืนค่าว่างผิดปกติ')
