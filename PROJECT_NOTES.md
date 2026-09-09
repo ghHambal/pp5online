@@ -40,6 +40,10 @@ git status --short
 - Before commit/push, run `npm run build` and `git diff --check`.
 - If `gas/pp5-sync.gs` changes, remind the user to redeploy the Apps Script Web App.
 
+## Known Issues / Handoff Docs
+
+- **`AUTOSCALE_HANDOFF.md`** (repo root, written 2026-09-09): full context on the Supabase compute auto-scale system (`scripts/db-autoscale.mjs` + `.github/workflows/db-autoscale.yml`), why it exists, what's verified working, and one open unresolved problem (GitHub Actions `schedule` trigger not firing reliably) with several concrete next steps already researched. Read this before touching anything related to compute auto-scaling, the "ประวัติปรับกำลังเครื่อง" admin page, or the `send-push` edge function's service_role-caller mode.
+
 ## Current Important Workflows
 
 ### Subject/Course Sync To Central Google Sheet
