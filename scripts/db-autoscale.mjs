@@ -9,15 +9,22 @@
 // state (จำนวนครั้งที่ตรวจแล้วปกติติดต่อกัน) เก็บเป็นไฟล์ JSON ที่ไฟล์
 // เรียกสคริปต์นี้ (workflow) เตรียม/เซฟกลับผ่าน git branch แยกต่างหาก —
 // สคริปต์นี้อ่าน/เขียนแค่ path ที่รับมาทาง argv เท่านั้น ไม่ยุ่งกับ git เอง
+//
+// ทุกครั้งที่ปรับ compute จะโพสต์ประกาศป๊อบอัพเข้าระบบเดิม (ตาราง
+// announcements, audience: teacher) ให้ครูทุกคนเห็นตอนเข้าแอปด้วย — ต้องตั้ง
+// SUPABASE_SERVICE_ROLE_KEY ไว้ ไม่งั้นจะข้ามส่วนนี้ไปเฉยๆ (ยังทำงานส่วน
+// resize ได้ตามปกติ)
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 
 const PROJECT_REF = process.env.SUPABASE_PROJECT_REF
 const PAT = process.env.SUPABASE_ACCESS_TOKEN
 const NOTIFY_WEBHOOK_URL = process.env.NOTIFY_WEBHOOK_URL || ''
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
 const DOWNGRADE_AFTER_HEALTHY_CHECKS = Number(process.env.DOWNGRADE_AFTER_HEALTHY_CHECKS || 18) // 18*5min = 90 นาที
 const STATE_PATH = process.argv[2] || '.autoscale-state.json'
 const MANAGEMENT_API = 'https://api.supabase.com/v1'
+const REST_URL = `https://${PROJECT_REF}.supabase.co/rest/v1`
 const CEILING_TIER = 'ci_medium' // เพดานสูงสุด — ตกลงกับผู้ใช้แล้วว่าไม่ auto-upgrade เกินนี้โดยไม่ถามก่อน
 const NORMAL_TIER = 'ci_micro'
 
@@ -55,14 +62,51 @@ async function mgmtFetch(path, options = {}) {
   return json
 }
 
-async function notify(message) {
-  console.log('[notify]', message)
+// โพสต์ประกาศป๊อบอัพเข้าระบบเดิม (ตาราง announcements) ให้ครูทุกคนเห็นตอนเข้าแอป
+// เหมือนประกาศที่แอดมินโพสต์เอง — ต้องใช้ service_role key เพราะ RLS จำกัดเฉพาะ
+// admin/สิทธิ์ announce_create เท่านั้น (บัญชีแอดมินไม่มี teacher_id ผูกไว้
+// จึง target เจาะจงตัวเองไม่ได้ เลยส่งกว้างเป็น audience ครูทั้งหมดแทน
+// ตรงกับที่ตั้งใจจะประกาศ LINE กลุ่มครูอยู่แล้ว)
+async function postAnnouncement(title, body) {
+  if (!SERVICE_ROLE_KEY) {
+    console.log('[in-app announcement] ข้าม — ไม่ได้ตั้ง SUPABASE_SERVICE_ROLE_KEY ไว้')
+    return
+  }
+  try {
+    const res = await fetch(`${REST_URL}/announcements`, {
+      method: 'POST',
+      headers: {
+        apikey: SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({
+        title, body,
+        is_active: true,
+        priority: 8,
+        creator_role: 'admin',
+        ann_type: 'system',
+        audience: 'teacher',
+        updated_at: new Date().toISOString(),
+      }),
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+    console.log('[in-app announcement] โพสต์สำเร็จ')
+  } catch (e) {
+    console.error('[in-app announcement] โพสต์ไม่สำเร็จ:', e.message)
+  }
+}
+
+async function notify(title, message) {
+  console.log('[notify]', title, '-', message)
+  await postAnnouncement(title, message)
   if (!NOTIFY_WEBHOOK_URL) return
   try {
     await fetch(NOTIFY_WEBHOOK_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: message }),
+      body: JSON.stringify({ text: `${title}\n${message}` }),
     })
   } catch (e) {
     console.error('ส่งแจ้งเตือนไม่สำเร็จ:', e.message)
@@ -87,6 +131,7 @@ async function checkHealthy() {
 
 async function getCurrentTier() {
   const addons = await mgmtFetch(`/projects/${PROJECT_REF}/billing/addons`)
+  console.log('[addons raw]', JSON.stringify(addons))
   const current = addons?.selected_addons?.find(a => a.type === 'compute_instance')
     ?? addons?.available_addons?.find(a => a.type === 'compute_instance' && a.variant?.identifier)
   return current?.variant?.identifier ?? current?.addon_variant ?? NORMAL_TIER
@@ -121,11 +166,17 @@ async function main() {
       try {
         await setComputeTier(CEILING_TIER)
         state.lastAction = `upgrade -> ${CEILING_TIER} @ ${new Date().toISOString()}`
-        await notify('⚠️ ระบบ PP5 Online ตรวจพบสถานะไม่ปกติ (PostgREST/Database) — อัปเกรด compute เป็น Medium ให้อัตโนมัติแล้ว')
+        await notify(
+          '⚠️ ระบบ PP5 Online ปรับ compute อัตโนมัติ',
+          'ตรวจพบระบบมีผู้ใช้งานพร้อมกันหนาแน่น (PostgREST/Database ไม่ปกติ) ได้อัปเกรด compute เป็น Medium ให้อัตโนมัติแล้วเพื่อรองรับโหลด หากพบว่าระบบยังโหลดช้าอยู่ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง'
+        )
       } catch (e) {
         console.error('สั่ง resize ไม่สำเร็จ (จะลองใหม่รอบถัดไป):', e.message)
         state.lastAction = `upgrade attempt failed @ ${new Date().toISOString()}: ${e.message}`
-        await notify('🔴 ระบบ PP5 Online ไม่ปกติหนัก และ resize อัตโนมัติยังไม่สำเร็จ (โปรเจกต์อาจ unhealthy เกินกว่าจะ resize ได้ตอนนี้) — จะลองใหม่อัตโนมัติใน 5 นาที ถ้ายังไม่หายควรเช็ค Dashboard ด้วยตัวเองด่วน')
+        await notify(
+          '🔴 ระบบ PP5 Online มีปัญหาหนัก',
+          'ระบบไม่ปกติต่อเนื่อง และสคริปต์อัปเกรด compute อัตโนมัติยังไม่สำเร็จ (อาจไม่ปกติเกินกว่าจะปรับได้ตอนนี้) จะลองใหม่อัตโนมัติทุก 5 นาที หากยังไม่ดีขึ้น กรุณาแจ้งผู้ดูแลระบบให้เข้าไปตรวจสอบด้วยตนเองด่วน'
+        )
       }
     } else {
       console.log('อยู่ที่เพดานสูงสุด (Medium) แล้ว ไม่ต้องอัปเกรดเพิ่ม')
@@ -138,7 +189,10 @@ async function main() {
         await setComputeTier(NORMAL_TIER)
         state.consecutiveHealthyChecks = 0
         state.lastAction = `downgrade -> ${NORMAL_TIER} @ ${new Date().toISOString()}`
-        await notify('✅ ระบบ PP5 Online ปกติต่อเนื่องแล้ว — ลด compute กลับ Micro ให้อัตโนมัติ')
+        await notify(
+          '✅ ระบบ PP5 Online กลับสู่ปกติแล้ว',
+          'ระบบใช้งานได้ปกติต่อเนื่องมาสักพักแล้ว ได้ลด compute กลับเป็น Micro ให้อัตโนมัติเรียบร้อย'
+        )
       } catch (e) {
         console.error('สั่ง downgrade ไม่สำเร็จ (จะลองใหม่รอบถัดไป):', e.message)
         state.lastAction = `downgrade attempt failed @ ${new Date().toISOString()}: ${e.message}`
