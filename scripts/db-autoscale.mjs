@@ -10,10 +10,12 @@
 // เรียกสคริปต์นี้ (workflow) เตรียม/เซฟกลับผ่าน git branch แยกต่างหาก —
 // สคริปต์นี้อ่าน/เขียนแค่ path ที่รับมาทาง argv เท่านั้น ไม่ยุ่งกับ git เอง
 //
-// ทุกครั้งที่ปรับ compute จะโพสต์ประกาศป๊อบอัพเข้าระบบเดิม (ตาราง
-// announcements, audience: teacher) ให้ครูทุกคนเห็นตอนเข้าแอปด้วย — ต้องตั้ง
-// SUPABASE_SERVICE_ROLE_KEY ไว้ ไม่งั้นจะข้ามส่วนนี้ไปเฉยๆ (ยังทำงานส่วน
-// resize ได้ตามปกติ)
+// ทุกครั้งที่ปรับ compute จะแจ้งเตือนกลุ่มแอดมิน/หัวหน้าวิชาการ/ผู้บริหาร 2 ทาง:
+// (1) ประกาศป๊อบอัพเข้าระบบเดิม (ตาราง announcements) และ (2) Web Push จริง
+// ผ่าน edge function send-push (เด้งแจ้งเตือนระดับเครื่อง เหมือนตอนนักเรียน
+// ขอทำบัตร QR Code ใหม่ ไม่ว่าผู้รับจะเปิดแอปหน้าไหนอยู่ก็ตาม) — ต้องตั้ง
+// SUPABASE_SERVICE_ROLE_KEY ไว้ ไม่งั้นจะข้ามทั้ง 2 ส่วนนี้ไปเฉยๆ (ยังทำงาน
+// ส่วน resize ได้ตามปกติ)
 
 import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 
@@ -67,14 +69,16 @@ async function mgmtFetch(path, options = {}) {
 // ทุกครั้งเผื่อมีการมอบหมายตำแหน่งเปลี่ยนในอนาคต ไม่ hardcode รายชื่อตายตัว
 const NOTIFY_POSITIONS = ['academic_samai', 'academic_religion', 'academic_pvch', 'executive']
 
-async function getTargetTeacherIds() {
+async function getTargetRecipients() {
   const posQuery = `position.in.(${NOTIFY_POSITIONS.join(',')}),positions.ov.{${NOTIFY_POSITIONS.join(',')}}`
   const [byPosition, byDelegatedAdmin] = await Promise.all([
-    restGet(`/teachers?select=id&or=(${posQuery})`),
-    restGet(`/teachers?select=id,profiles!inner(is_also_admin)&profiles.is_also_admin=eq.true`),
+    restGet(`/teachers?select=id,profile_id&or=(${posQuery})`),
+    restGet(`/teachers?select=id,profile_id,profiles!inner(is_also_admin)&profiles.is_also_admin=eq.true`),
   ])
-  const ids = new Set([...byPosition, ...byDelegatedAdmin].map(r => r.id))
-  return [...ids]
+  const rows = [...byPosition, ...byDelegatedAdmin]
+  const teacherIds = [...new Set(rows.map(r => r.id))]
+  const profileIds = [...new Set(rows.map(r => r.profile_id).filter(Boolean))]
+  return { teacherIds, profileIds }
 }
 
 async function restGet(path) {
@@ -88,47 +92,72 @@ async function restGet(path) {
 // โพสต์ประกาศป๊อบอัพเข้าระบบเดิม (ตาราง announcements) ให้เฉพาะแอดมิน/หัวหน้า
 // วิชาการ/ผู้บริหารเห็นตอนเข้าแอป เหมือนประกาศที่แอดมินโพสต์เอง — ต้องใช้
 // service_role key เพราะ RLS จำกัดเฉพาะ admin/สิทธิ์ announce_create เท่านั้น
-async function postAnnouncement(title, body) {
-  if (!SERVICE_ROLE_KEY) {
-    console.log('[in-app announcement] ข้าม — ไม่ได้ตั้ง SUPABASE_SERVICE_ROLE_KEY ไว้')
-    return
-  }
-  try {
-    const targetTeacherIds = await getTargetTeacherIds()
-    console.log('[in-app announcement] ผู้รับ teacher_id:', targetTeacherIds)
-    if (!targetTeacherIds.length) {
-      console.warn('[in-app announcement] ข้าม — หาผู้รับที่ตรงเงื่อนไขไม่เจอเลย (ไม่มีใครถือตำแหน่งที่กำหนด)')
-      return
-    }
-    const res = await fetch(`${REST_URL}/announcements`, {
-      method: 'POST',
-      headers: {
-        apikey: SERVICE_ROLE_KEY,
-        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
-      },
-      body: JSON.stringify({
-        title, body,
-        is_active: true,
-        priority: 8,
-        creator_role: 'admin',
-        ann_type: 'system',
-        audience: 'teacher',
-        target_teacher_ids: targetTeacherIds,
-        updated_at: new Date().toISOString(),
-      }),
-    })
-    if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
-    console.log('[in-app announcement] โพสต์สำเร็จ')
-  } catch (e) {
-    console.error('[in-app announcement] โพสต์ไม่สำเร็จ:', e.message)
-  }
+async function postAnnouncement(title, body, teacherIds) {
+  const res = await fetch(`${REST_URL}/announcements`, {
+    method: 'POST',
+    headers: {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=minimal',
+    },
+    body: JSON.stringify({
+      title, body,
+      is_active: true,
+      priority: 8,
+      creator_role: 'admin',
+      ann_type: 'system',
+      audience: 'teacher',
+      target_teacher_ids: teacherIds,
+      updated_at: new Date().toISOString(),
+    }),
+  })
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`)
+  console.log('[in-app announcement] โพสต์สำเร็จ')
+}
+
+// ยิง Web Push จริง (เด้งแจ้งเตือนระดับเครื่อง/เบราว์เซอร์ ไม่ว่าผู้รับจะเปิด
+// แอปหน้าไหนอยู่ก็ตาม) ใช้ edge function send-push ตัวเดียวกับที่ระบบขอ QR
+// Code ใหม่ใช้อยู่แล้ว — เรียกด้วย service_role key ตรงๆ (โหมด "ระบบอัตโนมัติ
+// ฝั่งเซิร์ฟเวอร์" ที่ปรับให้รองรับแล้ว) ผู้รับต้องเคยกดอนุญาต push ในแอปก่อน
+// ถึงจะได้รับจริง (ของเสริม ไม่บล็อกงานหลักถ้าพลาด)
+async function sendPushNotification(title, body, profileIds) {
+  const res = await fetch(`https://${PROJECT_REF}.supabase.co/functions/v1/send-push`, {
+    method: 'POST',
+    headers: {
+      apikey: SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ title, body, url: 'dashboard.html', profileIds }),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${JSON.stringify(json)}`)
+  console.log('[push] ผลส่ง:', JSON.stringify(json))
 }
 
 async function notify(title, message) {
   console.log('[notify]', title, '-', message)
-  await postAnnouncement(title, message)
+
+  if (!SERVICE_ROLE_KEY) {
+    console.log('[notify] ข้ามประกาศในแอป/push — ไม่ได้ตั้ง SUPABASE_SERVICE_ROLE_KEY ไว้')
+  } else {
+    try {
+      const { teacherIds, profileIds } = await getTargetRecipients()
+      console.log('[notify] ผู้รับ teacher_id:', teacherIds, 'profile_id:', profileIds)
+      if (!teacherIds.length) {
+        console.warn('[notify] ข้าม — หาผู้รับที่ตรงเงื่อนไขไม่เจอเลย (ไม่มีใครถือตำแหน่งที่กำหนด)')
+      } else {
+        await postAnnouncement(title, message, teacherIds).catch(e =>
+          console.error('[in-app announcement] โพสต์ไม่สำเร็จ:', e.message))
+        await sendPushNotification(title, message, profileIds).catch(e =>
+          console.error('[push] ส่งไม่สำเร็จ:', e.message))
+      }
+    } catch (e) {
+      console.error('[notify] หาผู้รับไม่สำเร็จ:', e.message)
+    }
+  }
+
   if (!NOTIFY_WEBHOOK_URL) return
   try {
     await fetch(NOTIFY_WEBHOOK_URL, {
