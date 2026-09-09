@@ -159,10 +159,9 @@ async function checkHealthy() {
 
 async function getCurrentTier() {
   const addons = await mgmtFetch(`/projects/${PROJECT_REF}/billing/addons`)
-  console.log('[addons raw]', JSON.stringify(addons))
   const current = addons?.selected_addons?.find(a => a.type === 'compute_instance')
-    ?? addons?.available_addons?.find(a => a.type === 'compute_instance' && a.variant?.identifier)
-  return current?.variant?.identifier ?? current?.addon_variant ?? NORMAL_TIER
+  console.log('[selected compute addon]', JSON.stringify(current))
+  return current?.variant?.id ?? NORMAL_TIER
 }
 
 async function setComputeTier(tier) {
