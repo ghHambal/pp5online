@@ -5,7 +5,7 @@ import {
   uploadFlashcardImage, deleteFlashcardImage,
   getClassStudents, getScoreColumns, saveStudentScore, getMyClasses
 } from './api.js'
-import { showToast, showDangerConfirm, showPageLoader, setButtonLoading } from './ui.js'
+import { showToast, showDangerConfirm, showPageLoader, setButtonLoading, getFriendlyErrorMessage } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
 import { supabase } from './supabase.js'
 
@@ -571,7 +571,7 @@ export async function renderFlashcardDecks(teacher) {
           showToast('ลบชุดบัตรคำเรียบร้อยแล้ว', 'success')
           renderFlashcardDecks(teacher)
         } catch (err) {
-          showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         } finally {
           showPageLoader(false)
         }
@@ -579,7 +579,7 @@ export async function renderFlashcardDecks(teacher) {
     })
 
   } catch (err) {
-    showToast('โหลดข้อมูลล้มเหลว: ' + (err.message ?? ''), 'error')
+    showToast('โหลดข้อมูลล้มเหลว: ' + (getFriendlyErrorMessage(err)), 'error')
     setContent(`<div class="text-center py-12 text-rose-500 font-semibold">โหลดข้อมูลไม่สำเร็จ</div>`)
   }
 }
@@ -1327,7 +1327,7 @@ export async function renderFlashcardPlay(teacher, deck, classId = null) {
                 pickedContainer.classList.add('hidden')
                 pickedContainer.innerHTML = ''
               } catch (err) {
-                showToast('บันทึกคะแนนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+                showToast('บันทึกคะแนนไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
               } finally {
                 if (saveBtn) {
                   saveBtn.disabled = false
@@ -1454,7 +1454,7 @@ export async function renderFlashcardPlay(teacher, deck, classId = null) {
     activeGlobalKeydownHandler = handleGlobalKeydown // Save for cleanups
 
   } catch (err) {
-    showToast('โหลดข้อมูลล้มเหลว: ' + (err.message ?? ''), 'error')
+    showToast('โหลดข้อมูลล้มเหลว: ' + (getFriendlyErrorMessage(err)), 'error')
     renderFlashcardDecks(teacher)
   }
 }
@@ -1862,7 +1862,7 @@ async function _renderDeckForm(teacher, deck = null) {
       document.getElementById('ai-topic').value = ''
 
     } catch (err) {
-      showToast('AI ไม่สามารถร่างข้อมูลได้: ' + (err.message ?? ''), 'error')
+      showToast('AI ไม่สามารถร่างข้อมูลได้: ' + (getFriendlyErrorMessage(err)), 'error')
     } finally {
       setButtonLoading(btn, false, 'ร่างโดย AI')
       _checkEmpty()
@@ -1994,7 +1994,7 @@ async function _renderDeckForm(teacher, deck = null) {
       renderFlashcardDecks(teacher)
 
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       setButtonLoading(btn, false, '💾 บันทึกข้อมูล')
     }
   })
@@ -2127,7 +2127,7 @@ async function _renderDeckForm(teacher, deck = null) {
       renderFlashcardDecks(teacher)
 
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       setButtonLoading(btn, false, '💾 บันทึกข้อมูล')
     }
   })

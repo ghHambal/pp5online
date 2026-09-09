@@ -31,7 +31,7 @@ import { openQuizAnalytics } from './teacher-views-quiz-analytics.js'
 import { openClassDashboard } from './teacher-views-dashboard.js'
 import { openTimerModal } from './timer-overlay.js'
 import { _openRandomPickerModal, renderClassDetail, openClassPromptGenModal } from './teacher-views-classes.js'
-import { showToast, showQuizCloseChoice } from './ui.js'
+import { showToast, showQuizCloseChoice, getFriendlyErrorMessage } from './ui.js'
 import { uploadAssignmentFile } from './storage.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, _generateSessions, _dateInputValue, ATT_STATUS, _currentWeek, openFullScreenGridOverlay } from './teacher-views-utils.js'
 import { supabase } from './supabase.js'
@@ -132,7 +132,7 @@ async function _openFreeClassPickModal(teacher, cfg, { preselectClassId = null, 
       showToast('เลือกห้องฟรีสำเร็จ ✅', 'success')
       onPicked?.(classId)
     } catch (e) {
-      showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
       btn.disabled = false; btn.textContent = '✅ ยืนยันใช้ห้องนี้'
     }
   })
@@ -334,7 +334,7 @@ export async function renderSmartClassroom(teacher, classId) {
           showToast('เลือกห้องฟรีสำเร็จ ✅', 'success')
           renderSmartClassroom(teacher, classId)
         } catch (e) {
-          showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+          showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
           btn.disabled = false; btn.textContent = '🎁 ใช้ห้องนี้ฟรี'
         }
       })
@@ -410,7 +410,7 @@ export async function renderSmartClassroom(teacher, classId) {
       courseId ? getLessonPlans(courseId).catch(() => []) : Promise.resolve([]),
     ])
   } catch (err) {
-    showToast('โหลดข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('โหลดข้อมูลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     renderClassDetail(teacher, classId)
     return
   }
@@ -769,7 +769,7 @@ export async function renderSmartClassroom(teacher, classId) {
           m.remove()
           _reload()
         } catch (err) {
-          showToast('เปิดควิซไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('เปิดควิซไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           btn.disabled = false; btn.textContent = 'เปิดให้ห้องนี้'
         }
       })
@@ -803,7 +803,7 @@ export async function renderSmartClassroom(teacher, classId) {
           showToast('สร้างคลังแล้ว — เพิ่มคำถามให้ครบก่อนไปสร้างแบบทดสอบนะครับ', 'success')
           _renderBankQuestions(teacher, bank, classId)
         } catch (err) {
-          showToast('สร้างไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('สร้างไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           btn.disabled = false; btn.textContent = 'สร้างคลัง → เพิ่มคำถาม'
         }
       })
@@ -1281,7 +1281,7 @@ export async function renderSmartClassroom(teacher, classId) {
         _openSessionPicker(sessions, nearest?.n, 'วันนี้ไม่ตรงกับตารางสอนของห้องนี้ — เลือกคาบเอง (เลื่อนไปคาบใกล้วันนี้ที่สุดให้แล้ว)')
       }
     } catch (err) {
-      showToast('เปิดหน้าเช็คชื่อไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('เปิดหน้าเช็คชื่อไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     } finally {
       btn.disabled = false; btn.textContent = orig
     }
@@ -1312,7 +1312,7 @@ export async function renderSmartClassroom(teacher, classId) {
       const n = parseInt(b.dataset.n, 10)
       m.remove()
       try { await _openAttendanceModalForSession(teacher, cls, n, {}) }
-      catch (err) { showToast('เปิดคาบนี้ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('เปิดคาบนี้ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     }))
     const focusEl = m.querySelector(`.sc-sess-btn[data-n="${focusN}"]`)
     focusEl?.scrollIntoView({ block: 'center' })
@@ -1635,7 +1635,7 @@ export async function renderSmartClassroom(teacher, classId) {
             showToast('บันทึกคะแนนแล้ว', 'success')
             _renderPanel()
           } catch (err) {
-            showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
             input.disabled = false
           }
         })
@@ -1643,7 +1643,7 @@ export async function renderSmartClassroom(teacher, classId) {
       m.querySelector('#sc-sp-return')?.addEventListener('click', async () => {
         const leaveNow = activeLeaveMap[s.id]
         try { await closeLeavePermission(leaveNow.id, 'returned'); showToast('บันทึกกลับเข้าห้องแล้ว', 'success'); m.remove(); _reload() }
-        catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+        catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
       })
       m.querySelector('#sc-sp-leave')?.addEventListener('click', () => {
         const activeOutCount = Object.keys(activeLeaveMap).length
@@ -1687,7 +1687,7 @@ export async function renderSmartClassroom(teacher, classId) {
         await rpcUnlockAttempt(attemptId, mode)
         showToast(mode === 'resume' ? 'ปลดล็อก — ทำต่อจากจุดเดิมแล้ว' : 'ปลดล็อก — เริ่มชุดใหม่แล้ว', 'success')
         onDone?.()
-      } catch (err) { showToast('ปลดล็อกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      } catch (err) { showToast('ปลดล็อกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     }
     um.querySelector('#qu-resume').addEventListener('click', () => doUnlock('resume'))
     um.querySelector('#qu-restart').addEventListener('click', () => doUnlock('restart'))
@@ -1698,7 +1698,7 @@ export async function renderSmartClassroom(teacher, classId) {
     const btn = e.target.closest('.sc-return-btn')
     if (!btn) return
     try { await closeLeavePermission(btn.dataset.lid, 'returned'); showToast('บันทึกกลับเข้าห้องแล้ว', 'success'); _reload() }
-    catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
   })
   document.getElementById('sc-leave-quota').addEventListener('click', () => {
     _openLeaveQuotaModal(cls, leaveMaxActive, leaveMaxPerWeek, () => _reload())
@@ -1725,7 +1725,7 @@ export async function renderSmartClassroom(teacher, classId) {
     const analyticsBtn = e.target.closest('.sc-quiz-analytics')
     if (startBtn) {
       try { await startQuizLive(startBtn.dataset.qid); showToast('เริ่มควิซให้ห้องนี้แล้ว 🧠', 'success'); _reload() }
-      catch (err) { showToast('เริ่มควิซไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('เริ่มควิซไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     } else if (monitorBtn) {
       const q = quizzes.find(x => x.id === monitorBtn.dataset.qid)
       if (q) openQuizMonitor(q)
@@ -1750,7 +1750,7 @@ export async function renderSmartClassroom(teacher, classId) {
         showToast(choice === 'write_scores' ? 'ปิดสอบและส่งคะแนนแล้ว' : 'ปิดสอบแล้ว — สมุดคะแนนไม่ถูกเปลี่ยน', 'success')
         _reload()
       }
-      catch (err) { showToast('ปิดสอบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ปิดสอบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     } else if (analyticsBtn) {
       const q = quizzes.find(x => x.id === analyticsBtn.dataset.qid)
       if (q) openQuizAnalytics(q)
@@ -1826,7 +1826,7 @@ export async function renderSmartClassroom(teacher, classId) {
         m.remove()
         _reload()
       } catch (err) {
-        showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ส่งไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'ส่งประกาศ'
       }
     })
@@ -2041,7 +2041,7 @@ export async function renderSmartClassroom(teacher, classId) {
     m.querySelector('#sy-delete')?.addEventListener('click', async () => {
       if (!confirm('ลบหัวข้อนี้?')) return
       try { await deleteSyllabusItem(it.id); showToast('ลบแล้ว', 'success'); m.remove(); _reload() }
-      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
     m.querySelector('#sy-save').addEventListener('click', async () => {
       const weekStart = parseInt(m.querySelector('#sy-week-start').value, 10)
@@ -2058,7 +2058,7 @@ export async function renderSmartClassroom(teacher, classId) {
         showToast('บันทึกแล้ว ✅', 'success')
         m.remove(); _reload()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'บันทึก'
       }
     })
@@ -2151,7 +2151,7 @@ export async function renderSmartClassroom(teacher, classId) {
     m.querySelector('#lp-delete')?.addEventListener('click', async () => {
       if (!confirm(`ลบแผน "${p.title}"? บันทึกหลังสอน/ลายเซ็นที่ผูกกับแผนนี้จะหายไปด้วย`)) return
       try { await deleteLessonPlan(p.id); showToast('ลบแผนแล้ว', 'success'); m.remove(); _reload() }
-      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
     m.querySelector('#lp-save').addEventListener('click', async () => {
       const title = m.querySelector('#lp-title').value.trim()
@@ -2186,7 +2186,7 @@ export async function renderSmartClassroom(teacher, classId) {
         showToast('บันทึกแผนแล้ว ✅', 'success')
         m.remove(); _reload()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'บันทึกแผน'
       }
     })
@@ -2308,7 +2308,7 @@ export async function renderSmartClassroom(teacher, classId) {
           showToast('บันทึกแล้ว ✅', 'success')
           m.remove()
         } catch (err) {
-          showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           btn.disabled = false; btn.textContent = 'บันทึก'
         }
       })
@@ -2400,7 +2400,7 @@ export async function renderSmartClassroom(teacher, classId) {
     m.querySelector('#sa-delete')?.addEventListener('click', async () => {
       if (!confirm(`ลบงาน "${a.title}"? ข้อมูลการส่งของนักเรียนจะหายไปด้วย`)) return
       try { await deleteAssignment(a.id); showToast('ลบงานแล้ว', 'success'); m.remove(); _reload() }
-      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
 
     const keptWrap = m.querySelector('#sa-kept-files')
@@ -2474,7 +2474,7 @@ export async function renderSmartClassroom(teacher, classId) {
         m.remove()
         _reload()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = isEdit ? 'บันทึกการแก้ไข' : 'บันทึกงาน'
       }
     })
@@ -2567,7 +2567,7 @@ export async function renderSmartClassroom(teacher, classId) {
     m.querySelector('#st-delete').addEventListener('click', async () => {
       if (!confirm(`ลบงาน "${a.title}"? ข้อมูลการส่งของนักเรียนจะหายไปด้วย`)) return
       try { await deleteAssignment(a.id); showToast('ลบงานแล้ว', 'success'); m.remove(); _reload() }
-      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
     m.querySelector('#st-sort-toggle').addEventListener('change', e => { sortByStatus = e.target.checked; _renderList() })
     const _firstSubmittedId = () => (students.find(s => subByStudent[s.id]) ?? students[0])?.id
@@ -2753,7 +2753,7 @@ export async function renderSmartClassroom(teacher, classId) {
           if (roster) roster.innerHTML = _rosterHTML()
           showToast('บันทึกคะแนนแล้ว ✅', 'success')
           _render()
-        } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false }
+        } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error'); btn.disabled = false }
       }
       m.querySelector('#sgc-grade-save')?.addEventListener('click', _saveGrade)
       m.querySelector('#sgc-grade')?.addEventListener('change', _saveGrade) // บันทึกอัตโนมัติเมื่อกรอกเสร็จ (blur/Enter)
@@ -2771,7 +2771,7 @@ export async function renderSmartClassroom(teacher, classId) {
           await saveAssignmentFeedback(a.id, s.id, val)
           sub.teacher_feedback = val
           showToast('บันทึกคอมเมนต์แล้ว ✅', 'success')
-        } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+        } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
         finally { btn.disabled = false }
       })
       m.querySelector('#sgc-reject')?.addEventListener('click', async () => {
@@ -2786,7 +2786,7 @@ export async function renderSmartClassroom(teacher, classId) {
           sub.teacher_feedback = reason
           showToast('ตีกลับงานแล้ว — นักเรียนจะเห็นเหตุผลนี้และส่งใหม่ได้', 'success')
           _render()
-        } catch (err) { showToast('ตีกลับไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false }
+        } catch (err) { showToast('ตีกลับไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error'); btn.disabled = false }
       })
     }
     const _closeCard = () => {

@@ -7,7 +7,7 @@ import {
 } from './quiz-api.js?v=10.22.538'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
-import { showToast, showDangerConfirm, setButtonLoading } from './ui.js'
+import { showToast, showDangerConfirm, setButtonLoading, getFriendlyErrorMessage } from './ui.js'
 import { _htmlEsc } from './teacher-views-utils.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 
@@ -90,7 +90,7 @@ export async function initQuizExam(attemptId) {
   try {
     _questions = await rpcGetAttemptQuestions(attemptId)
   } catch (err) {
-    root.innerHTML = _messageScreen('🚫', 'โหลดข้อสอบไม่สำเร็จ', err.message ?? '')
+    root.innerHTML = _messageScreen('🚫', 'โหลดข้อสอบไม่สำเร็จ', getFriendlyErrorMessage(err))
     return
   }
 
@@ -391,7 +391,7 @@ async function _submitAnswerToServer(q, pos) {
     }
   } catch (err) {
     _answers[q.question_id] = prevAnswer
-    showToast('บันทึกคำตอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('บันทึกคำตอบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     _renderQuestion(); _renderNav()
   }
 }
@@ -535,7 +535,7 @@ async function _useBonus(bonusType, questionId) {
     _renderNav()
     showToast('ใช้โบนัสสำเร็จ', 'success')
   } catch (err) {
-    showToast('ใช้โบนัสไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('ใช้โบนัสไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
   }
 }
 
@@ -739,7 +739,7 @@ async function _submitAttempt() {
     _attempt.status = 'submitted'
     await _renderResultScreen(document.getElementById('quiz-root'))
   } catch (err) {
-    showToast('ส่งคำตอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('ส่งคำตอบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     _submitting = false
     if (submitBtn) setButtonLoading(submitBtn, false, 'ส่งคำตอบ')
     // attempt is still in_progress server-side — resume the countdown/autosave/anti-cheat
@@ -888,7 +888,7 @@ async function _renderResultScreen(root) {
       const next = await rpcStartAttempt(fresh.quiz_id)
       window.location.href = `quiz-exam.html?attempt=${next.id}`
     } catch (err) {
-      showToast('เริ่มรอบใหม่ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('เริ่มรอบใหม่ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       setButtonLoading(btn, false, originalLabel)
     }
   })
@@ -906,7 +906,7 @@ async function _renderResultScreen(root) {
       await rpcConfirmQuizFinal(fresh.quiz_id)
       await _renderResultScreen(root)
     } catch (err) {
-      showToast('ยืนยันไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('ยืนยันไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       setButtonLoading(btn, false, 'ยืนยันบันทึกคะแนนสอบขั้นสุดท้าย')
     }
   })

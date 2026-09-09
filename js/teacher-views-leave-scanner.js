@@ -1,7 +1,7 @@
 import { getActiveLeavePermission, closeLeavePermission, getStudentByCode, getTeacherByCode, createLeavePermissionByAnyTeacher } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { formatLeaveCountdown } from './leave-time.js'
-import { showToast } from './ui.js'
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
 
 let html5QrcodeScanner = null
@@ -317,7 +317,7 @@ function renderIssueLeaveByAnyTeacherModal(student) {
       processLeaveCheck(student.student_code)
     } catch (err) {
       playFailureBeep()
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       submitBtn.disabled = false
       submitBtn.textContent = '🚪 อนุมัติให้ออกนอกห้อง'
       submitBtn.classList.remove('opacity-70', 'cursor-not-allowed')
@@ -475,7 +475,7 @@ function renderLeaveScanPermitModal(leave) {
       btn.disabled = false
       btn.textContent = '✅ บันทึกกลับเข้าห้อง'
       btn.classList.remove('opacity-70', 'cursor-not-allowed')
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   })
 
@@ -672,8 +672,8 @@ export async function renderStudentLeaveScanner(teacher) {
       if (viewfinder) viewfinder.classList.remove('hidden')
     } catch (err) {
       console.error(err)
-      showToast('ไม่สามารถเปิดใช้งานกล้องได้: ' + (err.message ?? ''), 'error')
-      placeholderText.textContent = 'ไม่สามารถเปิดกล้องได้: ' + (err.message ?? '')
+      showToast('ไม่สามารถเปิดใช้งานกล้องได้: ' + (getFriendlyErrorMessage(err)), 'error')
+      placeholderText.textContent = 'ไม่สามารถเปิดกล้องได้: ' + (getFriendlyErrorMessage(err))
     }
   }
 

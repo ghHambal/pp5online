@@ -1,6 +1,5 @@
 import { supabase } from './supabase.js'
-import { showToast } from './ui.js'
-
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 const QUEUE_KEY = 'pp5_sports_offline_queue_v1'
 const TABLES = {
   events: 'sports_events',
@@ -52,7 +51,7 @@ function _setContent(html) {
 }
 
 function _isMissingTable(error) {
-  const msg = `${error?.code ?? ''} ${error?.message ?? ''} ${error?.details ?? ''}`
+  const msg = `${error?.code ?? ''} ${getFriendlyErrorMessage(error)} ${error?.details ?? ''}`
   return /PGRST20|does not exist|Could not find|schema cache|relation .* does not exist/i.test(msg)
 }
 
@@ -615,7 +614,7 @@ async function _tryOrQueue(type, payload, runner) {
       _enqueue(type, payload)
       showToast('เน็ตไม่พร้อม บันทึกไว้รอซิงก์แล้ว', 'warning')
     } else {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       throw err
     }
   }
@@ -644,7 +643,7 @@ function _bind() {
   document.getElementById('sports-refresh')?.addEventListener('click', () => _loadAll())
   document.getElementById('sports-create-event')?.addEventListener('click', async () => {
     try { await _createEvent(); showToast('สร้างกิจกรรมแล้ว', 'success'); await _loadAll() }
-    catch (err) { showToast('สร้างกิจกรรมไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    catch (err) { showToast('สร้างกิจกรรมไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
   })
   document.getElementById('sports-print-roster')?.addEventListener('click', () => window.print())
   document.getElementById('sports-sync-queue')?.addEventListener('click', _syncQueue)

@@ -2,8 +2,7 @@
 // ใช้ QR ใบเดียวกับเช็คชื่อ/สแกนละหมาด (รูปแบบ SQ:{student_code}:{timestamp}, อายุ ±60 วินาที)
 // เฉพาะคอลัมน์ที่ไม่ใช่คะแนนอัตโนมัติ (column_type ต้องเป็น regular/bonus และไม่ใช่คอลัมน์ระบบกลางของ "ห้องนี้โดยเฉพาะ")
 import { getClassStudents, getScoreColumns, getStudentScores, saveStudentScore, getMyClasses, getLifeSkillColumns, getSystemConfig, getClassByIdFull } from './api.js'
-import { showToast } from './ui.js'
-
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 // สำคัญ: ชื่อคอลัมน์อัตโนมัติ (เช่น "การมาเรียน") เป็นวลีธรรมดาที่ครูวิชาอื่นอาจตั้งชื่อคอลัมน์ของตัวเอง
 // ซ้ำกันได้โดยบังเอิญ — ห้าม exclude แบบ global ตามชื่ออย่างเดียว ต้องเช็คบริบทห้อง (skill_group/subject_group)
 // ก่อนเสมอ ว่าห้องนี้เป็นห้องศาสนา/ทักษะชีวิตจริงไหม ถึงจะ exclude ชื่อกลุ่มนั้น (ดู _buildExcludedNames)
@@ -118,7 +117,7 @@ export async function openScoreScanner(opts) {
       _buildExcludedNames(classId),
     ])
   } catch (err) {
-    showToast('โหลดข้อมูลห้องไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('โหลดข้อมูลห้องไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     return
   }
   if (!students.length) { showToast('ห้องนี้ยังไม่มีนักเรียน', 'warning'); return }
@@ -295,7 +294,7 @@ function _renderScannerOverlay({ classId, className, students, eligibleCols, cur
         showToast(`บันทึกคะแนน ${student.full_name} แล้ว ✅`, 'success')
         await closePopup()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       } finally {
         saveBtn.disabled = false
       }
@@ -356,7 +355,7 @@ function _renderScannerOverlay({ classId, className, students, eligibleCols, cur
         () => {},
       )
     } catch (err) {
-      showToast('ไม่สามารถเปิดกล้องได้: ' + (err.message ?? ''), 'error')
+      showToast('ไม่สามารถเปิดกล้องได้: ' + (getFriendlyErrorMessage(err)), 'error')
       overlay.remove()
     }
   })()

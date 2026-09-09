@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { showToast, showPageLoader, setButtonLoading, checkAndShowChangelog } from './ui.js'
+import { showToast, showPageLoader, setButtonLoading, checkAndShowChangelog, initHeavyLoadBanner, getFriendlyErrorMessage } from './ui.js'
 import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTeacherTable,
          renderSettings, renderImport, renderSubjects, renderSubjectTable, renderCurriculum,
          renderDepartments, renderDeptTable, renderPeriods,
@@ -26,7 +26,7 @@ import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { openRegradeModal } from './regrade-modal.js'
-import { renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.666'
+import { renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.682'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -207,7 +207,7 @@ async function handleTeacherFormSubmit(e) {
     closeTeacherModal()
     renderTeacherTable(await getTeachers())
   } catch (err) {
-    showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
   } finally {
     setButtonLoading(btn, false)
   }
@@ -291,7 +291,7 @@ async function handleSubjectFormSubmit(e) {
     closeSubjectModal()
     renderSubjectTable(await getMasterSubjects())
   } catch (err) {
-    showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
   } finally {
     setButtonLoading(btn, false)
   }
@@ -471,7 +471,7 @@ async function handleDeptFormSubmit(e) {
     closeDeptModal()
     renderDeptTable(await getDepartments())
   } catch (err) {
-    showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
   } finally {
     setButtonLoading(btn, false)
   }
@@ -522,7 +522,7 @@ async function handlePeriodFormSubmit(e) {
     closePeriodModal()
     renderPeriods()
   } catch (err) {
-    showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
   } finally {
     setButtonLoading(btn, false)
   }
@@ -687,6 +687,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (session?.user?.id) {
     checkAndShowChangelog(session.user.id, false, true)
   }
+  initHeavyLoadBanner()
 
   document.getElementById('btn-logout')?.addEventListener('click', handleLogout)
 

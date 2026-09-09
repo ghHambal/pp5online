@@ -29,7 +29,7 @@ import {
 import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { supabase } from './supabase.js'
-import { showToast, showDangerConfirm } from './ui.js'
+import { showToast, showDangerConfirm, getFriendlyErrorMessage } from './ui.js'
 import { openPP5Doc } from './pp5-doc.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import { uploadQrIssuerSignature } from './storage.js'
@@ -197,7 +197,7 @@ async function _openStudentManagerImpl(teacher, classId) {
         try {
           await updateClassStudentSpecialResult(sel.dataset.specialEnrollment, sel.value)
           showToast('บันทึกสถานะพิเศษแล้ว', 'success')
-        } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+        } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
       })
     })
     document.getElementById('students-roster')?.addEventListener('click', () => window._openRosterPicker(classId))
@@ -281,7 +281,7 @@ async function _openStudentManagerImpl(teacher, classId) {
             modal.remove()
             refresh()
           } catch (err) {
-            showToast('ดำเนินการไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            showToast('ดำเนินการไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           }
         })
       })
@@ -395,7 +395,7 @@ async function _openStudentManagerImpl(teacher, classId) {
       setTimeout(() => inputEl.focus(), 50)
     })
   } catch (err) {
-    showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     renderMyClasses(teacher)
   }
 }
@@ -671,7 +671,7 @@ export async function renderMyClasses(teacher, opts = {}) {
           modal.remove()
           renderMyClasses(teacher)
         } catch (e) {
-          showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+          showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
           btn.disabled = false; btn.textContent = 'บันทึก'
         }
       })
@@ -704,7 +704,7 @@ export async function renderMyClasses(teacher, opts = {}) {
         await deleteClass(classId)
         showToast(`ลบ "${name}" แล้ว`, 'success')
         renderMyClasses(teacher)
-      } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
+      } catch (err) { showToast('ลบไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error') }
     }
 
     window._copyClass = (classId) => {
@@ -866,7 +866,7 @@ export async function renderMyClasses(teacher, opts = {}) {
 </html>`
         openHtmlPrintOverlay(doc)
       } catch (err) {
-        showToast('สร้างใบรายชื่อไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('สร้างใบรายชื่อไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     }
 
@@ -1016,7 +1016,7 @@ export async function renderMyClasses(teacher, opts = {}) {
             m.remove()
             renderMyClasses(teacher)
           } catch (err) {
-            showToast('บันทึก Sheet ID ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            showToast('บันทึก Sheet ID ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           }
         })
       }
@@ -1045,7 +1045,7 @@ export async function renderMyClasses(teacher, opts = {}) {
           btn.disabled = false
           btn.textContent = 'สร้างสำเนา'
           showToast('สร้างอัตโนมัติไม่สำเร็จ เปิดวิธีทำสำเนาด้วย Google แทน', 'warning')
-          showManualCopy(err.message ?? '')
+          showManualCopy(getFriendlyErrorMessage(err))
         }
       })
     }
@@ -1093,7 +1093,7 @@ export async function renderMyClasses(teacher, opts = {}) {
         } catch (err) {
           btn.disabled = false
           btn.textContent = '🔓 เปิดสิทธิ์ให้ทุกคนที่มีลิงก์ดูชีทได้'
-          showToast('เปิดสิทธิ์ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('เปิดสิทธิ์ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         }
       })
       m.querySelector('#btn-open-sync').addEventListener('click', () => {
@@ -1198,7 +1198,7 @@ export async function renderMyClasses(teacher, opts = {}) {
               }
             )
           }
-        } catch (err) { errors.push('รายวิชา: ' + (err.message ?? '')) }
+        } catch (err) { errors.push('รายวิชา: ' + (getFriendlyErrorMessage(err))) }
 
         try {
           if (doAtt) {
@@ -1218,7 +1218,7 @@ export async function renderMyClasses(teacher, opts = {}) {
             }
             await syncAttendance(cls.google_sheet_id, sessions, attMap, students)
           }
-        } catch (err) { errors.push('เช็คชื่อ: ' + (err.message ?? '')) }
+        } catch (err) { errors.push('เช็คชื่อ: ' + (getFriendlyErrorMessage(err))) }
 
         try {
           if (doScore) {
@@ -1232,7 +1232,7 @@ export async function renderMyClasses(teacher, opts = {}) {
               await syncScores(cls.google_sheet_id, scoreColumns, scores, students)
             }
           }
-        } catch (err) { errors.push('คะแนน: ' + (err.message ?? '')) }
+        } catch (err) { errors.push('คะแนน: ' + (getFriendlyErrorMessage(err))) }
 
         m.remove()
         if (errors.length) {
@@ -1252,7 +1252,7 @@ export async function renderMyClasses(teacher, opts = {}) {
       <button id="retry-my-classes" class="mt-5 px-5 py-2.5 rounded-xl bg-red-600 text-white font-semibold hover:bg-red-700">ลองใหม่</button>
     </div>`)
     document.getElementById('retry-my-classes')?.addEventListener('click', () => renderMyClasses(teacher))
-    showToast('โหลดข้อมูลห้องเรียนไม่สำเร็จ: ' + (err?.message || ''), 'error')
+    showToast('โหลดข้อมูลห้องเรียนไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
   }
 
 }
@@ -1496,7 +1496,7 @@ export async function renderClassDetail(teacher, classId, ctx = {}) {
         const decks = await getFlashcardDecks(teacher.id)
         _openClassFlashcardsSelectionModal(teacher, cid, decks)
       } catch (err) {
-        showToast('โหลดชุดบัตรคำไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('โหลดชุดบัตรคำไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     }
     window._openPromptGenModal = async (cid) => {
@@ -3155,7 +3155,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
               pendingLinked.add(sid); currentLinked.add(sid)
               _hasChanges = true; _refreshCell(cell)
               showToast(`เชื่อมร่วมกับ ${otherName} แล้ว ✅`, 'success')
-            } catch(e) { showToast('เชื่อมไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+            } catch(e) { showToast('เชื่อมไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error') }
           })
         } else if (state === 'selected') {
           try {
@@ -3163,14 +3163,14 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
             pendingLinked.delete(sid); currentLinked.delete(sid)
             _hasChanges = true; _refreshCell(cell)
             showToast('ยกเลิกการเชื่อมแล้ว', 'info')
-          } catch(e) { showToast('ยกเลิกไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+          } catch(e) { showToast('ยกเลิกไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error') }
         } else {
           try {
             await linkClassToSchedule(cls.id, sid)
             pendingLinked.add(sid); currentLinked.add(sid)
             _hasChanges = true; _refreshCell(cell)
             showToast('เชื่อมตารางสอนแล้ว ✅', 'success')
-          } catch(e) { showToast('เชื่อมไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+          } catch(e) { showToast('เชื่อมไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error') }
         }
       })
     })
@@ -3296,7 +3296,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
       } catch (e) {
         _delegateList = _delegateList.filter(x => x.id !== s.id)
         _renderDelegateChips(); _renderDelegateSuggestions()
-        showToast('เพิ่มไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        showToast('เพิ่มไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
       }
     }
     const _removeDelegate = async (studentId) => {
@@ -3308,7 +3308,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
       } catch (e) {
         if (removed) _delegateList = [..._delegateList, removed]
         _renderDelegateChips(); _renderDelegateSuggestions()
-        showToast('ลบไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
       }
     }
 
@@ -3441,7 +3441,7 @@ async function _openCombinedEditModal(teacher, cls, classrooms, schedule, linksB
           infoEl.classList.remove('hidden')
         })
       } catch(err) {
-        infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (err.message??'')
+        infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (getFriendlyErrorMessage(err))
         infoEl.classList.remove('hidden')
       } finally {
         btn.textContent = '🗓️ คำนวณจากตารางสอน'; btn.disabled = false
@@ -3894,7 +3894,7 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
             color_hex: selectedColorHex,
           })
         } catch (err) {
-          showToast('บันทึกสีไม่ได้: ' + (err.message ?? ''), 'warning')
+          showToast('บันทึกสีไม่ได้: ' + (getFriendlyErrorMessage(err)), 'warning')
         }
       }
 
@@ -4167,7 +4167,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
               room_key: roomColorKey({ className: g.class_name, subjectName: g.subject_name, fallbackId: g.subject_id }),
               class_name: g.class_name?.trim() || null,
               color_hex: colorHex,
-            }).catch(err => showToast('บันทึกสีไม่ได้: ' + (err.message ?? ''), 'warning'))
+            }).catch(err => showToast('บันทึกสีไม่ได้: ' + (getFriendlyErrorMessage(err)), 'warning'))
           }
           await Promise.all(g.sessions.map(s => upsertScheduleEntry({
             teacher_id:   teacher.id,
@@ -4197,7 +4197,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
           // อัปเดตตารางหลังบ้านแบบ silent (ไม่ปิด popup)
           renderScheduleGrid(teacher, academicYear, semester, cfg).catch(()=>{})
         } catch (err) {
-          showToast('บันทึกกลุ่มนี้ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('บันทึกกลุ่มนี้ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           btn.disabled = false; btn.textContent = origText
         }
       }))
@@ -4652,7 +4652,7 @@ export async function renderCourseDocLangConfig(teacher, isAdmin = false) {
         settingsMap[activeLang] = { ...settingsMap[activeLang], ...saved }
         showToast(`บันทึกการตั้งค่า ${_langLabel(activeLang)} สำเร็จ`, 'success')
       } catch (e) {
-        showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
       }
       btn.disabled = false
       btn.innerHTML = '💾 บันทึก'
@@ -4669,7 +4669,7 @@ export async function renderCourseDocLangConfig(teacher, isAdmin = false) {
         settingsMap[activeLang] = { ...settingsMap[activeLang], ...saved }
         showToast(`อัปเดตผู้มีสิทธิ์ ${_langLabel(activeLang)} สำเร็จ`, 'success')
       } catch (e) {
-        showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
       }
       btn.disabled = false
       btn.textContent = '💾 บันทึกผู้มีสิทธิ์'
@@ -5081,7 +5081,7 @@ export async function renderAnnouncementsView(teacher) {
         _myannLoaded = false
         _loadMyAnn()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         saveBtn.disabled = false; saveBtn.textContent = existing ? 'บันทึก' : 'สร้างประกาศ'
       }
     })
@@ -5396,7 +5396,7 @@ export async function renderAnnouncementsView(teacher) {
           const countEl = panel.querySelector(`.ann-comment-toggle-btn[data-id="${id}"] .ann-comment-count`)
           if (countEl) countEl.textContent = commentsByAnnId[id].length
         } catch (err) {
-          showToast('ส่งความคิดเห็นไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('ส่งความคิดเห็นไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         }
         btn.disabled = false
       }
@@ -6513,7 +6513,7 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
           ))
         } catch (err) {
           console.error('Failed to log QR reissue:', err)
-          showToast('บันทึกสถิติการออก QR ใหม่ไม่สำเร็จ: ' + (err.message ?? ''), 'warning')
+          showToast('บันทึกสถิติการออก QR ใหม่ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'warning')
         }
         printBtn.disabled = false
         printBtn.textContent = `🖨️ พิมพ์ / บันทึก PDF (${totalCards} ใบ)`
@@ -6718,7 +6718,7 @@ export async function renderStudentQRPrint(teacher, classId = null, opts = {}) {
     _renderPageStructure()
   } catch (err) {
     console.error(err)
-    showToast('โหลดข้อมูลล้มเหลว: ' + (err.message ?? ''), 'error')
+    showToast('โหลดข้อมูลล้มเหลว: ' + (getFriendlyErrorMessage(err)), 'error')
   }
 }
 
@@ -6853,7 +6853,7 @@ async function _initReissueHistoryPanel(containerEl, { cols, showCode, showSeat,
       showToast('บันทึกการแก้ไขแล้ว', 'success')
     } catch (err) {
       console.error('Failed to update QR reissue log:', err)
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   }
 
@@ -6874,7 +6874,7 @@ async function _initReissueHistoryPanel(containerEl, { cols, showCode, showSeat,
       showToast('ลบประวัติแล้ว', 'success')
     } catch (err) {
       console.error('Failed to delete QR reissue log:', err)
-      showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   }
 
@@ -7012,7 +7012,7 @@ function _openQrIssuerSignatureModal(current, onSaved) {
       current = { ...current, name, title }
       onSaved(current)
       showToast('บันทึกชื่อ-ตำแหน่งแล้ว ✅', 'success')
-    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
   })
 
   m.querySelector('#qr-sig-clear').addEventListener('click', () => {
@@ -7034,7 +7034,7 @@ function _openQrIssuerSignatureModal(current, onSaved) {
       refreshPreview(url)
       showToast('บันทึกลายเซ็นแล้ว ✅', 'success')
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     } finally { btn.disabled = false; btn.textContent = 'บันทึกลายเซ็นที่วาด' }
   })
 
@@ -7051,7 +7051,7 @@ function _openQrIssuerSignatureModal(current, onSaved) {
       refreshPreview(url)
       showToast('อัปโหลดลายเซ็นแล้ว ✅', 'success')
     } catch (err) {
-      showToast('อัปโหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('อัปโหลดไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     } finally { btn.disabled = false; btn.textContent = 'อัปโหลด' }
   })
 }
@@ -7232,7 +7232,7 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
         }
       } catch (err) {
         okBtn.disabled = false; okBtn.textContent = '🖨️ พิมพ์ + บันทึก'
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     })
   }
@@ -7302,7 +7302,7 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
         }
       } catch (err) {
         okBtn.disabled = false; okBtn.textContent = '🖨️ พิมพ์ + บันทึกทั้งหมด'
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     })
   }
@@ -7315,7 +7315,7 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
       req[field] = next
       _renderRequestsList()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   }
 
@@ -7327,7 +7327,7 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
       _renderRequestsList()
       showToast('ลบแล้ว', 'success')
     } catch (err) {
-      showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   }
 
@@ -7387,7 +7387,7 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
       await revokeQrReissueManager(btn.dataset.revoke)
       await _loadManagers()
       showToast('ยกเลิกสิทธิ์แล้ว', 'success')
-    } catch (err) { showToast('ยกเลิกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    } catch (err) { showToast('ยกเลิกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
   })
 
   const managerSearch = containerEl.querySelector('#qr-manager-search')
@@ -7418,7 +7418,7 @@ async function _initQrRequestsPanel(containerEl, { teacher, cols, showCode, show
       managerResults.classList.add('hidden'); managerResults.innerHTML = ''
       await _loadManagers()
       showToast(`มอบสิทธิ์ให้ ${btn.dataset.name} แล้ว ✅`, 'success')
-    } catch (err) { showToast('มอบสิทธิ์ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    } catch (err) { showToast('มอบสิทธิ์ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
   })
 
   _loadManagers()

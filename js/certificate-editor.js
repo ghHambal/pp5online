@@ -4,8 +4,7 @@ import {
   CERT_PRESETS, CERT_GOOGLE_FONTS,
 } from './certificate-engine.js'
 import { uploadCertificateTemplateImage, uploadCertificateLogoImage } from './storage.js'
-import { showToast } from './ui.js'
-
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 const _esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n))
 const uid = prefix => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -256,7 +255,7 @@ export function openCertificateLayoutEditor(opts) {
         const imageUrl = await uploadCertificateLogoImage(file)
         commit({ imageUrl }); renderImagePanel(el)
       } catch (error) {
-        showToast('อัปโหลดไม่สำเร็จ: ' + (error.message ?? ''), 'error')
+        showToast('อัปโหลดไม่สำเร็จ: ' + (getFriendlyErrorMessage(error)), 'error')
         event.target.disabled = false
       }
     })
@@ -489,7 +488,7 @@ export function openCertificateLayoutEditor(opts) {
         ? { id: uid('corner'), type: 'cornerGraphic', imageUrl, position, width: 14, insetX: 2, insetY: 2, opacity: 1 }
         : { id: uid('img'), type: 'image', imageUrl, x: 50, y: 15, width: 15, opacity: 1 }
       layout.elements.push(element); selectedIds = new Set([element.id]); renderCanvas(); renderPanel()
-    } catch (error) { showToast('อัปโหลดไม่สำเร็จ: ' + (error.message ?? ''), 'error') }
+    } catch (error) { showToast('อัปโหลดไม่สำเร็จ: ' + (getFriendlyErrorMessage(error)), 'error') }
   }
 
   overlay.querySelector('#cce-add-el').addEventListener('click', () => {
@@ -538,7 +537,7 @@ export function openCertificateLayoutEditor(opts) {
       await onSave(layout, backgroundImageUrl)
       closeEditor()
     } catch (error) {
-      showToast('บันทึกไม่สำเร็จ: ' + (error.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(error)), 'error')
       saveBtn.disabled = false; saveBtn.textContent = '💾 บันทึก'
     }
   })

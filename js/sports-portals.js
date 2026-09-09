@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { getFriendlyErrorMessage } from './ui.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import { uploadSystemAsset, uploadShirtDesignColorImage, uploadShirtDesignHtml, uploadGalleryPhoto } from './storage.js'
@@ -874,7 +875,7 @@ async function _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames,select
     }
     body.querySelector('#advisor-shirt-pay-csv').onclick=()=>{const unpaid=students.filter(s=>!paidOf(s.id));const rows=['รหัส,ชื่อ-สกุล,ห้องสามัญ,ห้องศาสนา,สี,ไซซ์เสื้อ,ยอดที่ต้องชำระ',...unpaid.map(s=>[s.student_code,s.full_name,s.main_room,s.religion_room,s.house_color,s.sports_shirt_size,amountFor(s)].map(x=>`"${String(x||'').replaceAll('"','""')}"`).join(','))];const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+rows.join('\n')],{type:'text/csv'}));a.download=`ยังไม่ชำระค่าเสื้อ-${room}.csv`;a.click();URL.revokeObjectURL(a.href)}
     renderSummary();renderList();renderRecent()
-  }catch(e){console.error(e);body.innerHTML=`<div class="p-8 text-center text-red-500">โหลดข้อมูลค่าเสื้อไม่สำเร็จ: ${esc(e.message||'')}</div>`}
+  }catch(e){console.error(e);body.innerHTML=`<div class="p-8 text-center text-red-500">โหลดข้อมูลค่าเสื้อไม่สำเร็จ: ${esc(getFriendlyErrorMessage(e))}</div>`}
 }
 
 // แท็บ "เช็คชื่อเข้าสีวันแรก" — ครูที่ปรึกษาทั้งสามัญและศาสนาใช้ได้ (บางห้องเรียนสามัญ+ศาสนา
@@ -1024,7 +1025,7 @@ async function _renderAdvisorCheckinTab(body,teacher,rooms,roomNames) {
       try{const Html5Qrcode=await _loadHtml5QrcodeAtt();reader.style.display='block';html5Qrcode=new Html5Qrcode('advisor-checkin-camera');let lastCode=null,lastTime=0;await html5Qrcode.start({facingMode:'environment'},{fps:15,aspectRatio:1},decodedText=>{if(decodedText===lastCode&&Date.now()-lastTime<2000)return;lastCode=decodedText;lastTime=Date.now();let code=decodedText;if(code.startsWith('SQ:'))code=code.split(':')[1];const student=students.find(s=>s.student_code===code);_playScanBeepAtt(!!student);commitCheckin(student,'qr')});scanning=true;btn.textContent='⏹ ปิดกล้อง'}catch(e){feedback(false,'เปิดกล้องไม่สำเร็จ',e.message);await stopScanner();reader.style.display='none'}
     }
     renderBanner();renderSummary();renderList();renderRecent()
-  } catch(e) { console.error(e); body.innerHTML=`<div class="p-8 text-center text-red-500">โหลดข้อมูลเช็คชื่อเข้าสีวันแรกไม่สำเร็จ: ${esc(e.message||'')}</div>` }
+  } catch(e) { console.error(e); body.innerHTML=`<div class="p-8 text-center text-red-500">โหลดข้อมูลเช็คชื่อเข้าสีวันแรกไม่สำเร็จ: ${esc(getFriendlyErrorMessage(e))}</div>` }
 }
 
 function _openAdvisorResetPasswordModal(studentId, onConfirm) {
@@ -1072,7 +1073,7 @@ function _openAdvisorResetPasswordModal(studentId, onConfirm) {
       m.remove()
     } catch (e) {
       msgEl.className = 'text-xs text-center py-2 rounded-xl mb-2 bg-red-50 text-red-600'
-      msgEl.textContent = 'ไม่สำเร็จ: ' + (e.message ?? '')
+      msgEl.textContent = 'ไม่สำเร็จ: ' + (getFriendlyErrorMessage(e))
       msgEl.classList.remove('hidden')
       btn.disabled = false; btn.textContent = 'บันทึก'
     }

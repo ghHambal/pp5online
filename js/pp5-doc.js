@@ -6,7 +6,7 @@ import {
   getLifeSkillColumns, getLifeSkillScores,
   getReadingScoreColumns, getReadingScores,
 } from './api.js'
-import { showToast } from './ui.js'
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { supabase } from './supabase.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import { _readingGrade, applyReadingGradesFromConfig } from './teacher-views-utils.js'
@@ -2302,7 +2302,7 @@ export async function openPP5Doc(classId) {
     for (const warning of (d.docWarnings ?? [])) showToast(warning, 'warning')
   } catch (err) {
     console.error('[pp5-doc]', err)
-    showToast('โหลดเอกสารไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('โหลดเอกสารไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
   }
 }
 

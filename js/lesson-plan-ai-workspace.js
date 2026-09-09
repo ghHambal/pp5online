@@ -4,7 +4,7 @@ import {
   createSyllabusItem, updateSyllabusItem, createLessonPlan, updateLessonPlan,
   getLessonPlanReflection, upsertLessonPlanReflection, getDepartments,
 } from './api.js'
-import { showToast } from './ui.js'
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { uploadLessonPlanSignature, getLessonPlanAssetUrl } from './storage.js'
 
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[ch])
@@ -256,7 +256,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
         }
       }
       showToast('สร้างข้อมูลในระบบแล้ว ✅', 'success'); m.remove(); onSaved?.()
-    } catch (err) { showResult('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), false); btn.disabled = false; btn.textContent = '💾 สร้างในระบบ' }
+    } catch (err) { showResult('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), false); btn.disabled = false; btn.textContent = '💾 สร้างในระบบ' }
   })
 }
 
@@ -372,8 +372,8 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
         signature_data_url:reflection?.signature_data_url||null,signed_at:(nextPaths.teacher||reflection?.signature_data_url)?new Date().toISOString():null,
       })
     }
-    m.querySelector('#lp-doc-save').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังบันทึก...';try{await save();showToast('บันทึกเอกสารและลายเซ็นแล้ว ✅','success');await render()}catch(err){showToast('บันทึกไม่สำเร็จ: '+(err.message||''),'error');b.disabled=false;b.textContent='💾 บันทึกทั้งหมด'}})
-    m.querySelector('#lp-doc-print').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังเตรียมเอกสาร...';try{const saved=await save();const urls={classHead:await resolve(saved.class_head_signature_path),teacher:await resolve(saved.teacher_signature_path||saved.signature_data_url),deptHead:await resolve(saved.dept_head_signature_path||dept?.head_sign_url)};printLessonPlan({plan,cls,teacher,reflection:saved,urls,dept});showToast('เปิดหน้าพิมพ์แล้ว','success')}catch(err){showToast('เตรียมเอกสารไม่สำเร็จ: '+(err.message||''),'error')}finally{b.disabled=false;b.textContent='🖨️ บันทึกแล้วพิมพ์'}})
+    m.querySelector('#lp-doc-save').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังบันทึก...';try{await save();showToast('บันทึกเอกสารและลายเซ็นแล้ว ✅','success');await render()}catch(err){showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error');b.disabled=false;b.textContent='💾 บันทึกทั้งหมด'}})
+    m.querySelector('#lp-doc-print').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังเตรียมเอกสาร...';try{const saved=await save();const urls={classHead:await resolve(saved.class_head_signature_path),teacher:await resolve(saved.teacher_signature_path||saved.signature_data_url),deptHead:await resolve(saved.dept_head_signature_path||dept?.head_sign_url)};printLessonPlan({plan,cls,teacher,reflection:saved,urls,dept});showToast('เปิดหน้าพิมพ์แล้ว','success')}catch(err){showToast('เตรียมเอกสารไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')}finally{b.disabled=false;b.textContent='🖨️ บันทึกแล้วพิมพ์'}})
   }
   m.addEventListener('click',e=>{if(e.target===m)m.remove()}); await render()
 }

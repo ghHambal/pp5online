@@ -1,3 +1,4 @@
+import { getFriendlyErrorMessage } from './ui.js'
 // sync.js — ซิงค์ข้อมูลไปยัง Google Sheet ผ่าน Central GAS (Admin deploy ครั้งเดียว)
 
 const SHEET_TAB = 'หน้าหลัก'
@@ -91,7 +92,7 @@ async function _post(gasUrl, payload) {
       body:     JSON.stringify(payload),
     })
   } catch (err) {
-    throw new Error('เชื่อมต่อ GAS ไม่สำเร็จ: ' + (err.message ?? ''))
+    throw new Error('เชื่อมต่อ GAS ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)))
   }
 }
 

@@ -5,8 +5,7 @@
 // สมาชิกสภาที่โหลดมา จะค้นหานักเรียนทั่วไปด้วย student_code แทน (ไม่โหลดรายชื่อนักเรียนทั้งโรงเรียน
 // มาไว้ล่วงหน้าเพราะมีเป็นพันคน — ค้นแบบ on-demand ทีละคนตอนสแกนเจอ)
 import { checkInAttendance, undoCheckInAttendance, searchStudentsForCouncil } from './council-api.js'
-import { showToast } from './ui.js'
-
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 function _playScanBeep(type = 'success') {
   try {
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
@@ -162,8 +161,8 @@ export function openCouncilCheckinScanner(opts) {
       onCheckedIn?.(resolved.studentId)
     } catch (err) {
       _playScanBeep('error'); flash(false)
-      feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">บันทึกไม่สำเร็จ: ${_esc(err.message ?? '')}</div>`
-      showToast('เช็คอินไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">บันทึกไม่สำเร็จ: ${_esc(getFriendlyErrorMessage(err))}</div>`
+      showToast('เช็คอินไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   }
 
@@ -207,7 +206,7 @@ export function openCouncilCheckinScanner(opts) {
       renderHistory()
       onUndo?.(studentId)
     } catch (err) {
-      showToast('ยกเลิกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('ยกเลิกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false
     }
   })
@@ -232,7 +231,7 @@ export function openCouncilCheckinScanner(opts) {
         () => {},
       )
     } catch (err) {
-      showToast('ไม่สามารถเปิดกล้องได้: ' + (err.message ?? ''), 'error')
+      showToast('ไม่สามารถเปิดกล้องได้: ' + (getFriendlyErrorMessage(err)), 'error')
       overlay.remove()
     }
   })()

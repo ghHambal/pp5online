@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { getFriendlyErrorMessage } from './ui.js'
 
 const PW_KEY = 'staff_shirt_size_pw'
 const root = document.getElementById('staff-shirt-root')
@@ -328,7 +329,7 @@ function renderLookup(password, options) {
   statusEl.textContent = 'กำลังโหลดข้อมูล...'
   fetchPersonnelList(password)
     .then(list => { records = list; renderTable() })
-    .catch(e => { statusEl.textContent = ''; listWrap.innerHTML = `<div class="rounded-xl px-3 py-2.5 text-xs font-semibold bg-red-50 text-red-600 border border-red-200">โหลดข้อมูลไม่สำเร็จ: ${esc(e?.message || '')}</div>` })
+    .catch(e => { statusEl.textContent = ''; listWrap.innerHTML = `<div class="rounded-xl px-3 py-2.5 text-xs font-semibold bg-red-50 text-red-600 border border-red-200">โหลดข้อมูลไม่สำเร็จ: ${esc(getFriendlyErrorMessage(e))}</div>` })
 }
 
 async function start() {

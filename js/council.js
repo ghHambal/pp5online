@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
-import { showToast } from './ui.js'
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { getMyStudentProfile } from './student-api.js'
 import { getMyTeacherProfile, getMyHomeroomRooms, getTeachers } from './api.js'
 import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCouncilTeacherPhoto, uploadCouncilCertificate, uploadCertificateTemplateImage } from './storage.js'
@@ -1446,7 +1446,7 @@ function openPeerEndorserPickerModal(applicationId, gender) {
         m.remove()
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -2008,7 +2008,7 @@ function openMemberModal({ mode, gender, member }) {
       ctx.members = await getCouncilMembers().catch(() => ctx.members)
       render()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = 'บันทึก'
     }
   })
@@ -2098,7 +2098,7 @@ async function handlePeerEndorsement(applicationId) {
     delete peerEndorsements[myMember.id]
     render()
   } catch (err) {
-    showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
   }
 }
 
@@ -2117,7 +2117,7 @@ async function handleEndorsement(applicationId, action) {
     await refreshPendingEndorsements()
     render()
   } catch (err) {
-    showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
   }
 }
 
@@ -2829,7 +2829,7 @@ function openDocAiImportModal() {
       showToast(`นำเข้าข้อมูลแล้ว ${filled} ช่อง — กรุณาตรวจสอบความถูกต้องก่อนบันทึกร่าง`, 'success')
       modal.remove()
     } catch (err) {
-      showToast('นำเข้าข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('นำเข้าข้อมูลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   }
 
@@ -3974,7 +3974,7 @@ function openCouncilProfileModal(teacher) {
       councilAdvisors = null; studentAffairsHeads = null; schoolDirectors = null
       render()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = 'บันทึก'
     }
   })
@@ -4119,7 +4119,7 @@ function wireContentEvents() {
         ctx.members = await getCouncilMembers().catch(() => ctx.members)
         render()
       } catch (err) {
-        showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     })
   })
@@ -4136,7 +4136,7 @@ function wireContentEvents() {
         showToast(value ? 'ให้สิทธิ์สร้างกิจกรรมแล้ว ✅' : 'ถอนสิทธิ์แล้ว ✅', 'success')
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -4320,7 +4320,7 @@ function wireContentEvents() {
       flowSubtab = 'mine'
       render()
     } catch (err) {
-      showToast('ส่งใบสมัครไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('ส่งใบสมัครไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = '✅ ยืนยันการสมัคร'
     }
   })
@@ -4375,7 +4375,7 @@ function wirePermsEvents() {
         councilAdvisors = null; studentAffairsHeads = null; schoolDirectors = null
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'เพิ่ม'
       }
     })
@@ -4389,7 +4389,7 @@ function wirePermsEvents() {
         councilAdvisors = null; studentAffairsHeads = null; schoolDirectors = null
         render()
       } catch (err) {
-        showToast('ถอดถอนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ถอดถอนไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     })
   })
@@ -4415,7 +4415,7 @@ function wirePermsEvents() {
         showToast('บันทึกฝ่ายที่ดูแลแล้ว ✅', 'success')
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'บันทึกฝ่าย'
       }
     })
@@ -4455,7 +4455,7 @@ function wireMyDutyEvents() {
       myRoutines = null
       render()
     } catch (err) {
-      showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('เพิ่มไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   })
 
@@ -4463,7 +4463,7 @@ function wireMyDutyEvents() {
     btn.addEventListener('click', async () => {
       if (!confirm('ลบรูทีนนี้?')) return
       try { await removeRoutine(Number(btn.dataset.id)); myRoutines = null; render() }
-      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
   })
 
@@ -4477,7 +4477,7 @@ function wireMyDutyEvents() {
         if (done) myRoutineLogDone.add(routineId); else myRoutineLogDone.delete(routineId)
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         chk.checked = !done; chk.disabled = false
       }
     })
@@ -4494,7 +4494,7 @@ function wireMyDutyEvents() {
         if (a) a.status = status
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         chk.checked = !chk.checked; chk.disabled = false
       }
     })
@@ -4522,7 +4522,7 @@ function wireAssignmentsEvents() {
       delete assignmentsByGender[gender]
       render()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = 'มอบหมายงาน'
     }
   })
@@ -4536,7 +4536,7 @@ function wireAssignmentsEvents() {
         delete assignmentsByGender[gender]
         render()
       } catch (err) {
-        showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     })
   })
@@ -4560,7 +4560,7 @@ function wireChairTeamEvents() {
       delete interviewedByGender[gender]
       render()
     } catch (err) {
-      showToast('เสนอไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('เสนอไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = 'เสนอต่อครูที่ปรึกษาสภา'
     }
   })
@@ -4582,7 +4582,7 @@ function wireChairTeamEvents() {
         ctx.members = await getCouncilMembers().catch(() => ctx.members)
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         card?.querySelectorAll('button').forEach(b => { b.disabled = false })
       }
     })
@@ -4632,7 +4632,7 @@ function wireSettingsEvents() {
       showToast('บันทึกการตั้งค่าแล้ว ✅', 'success')
       render()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = '💾 บันทึกการตั้งค่า'
     }
   })
@@ -4649,7 +4649,7 @@ function wireSettingsEvents() {
         ctx.positions = await getCouncilPositions()
         showToast('บันทึกแล้ว ✅', 'success')
         render()
-      } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
   })
 
@@ -4660,7 +4660,7 @@ function wireSettingsEvents() {
         await deleteCouncilPosition(Number(btn.dataset.id))
         ctx.positions = await getCouncilPositions()
         render()
-      } catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      } catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
   })
 
@@ -4676,7 +4676,7 @@ function wireSettingsEvents() {
         ctx.positions = await getCouncilPositions()
         showToast('เพิ่มตำแหน่งแล้ว ✅', 'success')
         render()
-      } catch (err) { showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      } catch (err) { showToast('เพิ่มไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
   })
 
@@ -4690,13 +4690,13 @@ function wireSettingsEvents() {
       await addInterviewCriterion({ name, weight })
       interviewCriteria = null
       render()
-    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
   })
   document.querySelectorAll('.btn-remove-interview-criterion').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm('ลบหัวข้อนี้ออกจากเกณฑ์สัมภาษณ์?')) return
       try { await removeInterviewCriterion(Number(btn.dataset.id)); interviewCriteria = null; render() }
-      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
   })
 
@@ -4711,7 +4711,7 @@ function wireSettingsEvents() {
       ctx.cfg = { ...ctx.cfg, ...updates }
       showToast('บันทึกแล้ว ✅', 'success')
       render()
-    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
   })
 
   document.getElementById('settings-doc-options-form')?.addEventListener('submit', async e => {
@@ -4729,7 +4729,7 @@ function wireSettingsEvents() {
       ctx.cfg = { ...ctx.cfg, ...updates }
       showToast('บันทึกแล้ว ✅', 'success')
       render()
-    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
   })
 
   document.getElementById('phrase-form')?.addEventListener('submit', async e => {
@@ -4741,13 +4741,13 @@ function wireSettingsEvents() {
       await addEndorsementPhrase({ phrase, sortOrder: endorsementPhrasesAdmin?.length ?? 0 })
       endorsementPhrasesAdmin = null
       render()
-    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
   })
   document.querySelectorAll('.btn-remove-phrase').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm('ลบข้อความนี้?')) return
       try { await removeEndorsementPhrase(Number(btn.dataset.id)); endorsementPhrasesAdmin = null; render() }
-      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
   })
 
@@ -4784,7 +4784,7 @@ function wireSettingsEvents() {
       certTemplates = null
       render()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = 'เพิ่มเทมเพลต'
     }
   })
@@ -4792,7 +4792,7 @@ function wireSettingsEvents() {
     btn.addEventListener('click', async () => {
       if (!confirm('ลบเทมเพลตนี้?')) return
       try { await deleteCertificateTemplate(Number(btn.dataset.id)); certTemplates = null; render() }
-      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
   })
   document.querySelectorAll('.btn-design-cert-template').forEach(btn => {
@@ -4823,7 +4823,7 @@ function wireSettingsEvents() {
         showToast(chk.checked ? 'เปิดใช้งานแล้ว' : 'ปิดใช้งานแล้ว', 'success')
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         chk.checked = !chk.checked
       }
     })
@@ -4899,7 +4899,7 @@ function wireDocsEvents() {
       docEditingId = null
       render()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = '💾 บันทึกร่าง'
     }
   })
@@ -4912,7 +4912,7 @@ function wireDocsEvents() {
         docs = null
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -4940,7 +4940,7 @@ function wireDocsEvents() {
         docs = null
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -4976,7 +4976,7 @@ function wireEvalEvents() {
       evalCriteria = null
       render()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   })
 
@@ -4988,7 +4988,7 @@ function wireEvalEvents() {
         evalCriteria = null
         render()
       } catch (err) {
-        showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     })
   })
@@ -5026,7 +5026,7 @@ function wireEvalEvents() {
         evalOpenMemberId = null
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'บันทึกผลประเมิน'
       }
     })
@@ -5047,7 +5047,7 @@ function wireEvalEvents() {
         openCertificatePrint(member, ev)
         render()
       } catch (err) {
-        showToast('ออกเกียรติบัตรไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ออกเกียรติบัตรไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = '🏅 ออกเกียรติบัตร'
       }
     })
@@ -5084,7 +5084,7 @@ function wireActivitiesEvents() {
       activities = null
       render()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = 'สร้างกิจกรรม'
     }
   })
@@ -5097,7 +5097,7 @@ function wireActivitiesEvents() {
         activities = null
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -5112,7 +5112,7 @@ function wireActivitiesEvents() {
         activities = null
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -5152,7 +5152,7 @@ function wireActivitiesEvents() {
         attendanceByActivity[activityId]?.add(studentId)
         render()
       } catch (err) {
-        showToast('เช็คชื่อไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('เช็คชื่อไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -5185,7 +5185,7 @@ function wireActivitiesEvents() {
         delete certRuleByActivity[activityId]
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'บันทึกเงื่อนไข'
       }
     })
@@ -5205,7 +5205,7 @@ function wireActivitiesEvents() {
         delete certOverridesByActivity[activityId]
         loadCertManageData(activityId)
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -5231,7 +5231,7 @@ function wireActivitiesEvents() {
         certIssuedByActivity[activityId] = { ...(certIssuedByActivity[activityId] ?? {}), [studentId]: cert }
         render()
       } catch (err) {
-        showToast('ออกเกียรติบัตรไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ออกเกียรติบัตรไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = '🏅 ออกเกียรติบัตร'
       }
     })
@@ -5280,7 +5280,7 @@ function wireNewsEvents() {
       announcements = null
       render()
     } catch (err) {
-      showToast('เผยแพร่ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('เผยแพร่ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = 'เผยแพร่ประกาศ'
     }
   })
@@ -5296,7 +5296,7 @@ function wireNewsEvents() {
         showToast('รับทราบแล้ว', 'success')
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'รับทราบ'
       }
     })
@@ -5363,7 +5363,7 @@ function wireApplicationsAdminEvents() {
         adminApps = null
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'บันทึกนัดสัมภาษณ์'
       }
     })
@@ -5402,7 +5402,7 @@ function wireApplicationsAdminEvents() {
         adminApps = null
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'บันทึกผล'
       }
     })
@@ -5426,7 +5426,7 @@ function wireApplicationsAdminEvents() {
         adminApps = null
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = '🗳️ ตั้งเป็นผู้สมัครเลือกตั้ง'
       }
     })
@@ -5446,7 +5446,7 @@ function wireApplicationsAdminEvents() {
         ctx.members = await getCouncilMembers().catch(() => ctx.members)
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = '✅ แต่งตั้งเข้าตำแหน่ง'
       }
     })
@@ -5463,7 +5463,7 @@ function wireElectionEvents() {
         ctx.elections = [...ctx.elections.filter(x => x.id !== e.id), e]
         render()
       } catch (err) {
-        showToast('เปิดใช้งานไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('เปิดใช้งานไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -5483,7 +5483,7 @@ function wireElectionEvents() {
         showToast('บันทึกช่วงเวลาแล้ว', 'success')
         render()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -5500,7 +5500,7 @@ function wireElectionEvents() {
         ctx.members = await getCouncilMembers().catch(() => ctx.members)
         render()
       } catch (err) {
-        showToast('ประกาศผลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ประกาศผลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = '📢 ประกาศผล+แต่งตั้ง'
       }
     })
@@ -5540,7 +5540,7 @@ function wireElectionEvents() {
       showToast('บันทึกโปรไฟล์ผู้สมัครแล้ว ✅', 'success')
       render()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = 'บันทึก'
     }
   })

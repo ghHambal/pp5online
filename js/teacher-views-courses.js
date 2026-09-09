@@ -10,7 +10,7 @@ import {
 import { supabase } from './supabase.js'
 import { uploadTeacherPhoto } from './storage.js'
 import { openPP5CourseModal } from './pp5-doc.js'
-import { showToast } from './ui.js'
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { _openCourseColsModal } from './teacher-views-grades.js'
 import { _openLessonPlanApproval } from './teacher-views.js'
 import {
@@ -276,7 +276,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       openLessonPlanDocument({ plan: selectedPlan, cls, teacher, classId: cls.id, currentWeek: selectedPlan.week_start })
     })
   } catch (err) {
-    body.innerHTML = `<div class="rounded-2xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">โหลดศูนย์จัดการคอร์สไม่สำเร็จ: ${_htmlEsc(err.message ?? '')}</div>`
+    body.innerHTML = `<div class="rounded-2xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">โหลดศูนย์จัดการคอร์สไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(err))}</div>`
   }
 }
 
@@ -380,7 +380,7 @@ async function _getLangSettings() {
 export async function openCourseDocPage2Modal(teacher, course) {
   const [existing, langSettingsMap] = await Promise.all([
     getCourseDocPage2(course.id).catch(err => {
-      showToast('โหลดคำอธิบายฯ ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('โหลดคำอธิบายฯ ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       return null
     }),
     _getLangSettings(),
@@ -956,7 +956,7 @@ Return JSON object เท่านั้น:
         }
         render()
       } catch (err) {
-        showToast('ค้นหลักสูตรไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ค้นหลักสูตรไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       } finally {
         btn.disabled = false; btn.innerHTML = `🔍 ${L.btnCurriculum}`
       }
@@ -975,7 +975,7 @@ Return JSON object เท่านั้น:
         aiStatusText = L.toastAIDone
         render()
       } catch (err) {
-        showToast('AI ร่างไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('AI ร่างไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       } finally {
         btn.disabled = false; btn.innerHTML = `✨ ${L.btnAI}`
       }
@@ -1039,7 +1039,7 @@ Output language: ${L.aiLang}
         aiStatusText = L.toastImgDone
         render()
       } catch (err) {
-        showToast('อ่านรูปไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('อ่านรูปไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       } finally {
         btn.textContent = `📷 ${L.btnImg}`
         e.target.value = ''
@@ -1158,7 +1158,7 @@ Output language: ${L.aiLang}
         showToast(L.toastSaved, 'success')
         modal.remove()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
         btn.textContent = L.save
       }
@@ -1875,7 +1875,7 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
       showToast('บันทึกคอร์สวิชาสำเร็จ','success')
       window._goBack()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')
+      showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')
     } finally {
       btn.disabled = false; btn.textContent = isClone ? 'บันทึกสำเนาคอร์ส' : editData ? 'บันทึกการแก้ไข' : 'บันทึกคอร์สวิชา'
     }
@@ -2075,7 +2075,7 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
       showToast('บันทึกโปรไฟล์สำเร็จ ✅', 'success')
       if (onComplete) await onComplete(teacher.profile_id)
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
+      showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error')
     } finally {
       btn.disabled = false; btn.textContent = 'บันทึกและเริ่มใช้งาน →'
     }
@@ -2308,7 +2308,7 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
       showToast('บันทึกโปรไฟล์สำเร็จ','success')
       if (onRefresh) await onRefresh(teacher.profile_id)
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')
+      showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')
     } finally {
       btn.disabled = false; btn.textContent = 'บันทึก'
     }
@@ -2330,7 +2330,7 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
       document.getElementById('prof-pw-new').value    = ''
       document.getElementById('prof-pw-confirm').value = ''
     } catch (err) {
-      showToast('เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('เปลี่ยนรหัสผ่านไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     } finally {
       btn.disabled = false; btn.textContent = 'บันทึกรหัสผ่านใหม่'
     }

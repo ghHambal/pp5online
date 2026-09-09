@@ -1,7 +1,7 @@
 // js/teacher-views-quiz-config.js
 import { getMyClasses, getScoreColumns, getSystemConfig } from './api.js'
 import { getQuizzesForBank, getQuizQuestions, createQuiz, updateQuiz, startQuizLive, closeQuiz, applyQuizScores, deleteQuiz, getTeacherStartedQuizCount } from './quiz-api.js'
-import { showToast, showDangerConfirm, showQuizCloseChoice, setButtonLoading } from './ui.js'
+import { showToast, showDangerConfirm, showQuizCloseChoice, setButtonLoading, getFriendlyErrorMessage } from './ui.js'
 import { setContent, setTitle, _htmlEsc, SELECT_CLS, INPUT_CLS } from './teacher-views-utils.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 
@@ -378,7 +378,7 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
       modal.remove()
       renderBankQuizzes(teacher, bank)
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       setButtonLoading(e.target, false, 'บันทึก')
     }
   })

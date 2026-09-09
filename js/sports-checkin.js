@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { getFriendlyErrorMessage } from './ui.js'
 
 // รหัสผ่านหน้านี้เป็นแค่ทางเข้าระดับ UI (ตารางที่เกี่ยวข้องทั้งหมดเปิดให้ anon อ่าน/เขียนอยู่แล้ว
 // เพราะ AZIZGAMES ทั้งระบบเชื่อมต่อแบบ anon เสมอ ไม่มี Supabase Auth) — ใช้รหัสเดียวกับปุ่ม
@@ -201,7 +202,7 @@ function renderApp(data) {
       }, () => {})
       scanning = true
     } catch (e) {
-      feedback = { text: 'เปิดกล้องไม่สำเร็จ: ' + (e?.message || ''), tone: 'error' }
+      feedback = { text: 'เปิดกล้องไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), tone: 'error' }
       updateFeedback()
     }
   }
@@ -313,7 +314,7 @@ async function init() {
       const data = await loadData()
       renderApp(data)
     } catch (e) {
-      root.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${esc(e.message || '')}</div>`
+      root.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${esc(getFriendlyErrorMessage(e))}</div>`
     }
   }
   if (cachedPw === PW) { boot(); return }

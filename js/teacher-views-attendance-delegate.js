@@ -5,7 +5,7 @@
 // teacher-views-smart-classroom.js) แยกไฟล์ใหม่เพราะ teacher-views-classes.js ใหญ่มากแล้ว
 import { getMyDonationRequests, getSystemConfig, setAttendanceDelegateFreeClass, updateClass, getMyClasses } from './api.js'
 import { _toPositiveInt, _parseDonationStickers, _getDonorTierIndex } from './teacher.js'
-import { showToast } from './ui.js'
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { _htmlEsc } from './teacher-views-utils.js'
 
 // รูปแบบ system_config.donationSpecialFeatures: "icon|ข้อความ|minTier" ต่อบรรทัด (ตรงกับ
@@ -85,13 +85,13 @@ async function _openAttendanceDelegateFreeClassPickModal(teacher, { preselectCla
       try {
         await updateClass(classId, { attendance_delegate_enabled: true })
       } catch (e) {
-        showToast('เลือกห้องฟรีสำเร็จ แต่เปิดสิทธิ์เช็คชื่อแทนไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        showToast('เลือกห้องฟรีสำเร็จ แต่เปิดสิทธิ์เช็คชื่อแทนไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
       }
       m.remove()
       showToast('เลือกห้องฟรีสำเร็จ ✅', 'success')
       onPicked?.(classId)
     } catch (e) {
-      showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
       btn.disabled = false; btn.textContent = '✅ ยืนยันใช้ห้องนี้'
     }
   })
@@ -105,7 +105,7 @@ export async function toggleAttendanceDelegateForClass(teacher, classId, nextVal
       await updateClass(classId, { attendance_delegate_enabled: false })
       onDone?.(false)
     } catch (e) {
-      showToast('ปิดสิทธิ์ไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+      showToast('ปิดสิทธิ์ไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
     }
     return
   }
@@ -115,7 +115,7 @@ export async function toggleAttendanceDelegateForClass(teacher, classId, nextVal
       await updateClass(classId, { attendance_delegate_enabled: true })
       onDone?.(true)
     } catch (e) {
-      showToast('เปิดสิทธิ์ไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+      showToast('เปิดสิทธิ์ไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
     }
     return
   }

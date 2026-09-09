@@ -2,7 +2,7 @@
 import { getClassStudents } from './api.js'
 import { getQuizAttemptsForMonitor, rpcUnlockAttempt, getQuizQuestions } from './quiz-api.js'
 import { supabase } from './supabase.js'
-import { showToast, showDangerConfirm } from './ui.js'
+import { showToast, showDangerConfirm, getFriendlyErrorMessage } from './ui.js'
 import { _htmlEsc } from './teacher-views-utils.js'
 
 let _channel = null
@@ -217,7 +217,7 @@ function _openUnlockChoice(attemptId, quiz, students, questionsById) {
       showToast(mode === 'resume' ? 'ปลดล็อก — ทำต่อจากจุดเดิมแล้ว' : 'ปลดล็อก — เริ่มชุดใหม่แล้ว', 'success')
       await _refresh(quiz, students, questionsById)
     } catch (err) {
-      showToast('ปลดล็อกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('ปลดล็อกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   }
   m.querySelector('#unlock-resume').addEventListener('click', () => doUnlock('resume'))

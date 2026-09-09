@@ -1,5 +1,5 @@
 import { getClassStudents, getMyClasses, getSystemConfig, getTeachers } from './api.js'
-import { showToast } from './ui.js'
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import {
   INPUT_CLS, SELECT_CLS,
@@ -1007,7 +1007,7 @@ async function _loadStudentsForSelectedClass() {
     _state.students = _sortStudents(await getClassStudents(classId))
   } catch (e) {
     console.error(e)
-    showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ: ' + (e.message || ''), 'error')
+    showToast('โหลดรายชื่อนักเรียนไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
   } finally {
     _state.loadingStudents = false
   }
@@ -1137,7 +1137,7 @@ export async function renderExamDocuments(teacher) {
   } catch (e) {
     console.error(e)
     setContent(`<div class="bg-white rounded-2xl border border-red-100 p-8 text-center text-red-500">
-      โหลดเอกสารช่วงสอบไม่สำเร็จ: ${_htmlEsc(e.message || '')}
+      โหลดเอกสารช่วงสอบไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(e))}
     </div>`)
   }
 }

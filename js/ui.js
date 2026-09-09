@@ -26,6 +26,27 @@ export function showToast(message, type = 'info') {
   }, 3500)
 }
 
+// ─── Friendly Error Message ───────────────────────────────────────────────────
+// แปล error ดิบจาก Postgres/PostgREST/เครือข่าย (เช่น statement timeout ตอนระบบโหลดหนัก)
+// ให้เป็นข้อความที่ครู/นักเรียนอ่านเข้าใจ แทนการโชว์ error message ดิบใส่หน้าจอ
+const HEAVY_LOAD_ERROR_HINTS = [
+  'statement timeout', 'canceling statement', 'timed out acquiring connection',
+  'pgrst003', '57014', 'gateway timeout', 'upstream request timeout',
+]
+export function getFriendlyErrorMessage(err) {
+  const msg = String(err?.message ?? err ?? '')
+  const code = err?.code
+  const status = err?.status ?? err?.statusCode
+  const lower = msg.toLowerCase()
+  const isHeavyLoad = code === '57014' || code === 'PGRST003' || status === 504 ||
+    HEAVY_LOAD_ERROR_HINTS.some(h => lower.includes(h))
+  if (isHeavyLoad) return 'ระบบมีผู้ใช้งานพร้อมกันจำนวนมากในขณะนี้ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง'
+  if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || err?.name === 'TypeError') {
+    return 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ กรุณาตรวจสอบสัญญาณอินเทอร์เน็ตแล้วลองใหม่อีกครั้ง'
+  }
+  return msg || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ กรุณาลองใหม่อีกครั้ง'
+}
+
 // ─── Success Notification Modal ──────────────────────────────────────────────
 // แสดง popup ตรงกลางหน้าจอด้านหน้าสุดเพื่อแจ้งความสำเร็จ
 export function showSuccessModal({
@@ -984,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.682': [
+    '🔔 ข้อความแจ้งเตือนตอนโหลด/บันทึกข้อมูลไม่สำเร็จเปลี่ยนเป็นภาษาที่เข้าใจง่ายขึ้น (เช่น "ระบบมีผู้ใช้งานพร้อมกันจำนวนมาก กรุณาลองใหม่อีกครั้ง" แทนข้อความ error ทางเทคนิคดิบๆ) และเพิ่มแบนเนอร์แจ้งเตือนช่วงระบบมีผู้ใช้งานหนาแน่นที่แอดมินเปิด/ปิดได้',
+  ],
   '10.22.681': [
     '🙋 มอบหมายเช็คชื่อแทนครู เพิ่มความอิสระ — ครูเลือกมอบหมายนักเรียนคนไหนก็ได้ในห้อง (พิมพ์ค้นหารหัส/ชื่อ) ไม่จำเป็นต้องเป็นหัวหน้าห้องแล้ว มีปุ่มแนะนำหัวหน้า/รองหัวหน้าห้องจริงให้กดเพิ่มไวๆ เพิ่มได้หลายคนต่อห้อง เพื่อกระจายภาระงาน (⚠️ ต้องรัน patch_attendance_delegation_v2.sql ก่อนใช้งานได้จริง)',
   ],
@@ -3893,4 +3917,37 @@ export function showTerangganuUrgentModal(role) {
     localStorage.setItem(key, today)
     modal.remove()
   })
+}
+
+// ─── แบนเนอร์แจ้งเตือนช่วงระบบมีผู้ใช้งานหนาแน่น ─────────────────────────────
+// คุมเปิด/ปิดและข้อความจาก system_config key: heavyLoadBannerEnabled / heavyLoadBannerMessage
+// ปิดแล้วจะไม่โผล่ซ้ำในวันเดียวกัน (เหมือน showTerangganuUrgentModal ด้านบน)
+export async function initHeavyLoadBanner() {
+  try {
+    const { getSystemConfig } = await import('./api.js')
+    const cfg = await getSystemConfig()
+    if (!cfg?.heavyLoadBannerEnabled) return
+
+    const key = 'heavyload_banner_dismissed'
+    const today = new Date().toISOString().slice(0, 10)
+    if (localStorage.getItem(key) === today) return
+
+    const message = cfg.heavyLoadBannerMessage ||
+      'ช่วงนี้มีผู้ใช้งานพร้อมกันจำนวนมาก ระบบอาจโหลดช้ากว่าปกติ หากพบปัญหากรุณารอสักครู่แล้วลองใหม่อีกครั้ง'
+
+    const bar = document.createElement('div')
+    bar.id = 'pp5-heavyload-banner'
+    bar.className = 'fixed top-0 inset-x-0 z-[99998] bg-amber-500 text-white text-xs sm:text-sm px-4 py-2 flex items-center justify-center gap-3 shadow-md text-center'
+    bar.innerHTML = `
+      <span>⚠️ ${message}</span>
+      <button aria-label="ปิด" class="shrink-0 opacity-80 hover:opacity-100 font-bold px-1">✕</button>
+    `
+    bar.querySelector('button').addEventListener('click', () => {
+      localStorage.setItem(key, today)
+      bar.remove()
+    })
+    document.body.prepend(bar)
+  } catch (_) {
+    // ไม่ให้ error ของแบนเนอร์นี้บัง UI หลักของหน้า
+  }
 }

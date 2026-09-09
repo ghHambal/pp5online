@@ -1,8 +1,7 @@
 import { getScoreColumns, getSystemConfig, getLifeSkillColumns,
          createScoreColumn, updateScoreColumn, deleteScoreColumn,
          updateColumnSortOrders, getMyClasses, setColumnAutoAttendanceSync } from './api.js'
-import { showToast } from './ui.js'
-
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
 const INPUT_CLS  = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm'
 
@@ -222,7 +221,7 @@ async function _checkSameSubjectCols(teacher, classId, classData) {
           showToast(`คัดลอก ${added} คอลัมน์จาก ${src.class_name} ✅`, 'success')
           el.remove(); window._scReload?.()
         } catch (err) {
-          showToast('คัดลอกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('คัดลอกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           btn.disabled = false; btn.textContent = 'คัดลอก'
         }
       })
@@ -502,7 +501,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
           await Promise.all([...checkedIds].map(id => deleteScoreColumn(id)))
           showToast(`ลบ ${checkedIds.size} คอลัมน์แล้ว ✅`, 'success')
           checkedIds = new Set(); await _reload()
-        } catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+        } catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
       })
     })
 
@@ -705,7 +704,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
         if (ctype === 'bonus' || ctype === 'derived') showBonus = true
         await _reload()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       } finally {
         btn.disabled = false; btn.textContent = 'บันทึก'
       }

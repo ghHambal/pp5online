@@ -11,7 +11,7 @@ import {
   applyScoreOverride,
 } from './api.js'
 import { getRegradeConfig, submitClassGradesToRegrade } from './regrade-api.js'
-import { showToast } from './ui.js'
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { supabase } from './supabase.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
 import { openScoreScanner } from './score-qr-scanner.js'
@@ -224,7 +224,7 @@ export async function renderGradesGrid(teacher, classData) {
                 popup.remove()
                 renderGradesGrid(teacher, classData)
               } catch (err) {
-                showToast('คัดลอกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+                showToast('คัดลอกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
                 btn.disabled = false; btn.textContent = 'คัดลอก'
               }
             })
@@ -281,7 +281,7 @@ export async function renderGradesGrid(teacher, classData) {
       else if (!_rsRows.length) showToast(`ไม่พบคะแนนอ่านคิดวิเคราะห์ของนักเรียนห้องนี้ ภาค ${_rsSem}/${_rsYear}`, 'warning')
     } catch (err) {
       console.error('load reading evaluation failed', err)
-      showToast(`โหลดผลประเมินการอ่านไม่สำเร็จ: ${err?.message ?? ''}`, 'error')
+      showToast(`โหลดผลประเมินการอ่านไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error')
     }
     const _rsTotals = {}
     for (const r of _rsRows) {
@@ -671,7 +671,7 @@ export async function renderGradesGrid(teacher, classData) {
           const result = await submitClassGradesToRegrade(classData.id, failing)
           showToast(`ส่งสำเร็จ ✅ พบติด ${result.total_failing} คน — เพิ่มเข้าระบบใหม่ ${result.submitted} คน (ที่เหลือมีอยู่แล้ว)`, 'success')
         } catch (e) {
-          showToast('ส่งไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+          showToast('ส่งไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
         } finally {
           btn.disabled = false; btn.textContent = '📤 ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า'
         }
@@ -701,7 +701,7 @@ export async function renderGradesGrid(teacher, classData) {
           if (!isSupported && !access.claimedRoom) _claimGradeOnlineRoom(teacher?.id, classData.class_name)
           _openGradeOnlineResultModal(shareCode, records.length)
         } catch (e) {
-          showToast('เตรียมข้อมูลไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+          showToast('เตรียมข้อมูลไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
         } finally {
           gBtn.disabled = false; gBtn.textContent = '📤 ส่งคะแนนเข้า GradeOnline'
         }
@@ -1221,7 +1221,7 @@ export async function renderGradesGrid(teacher, classData) {
             renderGradesGrid(teacher, classData)
             showToast(`เพิ่ม "${name}" แล้ว ✅`, 'success')
           } catch (err) {
-            showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            showToast('เพิ่มไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
             btn.disabled = false; btn.textContent = 'เพิ่ม'
           }
         })
@@ -1270,7 +1270,7 @@ export async function renderGradesGrid(teacher, classData) {
             renderGradesGrid(teacher, classData)
             showToast(`เพิ่ม "${name}" แล้ว ✅`, 'success')
           } catch (err) {
-            showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            showToast('เพิ่มไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
             btn.disabled = false; btn.textContent = 'เพิ่ม'
           }
         })
@@ -1767,7 +1767,7 @@ export async function renderGradesGrid(teacher, classData) {
           try {
             await updateClassStudentSpecialResult(st?.enrollment_id, grade)
           } catch (err) {
-            showToast('บันทึกบังคับเกรดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            showToast('บันทึกบังคับเกรดไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
             btn.disabled = false
             return
           }
@@ -1887,7 +1887,7 @@ export async function renderGradesGrid(teacher, classData) {
             pop.remove()
             renderGradesGrid(teacher, classData)
           } catch (err) {
-            showToast('เพิ่มไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            showToast('เพิ่มไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
             btn.disabled = false; btn.textContent = 'เพิ่ม'
           }
         })
@@ -1992,7 +1992,7 @@ export async function renderGradesGrid(teacher, classData) {
     })
 
   } catch (err) {
-    showToast('โหลดข้อมูลไม่สำเร็จ: '+(err.message??''), 'error')
+    showToast('โหลดข้อมูลไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error')
   }
 }
 
@@ -2088,7 +2088,7 @@ async function _openCopyColsPopup(classData, allMyClasses) {
           popup.remove()
           renderGradesGrid(window._currentGradeTeacher, classData)
         } catch (err) {
-          showToast('Mirror ไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('Mirror ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           btn.disabled = false; btn.textContent = 'คัดลอก'
         }
       })
@@ -2271,7 +2271,7 @@ export async function _openCourseColsModal(subjectId, subjectName, allClasses) {
             cols = await getScoreColumns(refClass.id).catch(() => [])
             renderModal()
           } catch (err) {
-            msg.textContent = 'เกิดข้อผิดพลาด: ' + (err.message ?? ''); msg.classList.remove('hidden')
+            msg.textContent = 'เกิดข้อผิดพลาด: ' + (getFriendlyErrorMessage(err)); msg.classList.remove('hidden')
             saveBtn.disabled = false; saveBtn.textContent = 'เพิ่มทุกห้อง'
           }
         })
@@ -2343,7 +2343,7 @@ function _openAddColumnModal(classData, type, onDone) {
       await createScoreColumn({ class_id: classData.id, assignment_name: name, max_score: max, sheet_column: sheet ?? '', assignment_type: type })
       modal.remove(); showToast(`เพิ่มคอลัมน์ "${name}" แล้ว`, 'success'); onDone()
     } catch (err) {
-      msg.textContent = 'เกิดข้อผิดพลาด: ' + (err.message ?? ''); msg.classList.remove('hidden')
+      msg.textContent = 'เกิดข้อผิดพลาด: ' + (getFriendlyErrorMessage(err)); msg.classList.remove('hidden')
       btn.disabled = false; btn.textContent = 'เพิ่มคอลัมน์'
     }
   })
@@ -2645,7 +2645,7 @@ export async function renderRequests(teacher) {
           const req = all.find(r => r.id === id)
           if (req) _sendExamRequestPush(req, 'อนุมัติแล้ว ✅', comment)
           renderRequests(teacher)
-        } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+        } catch (err) { showToast('ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
       }
     })
   }
@@ -2669,7 +2669,7 @@ export async function renderRequests(teacher) {
           const req = all.find(r => r.id === id)
           if (req) _sendExamRequestPush(req, 'ถูกปฏิเสธ ✕', comment)
           renderRequests(teacher)
-        } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+        } catch (err) { showToast('ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
       }
     })
   }
@@ -2692,7 +2692,7 @@ export async function renderRequests(teacher) {
       columns = (await getScoreColumns(classId))
         .filter(col => ['regular', 'override'].includes(col.column_type ?? 'regular'))
     } catch (err) {
-      showToast('โหลดคอลัมน์คะแนนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('โหลดคอลัมน์คะแนนไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       return
     }
     if (!columns.length) {
@@ -2745,7 +2745,7 @@ export async function renderRequests(teacher) {
             ? 'บันทึกคะแนนปรับและอัปเดตคอลัมน์หลักแล้ว ✅'
             : (isEdit ? 'แก้ไขคะแนนแล้ว ✅' : 'บันทึกผลสอบและคะแนนแล้ว ✅'), 'success')
           renderRequests(teacher)
-        } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+        } catch (err) { showToast('ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
       }
     })
 
@@ -2786,7 +2786,7 @@ export async function renderRequests(teacher) {
           await updateExamResult(id, { exam_attended: false, exam_score: null })
           showToast('บันทึกว่าขาดสอบ/ผิดนัดแล้ว', 'success')
           renderRequests(teacher)
-        } catch (err) { showToast('ไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+        } catch (err) { showToast('ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
       }
     })
   }

@@ -1,4 +1,5 @@
 import { getExecClassOverview, getDepartments, getSystemConfig, getTeachers, getLeavePermissionDashboard } from './api.js'
+import { getFriendlyErrorMessage } from './ui.js'
 import { formatLeaveCountdown } from './leave-time.js'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -134,7 +135,7 @@ export async function renderExecOverview() {
     ])
   } catch (err) {
     setContent(`<div class="max-w-6xl mx-auto animate-fade">
-      <p class="text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${_esc(err.message ?? '')}</p>
+      <p class="text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${_esc(getFriendlyErrorMessage(err))}</p>
     </div>`)
     return
   }

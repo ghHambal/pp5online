@@ -1,4 +1,5 @@
 import QRCode from 'qrcode'
+import { getFriendlyErrorMessage } from './ui.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { uploadAzfutsalPlayerPhoto, compressImage } from './storage.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
@@ -1770,7 +1771,7 @@ function openCheckinScanner(level, code) {
         () => { /* error ต่อเนื่องระหว่างหากรอบยังไม่เจอ QR — ไม่ต้อง block UI */ },
       )
     } catch (err) {
-      azToast('ไม่สามารถเปิดกล้องได้: ' + (err.message || ''))
+      azToast('ไม่สามารถเปิดกล้องได้: ' + (getFriendlyErrorMessage(err)))
       overlay.remove()
     }
   })()
@@ -1996,7 +1997,7 @@ function openEventCheckinScanner(day) {
         () => { /* error ต่อเนื่องระหว่างหากรอบยังไม่เจอ QR — ไม่ต้อง block UI */ },
       )
     } catch (err) {
-      azToast('ไม่สามารถเปิดกล้องได้: ' + (err.message || ''))
+      azToast('ไม่สามารถเปิดกล้องได้: ' + (getFriendlyErrorMessage(err)))
       overlay.remove()
     }
   })()
@@ -2166,7 +2167,7 @@ function openEventSelfCheckinScanner() {
         () => { /* error ต่อเนื่องระหว่างหากรอบยังไม่เจอ QR — ไม่ต้อง block UI */ },
       )
     } catch (err) {
-      azToast('ไม่สามารถเปิดกล้องได้: ' + (err.message || ''))
+      azToast('ไม่สามารถเปิดกล้องได้: ' + (getFriendlyErrorMessage(err)))
       overlay.remove()
     }
   })()
@@ -5438,7 +5439,7 @@ async function handleUploadPlayerPhoto(playerId, file) {
     await refresh()
     azToast('อัปโหลดรูปสำเร็จ')
   } catch (e) {
-    azToast('อัปโหลดรูปไม่สำเร็จ: ' + (e?.message || ''))
+    azToast('อัปโหลดรูปไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)))
   }
 }
 

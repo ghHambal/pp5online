@@ -10,6 +10,7 @@ import {
   getWorkCalendarEvents,
   getReligionGroups, getReligionGroupMembers,
 } from './api.js'
+import { getFriendlyErrorMessage } from './ui.js'
 
 let _phrases = {}  // cache: { metric: [phrase, ...] }
 
@@ -310,7 +311,7 @@ async function _showAddMemberModal(teacher) {
         const m = _allMetrics.find(x => x.id === parseInt(btn.dataset.tid))
         if (m) m.dept = teacher.dept
         btn.textContent = '✓ เพิ่มแล้ว'; btn.style.background = '#d1fae5'; btn.style.color = '#065f46'
-      } catch(e) { btn.disabled = false; btn.textContent = '+ เพิ่ม'; _svPopup({ icon:'❌', title:'เพิ่มสมาชิกไม่สำเร็จ', body: e.message ?? '', type:'error' }) }
+      } catch(e) { btn.disabled = false; btn.textContent = '+ เพิ่ม'; _svPopup({ icon:'❌', title:'เพิ่มสมาชิกไม่สำเร็จ', body: getFriendlyErrorMessage(e), type:'error' }) }
     }
   })
 }

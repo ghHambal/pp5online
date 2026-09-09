@@ -5,8 +5,7 @@
 import { getMyAttendanceDelegateClasses, isPeriodNow } from './student-api.js'
 import { getClassStudents, getClassAttendanceAll, saveAttendanceCell } from './api.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, ATT_STATUS, ATT_CYCLE } from './teacher-views-utils.js'
-import { showToast } from './ui.js'
-
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 const _spinner = `<div class="flex justify-center py-16 text-gray-300">
   <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -23,7 +22,7 @@ export async function renderStudentAttendanceDelegate(student) {
   try {
     classes = await getMyAttendanceDelegateClasses(student)
   } catch (err) {
-    setContent(`<div class="p-6 text-center text-red-400 text-sm">โหลดข้อมูลไม่สำเร็จ: ${_htmlEsc(err.message ?? '')}</div>`)
+    setContent(`<div class="p-6 text-center text-red-400 text-sm">โหลดข้อมูลไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(err))}</div>`)
     return
   }
 
@@ -71,7 +70,7 @@ async function _openClassCheckin(student, entry) {
       getClassAttendanceAll(cls.id),
     ])
   } catch (err) {
-    setContent(`<div class="p-6 text-center text-red-400 text-sm">โหลดข้อมูลไม่สำเร็จ: ${_htmlEsc(err.message ?? '')}</div>`)
+    setContent(`<div class="p-6 text-center text-red-400 text-sm">โหลดข้อมูลไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(err))}</div>`)
     return
   }
 
@@ -134,7 +133,7 @@ async function _openClassCheckin(student, entry) {
       try {
         await saveAttendanceCell(cls.id, sid, sessionNumber, checkDate, next)
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     })
   })

@@ -37,7 +37,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          approveSubjectGroupRequest, rejectSubjectGroupRequest } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
-import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect } from './ui.js'
+import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect, getFriendlyErrorMessage } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
          openSubjectModal, handleDeleteSubject,
          openDeptModal, handleDeleteDept,
@@ -905,7 +905,7 @@ async function _attachHrAssignEvents(container, ctx, onSaved) {
         showToast(`ระบุครูที่ปรึกษาห้อง ${room} แล้ว ✅`, 'success')
         if (onSaved) onSaved()
       } catch(e) {
-        showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
+        showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(e)),'error')
         btn.disabled = false; btn.textContent = 'บันทึก'
       }
     })
@@ -1532,7 +1532,7 @@ export async function renderRegisteredTeachers() {
         showToast(`รวมบัญชีสำเร็จ — เหลือ ID ${keepId}`, 'success')
         renderRegisteredTeachers()
       } catch (err) {
-        showToast('เกิดข้อผิดพลาด: ' + (err.message ?? ''), 'error')
+        showToast('เกิดข้อผิดพลาด: ' + (getFriendlyErrorMessage(err)), 'error')
         if (btn) { btn.disabled = false; btn.textContent = '🔀 รวมบัญชีและลบบัญชีซ้ำ' }
       }
     }
@@ -1684,7 +1684,7 @@ export async function renderRegisteredTeachers() {
         showToast(`ยกเลิกบัญชี "${name}" แล้ว`, 'success')
         renderRegisteredTeachers()
       } catch (err) {
-        showToast('เกิดข้อผิดพลาด: ' + (err.message ?? ''), 'error')
+        showToast('เกิดข้อผิดพลาด: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     }
 
@@ -1782,7 +1782,7 @@ export async function renderClasses() {
         await deleteClass(id)
         showToast(`ลบห้องเรียน "${name}" แล้ว`, 'success')
         renderClasses()
-      } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
+      } catch (err) { showToast('ลบไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error') }
     }
   } catch {
     showToast('โหลดข้อมูลห้องเรียนไม่สำเร็จ', 'error')
@@ -1939,7 +1939,7 @@ export async function renderStudents() {
         all.splice(all.findIndex(s=>s.id===id), 1)
         showToast(`ลบ "${name}" แล้ว`, 'success')
         _filter()
-      } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
+      } catch (err) { showToast('ลบไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error') }
     }
 
     window._editStudent = async (id) => {
@@ -2101,7 +2101,7 @@ export async function renderStudents() {
           showToast('บันทึกสำเร็จ', 'success')
           m.remove()
         } catch (err) {
-          showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
+          showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error')
         } finally { btn.disabled = false; btn.textContent = 'บันทึก' }
       })
     }
@@ -3066,7 +3066,7 @@ export async function renderSettings() {
             }
             showToast(`อัปโหลดสติกเกอร์ ${n} สำเร็จ ✅`, 'success')
           } catch (err) {
-            showToast('อัปโหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            showToast('อัปโหลดไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           } finally { fi.disabled = false }
         })
       })
@@ -3256,7 +3256,7 @@ export async function renderSettings() {
             showToast(`ขึ้นภาคเรียนที่ ${nextSem}/${nextYear} สำเร็จ ✅ สร้างห้องเรียนใหม่ ${result.classes_created} ห้อง · ลงทะเบียนนักเรียนอัตโนมัติ ${result.students_enrolled} คน`, 'success')
             renderTab('general')
           } catch (e) {
-            showToast('ขึ้นภาคเรียนใหม่ไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+            showToast('ขึ้นภาคเรียนใหม่ไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
             startNewSemBtn.disabled = false
             startNewSemBtn.textContent = '🔄 ขึ้นภาคเรียนใหม่'
           }
@@ -3320,7 +3320,7 @@ export async function renderSettings() {
             showToast(summary, 'success')
             _loadLatestSyncLog()
           } catch (err) {
-            showToast('ซิงก์นักเรียนไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            showToast('ซิงก์นักเรียนไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           } finally {
             syncStudentsBtn.disabled = false
             syncStudentsBtn.textContent = '🔄 ซิงก์นักเรียนตอนนี้'
@@ -3346,7 +3346,7 @@ export async function renderSettings() {
             if (imgEl) { imgEl.src = url }
             else if (iconEl) { iconEl.outerHTML = `<img src="${url}" class="h-14 max-w-[140px] object-contain rounded-lg border border-gray-200 bg-white p-1" />` }
           } catch (err) {
-            showToast('อัปโหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+            showToast('อัปโหลดไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           } finally { fi.disabled = false }
         })
       })
@@ -4147,7 +4147,7 @@ export async function renderSubjects() {
           _setButtonText()
           showToast('บันทึกตั้งค่าซิงค์รายวิชาแล้ว', 'success')
         } catch (err) {
-          showToast('บันทึกตั้งค่าไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('บันทึกตั้งค่าไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         } finally {
           if (btn) { btn.disabled = false; btn.innerHTML = orig }
           _setButtonText()
@@ -4178,7 +4178,7 @@ export async function renderSubjects() {
         await deleteClass(classId)
         showToast(`ลบ "${name}" แล้ว`, 'success')
         _applyFilter()
-      } catch (err) { showToast('ลบไม่สำเร็จ: '+(err.message??''), 'error') }
+      } catch (err) { showToast('ลบไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error') }
     }
 
     document.getElementById('btn-sync-subjects-central')?.addEventListener('click', async (e) => {
@@ -4196,7 +4196,7 @@ export async function renderSubjects() {
         })
         showToast(`ส่งคำสั่งซิงค์รายวิชา ${count} รายการไปแท็บ ${subjectSyncCfg.tabName} แล้ว`, 'success')
       } catch (err) {
-        showToast('ซิงค์รายวิชาไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ซิงค์รายวิชาไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       } finally {
         btn.disabled = false
         btn.textContent = orig
@@ -4519,7 +4519,7 @@ export async function renderHomeroom() {
         m.remove()
         await _renderTable()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         saveBtn.disabled = false
         saveBtn.textContent = 'เลือกครูที่ปรึกษา'
       }
@@ -4557,7 +4557,7 @@ export async function renderHomeroom() {
       a.remove()
       URL.revokeObjectURL(url)
       showToast('ดาวน์โหลด CSV แล้ว ✅', 'success')
-    } catch (err) { showToast('ดาวน์โหลดไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+    } catch (err) { showToast('ดาวน์โหลดไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
   })
 }
 
@@ -4712,7 +4712,7 @@ export async function renderScoreColConfig() {
       })
       for (const p of payloads) await upsertScoreColumnConfig(p)
       showToast(`บันทึก ${payloads.length} รายการสำเร็จ ✅`, 'success')
-    } catch (err) { showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error') }
+    } catch (err) { showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error') }
     finally { btn.disabled = false; btn.textContent = '💾 บันทึกทั้งหมด' }
   })
 }
@@ -4852,7 +4852,7 @@ export async function renderHolidays() {
       document.getElementById('hol-desc').value = ''
       showToast('เพิ่มวันหยุดแล้ว', 'success')
       await _load()
-    } catch (err) { showToast('เกิดข้อผิดพลาด: '+(err.message??''), 'error') }
+    } catch (err) { showToast('เกิดข้อผิดพลาด: '+(getFriendlyErrorMessage(err)), 'error') }
   })
 
   window._deleteHoliday = async (id) => {
@@ -5004,7 +5004,7 @@ export function renderImport() {
         txt.textContent = `นำเข้าสำเร็จ ${done} รายการ — รีเฟรชห้องเรียนแล้ว`
       }
     } catch (err) {
-      showToast('นำเข้าไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('นำเข้าไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     } finally {
       btn.disabled = false
     }
@@ -5476,7 +5476,7 @@ export async function renderLifeSkillAdmin() {
         const result = await fillLifeSkillScoresToClassScores(year, sem)
         showToast(`เติมทักษะชีวิต ${result.classes} รายวิชา / ${result.scores} คะแนนแล้ว`, 'success')
       } catch (err) {
-        showToast('เติมไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('เติมไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       } finally {
         btn.disabled = false
         btn.textContent = orig
@@ -5616,7 +5616,7 @@ export async function renderLifeSkillAdmin() {
             return
           }
           showToast(`ส่งคำสั่ง Sync ทักษะชีวิต ${stuList.length} คน / ${totalRecords} คะแนนแล้ว`, 'success')
-        } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
+        } catch(err) { showToast('Sync ไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error') }
         finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีทกลาง' }
       })
     }
@@ -5646,7 +5646,7 @@ export async function renderLifeSkillAdmin() {
         btn.addEventListener('click', async () => {
           if (!confirm(`ลบหัวข้อ "${btn.dataset.name}"?`)) return
           try { await deleteLifeSkillColumn(+btn.dataset.id); showToast('ลบแล้ว','success'); _reload() }
-          catch(err) { showToast('ลบไม่สำเร็จ: '+(err.message??''),'error') }
+          catch(err) { showToast('ลบไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error') }
         })
       })
       document.querySelectorAll('.lsk-save-sheet').forEach(btn => {
@@ -5759,7 +5759,7 @@ function _openModal(col, year, sem, onSave) {
       m.remove()
       onSave()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = isEdit ? 'บันทึก' : 'เพิ่ม'
     }
   })
@@ -5961,7 +5961,7 @@ export async function renderReadingAdmin() {
           return
         }
         showToast(`ส่งคำสั่ง Sync อ่านคิดวิเคราะห์ ${stuList.length} คน / ${totalRecords} คะแนนแล้ว`, 'success')
-      } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
+      } catch(err) { showToast('Sync ไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error') }
       finally { btn.disabled=false; btn.textContent='↑ Sync ไปชีทกลาง' }
     })
 
@@ -5983,7 +5983,7 @@ export async function renderReadingAdmin() {
         const classes = await getAllClassesForFill()
         await syncReadingEvalToClassSheets(classes, evalMap, cfg.readingEvalClassSheetCol)
         showToast(`ป้อนผลประเมินอ่านฯ ไป ${classes.length} ห้องสำเร็จ`, 'success')
-      } catch(err) { showToast('ป้อนไม่สำเร็จ: '+(err.message??''),'error') }
+      } catch(err) { showToast('ป้อนไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error') }
       finally { btn.disabled=false; btn.textContent='📝 ป้อนผล → ทุกวิชา' }
     })
   }
@@ -6067,7 +6067,7 @@ export async function renderReadingAdmin() {
       btn.addEventListener('click', async () => {
         if (!confirm(`ลบหัวข้อ "${btn.dataset.name}"?`)) return
         try { await deleteReadingScoreColumn(+btn.dataset.id); showToast('ลบแล้ว','success'); _reload() }
-        catch(err) { showToast('ลบไม่สำเร็จ: '+(err.message??''),'error') }
+        catch(err) { showToast('ลบไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error') }
       })
     })
     document.getElementById('rsa-save-sheet')?.addEventListener('click', async () => {
@@ -6120,7 +6120,7 @@ export async function renderReadingAdmin() {
         btn.textContent = '✅'; btn.style.background = '#16a34a'
         setTimeout(() => { btn.disabled = false; btn.textContent = 'บันทึกเกณฑ์'; btn.style.background = '' }, 1500)
         showToast('บันทึกเกณฑ์การประเมินแล้ว', 'success')
-      } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error'); btn.disabled = false; btn.textContent = 'บันทึกเกณฑ์' }
+      } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error'); btn.disabled = false; btn.textContent = 'บันทึกเกณฑ์' }
     })
   }
 
@@ -6369,7 +6369,7 @@ export async function renderPrayerAdmin(teacher) {
         })
         showToast(`เติมรายวิชาศาสนา ${result.classes} รายวิชา / ${result.scores} คะแนนแล้ว`, 'success')
       } catch (err) {
-        showToast('เติมไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('เติมไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       } finally {
         btn.disabled = false
         btn.textContent = orig
@@ -6472,7 +6472,7 @@ export async function renderPrayerAdmin(teacher) {
         console.error('[prayer save]', err)
         _glow(gridCell, false)
         _glow(modalCell, false)
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     }
 
@@ -6682,7 +6682,7 @@ export async function renderPrayerAdmin(teacher) {
         await syncPrayerSheet(cfg.prayerSheetId, cfg.prayerSheetTab||'Solat',
           cfg.prayerStudentRange||'A3:A3000', syncDates, adminPrayMap, syncStudents)
         showToast(`Sync ละหมาด ${syncStudents.length} คน × ${syncDates.length} วัน สำเร็จ`, 'success')
-      } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
+      } catch(err) { showToast('Sync ไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error') }
       finally { btn.disabled=false; btn.textContent='↑ Sync ห้องนี้' }
     })
 
@@ -6723,7 +6723,7 @@ export async function renderPrayerAdmin(teacher) {
         await syncPrayerSheet(cfg.prayerSheetId, cfg.prayerSheetTab||'Solat',
           cfg.prayerStudentRange||'A3:A3000', syncDates, allPrayMap, syncStudents)
         showToast(`✅ Sync ทุกห้อง ${syncStudents.length} คน × ${syncDates.length} วัน สำเร็จ`, 'success')
-      } catch(err) { showToast('Sync ไม่สำเร็จ: '+(err.message??''),'error') }
+      } catch(err) { showToast('Sync ไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error') }
       finally { btn.disabled=false; btn.textContent='↑ Sync ทุกห้อง' }
     })
 
@@ -7330,7 +7330,7 @@ export async function renderPrayerAdmin(teacher) {
         btn.textContent = '✅ บันทึกแล้ว'
         setTimeout(() => { btn.disabled = false; btn.textContent = 'บันทึกความปลอดภัยระบบสแกน' }, 1600)
       } catch(err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
         btn.textContent = 'บันทึกความปลอดภัยระบบสแกน'
       }
@@ -7474,7 +7474,7 @@ export async function renderPrayerAdmin(teacher) {
         btn.textContent = '✅ บันทึกแล้ว'
         setTimeout(() => { btn.disabled = false; btn.textContent = 'บันทึกช่วงเวลาสแกน' }, 1600)
       } catch(err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
         btn.textContent = 'บันทึกช่วงเวลาสแกน'
       }
@@ -8130,7 +8130,7 @@ function _openReadingModal(col, year, sem, onSave) {
       else        await createReadingScoreColumn(payload)
       showToast('บันทึกสำเร็จ','success'); m.remove(); onSave()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')
+      showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')
       btn.disabled=false; btn.textContent=isEdit?'บันทึก':'เพิ่ม'
     }
   })
@@ -8263,7 +8263,7 @@ export async function renderAdminProfile() {
       _msg('name-msg', 'บันทึกชื่อสำเร็จ ✅', true)
       const nameEl = document.getElementById('user-name')
       if (nameEl) nameEl.textContent = name
-    } catch (err) { _msg('name-msg', 'บันทึกไม่สำเร็จ: ' + (err.message ?? ''), false) }
+    } catch (err) { _msg('name-msg', 'บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), false) }
     finally { btn.disabled = false; btn.textContent = 'บันทึกชื่อ' }
   })
 
@@ -8282,7 +8282,7 @@ export async function renderAdminProfile() {
     } catch (err) {
       const msg = err.message?.includes('unique') || err.message?.includes('duplicate')
         ? `username "${rawVal}" ถูกใช้แล้ว — ลองชื่ออื่น`
-        : 'บันทึกไม่สำเร็จ: ' + (err.message ?? '')
+        : 'บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err))
       _msg('username-msg', msg, false)
     }
     finally { btn.disabled = false; btn.textContent = 'บันทึก Username' }
@@ -8306,7 +8306,7 @@ export async function renderAdminProfile() {
       if (error) throw error
       _msg('email-msg', 'ส่งลิงก์ยืนยันไปที่ ' + email + ' แล้ว ✅', true)
       document.getElementById('adm-email').value = ''
-    } catch (err) { _msg('email-msg', 'ไม่สำเร็จ: ' + (err.message ?? ''), false) }
+    } catch (err) { _msg('email-msg', 'ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), false) }
     finally { btn.disabled = false; btn.textContent = 'เปลี่ยนอีเมล' }
   })
 
@@ -8324,7 +8324,7 @@ export async function renderAdminProfile() {
       _msg('pw-msg', 'เปลี่ยนรหัสผ่านสำเร็จ ✅', true)
       document.getElementById('adm-pw').value  = ''
       document.getElementById('adm-pw2').value = ''
-    } catch (err) { _msg('pw-msg', 'ไม่สำเร็จ: ' + (err.message ?? ''), false) }
+    } catch (err) { _msg('pw-msg', 'ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), false) }
     finally { btn.disabled = false; btn.textContent = 'เปลี่ยนรหัสผ่าน' }
   })
 }
@@ -8473,7 +8473,7 @@ export async function renderClassroomsAdmin() {
         await deleteClassroom(room.id)
         showToast('ลบห้องแล้ว ✅', 'success')
         _reload()
-      } catch (e) { showToast('ลบไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+      } catch (e) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error') }
     })
   }
 
@@ -8534,7 +8534,7 @@ export async function renderClassroomsAdmin() {
         modal.remove()
         _reload()
       } catch (e) {
-        showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
         btn.disabled = false; btn.textContent = 'บันทึก'
       }
     })
@@ -8847,7 +8847,7 @@ export async function renderAnnouncements() {
           await deleteAnnouncementComment(Number(btn.dataset.id))
           overlay.querySelector(`[data-comment-id="${btn.dataset.id}"]`)?.remove()
           await onChange?.()
-        } catch (e) { showToast('ลบไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+        } catch (e) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error') }
       })
     })
   }
@@ -9102,7 +9102,7 @@ export async function renderAnnouncements() {
         annImgPreview.classList.remove('hidden')
         annImgStatus.textContent = 'อัปโหลดสำเร็จ ✅'
       } catch (err) {
-        annImgStatus.textContent = 'อัปโหลดไม่สำเร็จ: ' + (err.message ?? '')
+        annImgStatus.textContent = 'อัปโหลดไม่สำเร็จ: ' + (getFriendlyErrorMessage(err))
       }
       e.target.value = ''
     })
@@ -9244,7 +9244,7 @@ export async function renderAnnouncements() {
           }
           close(); await onDone()
         } catch(e) {
-          showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
+          showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(e)),'error')
           btn.disabled = false; btn.textContent = 'บันทึก'
         }
         return
@@ -9257,7 +9257,7 @@ export async function renderAnnouncements() {
         if (!isEdit && isActive) _sendAnnouncementPush(title, body, audience)
         showToast('บันทึกสำเร็จ ✅','success'); close(); await onDone()
       } catch(e) {
-        showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
+        showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(e)),'error')
         btn.disabled = false; btn.textContent = 'บันทึก'
       }
     })
@@ -9550,7 +9550,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
               await deleteAnnouncementComment(Number(delBtn.dataset.id))
               overlay.querySelector(`[data-comment-id="${delBtn.dataset.id}"]`)?.remove()
               await _renderList()
-            } catch (e) { showToast('ลบไม่สำเร็จ: ' + (e.message ?? ''), 'error') }
+            } catch (e) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error') }
           })
         })
       })
@@ -9802,7 +9802,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
         sannImgPreview.classList.remove('hidden')
         sannImgStatus.textContent = 'อัปโหลดสำเร็จ ✅'
       } catch (err) {
-        sannImgStatus.textContent = 'อัปโหลดไม่สำเร็จ: ' + (err.message ?? '')
+        sannImgStatus.textContent = 'อัปโหลดไม่สำเร็จ: ' + (getFriendlyErrorMessage(err))
       }
       e.target.value = ''
     })
@@ -9948,7 +9948,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
           }
           close(); await _renderList()
         } catch(e) {
-          showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
+          showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(e)),'error')
           const btn = m.querySelector('#sann-modal-save')
           btn.disabled = false; btn.textContent = 'บันทึก'
         }
@@ -9962,7 +9962,7 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
         if (!isEdit && isActive) _sendAnnouncementPush(title, body, audience)
         showToast('บันทึกสำเร็จ ✅','success'); close(); await _renderList()
       } catch(e) {
-        showToast('บันทึกไม่สำเร็จ: '+(e.message??''),'error')
+        showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(e)),'error')
         btn.disabled = false; btn.textContent = 'บันทึก'
       }
     })
@@ -11272,7 +11272,7 @@ export async function renderDonations() {
         teacher_id: parseInt(tid), package_type: 'donation', amount,
         status: 'approved', admin_note: `[เงินสด] ${note}`.trim(),
         reviewed_at: new Date().toISOString(),
-      }).catch(e => { showToast('บันทึกไม่สำเร็จ: ' + (e.message ?? ''), 'error') })
+      }).catch(e => { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error') })
       showToast('บันทึกโดเนทเงินสดแล้ว ✅', 'success')
       m.remove(); await _load()
     })
@@ -11558,7 +11558,7 @@ export async function renderFeedbackAdmin() {
           adminReply: `รีเซ็ทรหัสผ่านให้แล้วครับ รหัสผ่านใหม่คือรหัสนักเรียนของคุณ (${code}) — เข้าสู่ระบบครั้งถัดไปแล้วค่อยเปลี่ยนรหัสผ่านใหม่ได้จากหน้าโปรไฟล์`,
         })
       } catch (err) {
-        showToast('รีเซ็ทไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('รีเซ็ทไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = prevText
         return
       }
@@ -12409,7 +12409,7 @@ function _openSgrReviewModal(req, onDone) {
       window._refreshSubjectGroupBadge?.()
       close(); onDone()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       e.target.disabled = false; e.target.textContent = 'อนุมัติที่เลือก'
     }
   })
@@ -12424,7 +12424,7 @@ function _openSgrReviewModal(req, onDone) {
       window._refreshSubjectGroupBadge?.()
       close(); onDone()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       e.target.disabled = false; e.target.textContent = 'ปฏิเสธ'
     }
   })

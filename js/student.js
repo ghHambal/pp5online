@@ -17,7 +17,7 @@ import {
 import { getSystemConfig, updateLastSeen, logLogin, getActiveAnnouncements } from './api.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { applyThemeForRole } from './theme.js'
-import { injectFeedbackWidget, showToast, showAnnouncementPopups, showTerangganuUrgentModal } from './ui.js'
+import { injectFeedbackWidget, showToast, showAnnouncementPopups, showTerangganuUrgentModal, initHeavyLoadBanner } from './ui.js'
 import { ensurePushSubscription } from './push-notify.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { renderStudentSportsHome } from './sports-portals.js'
@@ -202,6 +202,7 @@ async function init() {
   if (_student?.id) _checkStudentShirtSizePopup()
   _loadAnnouncementBanners()
   _checkTerangganuSurveyNudge()
+  initHeavyLoadBanner()
 
   // เพิ่งเด้งกลับจาก Google (ux_mode:'redirect' ผ่าน supabase/functions/google-oauth-redirect)
   // — จัดการก่อนเช็คเด้งป๊อปอัพขอเชื่อมอีเมลตามปกติ แล้วล้าง query param ทิ้งกันเด้งซ้ำตอนรีเฟรช

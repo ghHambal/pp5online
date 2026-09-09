@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { getFriendlyErrorMessage } from './ui.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import {
   getTerangganuAccess, getMyTerangganuContext, saveMyTerangganuRegistration, saveTerangganuRegistrationForStudent,
@@ -267,7 +268,7 @@ async function ocrFillCampForm(formEl, file, btn) {
     }
     toast(filled ? `อ่านข้อมูลสำเร็จ เติมให้ ${filled} ช่อง กรุณาตรวจสอบความถูกต้องก่อนบันทึก` : 'อ่านรูปไม่พบข้อมูลที่ใช้ได้ กรุณากรอกเอง', filled ? 'success' : 'warning')
   } catch (error) {
-    toast('อ่านรูปไม่สำเร็จ: ' + (error.message ?? ''), 'error')
+    toast('อ่านรูปไม่สำเร็จ: ' + (getFriendlyErrorMessage(error)), 'error')
   } finally {
     btn.disabled = false; btn.textContent = originalText
   }

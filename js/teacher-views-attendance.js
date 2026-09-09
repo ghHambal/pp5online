@@ -17,7 +17,7 @@ import {
 } from './api.js'
 import { supabase } from './supabase.js'
 import { formatLeaveCountdown } from './leave-time.js'
-import { showToast, showDangerConfirm, showSuccessModal } from './ui.js'
+import { showToast, showDangerConfirm, showSuccessModal, getFriendlyErrorMessage } from './ui.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _parseDateOnly,
   _generateSessions, _dateInputValue, ATT_STATUS, ATT_CYCLE,
@@ -321,7 +321,7 @@ export async function renderAttendanceGrid(teacher, classData) {
       try {
         staged = await getExternalAttendanceStagingByRoom(mainRoom)
       } catch (err) {
-        showToast('ดึงข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ดึงข้อมูลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         return
       }
       if (!staged.length) {
@@ -364,7 +364,7 @@ export async function renderAttendanceGrid(teacher, classData) {
           showToast(`นำเข้าและบันทึกสำเร็จ ${allRecords.length} รายการ (${selectedGroups.length} วัน) ✅`, 'success')
           renderAttendanceGrid(teacher, classData)
         } catch (err) {
-          showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+          showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         }
       })
     })
@@ -429,7 +429,7 @@ export async function renderAttendanceGrid(teacher, classData) {
       try {
         await saveAttendanceCell(saveClassId, sid, saveSessN(sessN), date, next)
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
+        showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error')
       } finally {
         saving?.classList.add('hidden')
       }
@@ -553,7 +553,7 @@ export async function renderAttendanceGrid(teacher, classData) {
           renderAttendanceGrid(teacher, classData)
           _processNextOverdueModal()
         } catch (err) {
-          showToast('บันทึกผิดพลาด: ' + (err.message ?? ''), 'error')
+          showToast('บันทึกผิดพลาด: ' + (getFriendlyErrorMessage(err)), 'error')
           window._isProcessingOverdue = false
         }
       })
@@ -567,7 +567,7 @@ export async function renderAttendanceGrid(teacher, classData) {
           renderAttendanceGrid(teacher, classData)
           _processNextOverdueModal()
         } catch (err) {
-          showToast('บันทึกผิดพลาด: ' + (err.message ?? ''), 'error')
+          showToast('บันทึกผิดพลาด: ' + (getFriendlyErrorMessage(err)), 'error')
           window._isProcessingOverdue = false
         }
       })
@@ -616,12 +616,12 @@ export async function renderAttendanceGrid(teacher, classData) {
         showToast(`บันทึกการกลับห้องของ ${name} เรียบร้อย`, 'success')
         renderAttendanceGrid(teacher, classData)
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     })
 
   } catch (err) {
-    showToast('โหลดข้อมูลไม่สำเร็จ: '+(err.message??''), 'error')
+    showToast('โหลดข้อมูลไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error')
   }
 
 }
@@ -745,7 +745,7 @@ export function _openLeaveQuotaModal(classData, currentMax, currentMaxPerWeek, o
       modal.remove()
       onSave?.(nextMax, nextMaxPerWeek)
     } catch (err) {
-      showToast('บันทึกโควต้าไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกโควต้าไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   })
 }
@@ -876,7 +876,7 @@ function _openBulkCheckAllModal({ students, sessions, attMap, holidaySet, saveCl
       modal.remove()
       onDone?.()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       confirmBtn.disabled = false
       confirmBtn.textContent = 'ยืนยันเช็คชื่อทั้งหมด'
     }
@@ -1047,7 +1047,7 @@ export function _openLeaveRequestModal(teacher, classData, studentId, studentNam
         confirmText: 'ตกลง'
       })
     } catch (err) {
-      showToast('การขออนุญาตล้มเหลว: ' + (err.message ?? ''), 'error')
+      showToast('การขออนุญาตล้มเหลว: ' + (getFriendlyErrorMessage(err)), 'error')
       submitBtn.disabled = false
       submitBtn.textContent = submitLabel
       submitBtn.classList.remove('opacity-70', 'cursor-not-allowed')
@@ -1513,7 +1513,7 @@ export async function openAttendanceScanSetup(teacher) {
       }
     })
   } catch (err) {
-    body.innerHTML = `<div class="py-10 text-center text-red-400 text-sm">โหลดข้อมูลไม่สำเร็จ: ${_htmlEsc(err.message || '')}</div>`
+    body.innerHTML = `<div class="py-10 text-center text-red-400 text-sm">โหลดข้อมูลไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(err))}</div>`
   }
 }
 
@@ -2222,7 +2222,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
     try {
       staged = await getExternalAttendanceStaging(mainRoom, date)
     } catch (err) {
-      showToast('ดึงข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('ดึงข้อมูลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       return
     }
     if (!staged.length) {
@@ -2276,7 +2276,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       await exportAttendanceToStudentCare(mainRoom, date, records)
       showToast(`ส่งเช็คชื่อ ${records.length} คนไปรอที่ระบบดูแลแล้ว — ไปเปิดหน้าระบบดูแลห้อง ${mainRoom} วันที่ ${date} แล้วกดปุ่มบุ๊กมาร์ก "ส่งจาก pp5" ได้เลย`, 'success')
     } catch (err) {
-      showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('ส่งไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     } finally {
       btn.disabled = false; btn.innerHTML = '📤 <span>ส่งไประบบดูแล</span>'
     }
@@ -2334,7 +2334,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       )
       modal.remove()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
+      showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error')
       saveBtn.disabled = false; saveBtn.textContent = '💾 บันทึกการเช็คชื่อ'
     }
   })
@@ -2518,7 +2518,7 @@ export async function renderAttendance(teacher) {
         }))
         await saveAttendance(records)
         showToast(`บันทึกเช็คชื่อ ${records.length} คน สำเร็จ ✅`, 'success')
-      } catch (err) { showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error') }
+      } catch (err) { showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error') }
       finally { btn.disabled = false; btn.textContent = '💾 บันทึก' }
     })
   }
@@ -2562,7 +2562,7 @@ export async function renderAttendance(teacher) {
       _students.forEach(s => { _statusMap[s.id] = 'present' }) // default all present
       existing.forEach(a => { _statusMap[a.student_id] = a.status })
       _renderStudentList()
-    } catch (err) { showToast('โหลดไม่สำเร็จ: '+(err.message??''), 'error') }
+    } catch (err) { showToast('โหลดไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error') }
     finally { btn.disabled = false; btn.textContent = 'โหลดรายชื่อ' }
   })
 
@@ -2768,7 +2768,7 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
       } catch (err) {
         console.error('[life skill save]', err)
         _flashCell(inp, false)
-        showToast(`บันทึกทักษะชีวิตไม่สำเร็จ: ${err.message ?? ''}`, 'error')
+        showToast(`บันทึกทักษะชีวิตไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error')
       }
     }
 
@@ -2886,7 +2886,7 @@ export async function renderReadingScore(teacher, initialRoom = null) {
         <p class="font-medium">โหลดรายชื่อนักเรียนไม่สำเร็จ</p>
         <p class="text-xs mt-1 text-gray-400">กรุณาตรวจสอบอินเทอร์เน็ตแล้วเปิดหน้านี้อีกครั้ง</p>
       </div>`)
-      showToast(`โหลดข้อมูลไม่สำเร็จ: ${err?.message ?? ''}`, 'error')
+      showToast(`โหลดข้อมูลไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error')
       return
     }
 
@@ -2910,7 +2910,7 @@ export async function renderReadingScore(teacher, initialRoom = null) {
         <p class="font-medium">โหลดคะแนนไม่สำเร็จ</p>
         <p class="text-xs mt-1 text-gray-400">ระบบจะไม่แสดงช่องว่างแทนคะแนน กรุณาตรวจสอบอินเทอร์เน็ตแล้วเปิดหน้านี้อีกครั้ง</p>
       </div>`)
-      showToast(`โหลดคะแนนไม่สำเร็จ: ${err?.message ?? ''}`, 'error')
+      showToast(`โหลดคะแนนไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error')
       return
     }
     const scoreMap = {}
@@ -3429,7 +3429,7 @@ export async function renderPrayerRoomMonitor(teacher, homeroomRooms = [], prefe
       renderRows(students, records)
     } catch (err) {
       console.error('Prayer room monitor failed:', err)
-      showToast('โหลดข้อมูล Monitor ไม่สำเร็จ: ' + (err.message || ''), 'error')
+      showToast('โหลดข้อมูล Monitor ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       const body = document.getElementById('prm-table-body')
       if (body) body.innerHTML = `<tr><td colspan="7" class="py-12 text-center text-red-400">โหลดข้อมูลไม่สำเร็จ</td></tr>`
     } finally {

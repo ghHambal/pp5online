@@ -4,7 +4,7 @@ import {
   getQuizQuestions, createQuizQuestion, bulkImportQuizQuestions, updateQuizQuestion, deleteQuizQuestion
 } from './quiz-api.js'
 import { parseCSV } from './import.js'
-import { showToast, showDangerConfirm, setButtonLoading } from './ui.js'
+import { showToast, showDangerConfirm, setButtonLoading, getFriendlyErrorMessage } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, SELECT_CLS, INPUT_CLS } from './teacher-views-utils.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 import { supabase } from './supabase.js'
@@ -116,7 +116,7 @@ function _renderBankForm(teacher, bank) {
       modal.remove()
       renderQuizBanks(teacher)
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       setButtonLoading(e.target, false, 'บันทึก')
     }
   })
@@ -216,7 +216,7 @@ export async function _renderBankQuestions(teacher, bank, preferredClassId = nul
         showToast(`นำเข้าสำเร็จ ${mapped.length} ข้อ`, 'success')
         _renderBankQuestions(teacher, bank, preferredClassId)
       } catch (err) {
-        showToast('นำเข้าไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('นำเข้าไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       } finally {
         e.target.value = ''
       }
@@ -354,7 +354,7 @@ function _renderQuestionForm(teacher, bank, question = null) {
       modal.remove()
       _renderBankQuestions(teacher, bank)
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       setButtonLoading(e.target, false, 'บันทึก')
     }
   })
@@ -696,7 +696,7 @@ function _renderAIGenerator(teacher, bank) {
       modal.querySelector('#ai-paste-response').value = ''
       showToast(`แปลงคำตอบสำเร็จ ${generated.length} ข้อ — กรุณาตรวจสอบและยืนยันทีละข้อ`, 'success')
     } catch (err) {
-      showToast('แปลงคำตอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('แปลงคำตอบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   })
 
@@ -799,7 +799,7 @@ function _renderAIGenerator(teacher, bank) {
       _renderDrafts()
       showToast(`AI ร่างข้อสอบมาแล้ว ${generated.length} ข้อ — กรุณาตรวจสอบและยืนยันทีละข้อ`, 'success')
     } catch (err) {
-      showToast('AI ไม่สามารถร่างข้อสอบได้: ' + (err.message ?? ''), 'error')
+      showToast('AI ไม่สามารถร่างข้อสอบได้: ' + (getFriendlyErrorMessage(err)), 'error')
     } finally {
       setButtonLoading(e.target, false, 'สร้างข้อสอบด้วย AI')
     }
@@ -837,7 +837,7 @@ function _renderAIGenerator(teacher, bank) {
         _renderBankQuestions(teacher, bank)
       }
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     } finally {
       setButtonLoading(saveBtn, false)
       _updateSaveButton()

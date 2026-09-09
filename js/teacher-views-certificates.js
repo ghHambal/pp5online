@@ -11,8 +11,7 @@ import { openCertificateLayoutEditor } from './certificate-editor.js'
 import { renderCertificateRecipientTable } from './certificate-recipient-table.js'
 import { uploadCertificateTemplateImage } from './storage.js'
 import { setContent, setTitle, setActiveNav } from './teacher-views-utils.js'
-import { showToast, showDangerConfirm } from './ui.js'
-
+import { showToast, showDangerConfirm, getFriendlyErrorMessage } from './ui.js'
 const _esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 
 let _activeTab = 'templates'
@@ -84,7 +83,7 @@ async function _renderTemplatesTab(teacher) {
       teacher?.id ? getCertificateRecipientTables(teacher.id).catch(() => []) : Promise.resolve([]),
     ])
   } catch (err) {
-    panel.innerHTML = `<p class="text-sm text-red-400 text-center py-12">โหลดไม่สำเร็จ: ${_esc(err.message ?? '')}</p>`
+    panel.innerHTML = `<p class="text-sm text-red-400 text-center py-12">โหลดไม่สำเร็จ: ${_esc(getFriendlyErrorMessage(err))}</p>`
     return
   }
   panel.innerHTML = `
@@ -155,7 +154,7 @@ async function _renderTemplatesTab(teacher) {
       showToast('เพิ่มเทมเพลตแล้ว ✅', 'success')
       _renderTemplatesTab(teacher)
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       btn.disabled = false; btn.textContent = 'เพิ่มเทมเพลต'
     }
   })
@@ -193,7 +192,7 @@ async function _renderTemplatesTab(teacher) {
         showToast('คัดลอกเทมเพลตพร้อมค่าทั้งหมดแล้ว ✅', 'success')
         _renderTemplatesTab(teacher)
       } catch (err) {
-        showToast('คัดลอกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('คัดลอกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })
@@ -203,7 +202,7 @@ async function _renderTemplatesTab(teacher) {
       const confirmed = await showDangerConfirm({ title: 'ลบเทมเพลตนี้?', message: 'ใบเกียรติบัตรที่ออกไปแล้วยังอยู่ครบ (แต่ละใบเก็บดีไซน์ของตัวเองแยกไว้) ลบแค่เทมเพลตสำหรับออกใบใหม่ต่อจากนี้', confirmText: 'ลบเลย' })
       if (!confirmed) return
       try { await deleteCertificateTemplate(Number(btn.dataset.id)); _renderTemplatesTab(teacher) }
-      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     })
   })
 }
@@ -419,7 +418,7 @@ async function _renderHistoryTab() {
     try {
       _issuedHistory = await getIssuedCertificates({ query })
     } catch (err) {
-      listEl.innerHTML = `<p class="text-xs text-red-400 text-center py-6">โหลดไม่สำเร็จ: ${_esc(err.message ?? '')}</p>`
+      listEl.innerHTML = `<p class="text-xs text-red-400 text-center py-6">โหลดไม่สำเร็จ: ${_esc(getFriendlyErrorMessage(err))}</p>`
       return
     }
     listEl.innerHTML = !_issuedHistory.length ? `
@@ -449,7 +448,7 @@ async function _renderHistoryTab() {
       const confirmed = await showDangerConfirm({ title: 'ลบเกียรติบัตรนี้?', message: 'ลบแล้วไม่สามารถกู้คืนได้', confirmText: 'ลบเลย' })
       if (!confirmed) return
       try { await deleteCertificate(Number(btn.dataset.id)); _load(panel.querySelector('#cert-history-search')?.value) }
-      catch (err) { showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error') }
+      catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     }))
   }
 

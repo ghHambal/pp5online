@@ -3,8 +3,7 @@ import { getDepartments, getSystemConfig, getRoomsByGrade, getStudentsByRoom,
          createClass, updateClass, enrollStudents, getClassStudents,
          getScoreColumns, createScoreColumn, linkClassToSchedule,
          getTeacherClassesForLinking, getLifeSkillColumns } from './api.js'
-import { showToast } from './ui.js'
-
+import { showToast, getFriendlyErrorMessage } from './ui.js'
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
 const INPUT_CLS  = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm'
 
@@ -393,7 +392,7 @@ export async function renderClassForm(teacher, course, opts = {}) {
         infoEl.classList.remove('hidden')
       })
     } catch (err) {
-      infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (err.message ?? '')
+      infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (getFriendlyErrorMessage(err))
       infoEl.classList.remove('hidden')
     } finally {
       btn.textContent = '🗓️ คำนวณจากตารางสอน'; btn.disabled = false
@@ -475,7 +474,7 @@ export async function renderClassForm(teacher, course, opts = {}) {
       showToast(msg, 'success')
       window._goBack()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: '+(err.message??''),'error')
+      showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')
     } finally {
       btn.disabled = false; btn.textContent = 'บันทึกและเปิดรายวิชา'
     }
@@ -698,7 +697,7 @@ export async function renderClassEditForm(teacher, classData) {
         infoEl.classList.remove('hidden')
       })
     } catch (err) {
-      infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (err.message ?? '')
+      infoEl.textContent = 'โหลดตารางไม่สำเร็จ: ' + (getFriendlyErrorMessage(err))
       infoEl.classList.remove('hidden')
     } finally {
       btn.textContent = '🗓️ คำนวณจากตารางสอน'; btn.disabled = false
@@ -734,7 +733,7 @@ export async function renderClassEditForm(teacher, classData) {
       if (window._navTo) window._navTo('my-classes')
       else history.back()
     } catch (err) {
-      showToast('บันทึกไม่สำเร็จ: '+(err.message??''), 'error')
+      showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error')
     } finally {
       btn.disabled = false; btn.textContent = 'บันทึกการแก้ไข'
     }

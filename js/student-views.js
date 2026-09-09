@@ -14,6 +14,7 @@ import {
   updateStudentEmail, getMyClassAssignments, getMyAllAssignments, submitAssignment, getClassSyllabus,
   requestSubjectGroupChange, getMySubjectGroupRequests,
 } from './student-api.js'
+import { getFriendlyErrorMessage } from './ui.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
 import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputValue, renderIconTile } from './teacher-views-utils.js'
@@ -1343,7 +1344,7 @@ export async function renderStudentOverview(student) {
       const attempt = await rpcStartAttempt(quizId)
       window.location.href = `quiz-exam.html?attempt=${attempt.id}`
     } catch (err) {
-      showToast('เข้าสอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('เข้าสอบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   }
 }
@@ -1721,7 +1722,7 @@ function _openSubjectGroupManager(student, classes, pendingReqByClass, isSasanaF
           wrap.remove()
           renderStudentSubjects(student)
         } catch (e) {
-          showToast('ส่งคำขอไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+          showToast('ส่งคำขอไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
           btn.disabled = false; btn.textContent = 'ย้ายไป 📖 สามัญ'
         }
       })
@@ -2297,7 +2298,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       await cancelExamRequest(id)
       showToast('ยกเลิกคำร้องแล้ว', 'success')
       window._stuOpenClassTab(targetClassId, 'requests')
-    } catch (err) { showToast('ยกเลิกไม่สำเร็จ: '+(err.message??''), 'error') }
+    } catch (err) { showToast('ยกเลิกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error') }
   }
 
   window._stuStartQuiz = async (quizId) => {
@@ -2313,7 +2314,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
       const attempt = await rpcStartAttempt(quizId)
       window.location.href = `quiz-exam.html?attempt=${attempt.id}`
     } catch (err) {
-      showToast('เข้าสอบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('เข้าสอบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   }
 
@@ -2362,7 +2363,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         m.remove()
         renderStudentSubjectDetail(student, classId, 'assignments')
       } catch (err) {
-        showToast('ส่งงานไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ส่งงานไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'ส่งงาน'
       }
     })
@@ -2438,7 +2439,7 @@ export async function renderStudentRequests(student) {
       await cancelExamRequest(id)
       showToast('ยกเลิกคำร้องแล้ว', 'success')
       renderStudentRequests(student)
-    } catch (err) { showToast('ยกเลิกไม่สำเร็จ: '+(err.message??''), 'error') }
+    } catch (err) { showToast('ยกเลิกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error') }
   }
 }
 
@@ -2903,7 +2904,7 @@ export async function renderExamRequestForm(student, classId) {
       showToast('ยื่นคำร้องสำเร็จ ✅', 'success')
       window._stuOpenClassTab(classId, 'requests')
     } catch (err) {
-      showToast('ยื่นไม่สำเร็จ: '+(err.message??''), 'error')
+      showToast('ยื่นไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error')
     } finally { btn.disabled = false; btn.textContent = 'ยื่นคำร้อง' }
   })
 }
@@ -3115,7 +3116,7 @@ export async function renderStudentProfile(student, onLogout) {
         m.querySelector('#stu-new-pw').value = ''
         m.querySelector('#stu-new-pw-confirm').value = ''
       } catch (err) {
-        _showMsg('ไม่สำเร็จ: ' + (err.message ?? ''), true)
+        _showMsg('ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), true)
       } finally {
         btn.disabled = false; btn.textContent = 'บันทึกรหัสผ่านใหม่'
       }
@@ -3187,7 +3188,7 @@ export async function renderStudentProfile(student, onLogout) {
         showToast('แจ้งขอทำบัตรแล้ว รอแอดมิน/ครูดำเนินการนะครับ 🙏', 'success')
       } catch (err) {
         okBtn.disabled = false; okBtn.textContent = 'ยืนยัน'
-        showToast('ส่งไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('ส่งไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     })
   })
@@ -3458,7 +3459,7 @@ async function _loadMyLeaveModalData(student, modal) {
 
     render()
   } catch (err) {
-    body.innerHTML = `<p class="text-xs text-red-500 text-center py-6">โหลดข้อมูลไม่สำเร็จ: ${_esc(err.message ?? '')}</p>`
+    body.innerHTML = `<p class="text-xs text-red-500 text-center py-6">โหลดข้อมูลไม่สำเร็จ: ${_esc(getFriendlyErrorMessage(err))}</p>`
   }
 }
 
@@ -3556,7 +3557,7 @@ export function openEmailLinkPrompt() {
       _showMsg(`เชื่อมอีเมล ${email} สำเร็จแล้ว ✅`, false)
       setTimeout(() => modal.remove(), 1200)
     } catch (err) {
-      _showMsg('ไม่สำเร็จ: ' + (err.message ?? ''), true)
+      _showMsg('ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), true)
       if (btn) { btn.disabled = false; if (restoreLabel) btn.textContent = restoreLabel }
     }
   }
@@ -3600,7 +3601,7 @@ export async function completeGoogleEmailLink(email) {
     await updateStudentEmail(email)
     showToast(`เชื่อมอีเมล ${email} สำเร็จแล้ว ✅`, 'success')
   } catch (err) {
-    showToast('เชื่อมอีเมลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+    showToast('เชื่อมอีเมลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
   }
 }
 
@@ -4838,7 +4839,7 @@ export async function renderStudentPrayerScanHistory(student) {
       records = await getMyScannedPrayerHistory(student.student_code, selectedDate)
     } catch (err) {
       records = []
-      showToast('โหลดข้อมูลไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('โหลดข้อมูลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
     const searchInput = document.getElementById('sh-search-input')
     _renderList(searchInput?.value.trim() ?? '')
@@ -4991,7 +4992,7 @@ export async function renderStudentPrayerScanHistory(student) {
         modal.remove()
         await _load()
       } catch (err) {
-        showToast('บันทึกไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+        showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false; btn.textContent = 'บันทึก'
       }
     })

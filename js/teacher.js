@@ -1,5 +1,5 @@
 import { supabase }            from './supabase.js'
-import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog, showAnnouncementPopups, showTerangganuUrgentModal } from './ui.js'
+import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog, showAnnouncementPopups, showTerangganuUrgentModal, initHeavyLoadBanner, getFriendlyErrorMessage } from './ui.js'
 import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createSubject, updateSubject, deleteSubject,
          getCourseDocPage2, saveCourseDocPage2,
@@ -26,7 +26,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.666'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.682'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -241,7 +241,7 @@ const ROUTES = {
   'flashcards':  () => import('./teacher-views-flashcards.js').then(m => m.renderFlashcardDecks(_teacher)),
   'certificates': () => import('./teacher-views-certificates.js').then(m => m.renderCertificateManager(_teacher)),
   'quiz-system': () => import('./teacher-views-quiz-banks.js').then(m => m.renderQuizBanks(_teacher)),
-  'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.22.612').then(m => m.renderExamDocuments(_teacher)),
+  'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.22.682').then(m => m.renderExamDocuments(_teacher)),
   'sports':      () => {
     // ครูตำแหน่ง house_color_admin (หรือได้รับสิทธิ์ menu_sports_admin/เป็นแอดมิน) ที่กด
     // ทางลัด "ระบบกีฬาสี" จากเมนูปกตินี้ ต้องเข้าเป็นแอดมิน AZIZGAMES ทันทีเหมือนกับที่เข้าทาง
@@ -815,7 +815,7 @@ window._copyCourse = async (id) => {
         await saveCourseDocPage2(newSubject.id, page2Payload)
       }
     } catch (err) {
-      showToast('คัดลอกคำอธิบายรายวิชาไม่สำเร็จ (สร้างคอร์สแล้ว แก้ไขคำอธิบายเพิ่มเองได้): ' + (err.message ?? ''), 'warning')
+      showToast('คัดลอกคำอธิบายรายวิชาไม่สำเร็จ (สร้างคอร์สแล้ว แก้ไขคำอธิบายเพิ่มเองได้): ' + (getFriendlyErrorMessage(err)), 'warning')
     }
   }, sourceSubject, { cloneFrom: id })
 }
@@ -857,7 +857,7 @@ window._deleteCourse = (id, name) => {
       navigate('my-courses')
     } catch (err) {
       m.remove()
-      showToast('ลบไม่สำเร็จ: ' + (err.message ?? ''), 'error')
+      showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
   })
 }
@@ -1107,7 +1107,7 @@ function _showSchoolSponsoredPopup(count, course, cfg = {}) {
       showToast('ส่งคำขอแล้ว ✅ แอดมินจะอนุมัติให้เร็วๆ นี้ครับ', 'success')
       wrap.remove()
     } catch (e) {
-      showToast('เกิดข้อผิดพลาด: ' + (e.message ?? ''), 'error')
+      showToast('เกิดข้อผิดพลาด: ' + (getFriendlyErrorMessage(e)), 'error')
       btn.disabled = false
       btn.textContent = '🎓 รับสิทธิ์ไม่จำกัดเลย'
     }
@@ -1282,7 +1282,7 @@ async function _showDonateModal(course, cfg = {}) {
       wrap.querySelector('#donate-confirm').classList.remove('hidden')
       wrap.querySelector('#donate-gen-qr').classList.add('hidden')
     } catch (e) {
-      showToast('สร้าง QR ไม่สำเร็จ: ' + (e.message ?? ''), 'error')
+      showToast('สร้าง QR ไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
     }
   })
 
@@ -1331,7 +1331,7 @@ async function _showDonateModal(course, cfg = {}) {
       wrap.remove()
       _initDonateFloatingBtn(true)
     } catch (e) {
-      showToast('เกิดข้อผิดพลาด: ' + (e.message ?? ''), 'error')
+      showToast('เกิดข้อผิดพลาด: ' + (getFriendlyErrorMessage(e)), 'error')
       btn.disabled = false; btn.textContent = '✅ ส่งหลักฐานการโอน'
     }
   })
@@ -2028,7 +2028,7 @@ async function _showPaymentPage(pkgType, course, roomCount = 1, cfgIn = null) {
       _showPaymentSuccess()
     } catch (err) {
       btn.disabled = false; btn.textContent = '✅ ส่งหลักฐานการชำระเงิน'
-      errEl.textContent = 'เกิดข้อผิดพลาด กรุณาลองใหม่: ' + (err.message ?? '')
+      errEl.textContent = 'เกิดข้อผิดพลาด กรุณาลองใหม่: ' + (getFriendlyErrorMessage(err))
       errEl.classList.remove('hidden')
     }
   })
@@ -2847,7 +2847,7 @@ function _showShirtSizeReminderPopup() {
   document.body.appendChild(wrap)
   wrap.querySelector('#ssrp-go').addEventListener('click', () => {
     wrap.remove()
-    import('./sports-portals.js?v=10.22.666').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+    import('./sports-portals.js?v=10.22.682').then(m => m.openTeacherShirtSizeModal?.(_teacher))
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
 }
@@ -3112,12 +3112,12 @@ window._openScheduleLinkModal = async (classId) => {
         wrap.remove()
         window._navTo('my-classes')
       } catch (e) {
-        showToast('เกิดข้อผิดพลาด: ' + (e.message ?? ''), 'error')
+        showToast('เกิดข้อผิดพลาด: ' + (getFriendlyErrorMessage(e)), 'error')
         btn.disabled = false; btn.textContent = 'บันทึกการเชื่อมโยง'
       }
     })
   } catch (e) {
-    showToast('โหลดข้อมูลไม่ได้: ' + (e.message ?? ''), 'error')
+    showToast('โหลดข้อมูลไม่ได้: ' + (getFriendlyErrorMessage(e)), 'error')
   }
 }
 
@@ -3216,6 +3216,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initInstallPrompt()
   _loadAnnouncementBanners()
   _checkTerangganuSurveyNudge()
+  initHeavyLoadBanner()
   if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
   if (_teacher?.id) import('./teacher-views-donor-chat.js').then(m => { m.injectDonorChatWidget(_teacher); _toggleFloatingFabsForView(_currentView) })
   _initHomeFab()

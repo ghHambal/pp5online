@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { showToast, setButtonLoading, showPageLoader } from './ui.js'
+import { showToast, setButtonLoading, showPageLoader, getFriendlyErrorMessage } from './ui.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { storeSsoPassword } from './wen-sso.js'
 
@@ -199,7 +199,7 @@ async function handleRequestCode(e) {
     .insert({ teacher_code: code, full_name: fullName, category })
 
   if (error) {
-    _showRcMsg('เกิดข้อผิดพลาด: ' + (error.message ?? ''), 'error')
+    _showRcMsg('เกิดข้อผิดพลาด: ' + (getFriendlyErrorMessage(error)), 'error')
     btn.disabled = false; btn.textContent = 'ขอรหัสครู'; return
   }
 
