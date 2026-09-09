@@ -62,17 +62,44 @@ async function mgmtFetch(path, options = {}) {
   return json
 }
 
-// โพสต์ประกาศป๊อบอัพเข้าระบบเดิม (ตาราง announcements) ให้ครูทุกคนเห็นตอนเข้าแอป
-// เหมือนประกาศที่แอดมินโพสต์เอง — ต้องใช้ service_role key เพราะ RLS จำกัดเฉพาะ
-// admin/สิทธิ์ announce_create เท่านั้น (บัญชีแอดมินไม่มี teacher_id ผูกไว้
-// จึง target เจาะจงตัวเองไม่ได้ เลยส่งกว้างเป็น audience ครูทั้งหมดแทน
-// ตรงกับที่ตั้งใจจะประกาศ LINE กลุ่มครูอยู่แล้ว)
+// หาว่าใครควรเห็นแจ้งเตือนนี้บ้าง: แอดมิน (is_also_admin=true), หัวหน้าวิชาการ
+// ทุกสาย (academic_samai/religion/pvch), และผู้บริหาร (executive) — คำนวณสด
+// ทุกครั้งเผื่อมีการมอบหมายตำแหน่งเปลี่ยนในอนาคต ไม่ hardcode รายชื่อตายตัว
+const NOTIFY_POSITIONS = ['academic_samai', 'academic_religion', 'academic_pvch', 'executive']
+
+async function getTargetTeacherIds() {
+  const posQuery = `position.in.(${NOTIFY_POSITIONS.join(',')}),positions.ov.{${NOTIFY_POSITIONS.join(',')}}`
+  const [byPosition, byDelegatedAdmin] = await Promise.all([
+    restGet(`/teachers?select=id&or=(${posQuery})`),
+    restGet(`/teachers?select=id,profiles!inner(is_also_admin)&profiles.is_also_admin=eq.true`),
+  ])
+  const ids = new Set([...byPosition, ...byDelegatedAdmin].map(r => r.id))
+  return [...ids]
+}
+
+async function restGet(path) {
+  const res = await fetch(`${REST_URL}${path}`, {
+    headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+  })
+  if (!res.ok) throw new Error(`GET ${path} -> HTTP ${res.status}: ${await res.text()}`)
+  return res.json()
+}
+
+// โพสต์ประกาศป๊อบอัพเข้าระบบเดิม (ตาราง announcements) ให้เฉพาะแอดมิน/หัวหน้า
+// วิชาการ/ผู้บริหารเห็นตอนเข้าแอป เหมือนประกาศที่แอดมินโพสต์เอง — ต้องใช้
+// service_role key เพราะ RLS จำกัดเฉพาะ admin/สิทธิ์ announce_create เท่านั้น
 async function postAnnouncement(title, body) {
   if (!SERVICE_ROLE_KEY) {
     console.log('[in-app announcement] ข้าม — ไม่ได้ตั้ง SUPABASE_SERVICE_ROLE_KEY ไว้')
     return
   }
   try {
+    const targetTeacherIds = await getTargetTeacherIds()
+    console.log('[in-app announcement] ผู้รับ teacher_id:', targetTeacherIds)
+    if (!targetTeacherIds.length) {
+      console.warn('[in-app announcement] ข้าม — หาผู้รับที่ตรงเงื่อนไขไม่เจอเลย (ไม่มีใครถือตำแหน่งที่กำหนด)')
+      return
+    }
     const res = await fetch(`${REST_URL}/announcements`, {
       method: 'POST',
       headers: {
@@ -88,6 +115,7 @@ async function postAnnouncement(title, body) {
         creator_role: 'admin',
         ann_type: 'system',
         audience: 'teacher',
+        target_teacher_ids: targetTeacherIds,
         updated_at: new Date().toISOString(),
       }),
     })
