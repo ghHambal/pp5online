@@ -231,7 +231,23 @@ async function main() {
   console.log('[state]', JSON.stringify(state))
 }
 
-main().catch(e => {
-  console.error('autoscale run ล้มเหลว:', e)
-  process.exit(1)
-})
+// โหมดทดสอบเฉพาะ path แจ้งเตือน (ไม่แตะ compute เลย) — เรียกด้วย
+// `node scripts/db-autoscale.mjs --test-notify`
+async function testNotifyOnly() {
+  await notify(
+    '🧪 ทดสอบระบบแจ้งเตือน auto-scale',
+    'นี่คือข้อความทดสอบ ยืนยันว่า target audience (แอดมิน/หัวหน้าวิชาการ/ผู้บริหาร) และการโพสต์ประกาศทำงานถูกต้อง ไม่มีผลกับ compute จริงแต่อย่างใด'
+  )
+}
+
+if (process.argv.includes('--test-notify')) {
+  testNotifyOnly().catch(e => {
+    console.error('ทดสอบแจ้งเตือนล้มเหลว:', e)
+    process.exit(1)
+  })
+} else {
+  main().catch(e => {
+    console.error('autoscale run ล้มเหลว:', e)
+    process.exit(1)
+  })
+}

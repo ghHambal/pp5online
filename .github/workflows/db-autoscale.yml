@@ -15,6 +15,11 @@ on:
         description: 'จำนวนครั้งปกติติดต่อกันก่อน downgrade (ปกติ 18 = 90 นาที) — ใส่เลขต่ำๆ เพื่อ debug/บังคับทดสอบเท่านั้น'
         required: false
         default: ''
+      test_notify_only:
+        description: 'true = ทดสอบแค่ path แจ้งเตือน/ประกาศ ไม่แตะ compute เลย'
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: db-autoscale
@@ -53,7 +58,12 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
           DOWNGRADE_AFTER_HEALTHY_CHECKS: ${{ inputs.downgrade_after_healthy_checks }}
-        run: node scripts/db-autoscale.mjs .autoscale-state.json
+        run: |
+          if [ "${{ inputs.test_notify_only }}" = "true" ]; then
+            node scripts/db-autoscale.mjs .autoscale-state.json --test-notify
+          else
+            node scripts/db-autoscale.mjs .autoscale-state.json
+          fi
 
       - name: บันทึก state กลับ (orphan branch เฉพาะ ไม่ยุ่งกับ main)
         run: |
