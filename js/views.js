@@ -9268,6 +9268,79 @@ export async function renderAnnouncements() {
   await _renderList()
 }
 
+// ─── ประวัติปรับกำลังเครื่องอัตโนมัติ (Auto-scale) ────────────────────────────
+// อ่านจาก announcements ที่ ann_type = 'system' (สคริปต์ auto-scale สร้างให้เองทุก
+// ครั้งที่ปรับ compute) — แยกเป็นตารางต่างหากจากหน้าประกาศทั่วไปตามที่ผู้ใช้ขอ
+export async function renderAutoscaleHistory() {
+  setActiveNav('autoscale-history')
+  document.getElementById('page-title').textContent = 'ประวัติปรับกำลังเครื่องอัตโนมัติ'
+  const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  const _fmtDateTime = d => new Date(d).toLocaleString('th-TH', { day:'numeric', month:'short', year:'2-digit', hour:'2-digit', minute:'2-digit' })
+
+  const _eventMeta = title => {
+    if (title.includes('🔴')) return { label: 'ล้มเหลว', cls: 'bg-red-100 text-red-700' }
+    if (title.includes('⚠️'))  return { label: 'อัปเกรด',  cls: 'bg-amber-100 text-amber-700' }
+    if (title.includes('✅'))  return { label: 'ลดระดับ', cls: 'bg-emerald-100 text-emerald-700' }
+    if (title.includes('🧪'))  return { label: 'ทดสอบ',   cls: 'bg-gray-100 text-gray-600' }
+    return { label: 'เหตุการณ์', cls: 'bg-gray-100 text-gray-600' }
+  }
+
+  setContent(`<div class="animate-fade">
+    <p class="text-xs text-gray-400 mb-6">บันทึกอัตโนมัติทุกครั้งที่ระบบปรับขนาด compute (Micro ↔ Medium) แยกจากหน้าประกาศทั่วไป</p>
+    <div id="autoscale-history-wrap" class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div class="flex justify-center py-12 text-gray-400">
+        <svg class="animate-spin h-5 w-5 mr-2 text-indigo-400" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg> กำลังโหลด...
+      </div>
+    </div>
+  </div>`)
+
+  const wrap = document.getElementById('autoscale-history-wrap')
+  let items
+  try {
+    items = (await getAllAnnouncements()).filter(a => a.ann_type === 'system')
+  } catch {
+    wrap.innerHTML = '<p class="text-red-400 text-sm p-6">โหลดไม่สำเร็จ</p>'
+    return
+  }
+
+  if (!items.length) {
+    wrap.innerHTML = `<div class="p-16 text-center text-gray-400">
+      <div class="text-5xl mb-4">🖥️</div>
+      <p class="font-semibold text-gray-500">ยังไม่มีประวัติการปรับกำลังเครื่อง</p>
+      <p class="text-xs mt-1">ระบบจะบันทึกอัตโนมัติทุกครั้งที่ปรับขนาด compute</p>
+    </div>`
+    return
+  }
+
+  wrap.innerHTML = `
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-gray-100 bg-gray-50/60 text-left text-xs text-gray-400 uppercase tracking-wide">
+            <th class="px-5 py-3 font-semibold whitespace-nowrap">เวลา</th>
+            <th class="px-5 py-3 font-semibold whitespace-nowrap">เหตุการณ์</th>
+            <th class="px-5 py-3 font-semibold">รายละเอียด</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(a => {
+            const meta = _eventMeta(a.title || '')
+            return `<tr class="border-b border-gray-50 last:border-0 hover:bg-gray-50/60 align-top">
+              <td class="px-5 py-3.5 whitespace-nowrap text-gray-500 font-mono text-xs">${_fmtDateTime(a.created_at)}</td>
+              <td class="px-5 py-3.5 whitespace-nowrap">
+                <span class="px-2.5 py-1 rounded-full text-xs font-bold ${meta.cls}">${meta.label}</span>
+              </td>
+              <td class="px-5 py-3.5 text-gray-700">${_esc(a.body || a.title || '')}</td>
+            </tr>`
+          }).join('')}
+        </tbody>
+      </table>
+    </div>`
+}
+
 // ─── Supervisor Announcements ─────────────────────────────────────────────────
 
 const _ANN_ROLE_LABELS = {

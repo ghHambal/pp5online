@@ -7,7 +7,7 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderHolidays, renderPayments, renderLifeSkillAdmin, renderReadingAdmin,
          renderPrayerAdmin, renderAdminProfile, renderUsageStats,
          renderClassroomsAdmin,
-         renderAnnouncements, renderRolePermissions,
+         renderAnnouncements, renderAutoscaleHistory, renderRolePermissions,
          renderHouseColors, renderDonations, renderWorkCalendar, renderFeedbackAdmin,
          renderReligionGroups, renderClassroomLeaders, renderSubjectGroupRequests,
          renderCouncilRepNominationSummary } from './views.js'
@@ -842,6 +842,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'classrooms-admin': renderClassroomsAdmin,
     'course-doc-lang':  () => renderCourseDocLangConfig(null, true),
     'announcements':    () => renderAnnouncements(),
+    'autoscale-history': () => renderAutoscaleHistory(),
     'work-calendar':    () => renderWorkCalendar(null),
     'role-permissions': () => renderRolePermissions(),
     'religion-groups':  renderReligionGroups,
