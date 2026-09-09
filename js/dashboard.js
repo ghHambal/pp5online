@@ -9,7 +9,8 @@ import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTe
          renderClassroomsAdmin,
          renderAnnouncements, renderRolePermissions,
          renderHouseColors, renderDonations, renderWorkCalendar, renderFeedbackAdmin,
-         renderReligionGroups, renderClassroomLeaders, renderSubjectGroupRequests } from './views.js'
+         renderReligionGroups, renderClassroomLeaders, renderSubjectGroupRequests,
+         renderCouncilRepNominationSummary } from './views.js'
 import { renderScheduleGrid, renderCourseDocLangConfig } from './teacher-views.js'
 import { renderExecOverview } from './views-exec-overview.js'
 import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeacher,
@@ -21,12 +22,12 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.681'
+import { APP_VERSION } from './version.js?v=10.22.683'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { openRegradeModal } from './regrade-modal.js'
-import { renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.682'
+import { renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.683'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -861,6 +862,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'donor-chat-admin': () => import('./teacher-views-donor-chat.js').then(m => m.renderDonorChatAdmin()),
     'student-qr-print': () => import('./teacher-views-classes.js').then(m => m.renderStudentQRPrint(null, null)),
     'classroom-leaders': () => renderClassroomLeaders(),
+    'council-rep-nominations': () => renderCouncilRepNominationSummary(),
     'certificates': () => import('./teacher-views-certificates.js').then(async m => {
       const { getMyTeacherProfile } = await import('./api.js')
       const teacher = await getMyTeacherProfile(session.user.id).catch(() => null)

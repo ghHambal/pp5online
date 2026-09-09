@@ -4,6 +4,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          updateClass, deleteClass,
          updateStudent, deleteStudent,
          getHomeroomTeachers, assignHomeroomTeacher, deleteHomeroomTeacher,
+         getAllCouncilRepNominations,
          getScoreColumnConfig, upsertScoreColumnConfig,
          getUniqueRooms, getUniqueReligionRooms, unlinkTeacherAccount, mergeTeacherAccounts,
          getSchoolHolidaysFull, upsertHoliday, deleteHoliday,
@@ -10874,6 +10875,129 @@ export async function renderHouseColors() {
   }
 
   await _load()
+  _render()
+}
+
+
+// ─── สรุปรายชื่อตัวแทนสภานักเรียนที่ครูที่ปรึกษาสามัญเสนอ (ม.3-ม.5) ──────────────
+// เครื่องมือเก็บรายชื่อเฉพาะ ไม่ผูกกับระบบสภานักเรียนจริง (ดู patch_council_rep_nominations.sql)
+export async function renderCouncilRepNominationSummary() {
+  setActiveNav('council-rep-nominations')
+  document.getElementById('page-title').textContent = 'สรุปรายชื่อตัวแทนสภานักเรียน'
+
+  const ELIGIBLE_GRADES = ['ม.3', 'ม.4', 'ม.5']
+  let filterQ = ''
+  let filterGrade = ''
+  let filterGender = ''
+
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const academicYear = String(cfg.academicYear ?? cfg.academic_year ?? (new Date().getFullYear() + 543))
+
+  const [homeroomRooms, nominations] = await Promise.all([
+    getHomeroomTeachers(academicYear).catch(() => []),
+    getAllCouncilRepNominations(academicYear).catch(() => []),
+  ])
+
+  const gradeOf = (room) => (room || '').match(/^ม\.\d+/)?.[0] ?? null
+  const eligibleRooms = [...new Set(
+    homeroomRooms.filter(r => r.category === 'สามัญ' && ELIGIBLE_GRADES.includes(gradeOf(r.main_room))).map(r => r.main_room)
+  )].sort((a, b) => a.localeCompare(b, 'th'))
+
+  const roomsSubmittedCount = {}
+  eligibleRooms.forEach(r => { roomsSubmittedCount[r] = 0 })
+  nominations.forEach(n => { if (roomsSubmittedCount[n.main_room] != null) roomsSubmittedCount[n.main_room]++ })
+  const roomsFull = eligibleRooms.filter(r => roomsSubmittedCount[r] >= 2)
+  const roomsPartial = eligibleRooms.filter(r => roomsSubmittedCount[r] > 0 && roomsSubmittedCount[r] < 2)
+  const roomsNone = eligibleRooms.filter(r => roomsSubmittedCount[r] === 0)
+
+  const _filtered = () => nominations.filter(n => {
+    if (filterGrade && gradeOf(n.main_room) !== filterGrade) return false
+    if (filterGender && n.students?.gender !== filterGender) return false
+    if (filterQ) {
+      const q = filterQ.toLowerCase()
+      const hay = `${n.students?.full_name ?? ''} ${n.students?.student_code ?? ''} ${n.main_room ?? ''}`.toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
+
+  const _buildRowsHTML = (list) => list.length ? list.map(n => `
+    <tr class="border-t border-gray-100">
+      <td class="px-4 py-2.5">${_esc(n.main_room)}</td>
+      <td class="px-4 py-2.5 font-medium">${_esc(n.students?.full_name ?? '—')}</td>
+      <td class="px-4 py-2.5 text-gray-500">${_esc(n.students?.student_code ?? '—')}</td>
+      <td class="px-4 py-2.5 text-gray-500">${_esc(n.students?.gender ?? '—')}</td>
+      <td class="px-4 py-2.5 text-gray-500">${_esc(n.teachers?.full_name ?? '—')}</td>
+      <td class="px-4 py-2.5 text-gray-400 text-xs">${n.created_at ? new Date(n.created_at).toLocaleDateString('th-TH') : '—'}</td>
+    </tr>`).join('') : `<tr><td colspan="6" class="px-4 py-10 text-center text-gray-400">ไม่พบรายการ</td></tr>`
+
+  const _render = () => {
+    const list = _filtered()
+    setContent(`<div class="space-y-5 animate-fade">
+      <div class="grid grid-cols-3 gap-3">
+        <div class="bg-emerald-50 rounded-2xl p-4"><p class="text-xs text-emerald-700">ส่งครบ 2 คน</p><b class="text-2xl text-emerald-700">${roomsFull.length}</b><p class="text-[11px] text-emerald-600 mt-0.5">จาก ${eligibleRooms.length} ห้อง</p></div>
+        <div class="bg-amber-50 rounded-2xl p-4"><p class="text-xs text-amber-700">ส่งไม่ครบ</p><b class="text-2xl text-amber-700">${roomsPartial.length}</b>${roomsPartial.length ? `<p class="text-[11px] text-amber-600 mt-0.5 truncate" title="${_esc(roomsPartial.join(', '))}">${_esc(roomsPartial.join(', '))}</p>` : ''}</div>
+        <div class="bg-red-50 rounded-2xl p-4"><p class="text-xs text-red-700">ยังไม่ส่งเลย</p><b class="text-2xl text-red-700">${roomsNone.length}</b>${roomsNone.length ? `<p class="text-[11px] text-red-600 mt-0.5 truncate" title="${_esc(roomsNone.join(', '))}">${_esc(roomsNone.join(', '))}</p>` : ''}</div>
+      </div>
+
+      <div class="flex flex-wrap gap-3 items-center">
+        <input id="crn-search" type="text" placeholder="ค้นหาชื่อ รหัส ห้อง..." value="${_esc(filterQ)}"
+          class="flex-1 min-w-[180px] border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+        <select id="crn-filter-grade" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <option value="">ทุกระดับชั้น</option>
+          ${ELIGIBLE_GRADES.map(g => `<option value="${g}" ${filterGrade === g ? 'selected' : ''}>${g}</option>`).join('')}
+        </select>
+        <select id="crn-filter-gender" class="border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300">
+          <option value="">ทุกเพศ</option>
+          <option value="ชาย" ${filterGender === 'ชาย' ? 'selected' : ''}>👦 ชาย</option>
+          <option value="หญิง" ${filterGender === 'หญิง' ? 'selected' : ''}>👧 หญิง</option>
+        </select>
+        <span class="text-xs text-gray-400">พบ <b class="text-gray-700">${list.length}</b> รายการ</span>
+        <button id="crn-print-btn" class="ml-auto px-4 py-2 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center gap-1.5 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed" ${list.length === 0 ? 'disabled' : ''}>
+          🖨️ พิมพ์ใบรายชื่อ (${list.length})
+        </button>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-gray-200 overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50 text-xs text-gray-500 uppercase border-b border-gray-200">
+            <tr>
+              <th class="px-4 py-3 text-left">ห้อง</th>
+              <th class="px-4 py-3 text-left">ชื่อ-สกุล</th>
+              <th class="px-4 py-3 text-left">รหัส</th>
+              <th class="px-4 py-3 text-left">เพศ</th>
+              <th class="px-4 py-3 text-left">ครูผู้เสนอ</th>
+              <th class="px-4 py-3 text-left">วันที่</th>
+            </tr>
+          </thead>
+          <tbody>${_buildRowsHTML(list)}</tbody>
+        </table>
+      </div>
+    </div>`)
+
+    document.getElementById('crn-search')?.addEventListener('input', e => { filterQ = e.target.value; _render() })
+    document.getElementById('crn-filter-grade')?.addEventListener('change', e => { filterGrade = e.target.value; _render() })
+    document.getElementById('crn-filter-gender')?.addEventListener('change', e => { filterGender = e.target.value; _render() })
+    document.getElementById('crn-print-btn')?.addEventListener('click', () => {
+      const printList = _filtered()
+      const html = `<!doctype html><html><head><meta charset="utf-8"><title>รายชื่อตัวแทนสภานักเรียน</title>
+        <style>
+          body{font-family:'Sarabun','TH Sarabun New',sans-serif;padding:24px;color:#111}
+          h1{font-size:18px;margin:0 0 4px}
+          p.sub{font-size:12px;color:#666;margin:0 0 16px}
+          table{width:100%;border-collapse:collapse;font-size:13px}
+          th,td{border:1px solid #ccc;padding:6px 8px;text-align:left}
+          th{background:#f3f4f6}
+        </style></head><body>
+        <h1>รายชื่อตัวแทนสภานักเรียน${filterGrade ? ' ระดับชั้น ' + filterGrade : ''}</h1>
+        <p class="sub">ปีการศึกษา ${_esc(academicYear)} · พิมพ์เมื่อ ${new Date().toLocaleDateString('th-TH')} · ทั้งหมด ${printList.length} รายการ</p>
+        <table><thead><tr><th>ห้อง</th><th>ชื่อ-สกุล</th><th>รหัส</th><th>เพศ</th><th>ครูผู้เสนอ</th></tr></thead>
+        <tbody>${printList.map(n => `<tr><td>${_esc(n.main_room)}</td><td>${_esc(n.students?.full_name ?? '—')}</td><td>${_esc(n.students?.student_code ?? '—')}</td><td>${_esc(n.students?.gender ?? '—')}</td><td>${_esc(n.teachers?.full_name ?? '—')}</td></tr>`).join('')}</tbody>
+        </table></body></html>`
+      openHtmlPrintOverlay(html)
+    })
+  }
+
   _render()
 }
 

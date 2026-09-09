@@ -767,6 +767,40 @@ export async function getMyHomeroomRooms(teacherId) {
   return data ?? []
 }
 
+// ─── เสนอชื่อตัวแทนสภานักเรียน (ครูที่ปรึกษาสามัญ ม.3-ม.5, ห้องละ 2 คน ตามบันทึกข้อความ) ──
+// เครื่องมือเก็บรายชื่อเฉพาะ ไม่ผูกกับ council_members/council_applications จริง (ดูเหตุผลใน
+// patch_council_rep_nominations.sql)
+export async function getCouncilRepNominationsForRoom(mainRoom, academicYear) {
+  const { data, error } = await supabase.from('council_rep_nominations')
+    .select('id, student_id, students(full_name, student_code, image_url, photo_url, gender)')
+    .eq('main_room', mainRoom).eq('academic_year', academicYear)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function addCouncilRepNomination({ mainRoom, studentId, teacherId, academicYear }) {
+  const { error } = await supabase.from('council_rep_nominations').insert({
+    main_room: mainRoom, student_id: studentId,
+    nominated_by_teacher_id: teacherId, academic_year: academicYear,
+  })
+  if (error) throw error
+}
+
+export async function removeCouncilRepNomination(id) {
+  const { error } = await supabase.from('council_rep_nominations').delete().eq('id', id)
+  if (error) throw error
+}
+
+// สำหรับหน้าสรุปแอดมิน — join ครูผู้เสนอมาด้วยในคิวรีเดียว
+export async function getAllCouncilRepNominations(academicYear) {
+  const { data, error } = await supabase.from('council_rep_nominations')
+    .select('id, main_room, created_at, students(full_name, student_code, gender), teachers:nominated_by_teacher_id(full_name)')
+    .eq('academic_year', academicYear)
+    .order('main_room')
+  if (error) throw error
+  return data ?? []
+}
+
 // ครูที่ปรึกษารีเซ็ตรหัสผ่านนักเรียนในห้องของตัวเอง (ใช้ RPC เดียวกับแอดมิน — RPC เช็คสิทธิ์เองว่าเป็นที่ปรึกษาห้องนั้นจริง)
 export async function advisorResetStudentPassword(studentId, newPassword) {
   const { error } = await supabase.rpc('admin_update_student_auth', {

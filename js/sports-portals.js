@@ -666,7 +666,8 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
       <button data-advisor-tab="checkin" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='checkin'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🎽 เช็คชื่อเข้าสีวันแรก</button>
       ${cat==='สามัญ'?`
       <button data-advisor-tab="size" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='size'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👕 ไซซ์เสื้อ</button>
-      <button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>`:`
+      <button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>
+      <button data-advisor-tab="council-nominate" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='council-nominate'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🏛️ เสนอชื่อสภา</button>`:`
       <button data-advisor-tab="shirt-payment" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='shirt-payment'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">💰 รับชำระค่าเสื้อ</button>`}
     </div>
     <div id="advisor-tab-body"></div>
@@ -678,6 +679,7 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   else if(tab==='size') await _renderAdvisorSizeTab(body,teacher,rooms,roomNames)
   else if(tab==='shirt-payment') await _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames)
   else if(tab==='checkin') await _renderAdvisorCheckinTab(body,teacher,rooms,allRoomNames)
+  else if(tab==='council-nominate') await _renderAdvisorCouncilNominateTab(body,teacher,roomNames)
   else await _renderAdvisorListTab(body,teacher,rooms,roomNames,cat)
 }
 
@@ -738,6 +740,115 @@ async function _renderAdvisorListTab(body,teacher,rooms,roomNames,category) {
         renderAdvisorStudents(teacher, rooms, 'list', category)
       } catch(e) { toast(e.message ?? 'ลบไม่สำเร็จ', 'error') }
     }))
+  } catch(e) { console.error(e); body.innerHTML = missing() }
+}
+
+// เสนอชื่อตัวแทนสภานักเรียนห้องละ 2 คน (ครูที่ปรึกษาสามัญ ม.3-ม.5 เท่านั้น ตามบันทึกข้อความ
+// โรงเรียน) — เครื่องมือเก็บรายชื่อเฉพาะ ไม่ผูกกับระบบสภานักเรียนจริง (council_members/
+// council_applications ผูกตำแหน่งเฉพาะเจาะจง ไม่มีแนวคิด "ตัวแทนห้อง" แบบทั่วไป)
+const COUNCIL_NOMINATE_MAX = 2
+async function _renderAdvisorCouncilNominateTab(body,teacher,roomNames) {
+  body.innerHTML='<div class="py-12 text-center text-gray-400">กำลังโหลด...</div>'
+  try {
+    const { getSystemConfig, getCouncilRepNominationsForRoom, addCouncilRepNomination, removeCouncilRepNomination } = await import('./api.js')
+    const cfg = await getSystemConfig().catch(() => ({}))
+    const academicYear = cfg.academicYear ?? cfg.academic_year ?? (new Date().getFullYear() + 543)
+    const eligibleGrades = ['ม.3', 'ม.4', 'ม.5']
+    const gradeOf = (room) => (room || '').match(/^ม\.\d+/)?.[0] ?? null
+    const eligibleRooms = roomNames.filter(r => eligibleGrades.includes(gradeOf(r)))
+    const otherRooms = roomNames.filter(r => !eligibleGrades.includes(gradeOf(r)))
+
+    if (!eligibleRooms.length) {
+      body.innerHTML = `<div class="bg-white rounded-2xl border p-8 text-center text-gray-400 text-sm">
+        รอบนี้เสนอชื่อตัวแทนสภานักเรียนเฉพาะห้อง ม.3-ม.5 ตามบันทึกข้อความ
+        ${otherRooms.length ? `<br>ห้องของคุณ (${otherRooms.map(esc).join(', ')}) ไม่อยู่ในเกณฑ์รอบนี้` : ''}
+      </div>`
+      return
+    }
+
+    const [studentsRes, ...nomRes] = await Promise.all([
+      supabase.from('students').select('id,student_code,full_name,gender,image_url,photo_url,main_room')
+        .in('main_room', eligibleRooms).eq('is_active', true).order('main_room').order('student_code'),
+      ...eligibleRooms.map(r => getCouncilRepNominationsForRoom(r, String(academicYear)).catch(() => [])),
+    ])
+    if (studentsRes.error) throw studentsRes.error
+    const studentsByRoom = {}
+    ;(studentsRes.data || []).forEach(s => { (studentsByRoom[s.main_room] ??= []).push(s) })
+    const nominatedByRoom = {}
+    eligibleRooms.forEach((r, i) => { nominatedByRoom[r] = nomRes[i] || [] })
+
+    const renderRoom = (room) => {
+      const students = studentsByRoom[room] || []
+      const nominated = nominatedByRoom[room] || []
+      const nominatedIds = new Set(nominated.map(n => n.student_id))
+      const full = nominated.length >= COUNCIL_NOMINATE_MAX
+      return `
+      <div class="bg-white rounded-2xl border overflow-hidden" data-council-room="${esc(room)}">
+        <div class="flex items-center justify-between gap-3 px-4 py-3 bg-gray-50 border-b">
+          <h3 class="font-bold text-sm text-gray-800">${esc(room)}</h3>
+          <span class="council-nominate-count text-xs font-bold ${full ? 'text-emerald-600' : 'text-amber-500'}">เลือกแล้ว ${nominated.length}/${COUNCIL_NOMINATE_MAX}</span>
+        </div>
+        <div class="divide-y">
+          ${students.length ? students.map(s => {
+            const photo = s.image_url || s.photo_url
+            const isNom = nominatedIds.has(s.id)
+            const nomRow = nominated.find(n => n.student_id === s.id)
+            const disableAdd = !isNom && full
+            return `<div class="flex items-center gap-3 p-3" data-student-row="${s.id}">
+              ${photo ? `<img src="${esc(photo)}" alt="" class="w-9 h-11 rounded-lg object-cover border border-gray-200 bg-gray-100 flex-shrink-0 shadow-sm" loading="lazy">` : `<div class="w-9 h-11 rounded-lg bg-emerald-50 text-emerald-600 grid place-items-center font-bold flex-shrink-0 border border-gray-200">${esc((s.full_name || '?').charAt(0))}</div>`}
+              <div class="flex-1 min-w-0">
+                <b class="text-sm">${esc(s.full_name)}</b>
+                <p class="text-xs text-gray-500">${esc(s.student_code)}${s.gender ? ' · ' + esc(s.gender) : ''}</p>
+              </div>
+              <button data-council-toggle="${s.id}" data-nom-id="${nomRow?.id ?? ''}"
+                class="px-3 py-1.5 rounded-lg text-xs font-semibold flex-shrink-0 transition ${
+                  isNom ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                  : disableAdd ? 'bg-gray-100 text-gray-300 cursor-not-allowed'
+                  : 'border border-indigo-200 text-indigo-600 hover:bg-indigo-50'}"
+                ${disableAdd ? 'disabled' : ''}>
+                ${isNom ? '✅ เสนอชื่อแล้ว' : '➕ เสนอชื่อ'}
+              </button>
+            </div>`
+          }).join('') : '<p class="p-8 text-center text-gray-400">ไม่พบนักเรียนในห้องนี้</p>'}
+        </div>
+      </div>`
+    }
+
+    body.innerHTML = `
+      <div class="space-y-4">
+        <p class="text-xs text-gray-500 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+          📋 ตามบันทึกข้อความโรงเรียน เสนอชื่อนักเรียนที่เห็นว่าเหมาะสมเป็นตัวแทนสภานักเรียนห้องละ ${COUNCIL_NOMINATE_MAX} คน — กดเลือกแล้วบันทึกทันที
+        </p>
+        ${eligibleRooms.map(renderRoom).join('')}
+        ${otherRooms.length ? `<p class="text-xs text-gray-400 text-center">ห้อง ${otherRooms.map(esc).join(', ')} ไม่อยู่ในเกณฑ์รอบนี้ (เฉพาะ ม.3-ม.5)</p>` : ''}
+      </div>`
+
+    // event delegation บน body ตัวเดียว (ไม่ผูกซ้ำทุกครั้งที่ re-render บางห้อง กัน listener ซ้อน)
+    body.addEventListener('click', async (e) => {
+      const btn = e.target.closest('[data-council-toggle]')
+      if (!btn || btn.disabled) return
+      const studentId = Number(btn.dataset.councilToggle)
+      const nomId = btn.dataset.nomId ? Number(btn.dataset.nomId) : null
+      const room = btn.closest('[data-council-room]')?.dataset.councilRoom
+      if (!room) return
+      btn.disabled = true
+      try {
+        if (nomId) {
+          await removeCouncilRepNomination(nomId)
+          nominatedByRoom[room] = nominatedByRoom[room].filter(n => n.id !== nomId)
+        } else {
+          await addCouncilRepNomination({ mainRoom: room, studentId, teacherId: teacher.id, academicYear: String(academicYear) })
+          nominatedByRoom[room] = await getCouncilRepNominationsForRoom(room, String(academicYear))
+        }
+      } catch (e2) {
+        toast(getFriendlyErrorMessage(e2), 'error')
+      }
+      // re-render ทั้งห้องนี้ ไม่ใช่แค่ปุ่มเดียว เพราะปุ่มที่เหลือในห้องเดียวกันอาจเปลี่ยน
+      // สถานะ disable ตามจำนวนที่เลือกไปด้วย (ครบ/ไม่ครบ 2 คน) — ไม่ต้อง re-wire event
+      // เพราะ listener ผูกไว้ที่ body ตัวเดียวข้างนอก (delegation)
+      const box = body.querySelector(`[data-council-room="${CSS.escape(room)}"]`)
+      if (box) box.outerHTML = renderRoom(room)
+    })
   } catch(e) { console.error(e); body.innerHTML = missing() }
 }
 
