@@ -5,6 +5,10 @@ name: DB Auto-scale
 # ปกติต่อเนื่องนานพอ -> ลดกลับ Micro อัตโนมัติ
 # state (ตัวนับ) เก็บใน branch แยก "autoscale-state" ไม่แตะ main
 # เลยไม่ trigger deploy.yml
+#
+# หมายเหตุ: schedule ของ GitHub เจอปัญหาไม่รันเองต่อเนื่องสม่ำเสมอตอนติดตั้งใหม่
+# (2026-09-09) — commit นี้แตะไฟล์ workflow เพื่อลอง resync การจดจำตาราง cron ของ
+# GitHub (วิธีที่ community แนะนำเมื่อ schedule ค้าง)
 
 on:
   schedule:
