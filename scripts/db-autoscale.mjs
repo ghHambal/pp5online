@@ -115,9 +115,18 @@ async function main() {
   if (!healthy) {
     state.consecutiveHealthyChecks = 0
     if (currentTier !== CEILING_TIER) {
-      await setComputeTier(CEILING_TIER)
-      state.lastAction = `upgrade -> ${CEILING_TIER} @ ${new Date().toISOString()}`
-      await notify('⚠️ ระบบ PP5 Online ตรวจพบสถานะไม่ปกติ (PostgREST/Database) — อัปเกรด compute เป็น Medium ให้อัตโนมัติแล้ว')
+      // Supabase ปฏิเสธ resize ถ้าโปรเจกต์ unhealthy หนักมาก (เช่น DB ต่อไม่ติดเลย)
+      // ต้องรอให้ฟื้นตัวบางส่วนก่อนถึงจะสั่ง resize ผ่าน — ปล่อยให้ retry รอบถัดไป
+      // (อีก 5 นาที) แทนที่จะทำให้ทั้ง run ล้มเหลว
+      try {
+        await setComputeTier(CEILING_TIER)
+        state.lastAction = `upgrade -> ${CEILING_TIER} @ ${new Date().toISOString()}`
+        await notify('⚠️ ระบบ PP5 Online ตรวจพบสถานะไม่ปกติ (PostgREST/Database) — อัปเกรด compute เป็น Medium ให้อัตโนมัติแล้ว')
+      } catch (e) {
+        console.error('สั่ง resize ไม่สำเร็จ (จะลองใหม่รอบถัดไป):', e.message)
+        state.lastAction = `upgrade attempt failed @ ${new Date().toISOString()}: ${e.message}`
+        await notify('🔴 ระบบ PP5 Online ไม่ปกติหนัก และ resize อัตโนมัติยังไม่สำเร็จ (โปรเจกต์อาจ unhealthy เกินกว่าจะ resize ได้ตอนนี้) — จะลองใหม่อัตโนมัติใน 5 นาที ถ้ายังไม่หายควรเช็ค Dashboard ด้วยตัวเองด่วน')
+      }
     } else {
       console.log('อยู่ที่เพดานสูงสุด (Medium) แล้ว ไม่ต้องอัปเกรดเพิ่ม')
     }
@@ -125,10 +134,15 @@ async function main() {
     state.consecutiveHealthyChecks = (state.consecutiveHealthyChecks || 0) + 1
     console.log(`ปกติต่อเนื่อง ${state.consecutiveHealthyChecks}/${DOWNGRADE_AFTER_HEALTHY_CHECKS} ครั้ง`)
     if (currentTier !== NORMAL_TIER && state.consecutiveHealthyChecks >= DOWNGRADE_AFTER_HEALTHY_CHECKS) {
-      await setComputeTier(NORMAL_TIER)
-      state.consecutiveHealthyChecks = 0
-      state.lastAction = `downgrade -> ${NORMAL_TIER} @ ${new Date().toISOString()}`
-      await notify('✅ ระบบ PP5 Online ปกติต่อเนื่องแล้ว — ลด compute กลับ Micro ให้อัตโนมัติ')
+      try {
+        await setComputeTier(NORMAL_TIER)
+        state.consecutiveHealthyChecks = 0
+        state.lastAction = `downgrade -> ${NORMAL_TIER} @ ${new Date().toISOString()}`
+        await notify('✅ ระบบ PP5 Online ปกติต่อเนื่องแล้ว — ลด compute กลับ Micro ให้อัตโนมัติ')
+      } catch (e) {
+        console.error('สั่ง downgrade ไม่สำเร็จ (จะลองใหม่รอบถัดไป):', e.message)
+        state.lastAction = `downgrade attempt failed @ ${new Date().toISOString()}: ${e.message}`
+      }
     }
   }
 
