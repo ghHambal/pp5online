@@ -345,7 +345,7 @@ export async function renderGradesGrid(teacher, classData) {
     // ── โหลด/บันทึกสถานะ toggle ต่อครู ────────────────────────────────────────
     const _toggleKey    = `gradeToggles_${teacher?.id ?? 'guest'}_${classData.id}`
     const _savedToggles = (() => { try { return JSON.parse(localStorage.getItem(_toggleKey) ?? '{}') } catch { return {} } })()
-    const _saveToggles  = () => localStorage.setItem(_toggleKey, JSON.stringify({ toggleRound, toggleForceGrade, toggleKhuna, toggleRead, showBonusCols }))
+    const _saveToggles  = () => localStorage.setItem(_toggleKey, JSON.stringify({ columnRoundSettings, toggleForceGrade, toggleKhuna, toggleRead, showBonusCols }))
 
     let showBonusCols    = _savedToggles.showBonusCols    ?? false
     let showFormulaLink  = false
@@ -389,7 +389,21 @@ export async function renderGradesGrid(teacher, classData) {
       return evalFormula(col.formula, vars) ?? 0
     }
 
-    let toggleRound     = _savedToggles.toggleRound      ?? true
+    // ตั้งค่าปัดเลขแยกทีละคอลัมน์ — คีย์: 'mid_subtotal'/'fin_subtotal'/'total' สำหรับผลรวม,
+    // column.id ตรงๆ สำหรับคอลัมน์กลางภาค/ปลายภาค/อื่นๆ/พิเศษ, `derived_${column.id}` สำหรับคอลัมน์สูตร
+    // true = ปัดเป็นจำนวนเต็ม, false/ไม่มีคีย์ = แสดงทศนิยมแบบเดิม (ไม่กระทบคะแนนจริงที่บันทึกไว้)
+    let columnRoundSettings = _savedToggles.columnRoundSettings ?? {}
+    if (!('total' in columnRoundSettings)) columnRoundSettings.total = _savedToggles.toggleRound ?? true
+    const _isColRounded = key => !!columnRoundSettings[key]
+    // สำหรับช่องกรอกคะแนนเอง (mid/final/override/bonus) — ปัดแค่ตอนแสดงผล ไม่แตะค่าที่บันทึกจริง
+    const _fmtEntryScore = (colId, v) => {
+      if (v === '' || v == null) return v ?? ''
+      if (!_isColRounded(colId)) return v
+      const n = parseFloat(v)
+      return Number.isFinite(n) ? Math.round(n) : v
+    }
+    // สำหรับผลรวม/คอลัมน์คำนวณสูตร — ปิด = ทศนิยมตามเดิม, เปิด = ปัดจำนวนเต็ม
+    const _fmtAgg = (key, val, decimals = 1) => _isColRounded(key) ? Math.round(val) : Number(val.toFixed(decimals))
     let toggleForceGrade= _savedToggles.toggleForceGrade ?? false
     let toggleKhuna     = _savedToggles.toggleKhuna      ?? true
     let toggleRead      = _savedToggles.toggleRead       ?? true
@@ -406,7 +420,7 @@ export async function renderGradesGrid(teacher, classData) {
       const allMax = midMax + finMax + drvMax
       const allRaw = midRaw + finRaw + drvRaw
       // รวมตรงๆ — total คือคะแนนดิบรวม, grade คิดจาก allRaw/allMax×100
-      const total = toggleRound ? Math.round(allRaw) : Math.round(allRaw * 10) / 10
+      const total = _fmtAgg('total', allRaw, 1)
       const pct   = allMax > 0 ? allRaw / allMax * 100 : 0
       const grade = _pctToGrade(pct)
       const khuna = _gradeToKhuna(grade)
@@ -594,7 +608,7 @@ export async function renderGradesGrid(teacher, classData) {
               <tbody>${midCols.map(scoreRow).join('')}</tbody>
               <tfoot><tr class="bg-blue-50 font-bold">
                 <td class="py-1.5 px-3 text-blue-700">รวม</td>
-                <td class="py-1.5 px-3 text-center text-blue-700">${midRaw.toFixed(1)}</td>
+                <td class="py-1.5 px-3 text-center text-blue-700">${_fmtAgg('mid_subtotal', midRaw, 1)}</td>
                 <td class="py-1.5 px-3 text-center text-gray-400">/${midMax}</td>
                 <td class="py-1.5 px-3 text-center text-blue-700">${midMax>0?(midRaw/midMax*100).toFixed(1):0}%</td>
               </tr></tfoot>
@@ -612,7 +626,7 @@ export async function renderGradesGrid(teacher, classData) {
               <tbody>${finalCols.map(scoreRow).join('')}</tbody>
               <tfoot><tr class="bg-purple-50 font-bold">
                 <td class="py-1.5 px-3 text-purple-700">รวม</td>
-                <td class="py-1.5 px-3 text-center text-purple-700">${finRaw.toFixed(1)}</td>
+                <td class="py-1.5 px-3 text-center text-purple-700">${_fmtAgg('fin_subtotal', finRaw, 1)}</td>
                 <td class="py-1.5 px-3 text-center text-gray-400">/${finMax}</td>
                 <td class="py-1.5 px-3 text-center text-purple-700">${finMax>0?(finRaw/finMax*100).toFixed(1):0}%</td>
               </tr></tfoot>
@@ -636,7 +650,7 @@ export async function renderGradesGrid(teacher, classData) {
       if (!bar) return
       bar.innerHTML = `
         <div class="flex items-center gap-1.5 px-3 py-2 ml-auto flex-wrap justify-end">
-          ${_tBtn('round','ปัดเลข',toggleRound)}
+          <button id="btn-round-settings" type="button" class="text-[11px] px-3 py-1.5 rounded-lg font-semibold transition bg-gray-100 text-gray-500 hover:bg-gray-200">🔢 ปัดเลข</button>
           ${_tBtn('khuna','คุณลักษณะ',toggleKhuna)}
           ${_tBtn('read','การอ่าน',toggleRead)}
           <div class="w-px h-5 bg-gray-200 mx-1 self-center"></div>
@@ -706,10 +720,10 @@ export async function renderGradesGrid(teacher, classData) {
           gBtn.disabled = false; gBtn.textContent = '📤 ส่งคะแนนเข้า GradeOnline'
         }
       })
+      document.getElementById('btn-round-settings')?.addEventListener('click', _openRoundSettingsPopup)
       bar.querySelectorAll('.grade-toggle').forEach(btn=>{
         btn.addEventListener('click',()=>{
           const t=btn.dataset.toggle
-          if(t==='round')toggleRound=!toggleRound
           if(t==='forceGrade')toggleForceGrade=!toggleForceGrade
           if(t==='khuna')toggleKhuna=!toggleKhuna
           if(t==='read')toggleRead=!toggleRead
@@ -722,6 +736,55 @@ export async function renderGradesGrid(teacher, classData) {
           }
           if(t==='formula-link') showFormulaLink=!showFormulaLink
           _saveToggles(); _renderToggleBar(); _renderGrid()
+        })
+      })
+    }
+
+    // ป๊อบอัพตั้งค่าปัดเลข — เลือกได้อิสระทีละคอลัมน์ (รวมถึงช่องกรอกคะแนนเอง) + ผลรวมย่อย/รวมทั้งหมด
+    // แค่ปรับการแสดงผล ไม่กระทบคะแนนจริงที่บันทึกไว้ในฐานข้อมูลเลย
+    const _openRoundSettingsPopup = () => {
+      document.getElementById('round-settings-popup')?.remove()
+      const pop = document.createElement('div')
+      pop.id = 'round-settings-popup'
+      pop.className = 'fixed inset-0 z-[650] flex items-center justify-center bg-black/40 p-4'
+      const _rowHtml = (key, label, maxScore) => `
+        <div class="flex items-center justify-between gap-2 py-2 border-b border-gray-50 last:border-0">
+          <span class="text-xs text-gray-700 truncate">${_htmlEsc(label ?? '')}${maxScore!=null?` <span class="text-gray-400">(เต็ม ${maxScore})</span>`:''}</span>
+          <button type="button" class="round-set-toggle flex-shrink-0 px-2.5 py-1 rounded-lg text-[11px] font-semibold transition ${_isColRounded(key) ? 'bg-emerald-500 text-white' : 'bg-gray-100 text-gray-500'}"
+            data-key="${key}">${_isColRounded(key) ? 'จำนวนเต็ม' : 'ทศนิยม'}</button>
+        </div>`
+      pop.innerHTML = `
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[85vh] flex flex-col overflow-hidden">
+          <div class="px-4 py-3 border-b border-gray-100 flex-shrink-0">
+            <h3 class="font-bold text-gray-800 text-sm">🔢 ตั้งค่าการปัดเลขคะแนน</h3>
+            <p class="text-[11px] text-gray-400 mt-0.5">เลือกได้อิสระทีละคอลัมน์ — ไม่กระทบคะแนนจริงที่บันทึกไว้ แค่ปรับการแสดงผล</p>
+          </div>
+          <div class="overflow-y-auto flex-1 px-4 py-2">
+            <p class="text-[11px] font-bold text-amber-600 uppercase tracking-wide mt-2 mb-1">ผลรวม</p>
+            ${_rowHtml('mid_subtotal','รวมกลางภาค')}
+            ${_rowHtml('fin_subtotal','รวมปลายภาค')}
+            ${_rowHtml('total','คะแนนรวมทั้งหมด')}
+            ${midCols.length ? `<p class="text-[11px] font-bold text-blue-600 uppercase tracking-wide mt-3 mb-1">คอลัมน์กลางภาค</p>${midCols.map(c=>_rowHtml(c.id, c.assignment_name, c.max_score)).join('')}` : ''}
+            ${finalCols.length ? `<p class="text-[11px] font-bold text-purple-600 uppercase tracking-wide mt-3 mb-1">คอลัมน์ปลายภาค</p>${finalCols.map(c=>_rowHtml(c.id, c.assignment_name, c.max_score)).join('')}` : ''}
+            ${overrideCols.length ? `<p class="text-[11px] font-bold text-teal-600 uppercase tracking-wide mt-3 mb-1">คอลัมน์อื่นๆ</p>${overrideCols.map(c=>_rowHtml(c.id, c.assignment_name, c.max_score)).join('')}` : ''}
+            ${derivedCols.length ? `<p class="text-[11px] font-bold text-indigo-600 uppercase tracking-wide mt-3 mb-1">คอลัมน์คำนวณสูตร</p>${derivedCols.map(c=>_rowHtml(`derived_${c.id}`, c.assignment_name, c.max_score)).join('')}` : ''}
+            ${showBonusCols && bonusCols.length ? `<p class="text-[11px] font-bold text-amber-500 uppercase tracking-wide mt-3 mb-1">คะแนนเก็บ/พิเศษ</p>${bonusCols.map(c=>_rowHtml(c.id, c.assignment_name, c.max_score)).join('')}` : ''}
+          </div>
+          <div class="px-4 py-3 border-t border-gray-100 flex-shrink-0">
+            <button id="round-settings-close" class="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-semibold hover:bg-gray-200">ปิด</button>
+          </div>
+        </div>`
+      document.body.appendChild(pop)
+      const _close = () => pop.remove()
+      pop.querySelector('#round-settings-close').addEventListener('click', _close)
+      pop.addEventListener('click', e => { if (e.target === pop) _close() })
+      pop.querySelectorAll('.round-set-toggle').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const key = btn.dataset.key
+          columnRoundSettings[key] = !columnRoundSettings[key]
+          _saveToggles()
+          _renderGrid()
+          _openRoundSettingsPopup()
         })
       })
     }
@@ -1436,8 +1499,8 @@ export async function renderGradesGrid(teacher, classData) {
           const { midRaw: mRaw, finRaw: fRaw, total, grade, khuna } = _calcGradeRow(s.id)
           const fg = scoreMap[s.id]?.['__force'] ?? ''
           const midEl = document.getElementById(`gmid-${s.id}`), finEl = document.getElementById(`gfin-${s.id}`)
-          if (midEl) midEl.textContent = mRaw > 0 ? mRaw.toFixed(1) : '—'
-          if (finEl) finEl.textContent = fRaw > 0 ? fRaw.toFixed(1) : '—'
+          if (midEl) midEl.textContent = mRaw > 0 ? _fmtAgg('mid_subtotal', mRaw, 1) : '—'
+          if (finEl) finEl.textContent = fRaw > 0 ? _fmtAgg('fin_subtotal', fRaw, 1) : '—'
           const tEl = document.getElementById(`gtotal-${s.id}`), gEl = document.getElementById(`ggrade-${s.id}`), kEl = document.getElementById(`gkhuna-${s.id}`)
           if (tEl) tEl.textContent = total > 0 ? total : '—'
           if (gEl) gEl.textContent = fg || (grade > 0 ? grade.toFixed(1) : '0')
@@ -1563,29 +1626,29 @@ export async function renderGradesGrid(teacher, classData) {
           ${midCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-gray-100 text-center p-0 relative"
             style="width:${colW}px;min-width:${colW}px;height:30px">
             <input class="grade-input w-full h-full text-center text-xs ${_isLockedScoreColumn(c) ? 'bg-emerald-50/60 text-emerald-800 cursor-not-allowed' : 'bg-transparent focus:bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:rounded'}"
-              type="text" inputmode="decimal" value="${v}" placeholder="—"
+              type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/>
             ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
             </td>`}).join('')}
-          <td id="gmid-${s.id}" class="border border-gray-50 bg-blue-50/40 text-center text-[10px] text-blue-600 font-medium" style="width:34px">${midRaw>0?midRaw.toFixed(1):'—'}</td>
+          <td id="gmid-${s.id}" class="border border-gray-50 bg-blue-50/40 text-center text-[10px] text-blue-600 font-medium" style="width:34px">${midRaw>0?_fmtAgg('mid_subtotal', midRaw, 1):'—'}</td>
           ${finalCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-gray-100 text-center p-0 relative"
             style="width:${colW}px;min-width:${colW}px;height:30px">
             <input class="grade-input w-full h-full text-center text-xs ${_isLockedScoreColumn(c) ? 'bg-emerald-50/60 text-emerald-800 cursor-not-allowed' : 'bg-transparent focus:bg-purple-50 focus:outline-none focus:ring-1 focus:ring-purple-300 focus:rounded'}"
-              type="text" inputmode="decimal" value="${v}" placeholder="—"
+              type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/>
             ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
             </td>`}).join('')}
-          <td id="gfin-${s.id}" class="border border-gray-50 bg-purple-50/40 text-center text-[10px] text-purple-600 font-medium" style="width:34px">${finRaw>0?finRaw.toFixed(1):'—'}</td>
-          ${derivedCols.map(c=>{const dv=_calcDerived(c,s.id);const disp=dv!==null&&dv!==0?Number(dv.toFixed(2)):'—';return `<td class="border border-indigo-100 bg-indigo-50/40 text-center text-xs text-indigo-700 font-medium grade-derived-td" style="width:${colW}px;min-width:${colW}px;height:30px" title="คำนวณจาก: ${c.formula??''}">${disp}</td>`}).join('')}
+          <td id="gfin-${s.id}" class="border border-gray-50 bg-purple-50/40 text-center text-[10px] text-purple-600 font-medium" style="width:34px">${finRaw>0?_fmtAgg('fin_subtotal', finRaw, 1):'—'}</td>
+          ${derivedCols.map(c=>{const dv=_calcDerived(c,s.id);const disp=dv!==null&&dv!==0?_fmtAgg(`derived_${c.id}`, dv, 2):'—';return `<td class="border border-indigo-100 bg-indigo-50/40 text-center text-xs text-indigo-700 font-medium grade-derived-td" style="width:${colW}px;min-width:${colW}px;height:30px" title="คำนวณจาก: ${c.formula??''}">${disp}</td>`}).join('')}
           ${overrideCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-teal-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px">
             <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-teal-50 focus:outline-none focus:ring-1 focus:ring-teal-300 focus:rounded"
-              type="text" inputmode="decimal" value="${v}" placeholder="—"
+              type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/>
             ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
             </td>`}).join('')}
           ${showBonusCols ? bonusCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-amber-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px">
             <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-amber-50 focus:outline-none focus:ring-1 focus:ring-amber-300 focus:rounded"
-              type="text" inputmode="decimal" value="${v}" placeholder="—"
+              type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/>
             ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
             </td>`}).join('') : ''}
@@ -1621,7 +1684,7 @@ export async function renderGradesGrid(teacher, classData) {
 
         const mainInp = wrap.querySelector(`.grade-input[data-sid="${sid}"][data-col="${mainColId}"]`)
         if (mainInp) {
-          mainInp.value = result.score !== null ? String(result.score) : ''
+          mainInp.value = result.score !== null ? String(_fmtEntryScore(mainColId, result.score)) : ''
           mainInp.style.boxShadow = '0 0 0 2px #059669,0 0 10px rgba(5,150,105,.45)'
           mainInp.style.background = '#f0fdf4'
           setTimeout(() => { mainInp.style.boxShadow = ''; mainInp.style.background = '' }, 900)
@@ -1629,8 +1692,8 @@ export async function renderGradesGrid(teacher, classData) {
         const { midRaw, finRaw, total, grade, khuna } = _calcGradeRow(sid)
         const fg = scoreMap[sid]?.['__force'] ?? ''
         const midEl = document.getElementById(`gmid-${sid}`), finEl = document.getElementById(`gfin-${sid}`)
-        if (midEl) midEl.textContent = midRaw > 0 ? midRaw.toFixed(1) : '—'
-        if (finEl) finEl.textContent = finRaw > 0 ? finRaw.toFixed(1) : '—'
+        if (midEl) midEl.textContent = midRaw > 0 ? _fmtAgg('mid_subtotal', midRaw, 1) : '—'
+        if (finEl) finEl.textContent = finRaw > 0 ? _fmtAgg('fin_subtotal', finRaw, 1) : '—'
         const tEl = document.getElementById(`gtotal-${sid}`), gEl = document.getElementById(`ggrade-${sid}`), kEl = document.getElementById(`gkhuna-${sid}`)
         if (tEl) tEl.textContent = total > 0 ? total : '—'
         if (gEl) gEl.textContent = fg || (grade > 0 ? grade.toFixed(1) : '0')
@@ -1680,8 +1743,8 @@ export async function renderGradesGrid(teacher, classData) {
             const fg=scoreMap[sid]?.['__force']??''
             const midEl=document.getElementById(`gmid-${sid}`)
             const finEl=document.getElementById(`gfin-${sid}`)
-            if(midEl)midEl.textContent=mRaw>0?mRaw.toFixed(1):'—'
-            if(finEl)finEl.textContent=fRaw>0?fRaw.toFixed(1):'—'
+            if(midEl)midEl.textContent=mRaw>0?_fmtAgg('mid_subtotal', mRaw, 1):'—'
+            if(finEl)finEl.textContent=fRaw>0?_fmtAgg('fin_subtotal', fRaw, 1):'—'
             const tEl=document.getElementById(`gtotal-${sid}`)
             const gEl=document.getElementById(`ggrade-${sid}`)
             const kEl=document.getElementById(`gkhuna-${sid}`)
