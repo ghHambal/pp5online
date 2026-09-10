@@ -350,6 +350,10 @@ const _invigilatorLine = (no, name) => name
   ? `${no}. .................................................... <span class="textColor">(${_htmlEsc(name)})</span>`
   : `${no}. ...........................................................................................`
 
+// รายชื่อผู้คุมสอบแบบเรียงเลข "1./2." ใช้ในซองแบบศาสนา (ต่างจาก _invigilatorLine
+// ที่เป็นเส้นสำหรับเซ็นชื่อสด — อันนี้แค่พิมพ์ชื่อกำกับในซองเฉยๆ ไม่มีที่เซ็น)
+const _invigilatorListLine = (no, name) => `${no}. <span class="textColor">${_htmlEsc(name || '')}</span>`
+
 const _signature = (labels, form) => `
   <div class="signature">
     <div style="margin-top: 20px;">${_htmlEsc(labels.examiner)}</div>
@@ -392,6 +396,31 @@ const _infoBlock = (labels, data, form) => `
       ${_htmlEsc(labels.classLevel)}: <span class="textColor">${_htmlEsc(data.className || '')}</span>
     </div>
   </div>`
+
+// ซองแบบศาสนา (อาหรับ/ยาวี) — โครงหน้ากระดาษแนวตั้งตามใบปะหน้าซองจริงของฝ่ายศาสนา:
+// รวม 2 ข้อมูลไว้บรรทัดเดียวกัน, มีรายชื่อผู้คุมสอบแบบเรียงเลข, ปิดท้ายด้วยตารางสรุป 4 แถว
+// (ใช้คำ label ที่มีอยู่แล้วในระบบ ยังไม่ได้ถอดคำจากภาพจริงทีละตัวอักษร)
+const _envelopeReligious = (labels, data, form, classParts) => `
+  <div class="infoNPR infoNPR1">
+    ${_htmlEsc(labels.examType)} <span class="textColor">${_htmlEsc(form.examType || '')}</span>
+    ${_htmlEsc(labels.year)} <span class="textColor">${_htmlEsc(form.academicYear || '')}</span>
+  </div>
+  <div class="infoNPR infoNPR2">
+    ${_htmlEsc(labels.envelopeSubject)} <span class="textColor">${_htmlEsc(data.subjectName)}</span>
+    ${_htmlEsc(labels.envelopeClass)} <span class="textColor">${_htmlEsc(data.className)}</span>
+  </div>
+  <div class="envelope-examiners">
+    <div>${_invigilatorListLine(1, form.invigilator1)}</div>
+    <div>${_invigilatorListLine(2, form.invigilator2)}</div>
+  </div>
+  <table class="envelope-summary-table">
+    <tbody>
+      <tr><th>${_htmlEsc(labels.examDate)}</th><td class="textColor">${_htmlEsc(form.examDateLabel || _thaiFullDate(form.examDate))}</td></tr>
+      <tr><th>${_htmlEsc(labels.periodPart)}</th><td class="textColor">${_htmlEsc(form.examTimeLabel || _timeRange(form))}</td></tr>
+      <tr><th>${_htmlEsc(labels.groupPart)}</th><td class="textColor">${_htmlEsc(form.classPart || '')}</td></tr>
+      <tr><th>${_htmlEsc(labels.examRoom)}</th><td class="textColor">${_htmlEsc(form.examRoom || classParts.room || '')}</td></tr>
+    </tbody>
+  </table>`
 
 const _buildPrintHtml = (mode = 'all') => {
   const form = _state.form
@@ -522,6 +551,33 @@ const _buildPrintHtml = (mode = 'all') => {
       .infoNP4,
       .infoNP5 {
         margin-top: 50px;
+      }
+
+      .infoNPR {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        font-size: 14pt;
+        margin-top: 16px;
+      }
+
+      .envelope-examiners {
+        margin-top: 40px;
+        font-size: 13pt;
+      }
+
+      .envelope-examiners div {
+        margin-bottom: 14px;
+      }
+
+      .envelope-summary-table {
+        margin-top: 40px;
+      }
+
+      .envelope-summary-table th {
+        width: 45%;
+        background: #f3f4f6;
       }
 
       .textColor {
@@ -735,7 +791,7 @@ const _buildPrintHtml = (mode = 'all') => {
     </div>
     ` : ''}
 
-    ${includeEnvelope ? `
+    ${includeEnvelope ? (form.lang === 'th' ? `
     <div class="exam-doc-paper ${dirClass} landscape ${includePortrait ? 'exam-doc-page-break' : ''}">
       <div class="headerL">
         <a>${_htmlEsc(labels.envelopeTitle)}</a>
@@ -762,7 +818,12 @@ const _buildPrintHtml = (mode = 'all') => {
         </div>
       </div>
     </div>
-    ` : ''}
+    ` : `
+    <div class="exam-doc-paper ${dirClass} ${includePortrait ? 'exam-doc-page-break' : ''}">
+      ${_header(labels.envelopeTitle)}
+      ${_envelopeReligious(labels, data, form, classParts)}
+    </div>
+    `) : ''}
     </div>`
 }
 
