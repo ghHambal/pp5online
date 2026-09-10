@@ -2674,37 +2674,11 @@ async function _fetchPaged(table, selectColumns, configure = q => q) {
   return rows
 }
 
-function _dateListForTerm(startStr, endStr) {
-  if (!startStr || !endStr) return []
-  const start = new Date(startStr)
-  const end = new Date(endStr)
-  const diff = start.getDay() % 7
-  if (diff) start.setDate(start.getDate() - diff)
-  const days = []
-  let cur = new Date(start)
-  while (cur <= end) {
-    for (let d = 0; d < 5; d++) {
-      const dt = new Date(cur)
-      dt.setDate(dt.getDate() + d)
-      if (dt <= end) days.push({ ds: dt.toISOString().slice(0, 10) })
-    }
-    cur.setDate(cur.getDate() + 7)
-  }
-  return days
-}
-
-const _PRAYER_SCORE = { pray: 2, absent: 0, usor: 2, followed: 1, avoid: -1 }
 const _LIFE_SKILL_SHEET_COLUMNS = ['EH', 'EI', 'EJ']
 const _RELIGION_REQUIRED_COLUMNS = [
   { name: 'คะแนนมาเรียน', sheetColumn: 'EH' },
   { name: 'คะแนนละหมาด', sheetColumn: 'EI' },
 ]
-
-function _calcPrayerScoreFromMap(sMap, allDays) {
-  const earned = allDays.reduce((sum, d) => sum + (_PRAYER_SCORE[sMap[d.ds]] ?? 0), 0)
-  const max = allDays.length * 2
-  return max > 0 ? Math.min(10, Math.max(0, Math.round((earned / max) * 100) / 10)) : 0
-}
 
 function _calcAttendanceScore(rows, totalSessions) {
   if (!rows.length) return null
@@ -2900,12 +2874,16 @@ export async function fillLifeSkillScoresToClassScores(academicYear, semester) {
   return { classes: classCount, columns: ensuredColumns, scores: scoreCount }
 }
 
+// เดิมฟังก์ชันนี้คำนวณ+เขียนทับ "คะแนนละหมาด" เองด้วย (สูตร JS คนละชุดกับ Postgres trigger
+// `prayer_records_sync_score` → `_sync_prayer_score_for_student` → `_prayer_score_calc`) ทำให้
+// ทุกครั้งที่เปิดหน้าสมุดคะแนนวิชาศาสนา จะไปแย่งเขียนทับค่าที่ trigger เพิ่งคำนวณสดถูกต้องไปแล้ว
+// (เจอบั๊กจริง 2026-09-10: ค่าจาก trigger ถูกต้อง แต่พอรีเฟรชหน้าสมุดคะแนนกลับเห็นค่าเก่าที่ผิดอีก
+// เพราะฟังก์ชันนี้รันซ้ำทุกครั้งที่เปิดหน้าและคำนวณเองใหม่จาก prayer_records ตรงๆ ด้วยลอจิกคนละชุด
+// ที่จัดการแถวซ้ำ (นักเรียนย้ายห้องกลางเทอมมี prayer_records ของวันเดียวกันแต่ main_room ต่างกันได้)
+// ไม่เหมือนกับที่ trigger ใช้ `distinct on (check_date) order by check_date, id desc`)
+// ตอนนี้เหลือแค่สร้างคอลัมน์ให้มีไว้ก่อน (ตอนเปิดวิชาศาสนาใหม่ครั้งแรกในเทอม) ส่วนค่าคะแนนละหมาด
+// ปล่อยให้ trigger เป็นเจ้าของแต่ผู้เดียว — ยังคำนวณ+เขียนคะแนนมาเรียนเหมือนเดิม (ไม่มี trigger คู่กัน)
 export async function fillPrayerScoresForReligionClass(classId, options = {}) {
-  const start = options.semesterStart
-  const end = options.semesterEnd
-  const allDays = _dateListForTerm(start, end)
-  if (!allDays.length) throw new Error('ยังไม่ได้ตั้งค่าวันเปิด-ปิดภาคเรียน')
-
   const { data: cls, error } = await supabase
     .from('classes')
     .select(`
@@ -2922,18 +2900,8 @@ export async function fillPrayerScoresForReligionClass(classId, options = {}) {
   }
 
   const students = (cls.class_students ?? []).map(r => r.student_id).filter(Boolean)
+  await _ensureClassScoreColumn(classId, 'คะแนนละหมาด', 10, 'EI', 'ระหว่างเรียน')
   if (!students.length) return { classes: 0, columns: 2, scores: 0, columnNames: _RELIGION_REQUIRED_COLUMNS.map(c => c.name) }
-
-  const prayerRecords = await _fetchPaged(
-    'prayer_records',
-    'student_id, check_date, status',
-    q => q.gte('check_date', start).lte('check_date', end).in('student_id', students)
-  )
-  const prayerMap = {}
-  for (const r of prayerRecords) {
-    if (!prayerMap[r.student_id]) prayerMap[r.student_id] = {}
-    prayerMap[r.student_id][r.check_date] = r.status
-  }
 
   const attendanceRows = await _fetchPaged(
     'attendances',
@@ -2951,15 +2919,7 @@ export async function fillPrayerScoresForReligionClass(classId, options = {}) {
     ? (_attSessionNums.size || undefined) : undefined
 
   const attColId = await _ensureClassScoreColumn(classId, 'คะแนนมาเรียน', 10, 'EH', 'ระหว่างเรียน')
-  const prayerColId = await _ensureClassScoreColumn(classId, 'คะแนนละหมาด', 10, 'EI', 'ระหว่างเรียน')
 
-  const prayerRows = students
-    .map(studentId => {
-      if (!prayerMap[studentId]) return null
-      const score = _calcPrayerScoreFromMap(prayerMap[studentId], allDays)
-      return { assignment_id: prayerColId, student_id: studentId, original_score: score, final_score: score }
-    })
-    .filter(Boolean)
   const attRows = students
     .map(studentId => {
       const score = _calcAttendanceScore(attendanceMap[studentId] ?? [], _attTotalSessions)
@@ -2972,16 +2932,14 @@ export async function fillPrayerScoresForReligionClass(classId, options = {}) {
     })
     .filter(Boolean)
 
-  const scoreCount = await _upsertStudentScoreRows([...prayerRows, ...attRows])
+  const scoreCount = await _upsertStudentScoreRows(attRows)
   return { classes: 1, columns: 2, scores: scoreCount, columnNames: _RELIGION_REQUIRED_COLUMNS.map(c => c.name) }
 }
 
+// เหมือน fillPrayerScoresForReligionClass — เลิกคำนวณ+เขียนทับ "คะแนนละหมาด" เอง ปล่อยให้เป็นหน้าที่
+// ของ Postgres trigger `prayer_records_sync_score` แต่ผู้เดียว (ดูคอมเมนต์ที่ฟังก์ชันนั้นสำหรับ
+// รายละเอียดบั๊กที่เจอจริง) แค่ยังสร้างคอลัมน์ให้มีไว้ก่อนเหมือนเดิม
 export async function fillPrayerScoresToReligionClassScores(options = {}) {
-  const start = options.semesterStart
-  const end = options.semesterEnd
-  const allDays = _dateListForTerm(start, end)
-  if (!allDays.length) throw new Error('ยังไม่ได้ตั้งค่าวันเปิด-ปิดภาคเรียน')
-
   const { data: classes, error } = await supabase
     .from('classes')
     .select(`
@@ -2999,19 +2957,6 @@ export async function fillPrayerScoresToReligionClassScores(options = {}) {
     (cls.class_students ?? []).map(r => r.student_id).filter(Boolean)
   ))]
   if (!studentIds.length) return { classes: 0, columns: 0, scores: 0 }
-
-  const prayerRecords = await _fetchPaged(
-    'prayer_records',
-    'student_id, check_date, status',
-    q => q.gte('check_date', start).lte('check_date', end)
-  )
-  const studentIdSet = new Set(studentIds)
-  const prayerMap = {}
-  for (const r of prayerRecords) {
-    if (!studentIdSet.has(r.student_id)) continue
-    if (!prayerMap[r.student_id]) prayerMap[r.student_id] = {}
-    prayerMap[r.student_id][r.check_date] = r.status
-  }
 
   const classIds = religionClasses.map(c => c.id)
   const attendanceRows = await _fetchPaged(
@@ -3041,16 +2986,9 @@ export async function fillPrayerScoresToReligionClassScores(options = {}) {
     classCount++
 
     const attColId = await _ensureClassScoreColumn(cls.id, 'คะแนนมาเรียน', 10, 'EH', 'ระหว่างเรียน')
-    const prayerColId = await _ensureClassScoreColumn(cls.id, 'คะแนนละหมาด', 10, 'EI', 'ระหว่างเรียน')
+    await _ensureClassScoreColumn(cls.id, 'คะแนนละหมาด', 10, 'EI', 'ระหว่างเรียน')
     ensuredColumns += 2
 
-    const prayerRows = students
-      .map(studentId => {
-        if (!prayerMap[studentId]) return null
-        const score = _calcPrayerScoreFromMap(prayerMap[studentId], allDays)
-        return { assignment_id: prayerColId, student_id: studentId, original_score: score, final_score: score }
-      })
-      .filter(Boolean)
     const _ttl = _attScoreMode === 'total' ? (_classSessions[cls.id]?.size || undefined) : undefined
     const attRows = students
       .map(studentId => {
@@ -3064,7 +3002,6 @@ export async function fillPrayerScoresToReligionClassScores(options = {}) {
       })
       .filter(Boolean)
 
-    scoreCount += await _upsertStudentScoreRows(prayerRows)
     scoreCount += await _upsertStudentScoreRows(attRows)
   }
 
