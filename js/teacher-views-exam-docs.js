@@ -169,6 +169,8 @@ const DEFAULT_FORM = {
   examDate: '',
   startTime: '08:30',
   endTime: '09:30',
+  examDateLabel: '',
+  examTimeLabel: '',
   classPart: '',
   periodPart: '',
   examRoom: '',
@@ -373,8 +375,8 @@ const _infoBlock = (labels, data, form) => `
       ${_htmlEsc(labels.subjectCode)}: <span class="textColor">${_htmlEsc(data.subjectCode || '')}</span>
     </div>
     <div class="info3">
-      ${_htmlEsc(labels.examDate)}: <span class="textColor">${_htmlEsc(_thaiFullDate(form.examDate))}</span>
-      ${_htmlEsc(labels.examTime)}: <span class="textColor">${_htmlEsc(_timeRange(form))}</span>
+      ${_htmlEsc(labels.examDate)}: <span class="textColor">${_htmlEsc(form.examDateLabel || _thaiFullDate(form.examDate))}</span>
+      ${_htmlEsc(labels.examTime)}: <span class="textColor">${_htmlEsc(form.examTimeLabel || _timeRange(form))}</span>
     </div>
     <div class="info4">
       ${_htmlEsc(labels.teacher)}: <span class="textColor">${_htmlEsc(data.teacherName || '')}</span>
@@ -736,10 +738,14 @@ const _buildPrintHtml = (mode = 'all') => {
           ${_htmlEsc(labels.envelopeSubject)} <span class="textColor">${_htmlEsc(data.subjectName)}</span> ${_htmlEsc(labels.subjectCode)} <span class="textColor">${_htmlEsc(data.subjectCode)}</span>
         </div>
         <div class="infoNP2">
-          ${_htmlEsc(labels.envelopeDate)} <span class="textColor">${_htmlEsc(parts.day)}</span> ${_htmlEsc(labels.envelopeMonth)} <span class="textColor">${_htmlEsc(parts.month)}</span> ${_htmlEsc(labels.envelopeYear)} <span class="textColor">${_htmlEsc(parts.year)}</span>
+          ${form.examDateLabel
+            ? `${_htmlEsc(labels.envelopeDate)} <span class="textColor">${_htmlEsc(form.examDateLabel)}</span>`
+            : `${_htmlEsc(labels.envelopeDate)} <span class="textColor">${_htmlEsc(parts.day)}</span> ${_htmlEsc(labels.envelopeMonth)} <span class="textColor">${_htmlEsc(parts.month)}</span> ${_htmlEsc(labels.envelopeYear)} <span class="textColor">${_htmlEsc(parts.year)}</span>`}
         </div>
         <div class="infoNP3">
-          ${_htmlEsc(labels.envelopeTime)} <span class="textColor">${_htmlEsc(_envelopeTime(form.startTime, labels))}</span> ${_htmlEsc(labels.envelopeTo)} <span class="textColor">${_htmlEsc(_envelopeTime(form.endTime, labels))}</span>
+          ${form.examTimeLabel
+            ? `${_htmlEsc(labels.envelopeTime)} <span class="textColor">${_htmlEsc(form.examTimeLabel)}</span>`
+            : `${_htmlEsc(labels.envelopeTime)} <span class="textColor">${_htmlEsc(_envelopeTime(form.startTime, labels))}</span> ${_htmlEsc(labels.envelopeTo)} <span class="textColor">${_htmlEsc(_envelopeTime(form.endTime, labels))}</span>`}
         </div>
         <div class="infoNP4">
           ${_htmlEsc(labels.envelopeClass)} <span class="textColor exam-envelope-class"><span class="exam-envelope-class-room">${_htmlEsc(classParts.room)}</span>${classParts.name ? `<span class="exam-envelope-class-name">${_htmlEsc(classParts.name)}</span>` : ''}</span> ${_htmlEsc(labels.envelopeStudents)} <span class="textColor">${total}</span> ${_htmlEsc(labels.studentUnit)} ${_htmlEsc(labels.examAmount)} <span class="textColor">${_htmlEsc(examAmount)}</span> ${_htmlEsc(labels.examUnit)}
@@ -956,6 +962,15 @@ function _renderShell() {
               <input id="exam-end" type="time" class="${INPUT_CLS}" value="${_htmlEsc(f.endTime)}">
             </label>
           </div>
+          ${f.lang !== 'th' ? `
+          <label class="lg:col-span-6 block">
+            <span class="block text-xs font-bold text-gray-500 mb-1">ข้อความวันที่สอบที่จะพิมพ์ในเอกสาร (ไม่กรอก = แปลงจากวันที่ด้านบนแบบไทยให้อัตโนมัติ)</span>
+            <input id="exam-date-label" class="${INPUT_CLS}" value="${_htmlEsc(f.examDateLabel)}" placeholder="${_htmlEsc(_thaiFullDate(f.examDate) || 'เช่น ١٥ يوليو ٢٠٢٦')}">
+          </label>
+          <label class="lg:col-span-6 block">
+            <span class="block text-xs font-bold text-gray-500 mb-1">ข้อความเวลาสอบที่จะพิมพ์ในเอกสาร (ไม่กรอก = ใช้เวลาด้านบนตามที่ตั้งไว้)</span>
+            <input id="exam-time-label" class="${INPUT_CLS}" value="${_htmlEsc(f.examTimeLabel)}" placeholder="${_htmlEsc(_timeRange(f) || 'เช่น ٠٨:٣٠ - ٠٩:٣٠')}">
+          </label>` : ''}
           <label class="lg:col-span-2 block">
             <span class="block text-xs font-bold text-gray-500 mb-1">จำนวนข้อสอบ</span>
             <input id="exam-amount" inputmode="numeric" class="${INPUT_CLS}" value="${_htmlEsc(f.examAmount)}" placeholder="เช่น 35">
@@ -1028,6 +1043,8 @@ function _readForm() {
     examDate: document.getElementById('exam-date')?.value || '',
     startTime: document.getElementById('exam-start')?.value || '',
     endTime: document.getElementById('exam-end')?.value || '',
+    examDateLabel: document.getElementById('exam-date-label')?.value || '',
+    examTimeLabel: document.getElementById('exam-time-label')?.value || '',
     classPart: document.getElementById('exam-class-part')?.value || '',
     periodPart: document.getElementById('exam-period-part')?.value || '',
     examRoom: document.getElementById('exam-room')?.value || '',
@@ -1057,9 +1074,10 @@ function _ensureClassSelectedBeforePrint() {
 function _bind() {
   _cleanupTeacherAutocompletes()
   const redrawFields = [
-    'exam-lang', 'exam-type', 'exam-subject-label', 'exam-semester', 'exam-year', 'exam-date',
+    'exam-type', 'exam-subject-label', 'exam-semester', 'exam-year', 'exam-date',
     'exam-start', 'exam-end', 'exam-amount', 'exam-room', 'exam-period-part',
     'exam-class-part', 'exam-invigilator-1', 'exam-invigilator-2',
+    'exam-date-label', 'exam-time-label',
   ]
   redrawFields.forEach(id => {
     document.getElementById(id)?.addEventListener('input', () => {
@@ -1076,6 +1094,13 @@ function _bind() {
     _readForm()
     _saveDraft()
     await _loadStudentsForSelectedClass()
+    _renderShell()
+  })
+
+  // ภาษาเอกสาร ต้อง re-render ทั้งฟอร์ม ไม่ใช่แค่พรีวิว — เพราะช่องแก้ไขวันที่/เวลาสอบ
+  // (สำหรับภาษาอาหรับ/ยาวี) จะโผล่/หายไปตามภาษาที่เลือก
+  document.getElementById('exam-lang')?.addEventListener('change', () => {
+    _readForm()
     _renderShell()
   })
 
