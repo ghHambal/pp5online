@@ -145,7 +145,7 @@ export async function searchStudentsForCertificateIssuance(query) {
   const q = (query ?? '').trim()
   if (q.length < 2) return []
   const { data, error } = await supabase.from('students')
-    .select('id, full_name, student_code, main_room, image_url, photo_url')
+    .select('id, full_name, student_code, main_room, religion_room, image_url, photo_url')
     .or(`full_name.ilike.%${q}%,student_code.ilike.%${q}%`)
     .limit(15)
   if (error) throw error
@@ -156,7 +156,7 @@ export async function getStudentByCodeForCertificateIssuance(studentCode) {
   const code = String(studentCode ?? '').trim()
   if (!code) return null
   const { data, error } = await supabase.from('students')
-    .select('id, full_name, student_code, main_room, image_url, photo_url')
+    .select('id, full_name, student_code, main_room, religion_room, image_url, photo_url')
     .eq('student_code', code)
     .maybeSingle()
   if (error) throw error

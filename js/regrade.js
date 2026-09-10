@@ -1013,7 +1013,7 @@ function teacherRespondCard(x) {
       ${personAvatarHtml(x.students, true)}
       <div class="min-w-0">
         <p class="font-bold text-xs text-[var(--ink)]">${escHtml(studentName)}</p>
-        <p class="text-[10px] text-[var(--muted-2)]">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || '')})</p>
+        <p class="text-[10px] text-[var(--muted-2)]">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || x.students?.religion_room || '')})</p>
         <p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)})</p>
         <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
       </div>
@@ -1166,7 +1166,7 @@ async function renderCloseList() {
       <div class="flex gap-2.5 items-center min-w-0">
         ${personAvatarHtml(x.students, true)}
         <div class="min-w-0">
-          <p class="font-bold text-sm text-[var(--ink)]">${escHtml(name)} <span class="text-[var(--muted-2)] font-normal">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || '')})</span></p>
+          <p class="font-bold text-sm text-[var(--ink)]">${escHtml(name)} <span class="text-[var(--muted-2)] font-normal">(${escHtml(x.students?.student_code || '')} · ${escHtml(x.students?.main_room || x.students?.religion_room || '')})</span></p>
           <p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)}) · ${escHtml(x.method || '')} — กำหนด ${escHtml(formatRegradeDue(x.due_text))}</p>
           <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
         </div>

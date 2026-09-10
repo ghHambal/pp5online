@@ -361,7 +361,7 @@ function _renderQuickIssueTab(teacher, targetPanel = null) {
       selectedRecipients.push({
         type: recipientType, id: r.found.id, full_name: r.found.full_name,
         code: recipientType === 'student' ? r.found.student_code : r.found.teacher_code,
-        sub: recipientType === 'student' ? (r.found.main_room ?? '') : '',
+        sub: recipientType === 'student' ? (r.found.main_room || r.found.religion_room || '') : '',
         photo: r.found.image_url || r.found.photo_url || null,
       })
     })
