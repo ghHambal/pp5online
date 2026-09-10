@@ -177,6 +177,9 @@ const DEFAULT_FORM = {
   examAmount: '',
   invigilator1: '',
   invigilator2: '',
+  studentScope: 'all',
+  splitGender: 'M',
+  splitPrintMode: 'single',
 }
 
 const EXAM_TYPE_OPTIONS = ['กลางภาค', 'ปรับคะแนนกลางภาค', 'ปลายภาค']
@@ -263,6 +266,42 @@ const _envelopeClassParts = value => {
   if (match) return { room: match[1], name: match[2].trim() }
   const [room, ...rest] = raw.split(/\s+/)
   return { room, name: rest.join(' ').trim() }
+}
+
+// students.gender ในฐานข้อมูลจริงปนกัน 'ชาย'/'หญิง'/'M'/'W' (data inconsistency ที่เจอมาแล้ว
+// ในหลายโมดูล) ต้อง normalize ก่อนเทียบเสมอ ห้ามเทียบ === 'ชาย' ตรงๆ
+const _normGender = raw => {
+  const v = String(raw || '').trim().toUpperCase()
+  if (v === 'ชาย' || v === 'M' || v === 'MALE') return 'M'
+  if (v === 'หญิง' || v === 'F' || v === 'W' || v === 'FEMALE') return 'F'
+  return ''
+}
+
+const _classHasBothGenders = () => {
+  const genders = new Set((_state.students || []).map(s => _normGender(s.gender)).filter(Boolean))
+  return genders.has('M') && genders.has('F')
+}
+
+// เมื่อห้องมีทั้งชายและหญิง ครูเลือกได้ว่าจะใช้นักเรียนทั้งห้อง หรือแยกใช้เฉพาะเพศ
+// (ระบบนับจำนวนแยกให้อัตโนมัติ) — ถ้าแยกใช้ยังเลือกได้อีกว่าจะพิมพ์ทีเดียวทั้งสองชุด
+// (ชุดชายต่อด้วยชุดหญิงในการพิมพ์ครั้งเดียว) หรือพิมพ์ทีละเพศ (เฉพาะเพศที่กำลังเลือกอยู่)
+const _resolvePrintBatches = () => {
+  const form = _state.form
+  const all = _state.students || []
+  if (form.studentScope !== 'split' || !_classHasBothGenders()) return [all]
+  const male = all.filter(s => _normGender(s.gender) === 'M')
+  const female = all.filter(s => _normGender(s.gender) === 'F')
+  if (form.splitPrintMode === 'both') return [male, female]
+  return [form.splitGender === 'F' ? female : male]
+}
+
+const _scopeCountNote = () => {
+  const f = _state.form
+  if (f.studentScope !== 'split' || !_classHasBothGenders()) return ''
+  const male = _state.students.filter(s => _normGender(s.gender) === 'M').length
+  const female = _state.students.filter(s => _normGender(s.gender) === 'F').length
+  if (f.splitPrintMode === 'both') return ` (ชาย ${male} + หญิง ${female})`
+  return f.splitGender === 'F' ? ` (เฉพาะหญิง ${female} คน)` : ` (เฉพาะชาย ${male} คน)`
 }
 
 const _teacherSearchText = teacher => [
@@ -422,12 +461,14 @@ const _envelopeReligious = (labels, data, form, classParts) => `
     </tbody>
   </table>`
 
-const _buildPrintHtml = (mode = 'all') => {
+// สร้าง "ชุดเอกสาร" หนึ่งชุดจากรายชื่อนักเรียนที่กำหนด — แยกออกมาจาก _buildPrintHtml
+// เพื่อให้เรียกซ้ำได้ 2 ครั้ง (ชาย/หญิงคนละชุด) ตอนเลือก "พิมพ์ทีเดียวทั้งสองเพศ"
+const _buildDocBatch = (studentsList, mode) => {
   const form = _state.form
   const labels = LANGS[form.lang] || LANGS.th
   const cls = _state.selectedClass || {}
   const ms = _classSubject(cls)
-  const students = _sortStudents(_state.students)
+  const students = _sortStudents(studentsList)
   const total = students.length
   const parts = _datePartsTH(form.examDate)
   const phoneSuffix = _state.teacher?.phone ? ` (${_state.teacher.phone})` : ''
@@ -441,7 +482,6 @@ const _buildPrintHtml = (mode = 'all') => {
   const dirClass = labels.dir === 'rtl' ? 'rtl' : 'ltr'
   const includePortrait = mode === 'all' || mode === 'portrait'
   const includeEnvelope = mode === 'all' || mode === 'envelope'
-  const defaultPageSize = mode === 'envelope' ? 'A4 landscape' : 'A4 portrait'
   const areaClass = mode === 'envelope' ? ' envelope-only' : (mode === 'portrait' ? ' portrait-only' : '')
   const examAmount = form.examAmount || String(total)
   const classParts = _envelopeClassParts(data.className)
@@ -827,6 +867,24 @@ const _buildPrintHtml = (mode = 'all') => {
     </div>`
 }
 
+// เมื่อครูเลือก "พิมพ์ทีเดียวทั้งสองเพศ" ต้องพิมพ์ 2 ชุด (ชาย/หญิง) ต่อกันในหน้าต่างเดียว
+// แต่ style/id ต้องมีแค่ชุดเดียว — ดึง <style> จากชุดแรกมาใช้ร่วม แล้วรวม div เนื้อหาเข้าด้วยกัน
+const _buildPrintHtml = (mode = 'all') => {
+  const batches = _resolvePrintBatches()
+  const htmls = batches.map(list => _buildDocBatch(list, mode))
+  if (htmls.length <= 1) return htmls[0] || ''
+
+  const styleMatch = htmls[0].match(/<style[\s\S]*?<\/style>/)
+  const style = styleMatch ? styleMatch[0] : ''
+  const areaClassMatch = htmls[0].match(/<div id="exam-doc-print-area" class="([^"]*)">/)
+  const areaClass = areaClassMatch ? areaClassMatch[1] : ''
+  const innerParts = htmls.map(html => {
+    const m = html.match(/<div id="exam-doc-print-area"[^>]*>([\s\S]*)<\/div>\s*$/)
+    return m ? m[1] : ''
+  })
+  return `${style}\n<div id="exam-doc-print-area" class="${areaClass}">${innerParts.join('')}</div>`
+}
+
 const _openExamPrintWindow = () => {
   const html = `<!DOCTYPE html>
 <html lang="th">
@@ -1068,9 +1126,40 @@ function _renderShell() {
           </div>
         </div>
 
+        ${_classHasBothGenders() ? (() => {
+          const maleCount = _state.students.filter(s => _normGender(s.gender) === 'M').length
+          const femaleCount = _state.students.filter(s => _normGender(s.gender) === 'F').length
+          const isSplit = f.studentScope === 'split'
+          return `
+        <div class="mt-4 grid gap-3 sm:grid-cols-3 p-3 rounded-xl bg-indigo-50/60 border border-indigo-100">
+          <label class="block">
+            <span class="block text-xs font-bold text-gray-500 mb-1">นักเรียนที่ใช้ (ห้องนี้มีทั้งชายและหญิง)</span>
+            <select id="exam-student-scope" class="${SELECT_CLS}">
+              <option value="all" ${!isSplit ? 'selected' : ''}>ทั้งห้อง (ไม่แยกเพศ)</option>
+              <option value="split" ${isSplit ? 'selected' : ''}>แยกเพศ</option>
+            </select>
+          </label>
+          ${isSplit ? `
+          <label class="block">
+            <span class="block text-xs font-bold text-gray-500 mb-1">เพศที่กำลังดู/พิมพ์</span>
+            <select id="exam-split-gender" class="${SELECT_CLS}">
+              <option value="M" ${f.splitGender !== 'F' ? 'selected' : ''}>ชาย (${maleCount} คน)</option>
+              <option value="F" ${f.splitGender === 'F' ? 'selected' : ''}>หญิง (${femaleCount} คน)</option>
+            </select>
+          </label>
+          <label class="block">
+            <span class="block text-xs font-bold text-gray-500 mb-1">รูปแบบพิมพ์</span>
+            <select id="exam-split-print-mode" class="${SELECT_CLS}">
+              <option value="single" ${f.splitPrintMode !== 'both' ? 'selected' : ''}>พิมพ์ทีละเพศ (เฉพาะเพศที่เลือกอยู่)</option>
+              <option value="both" ${f.splitPrintMode === 'both' ? 'selected' : ''}>พิมพ์ทีเดียวทั้งสองเพศ (ชายก่อน ต่อด้วยหญิง)</option>
+            </select>
+          </label>` : ''}
+        </div>`
+        })() : ''}
+
         <div class="mt-4 flex flex-wrap gap-2 text-xs text-gray-500">
           <span class="px-2.5 py-1 rounded-full bg-gray-50 border border-gray-100">${_htmlEsc(_selectedClassMeta())}</span>
-          <span class="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700">นักเรียน ${_state.students.length} คน</span>
+          <span class="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700">นักเรียน ${_state.students.length} คน${_htmlEsc(_scopeCountNote())}</span>
           ${_state.loadingStudents ? `<span class="px-2.5 py-1 rounded-full bg-amber-50 border border-amber-100 text-amber-700">กำลังโหลดรายชื่อ...</span>` : ''}
         </div>
       </section>
@@ -1119,6 +1208,9 @@ function _readForm() {
     examAmount: document.getElementById('exam-amount')?.value || '',
     invigilator1: document.getElementById('exam-invigilator-1')?.value || '',
     invigilator2: document.getElementById('exam-invigilator-2')?.value || '',
+    studentScope: document.getElementById('exam-student-scope')?.value || 'all',
+    splitGender: document.getElementById('exam-split-gender')?.value || 'M',
+    splitPrintMode: document.getElementById('exam-split-print-mode')?.value || 'single',
   }
   _state.selectedClass = _state.classes.find(c => String(c.id) === String(_state.form.classId)) || null
   _saveDraft()
@@ -1170,6 +1262,15 @@ function _bind() {
   document.getElementById('exam-lang')?.addEventListener('change', () => {
     _readForm()
     _renderShell()
+  })
+
+  // ตัวเลือกขอบเขตนักเรียน/แยกเพศ ต้อง re-render ทั้งฟอร์ม เพราะช่องเพศ/รูปแบบพิมพ์
+  // จะโผล่/หายไปตามที่เลือก และป้ายนับจำนวนต้องอัปเดตตามด้วย
+  ;['exam-student-scope', 'exam-split-gender', 'exam-split-print-mode'].forEach(id => {
+    document.getElementById(id)?.addEventListener('change', () => {
+      _readForm()
+      _renderShell()
+    })
   })
 
   document.getElementById('exam-doc-refresh')?.addEventListener('click', async () => {
