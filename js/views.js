@@ -35,7 +35,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getReligionGroupMembers, setReligionGroupMembers,
          updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle,
          getPendingSubjectGroupRequests, getAllSubjectGroupRequests, getCandidateClassesForGroupRequest,
-         approveSubjectGroupRequest, rejectSubjectGroupRequest } from './api.js'
+         approveSubjectGroupRequest, rejectSubjectGroupRequest, notifyFeedbackReply } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect, getFriendlyErrorMessage } from './ui.js'
@@ -11593,6 +11593,21 @@ export async function renderFeedbackAdmin() {
     _updateStats(); _render()
   }
 
+  // ทำเครื่องหมายอ่านแล้ว + แจ้งเตือนผู้ส่งทันทีที่แอดมินตอบกลับ — เดิมผู้ส่งไม่รู้เลยว่ามีคำตอบ
+  // จนกว่าจะเข้ามาเปิดหน้า Feedback เอง ไม่ block การตอบกลับหลักถ้าแจ้งเตือนพลาด (เป็นของเสริม)
+  const _markReadAndNotify = async (item, replyText) => {
+    if (!item) return
+    if (!item.is_read) {
+      try { await setFeedbackRead(item.id, true); item.is_read = true } catch {}
+    }
+    const snippet = String(replyText ?? '').slice(0, 120)
+    await notifyFeedbackReply(item.profile_id, {
+      title: '💬 แอดมินตอบกลับ Feedback ของคุณแล้ว',
+      body: snippet || 'เข้าไปดูคำตอบได้ที่เมนู Feedback ถึงแอดมิน',
+      url: item.sender_role === 'teacher' ? 'teacher.html' : 'student.html',
+    }).catch(() => {})
+  }
+
   const _updateStats = () => {
     const box = document.getElementById('fb-cat-stats')
     if (box) {
@@ -11766,6 +11781,7 @@ export async function renderFeedbackAdmin() {
         const reply = `รีเซ็ทรหัสผ่านให้แล้วครับ รหัสผ่านใหม่คือรหัสนักเรียนของคุณ (${code}) — เข้าสู่ระบบครั้งถัดไปแล้วค่อยเปลี่ยนรหัสผ่านใหม่ได้จากหน้าโปรไฟล์`
         item.admin_reply = reply; item.replied_at = now
         item.messages = [...(item.messages ?? []), { id: `local-${Date.now()}`, feedback_id: id, author_role: 'admin', message: reply, created_at: now }]
+        await _markReadAndNotify(item, reply)
       }
       showToast('รีเซ็ทรหัสผ่านสำเร็จแล้ว', 'success')
       _updateStats(); _render()
@@ -11787,6 +11803,7 @@ export async function renderFeedbackAdmin() {
           const now = new Date().toISOString()
           item.admin_reply = reply; item.replied_at = now
           item.messages = [...(item.messages ?? []), { id: `local-${Date.now()}`, feedback_id: id, author_role: 'admin', message: reply, created_at: now }]
+          await _markReadAndNotify(item, reply)
         }
       }
       showToast(reply ? 'ส่งข้อความและบันทึกสถานะแล้ว' : 'บันทึกสถานะแล้ว', 'success')

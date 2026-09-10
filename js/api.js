@@ -1690,6 +1690,13 @@ export async function notifySubjectGroupAdmins({ title, body, url }) {
   await _notifyProfiles(adminIds, { title, body, url })
 }
 
+// แจ้งเตือนผู้ส่ง Feedback ทันทีที่แอดมินตอบกลับ — ก่อนหน้านี้ผู้ส่งจะไม่รู้เลยว่ามีคำตอบ
+// จนกว่าจะเปิดเข้าไปดูหน้า Feedback เอง เรียกจาก renderFeedbackAdmin (js/views.js)
+export async function notifyFeedbackReply(profileId, { title, body, url }) {
+  if (!profileId) return
+  await _notifyProfiles([profileId], { title, body, url })
+}
+
 export async function getPendingSubjectGroupRequests() {
   const { data, error } = await supabase.from('subject_group_requests')
     .select('*, students(full_name, student_code, main_room)')
