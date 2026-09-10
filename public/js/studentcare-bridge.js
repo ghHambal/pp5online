@@ -25,13 +25,13 @@
     setTimeout(() => div.remove(), 6000)
   }
 
-  // ── หาห้องเรียนที่กำลังเปิดอยู่ ──
+  // ── หาห้องเรียนที่กำลังเปิดอยู่ (รองรับสามัญ ม.X/Y, ปวช.X/Y และศาสนา PR X/Y, อก.X/Y, อป.X/Y) ──
   function findMainRoom() {
     const selects = document.querySelectorAll('select')
     for (const sel of selects) {
       const opt = sel.options[sel.selectedIndex]
       const txt = (opt ? opt.textContent : '').trim()
-      if (/^ม\.\d+\/\d+/.test(txt) || /^ปวช\.\d+\/\d+/.test(txt)) return txt
+      if (/^(ม\.\d+\/\d+|ปวช\.\d+\/\d+|PR\s*\d+\/\d+|อก\.\d+\/\d+|อป\.\d+\/\d+)/i.test(txt)) return txt
     }
     return ''
   }

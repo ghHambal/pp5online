@@ -307,9 +307,7 @@ export async function renderAttendanceGrid(teacher, classData) {
 
     // นำเข้าเช็คชื่อจากระบบดูแลทีเดียวหลายวัน (ต้องกดส่งจากหน้าระบบดูแลของแต่ละวันมาก่อนแล้ว)
     document.getElementById('btn-att-import-studentcare-bulk')?.addEventListener('click', async () => {
-      const roomCounts = {}
-      students.forEach(s => { if (s.main_room) roomCounts[s.main_room] = (roomCounts[s.main_room] || 0) + 1 })
-      const mainRoom = Object.entries(roomCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+      const mainRoom = _dominantRoom(students, classData)
       if (!mainRoom) { showToast('หาห้องเรียนหลักของนักเรียนกลุ่มนี้ไม่เจอ', 'error'); return }
 
       const isSupported = (window._pp5DonorTierIndex ?? 0) >= 2
@@ -2208,9 +2206,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
   // ข้อมูลถูกส่งมาพักไว้ล่วงหน้าจาก bookmarklet ที่รันบนหน้าระบบดูแลเอง (public/js/studentcare-bridge.js)
   // จับคู่ด้วยรหัสนักเรียน + ห้องเรียนหลักส่วนใหญ่ของคลาสนี้ + วันที่ของคาบนี้
   modal.querySelector('#btn-att-import-studentcare')?.addEventListener('click', async () => {
-    const roomCounts = {}
-    students.forEach(s => { if (s.main_room) roomCounts[s.main_room] = (roomCounts[s.main_room] || 0) + 1 })
-    const mainRoom = Object.entries(roomCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+    const mainRoom = _dominantRoom(students, classData)
     if (!mainRoom) { showToast('หาห้องเรียนของนักเรียนในคลาสนี้ไม่เจอ', 'error'); return }
 
     const isSupported = (window._pp5DonorTierIndex ?? 0) >= 2
@@ -2252,9 +2248,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
 
   // ส่งเช็คชื่อของคาบนี้ (สถานะที่ติ๊กอยู่บนหน้าจอตอนนี้) ออกไปรอให้บุ๊กมาร์กฝั่งระบบดูแลมาติ๊กให้
   modal.querySelector('#btn-att-export-studentcare')?.addEventListener('click', async () => {
-    const roomCounts = {}
-    students.forEach(s => { if (s.main_room) roomCounts[s.main_room] = (roomCounts[s.main_room] || 0) + 1 })
-    const mainRoom = Object.entries(roomCounts).sort((a, b) => b[1] - a[1])[0]?.[0]
+    const mainRoom = _dominantRoom(students, classData)
     if (!mainRoom) { showToast('หาห้องเรียนของนักเรียนในคลาสนี้ไม่เจอ', 'error'); return }
 
     const isSupported = (window._pp5DonorTierIndex ?? 0) >= 2
@@ -4337,6 +4331,20 @@ function _incrementWeeklyScanQuota(teacherId, weekMonday) {
   } catch (e) {}
   
   localStorage.setItem(key, JSON.stringify({ weekMonday, count: count + 1 }))
+}
+
+// วิชาศาสนา (subject_group AGM) ต้องจับคู่ห้องด้วย religion_room ไม่ใช่ main_room — เช่น "อป.1/1 Al-Bukhari"
+// (ห้องศาสนาเก็บคนละฟิลด์กับห้องสามัญ/ปวช. ดู pp5-doc.js _dominantRoom ที่ใช้ pattern เดียวกัน)
+function _isReligionSubject(classData) {
+  return classData?.master_subjects?.subject_group === 'AGM' || /^(PR|อก\.|อป\.)/i.test(classData?.class_name || '')
+}
+
+// หาห้องที่มีนักเรียนเยอะที่สุด (เลือกฟิลด์ตามประเภทวิชา)
+function _dominantRoom(students, classData) {
+  const field = _isReligionSubject(classData) ? 'religion_room' : 'main_room'
+  const counts = {}
+  students.forEach(s => { if (s[field]) counts[s[field]] = (counts[s[field]] || 0) + 1 })
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || ''
 }
 
 // ฟีเจอร์เชื่อมข้อมูลกับระบบดูแล — ครูทุกคนใช้ได้ฟรี "ห้องแรกที่ใช้" เท่านั้น จะใช้ห้องอื่นเพิ่มต้องสนับสนุนระดับ 2 ขึ้นไป
