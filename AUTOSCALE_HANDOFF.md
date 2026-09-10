@@ -2,7 +2,7 @@
 
 **เขียนเมื่อ:** 9 กันยายน 2569 (ค่ำ) โดย Claude (Sonnet 5) — **อัปเดตล่าสุด 10 กันยายน 2569** หลังเจอเหตุการณ์จริงครั้งที่ 2
 **สำหรับ:** AI agent ตัวถัดไป (หรือคนที่มาช่วยดูต่อ) ที่ยังไม่มีบริบทของเรื่องนี้มาก่อนเลย
-**สถานะ ณ ตอนอัปเดตล่าสุด:** ✅ **ระบบทำงานอัตโนมัติจริง ผ่านการพิสูจน์ในสถานการณ์จริงมาแล้ว 2 ครั้ง** — แต่พบจุดอ่อนสถาปัตยกรรม 1 จุด (pg_cron เองก็ค้างได้ถ้า DB โหลดหนักมาก) ซึ่งได้ทำ **mitigation ด้วย external backup trigger (cron-job.org)** แล้ว และมี **บั๊กเล็กที่ยังไม่ได้แก้ (race condition ของตัวนับ state)** ที่ต้องระวัง — รายละเอียดเต็มอยู่หัวข้อ 7
+**สถานะ ณ ตอนอัปเดตล่าสุด:** ✅ **ระบบทำงานอัตโนมัติจริง ผ่านการพิสูจน์ในสถานการณ์จริงมาแล้ว 2 ครั้ง** — พบจุดอ่อนสถาปัตยกรรม 1 จุด (pg_cron เองก็ค้างได้ถ้า DB โหลดหนักมาก) ซึ่งได้ทำ **mitigation ด้วย external backup trigger (cron-job.org)** แล้ว, พบ **บั๊กแจ้งเตือนไม่ออกจริง 2 ชั้นซ้อนกัน — แก้ครบทั้งคู่แล้ว** (ยืนยันด้วยการทดสอบยิงจริงสำเร็จ ทั้งประกาศในแอปและ Web Push), และ **race condition ของตัวนับ state ที่เคยเกิดเหตุจริงแล้ว — แก้แล้วด้วย lease lock** (ไม่ใช่ Postgres advisory lock ตามที่ลองครั้งแรก เพราะใช้ไม่ได้กับ connection pooler) — รายละเอียดเต็มอยู่หัวข้อ 6
 
 ---
 
@@ -65,7 +65,8 @@ pg_cron (ทุก 5 นาที)
 - Health: ACTIVE_HEALTHY ต่อเนื่อง
 - Trigger ทำงานคู่ขนาน 2 ตัว: pg_cron (ในโปรเจกต์) + cron-job.org (นอกโปรเจกต์ backup) — ยืนยันจาก log จริงว่ายิงเข้า `autoscale-tick` สำเร็จ (HTTP 200) ทั้งคู่
 - ผ่านการทดสอบสถานการณ์จริงมาแล้ว 2 ครั้ง (9 และ 10 ก.ย.) — อัปเกรด/ดาวน์เกรด/แจ้งเตือนทำงานถูกต้องทุกครั้งที่ได้รันจริง
-- **ปัญหาที่ยังค้างอยู่** (ดูรายละเอียดหัวข้อ 6): (1) pg_cron เองค้างได้ตอน DB โหลดหนักมาก — mitigate ด้วย cron-job.org แล้ว ไม่ใช่แก้ที่ต้นตอ (2) race condition ของตัวนับ `consecutiveHealthyChecks` ตอนมี invocation ซ้อนกัน — ยังไม่ได้แก้ในโค้ด แนะนำให้ทำต่อถ้ามีเวลา
+- แจ้งเตือน (ประกาศในแอป + Web Push) ทดสอบยิงจริงสำเร็จล่าสุดผ่าน debug path `X-Test-Notify: 1` — เห็น `sent:8` ครบทุกอุปกรณ์
+- **ปัญหาที่เจอระหว่างวัน 10 ก.ย. ทั้งหมดแก้เสร็จแล้ว** (ดูรายละเอียดหัวข้อ 6): (1) pg_cron เองค้างได้ตอน DB โหลดหนักมาก — mitigate ด้วย cron-job.org แล้ว (ยังเป็น mitigation ไม่ใช่แก้ที่ต้นตอ เพราะแก้จากข้างในไม่ได้จริงๆ) (2) บั๊กแจ้งเตือนไม่ออก 2 ชั้น — แก้แล้วทั้งคู่ (3) race condition ของตัวนับ `consecutiveHealthyChecks` — แก้แล้วด้วย lease lock
 
 ## 5. บทเรียนทางเทคนิคที่เจอระหว่างทาง (กันเสียเวลาสืบซ้ำ)
 
@@ -77,6 +78,8 @@ pg_cron (ทุก 5 นาที)
 - **Custom edge function secret ชื่อห้ามขึ้นต้นด้วย `SUPABASE_`** (สงวนไว้เฉพาะค่าที่ platform inject เท่านั้น) — ตั้งชื่ออื่นแทน เช่น `MANAGEMENT_ACCESS_TOKEN`
 - **ตาราง `system_config` คอลัมน์ `value` เป็น `text` ไม่ใช่ `jsonb`** (เช็คด้วย `select pg_typeof(value) from system_config` เพื่อยืนยัน) — โค้ดที่เขียนลง/อ่านจากตารางนี้ต้อง `JSON.stringify`/`JSON.parse` เองเสมอ ถ้าปล่อยให้ supabase-js ส่ง object ตรงๆ จะได้ string กลับมาตอนอ่าน ไม่ใช่ object (เจอ `TypeError: Cannot create property ... on string` ตอน parse ผิดจุดนี้)
 - GitHub Actions `schedule` trigger **ไม่น่าเชื่อถือพอสำหรับงานที่ต้องรันสม่ำเสมอจริงจัง** แม้ config จะถูกทุกจุด — ถ้าโปรเจกต์อยู่บน Supabase อยู่แล้ว ใช้ `pg_cron` + edge function เชื่อถือได้กว่ามากและตัด external dependency ออกไปได้เลย
+- `.or()` ของ supabase-js ที่รวม operator `in.()` กับ `ov.{}` (array overlaps) ไว้ในสตริงเดียวกัน **พังแบบเงียบ** (คืน data ว่างไม่ error) เพราะ PostgREST ตีความ comma ผิดจุด — ถ้าต้องรวมเงื่อนไขแบบนี้ ให้แยกเป็น query อิสระต่อกันแล้ว merge ผลเองฝั่ง client จะชัวร์กว่า
+- **Postgres session-level advisory lock (`pg_try_advisory_lock`/`pg_advisory_unlock`) ใช้ไม่ได้กับ edge function ที่เรียกผ่าน connection pooler** — แต่ละคำสั่ง (statement/RPC call) จาก supabase-js อาจได้ backend connection คนละตัวจาก pool เดียวกัน ทำให้คว้าล็อกในคำสั่งหนึ่งแล้วปลดล็อกจากอีกคำสั่งหนึ่งไม่ได้ (คนละ session) เกิด lock ค้างถาวรจนกว่าจะ `pg_terminate_backend()` ด้วยมือ — ถ้าต้องการกันการชนกันของ invocation ที่ทับซ้อนกัน (concurrency guard) ในบริบทแบบนี้ ให้ใช้ **lease lock แบบแถวข้อมูลธรรมดา** (UPDATE ... WHERE เงื่อนไข แบบ single atomic statement + self-expire ด้วย timestamp) แทน ไม่ใช่ advisory lock
 
 ## 6. เหตุการณ์ครั้งที่ 2 (10 กันยายน 2569) — สิ่งที่เจอเพิ่มและแก้ไป
 
@@ -105,17 +108,25 @@ pg_cron (ทุก 5 นาที)
 
 ผลคือตอนนี้มี **2 ตัวจับเวลาที่ทำงานอิสระต่อกัน** (pg_cron ในโปรเจกต์ + cron-job.org ข้างนอก) ยิงเข้า `autoscale-tick` พร้อมกันทุก 5 นาที — เพิ่มโอกาสที่อย่างน้อยตัวใดตัวหนึ่งจะยิงผ่านได้แม้อีกตัวจะค้าง แลกกับการที่บางรอบจะมี invocation ซ้อนกัน 2 ครั้ง (ดูหัวข้อ 6.3 ทำไมเรื่องนี้ถึงยังไม่อันตรายแต่ก็ยังไม่ได้แก้ที่ต้นตอ)
 
-### 6.2 บั๊กที่เจอและแก้แล้ว: การแจ้งเตือนเงียบล้มเหลวเมื่อ query พังตอน DB โหลดหนัก
+### 6.2 บั๊กแจ้งเตือนไม่ออกจริง — 2 ชั้นซ้อนกัน (**แก้ครบทั้งคู่แล้ว**)
 
-`getTargetRecipients()` เดิมใช้ pattern `.then(r => r.data ?? [])` — ถ้า query ล้มเหลว (ซึ่งมีโอกาสสูงมากตอน DB กำลังโหลดหนักพอดี ซึ่งเป็นช่วงเวลาที่ auto-scale ทำงานอยู่แล้ว) โค้ดจะกลืน error เงียบๆ แล้วตีความว่า "ไม่มีผู้รับที่ตรงเงื่อนไข" ทั้งที่จริงคือ query พังต่างหาก ผลคือ resize ทำงานถูกต้องแต่ไม่มีใครได้รับแจ้งเตือนเลย
+ผู้ใช้แจ้งว่าไม่เคยได้รับการแจ้งเตือนผลการดำเนินการเลย ตรวจ log ย้อนหลังพบว่ามีบั๊ก **2 ชั้นคนละสาเหตุ** ซ้อนกันอยู่:
 
-**แก้แล้ว** (อยู่ในโค้ด production ปัจจุบัน, commit `45efadb`): แยกเป็น `getTargetRecipientsOnce()` ที่เช็ค `.error` ของแต่ละ query ตรงๆ แล้ว `throw` ถ้าพัง + `getTargetRecipients()` ที่ห่อด้วย retry 1 ครั้ง (รอ 10 วินาทีแล้วลองใหม่ ให้เวลา DB นิ่งขึ้นหลัง resize) — ดูโค้ดจริงที่ `supabase/functions/autoscale-tick/index.ts` บรรทัด 80-106
+**ชั้นที่ 1 — error ถูกกลืนเงียบ:** `getTargetRecipients()` เดิมใช้ pattern `.then(r => r.data ?? [])` — ถ้า query ล้มเหลว (ซึ่งมีโอกาสสูงมากตอน DB กำลังโหลดหนักพอดี ซึ่งเป็นช่วงเวลาที่ auto-scale ทำงานอยู่แล้ว) โค้ดจะกลืน error เงียบๆ แล้วตีความว่า "ไม่มีผู้รับที่ตรงเงื่อนไข" ทั้งที่จริงคือ query พังต่างหาก **แก้แล้ว**: แยกเป็น `getTargetRecipientsOnce()` ที่เช็ค `.error` ของแต่ละ query ตรงๆ แล้ว `throw` ถ้าพัง + `getTargetRecipients()` ที่ห่อด้วย retry 1 ครั้ง (รอ 10 วินาที)
 
-### 6.3 บั๊กที่เจอแล้ว **แต่ยังไม่ได้แก้**: race condition ของตัวนับ `consecutiveHealthyChecks`
+**ชั้นที่ 2 — query พังแบบเงียบสนิท (ไม่มี .error เลย):** หลังแก้ชั้นที่ 1 แล้ว log ยังโชว์ `teacher_id: [] profile_id: []` อยู่ดี (ทั้งตอนอัปเกรดและดาวน์เกรดจริงวันที่ 10 ก.ย. เวลา 11:27 และ 11:35 น.) ทั้งที่ตรวจ SQL ตรงยืนยันว่ามีครู 3 คนที่ตรงเงื่อนไขจริง (id 52, 236, 85) — สาเหตุคือโค้ดเดิมยัด 2 เงื่อนไขไว้ใน `.or()` เดียว: `position.in.(...)` รวมกับ `positions.ov.{...}` (array overlaps) ซึ่ง PostgREST แยกวิเคราะห์ comma ผิดจุด (ตีความ comma ข้างในเป็นตัวแบ่งเงื่อนไขของ `or()` เอง ไม่ใช่ตัวแบ่งสมาชิก array) ทำให้ query ทั้งสองส่วนพังแบบเงียบ คืน data ว่างแทนที่จะ error — **แก้แล้ว**: เปลี่ยนเป็น 3 query แยกกัน (`in('position', ...)`, `overlaps('positions', ...)`, และ query `is_also_admin` เดิม) แล้ว merge ผลเอง แทนการยัดรวมใน `.or()` เดียว — ยืนยันด้วยการยิงทดสอบจริงผ่าน debug path `X-Test-Notify: 1` แล้วเห็นผลลัพธ์ `teacherIds: [52, 236, 85]`, ประกาศในแอปโพสต์สำเร็จ, และ push ส่งสำเร็จ `sent:8` ครบทุกอุปกรณ์
 
-ระหว่างช่วงที่ pg_cron ค้าง 36 นาทีแล้วกลับมาทำงาน มันพยายาม "ไล่ตาม" งานที่ค้างอยู่ ทำให้เกิด **edge function invocation ซ้อนกันหลายตัวพร้อมกัน** (concurrent) — ตัว `loadState()`/`saveState()` เป็น pattern read-modify-write ธรรมดา ไม่ได้ล็อก จึงเกิด stale read: สังเกตเห็น `consecutiveHealthyChecks` กระโดดจาก 0 ไปเป็น 136 ทันที (ควรค่อยๆ นับทีละ 1 ทุก 5 นาที) เกือบทำให้เกิด **downgrade ก่อนเวลาอันควร** (หลังอัปเกรดไปแค่ ~3 นาที ทั้งที่ต้องรอ 90 นาที) — ครั้งนี้รอดไปได้เพราะ Supabase API เองคืน 429 "still processing addon changes" ไม่ใช่เพราะโค้ดป้องกันไว้
+โค้ดปัจจุบัน (`supabase/functions/autoscale-tick/index.ts`) ยังคง debug path นี้ไว้ถาวร (เทียบเท่า `--test-notify` flag ของสคริปต์เดิมที่หายไปตอนพอร์ตมาเป็น edge function) — ยิง `POST` พร้อม header `X-Test-Notify: 1` เพื่อทดสอบ path แจ้งเตือนได้ทุกเมื่อโดยไม่แตะ compute เลย
 
-**ยังไม่ได้แก้ในโค้ด** — ทางแก้ที่แนะนำไว้สำหรับคนที่มาทำต่อ: เปลี่ยนจาก read-modify-write ธรรมดาเป็น atomic increment ผ่าน SQL function (`UPDATE ... SET value = ...` แบบ single statement หรือ Postgres advisory lock ครอบ `runAutoscale()` ทั้งฟังก์ชัน) เพื่อกันไม่ให้ invocation ที่ทับซ้อนกันอ่าน state เก่าไปพร้อมกัน — ความเสี่ยงจะเพิ่มขึ้นอีกตอนนี้ที่มี 2 ตัวจับเวลายิงคู่ขนาน (7.1) เพราะโอกาสเกิด concurrent invocation สูงขึ้นเป็นปกติ (ไม่ต้องรอ pg_cron ไล่ตามงานค้างอีกต่อไป)
+### 6.3 race condition ของตัวนับ `consecutiveHealthyChecks` (**แก้แล้ว — แต่ต้องอ่านบทเรียนเรื่อง connection pooler ด้วย**)
+
+ระหว่างช่วงที่ pg_cron ค้าง 36 นาทีแล้วกลับมาทำงาน มันพยายาม "ไล่ตาม" งานที่ค้างอยู่ ทำให้เกิด **edge function invocation ซ้อนกันหลายตัวพร้อมกัน** (concurrent) — ตัว `loadState()`/`saveState()` เป็น pattern read-modify-write ธรรมดา ไม่ได้ล็อก จึงเกิด stale read: สังเกตเห็น `consecutiveHealthyChecks` กระโดดจาก 0 ไปเป็น 136+ ทันที (ควรค่อยๆ นับทีละ 1 ทุก 5 นาที)
+
+**เกิดเหตุจริงแล้ว 1 ครั้ง** (10 ก.ย. 14:15-14:20 น. ไทย): อัปเกรด Micro→Medium สำเร็จตอน 14:15 น. แต่เพราะตัวนับค้างอยู่ที่ 160+ (เกินเกณฑ์ downgrade 18 อยู่แล้ว) invocation ที่ทับซ้อนกันอีกตัวหนึ่งซึ่งยังถือ state เก่า เห็นว่า tier เปลี่ยนเป็น Medium แล้วและตัวนับเกินเกณฑ์ จึงสั่ง **downgrade กลับ Micro ทันทีภายใน ~5 นาที** ระหว่างนั้น DB กำลัง restart จาก resize พอดี (`FATAL: the database system is shutting down`) ทำให้ทั้งการแจ้งเตือน "ปัญหาหนัก" และการ re-upgrade รอบถัดมาพัง (Cloudflare 521 ชั่วคราว) — เหตุการณ์นี้เองที่ทำให้ผู้ใช้ไม่ได้รับแจ้งเตือนรอบนั้น (นอกเหนือจากบั๊ก 6.2)
+
+**ทางแก้ที่ลองก่อน (ใช้ไม่ได้จริง):** ลองใช้ Postgres advisory lock (`pg_try_advisory_lock`/`pg_advisory_unlock` ผ่าน RPC function) ครอบ `runAutoscale()` ทั้งฟังก์ชันก่อน — **ทดสอบแล้วพบว่าใช้ไม่ได้กับสภาพแวดล้อมนี้** เพราะ session-level advisory lock ผูกติดกับ backend connection (PID) หนึ่งๆ แต่ supabase-js เรียกผ่าน connection pooler ที่แต่ละคำสั่งอาจได้ backend connection คนละตัว ผลคือคว้าล็อกในคำสั่งหนึ่งได้ แต่ปลดล็อกจากอีกคำสั่งหนึ่งไม่ได้ (คนละ session) — ทดสอบจริงเจอ lock ค้างทั้งระบบ (ทุก tick ถัดไปโดน skip หมด) ต้องแก้ด้วย `pg_terminate_backend()` ถึงจะหลุด
+
+**ทางแก้ที่ใช้งานจริง:** เปลี่ยนเป็น **lease lock แบบแถวข้อมูลธรรมดา** ใน `system_config` (key=`autoscaleLock`, value=ISO timestamp ตอนคว้าล็อก) — `tryAcquireLock()` ทำ `UPDATE ... WHERE value < staleThreshold` แบบ single statement (atomic โดยธรรมชาติ ไม่ต้องพึ่ง session ใดๆ เลย ปลอดภัยกับ pooler 100%) ถ้าอัปเดตได้ (มีแถวตรงเงื่อนไข) แปลว่าคว้าล็อกสำเร็จ, `releaseLock()` set ค่ากลับเป็นอดีตไกลๆ ทันทีในบรรทัด `finally` — และมี **self-heal อัตโนมัติ**: ถ้า invocation ก่อนหน้าตายกลางคันไม่ทันปลดล็อก ล็อกจะถือว่าหมดอายุเองหลัง `LOCK_STALE_MS` (4 นาที ตั้งใจให้สั้นกว่ารอบ 5 นาทีของ trigger) — ทดสอบแล้วจริงว่ายิง 2 คำขอพร้อมกันจะได้ผลลัพธ์ `{ok:true, state:...}` 1 ตัว + `{ok:true, skipped:true}` 1 ตัวเสมอ, ยิงต่อเนื่องสองรอบก็ทำงานได้ปกติไม่ค้าง
 
 ## 7. ไฟล์ที่เกี่ยวข้องทั้งหมด
 
@@ -131,6 +142,8 @@ pg_cron (ทุก 5 นาที)
 | Supabase Edge Function `send-push` | ไม่ได้อยู่ในไฟล์ repo (deploy ผ่าน Dashboard/Management API เท่านั้น) — มี "trusted service_role caller" mode ให้เรียกจากระบบอัตโนมัติได้ ถ้าจะแก้ต่อต้องดึงโค้ดปัจจุบันจาก Dashboard → Edge Functions → send-push ก่อน |
 | pg_cron job `autoscale-tick` (jobid=4 ณ ตอนสร้าง) | เช็คสถานะ/แก้ไขผ่าน `select * from cron.job` / `select cron.alter_job(...)` / `select cron.unschedule('autoscale-tick')` |
 | ตาราง `system_config` key=`autoscaleState` | state ปัจจุบัน — column `value` เป็น text ต้อง parse เอง |
+| ตาราง `system_config` key=`autoscaleLock` | **lease lock กันการชนกันของ invocation ที่ทับซ้อนกัน** (ดูหัวข้อ 6.3) — value เป็น ISO timestamp ตอนคว้าล็อก, ถือว่าว่างถ้าเก่ากว่า 4 นาที (`LOCK_STALE_MS`) ไม่ต้องยุ่งด้วยมือปกติ |
+| `patch_autoscale_advisory_lock.sql` | ชื่อไฟล์ยังคงเดิมเพื่อ traceability แต่เนื้อหาจริงคือ SQL สร้างแถว `autoscaleLock` เริ่มต้น (ไม่ใช่ advisory lock function แล้ว — ดูคำอธิบายในไฟล์และหัวข้อ 6.3 ว่าทำไมเปลี่ยนวิธี) |
 | git branch `autoscale-state` | **เลิกใช้แล้ว** (เหลือไว้เป็นประวัติของระบบเดิม ไม่ต้องยุ่งอีก) |
 | cron-job.org job `pp5-autoscale-backup` | **Backup trigger ภายนอก** ยิง POST เข้า `autoscale-tick` ทุก 5 นาทีเหมือน pg_cron แต่เป็นระบบแยกอิสระ (ดูหัวข้อ 6.1) — จัดการ/แก้ไขได้ที่ cron-job.org (ต้องล็อกอินบัญชีที่ใช้สร้างไว้) ไม่ได้อยู่ในไฟล์ repo |
 

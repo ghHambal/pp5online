@@ -50,6 +50,36 @@ async function saveState(state: Record<string, unknown>) {
   )
 }
 
+// กันการชนกันแบบ lease lock ผ่านแถวเดียวใน system_config (key='autoscaleLock',
+// value=ISO timestamp ตอนคว้าล็อก) แทน Postgres advisory lock — ลองแล้วจริง
+// 2026-09-10 พบว่า advisory lock (session-level) ใช้ไม่ได้กับสภาพแวดล้อมนี้
+// เพราะ supabase-js ผ่าน connection pooler ที่แต่ละ query อาจได้ backend
+// connection คนละตัว ทำให้ล็อกที่คว้าไว้ในคำสั่งหนึ่ง ปลดล็อกจากอีกคำสั่งไม่ได้
+// (ต้อง pg_terminate_backend ถึงจะหลุด) — เปลี่ยนมาใช้แถวข้อมูลธรรมดาที่ไม่ยึด
+// ติด session แทน ปลอดภัยกับ pooler และ self-heal อัตโนมัติถ้า invocation ก่อน
+// หน้าตายกลางคันไม่ทันปลดล็อก (ถือว่าล็อกหมดอายุถ้าเก่ากว่า LOCK_STALE_MS)
+const LOCK_STALE_MS = 4 * 60 * 1000 // 4 นาที (สั้นกว่ารอบ 5 นาทีของ trigger)
+
+async function tryAcquireLock(): Promise<boolean> {
+  const now = new Date().toISOString()
+  const staleThreshold = new Date(Date.now() - LOCK_STALE_MS).toISOString()
+  const { data, error } = await admin
+    .from('system_config')
+    .update({ value: now, updated_at: now })
+    .eq('key', 'autoscaleLock')
+    .lt('value', staleThreshold)
+    .select()
+  if (error) throw error
+  return !!data && data.length > 0
+}
+
+async function releaseLock() {
+  await admin
+    .from('system_config')
+    .update({ value: '1970-01-01T00:00:00.000Z', updated_at: new Date().toISOString() })
+    .eq('key', 'autoscaleLock')
+}
+
 async function checkHealthy() {
   const services = await mgmtFetch(`/projects/${PROJECT_REF}/health?services=rest,db`)
   console.log('[health raw]', JSON.stringify(services))
@@ -80,15 +110,27 @@ async function setComputeTier(tier: string) {
 // เช็ค error ของแต่ละ query ตรงๆ แทนการปล่อยให้เงียบแล้วได้ array ว่างกลับมา
 // (เจอบั๊กจริง: ตอน DB โหลดหนัก query ล้มเหลว แต่โค้ดเดิม ?? [] กลืน error
 // ไปเฉยๆ ทำให้ notify() คิดว่า "ไม่มีผู้รับ" ทั้งที่จริงคือ query พังต่างหาก)
+//
+// 2026-09-10 เจอบั๊กที่ 2 ต่อยอดจากอันนี้: ทั้งสอง query สำเร็จ (ไม่มี .error)
+// แต่ได้ data ว่างทั้งคู่ ทั้งที่ตรวจ SQL ตรงแล้วมีแถวจริง — สาเหตุคือ
+// .or(posQuery) ใช้ operator `ov` (array overlaps) กับ syntax `{val1,val2}`
+// ซึ่ง PostgREST ตีความ comma ข้างในเป็นตัวแบ่งเงื่อนไขของ or() เอง (ไม่ใช่
+// ตัวแบ่งสมาชิก array) ทำให้ query พังแบบเงียบ (คืน data ว่างแทนที่จะ error)
+// แก้โดยเปลี่ยนเป็น 2 query แยกกันแล้ว merge เอง แทนการยัดรวมใน .or() เดียว
 async function getTargetRecipientsOnce() {
-  const posQuery = `position.in.(${NOTIFY_POSITIONS.join(',')}),positions.ov.{${NOTIFY_POSITIONS.join(',')}}`
-  const [byPosition, byDelegatedAdmin] = await Promise.all([
-    admin.from('teachers').select('id, profile_id').or(posQuery),
+  const [byPositionCol, byPositionsArr, byDelegatedAdmin] = await Promise.all([
+    admin.from('teachers').select('id, profile_id').in('position', NOTIFY_POSITIONS),
+    admin.from('teachers').select('id, profile_id').overlaps('positions', NOTIFY_POSITIONS),
     admin.from('teachers').select('id, profile_id, profiles!inner(is_also_admin)').eq('profiles.is_also_admin', true),
   ])
-  if (byPosition.error) throw new Error(`query ตำแหน่งล้มเหลว: ${byPosition.error.message}`)
+  if (byPositionCol.error) throw new Error(`query position ล้มเหลว: ${byPositionCol.error.message}`)
+  if (byPositionsArr.error) throw new Error(`query positions[] ล้มเหลว: ${byPositionsArr.error.message}`)
   if (byDelegatedAdmin.error) throw new Error(`query is_also_admin ล้มเหลว: ${byDelegatedAdmin.error.message}`)
-  const rows = [...(byPosition.data ?? []), ...(byDelegatedAdmin.data ?? [])] as { id: number; profile_id: string | null }[]
+  const rows = [
+    ...(byPositionCol.data ?? []),
+    ...(byPositionsArr.data ?? []),
+    ...(byDelegatedAdmin.data ?? []),
+  ] as { id: number; profile_id: string | null }[]
   const teacherIds = [...new Set(rows.map(r => r.id))]
   const profileIds = [...new Set(rows.map(r => r.profile_id).filter(Boolean))] as string[]
   return { teacherIds, profileIds }
@@ -205,11 +247,41 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'method not allowed' }), { status: 405 })
   }
+  // โหมดทดสอบ path แจ้งเตือนอย่างเดียว ไม่แตะ compute เลย (ยิงพร้อม header
+  // X-Test-Notify: 1) — เทียบเท่า --test-notify ของสคริปต์เดิมที่หายไปตอนพอร์ต
+  if (req.headers.get('x-test-notify') === '1') {
+    try {
+      const recipients = await getTargetRecipients()
+      await notify(
+        '🧪 ทดสอบระบบแจ้งเตือน Auto-scale',
+        'นี่คือข้อความทดสอบ ยืนยันว่าระบบหาผู้รับและส่งแจ้งเตือน (ประกาศในแอป + Web Push) ทำงานถูกต้องแล้ว หลังแก้บั๊กที่ทำให้หาผู้รับไม่เจอ',
+      )
+      return new Response(JSON.stringify({ ok: true, recipients }), { headers: { 'Content-Type': 'application/json' } })
+    } catch (err) {
+      return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500 })
+    }
+  }
+  // กันการชนกัน: มี trigger 2 ตัวอิสระต่อกัน (pg_cron ในโปรเจกต์ + cron-job.org
+  // ข้างนอก) ยิงเข้ามาใกล้เคียงกันได้ทุกรอบ + pg_cron เองก็ไล่ตามงานค้างได้ตอน
+  // DB โหลดหนัก ทำให้เกิด invocation ซ้อนกันจริง ก่อนหน้านี้ใช้ read-modify-write
+  // ธรรมดาเก็บ state ทำให้ consecutiveHealthyChecks อ่านค่าเก่าค้าง เกิด downgrade
+  // ก่อนเวลาจริง (เหตุการณ์จริง 2026-09-10 14:20 น. ไทย) แก้ด้วย lease lock
+  // แถวใน system_config (ดูฟังก์ชัน tryAcquireLock/releaseLock ด้านบน)
+  const gotLock = await tryAcquireLock().catch(e => {
+    console.error('เช็คล็อกไม่สำเร็จ (จะถือว่าไม่ได้ล็อก ข้ามรอบนี้):', (e as Error).message)
+    return false
+  })
+  if (!gotLock) {
+    console.log('มี invocation อื่นกำลังทำงานอยู่ (หรือเช็คล็อกพลาด) ข้ามรอบนี้ไปกันชนกัน')
+    return new Response(JSON.stringify({ ok: true, skipped: true }), { headers: { 'Content-Type': 'application/json' } })
+  }
   try {
     const state = await runAutoscale()
     return new Response(JSON.stringify({ ok: true, state }), { headers: { 'Content-Type': 'application/json' } })
   } catch (err) {
     console.error('autoscale-tick ล้มเหลว:', err)
     return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500 })
+  } finally {
+    await releaseLock().catch(e => console.error('ปลดล็อกไม่สำเร็จ:', (e as Error).message))
   }
 })
