@@ -77,16 +77,32 @@ async function setComputeTier(tier: string) {
   })
 }
 
-async function getTargetRecipients() {
+// เช็ค error ของแต่ละ query ตรงๆ แทนการปล่อยให้เงียบแล้วได้ array ว่างกลับมา
+// (เจอบั๊กจริง: ตอน DB โหลดหนัก query ล้มเหลว แต่โค้ดเดิม ?? [] กลืน error
+// ไปเฉยๆ ทำให้ notify() คิดว่า "ไม่มีผู้รับ" ทั้งที่จริงคือ query พังต่างหาก)
+async function getTargetRecipientsOnce() {
   const posQuery = `position.in.(${NOTIFY_POSITIONS.join(',')}),positions.ov.{${NOTIFY_POSITIONS.join(',')}}`
   const [byPosition, byDelegatedAdmin] = await Promise.all([
-    admin.from('teachers').select('id, profile_id').or(posQuery).then(r => r.data ?? []),
-    admin.from('teachers').select('id, profile_id, profiles!inner(is_also_admin)').eq('profiles.is_also_admin', true).then(r => r.data ?? []),
+    admin.from('teachers').select('id, profile_id').or(posQuery),
+    admin.from('teachers').select('id, profile_id, profiles!inner(is_also_admin)').eq('profiles.is_also_admin', true),
   ])
-  const rows = [...byPosition, ...byDelegatedAdmin] as { id: number; profile_id: string | null }[]
+  if (byPosition.error) throw new Error(`query ตำแหน่งล้มเหลว: ${byPosition.error.message}`)
+  if (byDelegatedAdmin.error) throw new Error(`query is_also_admin ล้มเหลว: ${byDelegatedAdmin.error.message}`)
+  const rows = [...(byPosition.data ?? []), ...(byDelegatedAdmin.data ?? [])] as { id: number; profile_id: string | null }[]
   const teacherIds = [...new Set(rows.map(r => r.id))]
   const profileIds = [...new Set(rows.map(r => r.profile_id).filter(Boolean))] as string[]
   return { teacherIds, profileIds }
+}
+
+// retry 1 ครั้งถ้าพัง (มักเกิดตอน DB ยังไม่นิ่งดีหลัง resize) ก่อนจะยอมแพ้จริง
+async function getTargetRecipients() {
+  try {
+    return await getTargetRecipientsOnce()
+  } catch (e) {
+    console.error('[notify] หาผู้รับรอบแรกล้มเหลว จะลองอีกครั้งใน 10 วิ:', (e as Error).message)
+    await sleep(10000)
+    return await getTargetRecipientsOnce()
+  }
 }
 
 async function postAnnouncement(title: string, body: string, teacherIds: number[]) {
