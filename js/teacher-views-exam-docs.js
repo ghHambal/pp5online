@@ -343,15 +343,22 @@ const _studentSignPage = (students, pageIndex, labels, data, form, dirClass) => 
     </div>`
 }
 
+// เดิม form.invigilator1/invigilator2 ถูกอ่านค่าจากช่องเลือกครูไว้เฉยๆ ไม่เคยเอาไปพิมพ์จริง
+// สักที่เลย (เจอบั๊กจริง 2026-09-10: เลือกชื่อครูแล้ว "ไม่มีอะไรเกิดขึ้น" ในเอกสาร) — ตอนนี้ถ้ามีชื่อ
+// จะพิมพ์ชื่อกำกับต่อท้ายเส้นประ ยังเว้นที่ให้เซ็นสดด้วยปากกาตามปกติ ถ้าไม่กรอกก็เป็นเส้นประเปล่าเหมือนเดิม
+const _invigilatorLine = (no, name) => name
+  ? `${no}. .................................................... <span class="textColor">(${_htmlEsc(name)})</span>`
+  : `${no}. ...........................................................................................`
+
 const _signature = (labels, form) => `
   <div class="signature">
     <div style="margin-top: 20px;">${_htmlEsc(labels.examiner)}</div>
     <div style="margin-left: 40px;">
       <div class="examiner-signature">
-        <div>1. ...........................................................................................</div>
+        <div>${_invigilatorLine(1, form.invigilator1)}</div>
       </div>
       <div class="examiner-signature">
-        <div>2. ...........................................................................................</div>
+        <div>${_invigilatorLine(2, form.invigilator2)}</div>
       </div>
     </div>
   </div>`
