@@ -161,6 +161,7 @@ const LANGS = {
 
 const DEFAULT_FORM = {
   classId: '',
+  subjectLabel: '',
   lang: 'th',
   examType: 'ปลายภาค',
   semester: '',
@@ -394,7 +395,7 @@ const _buildPrintHtml = (mode = 'all') => {
   const phoneSuffix = _state.teacher?.phone ? ` (${_state.teacher.phone})` : ''
   const data = {
     className: cls.class_name || '',
-    subjectName: ms.subject_name || '',
+    subjectName: form.subjectLabel || ms.subject_name || '',
     subjectCode: ms.subject_code || '',
     teacherName: (_state.teacher?.full_name || '') + phoneSuffix,
   }
@@ -921,11 +922,14 @@ function _renderShell() {
           </label>
           <label class="lg:col-span-2 block">
             <span class="block text-xs font-bold text-gray-500 mb-1">ประเภทสอบ</span>
-            <select id="exam-type" class="${SELECT_CLS}">
-              ${EXAM_TYPE_OPTIONS.map(type => `
-                <option value="${_htmlEsc(type)}" ${f.examType === type ? 'selected' : ''}>${_htmlEsc(type)}</option>
-              `).join('')}
-            </select>
+            <input id="exam-type" list="exam-type-datalist" class="${INPUT_CLS}" value="${_htmlEsc(f.examType)}" placeholder="เช่น กลางภาค">
+            <datalist id="exam-type-datalist">
+              ${EXAM_TYPE_OPTIONS.map(type => `<option value="${_htmlEsc(type)}">`).join('')}
+            </datalist>
+          </label>
+          <label class="lg:col-span-12 block">
+            <span class="block text-xs font-bold text-gray-500 mb-1">ชื่อวิชาที่แสดงในเอกสาร (ไม่กรอก = ใช้ชื่อวิชาจริงของห้องที่เลือก — พิมพ์เองได้ เช่น แปลเป็นภาษาอาหรับ/ยาวี ใช้แค่เอกสารชุดนี้ ไม่บันทึกถาวร)</span>
+            <input id="exam-subject-label" class="${INPUT_CLS}" value="${_htmlEsc(f.subjectLabel)}" placeholder="${_htmlEsc(_classSubject(_state.selectedClass || {}).subject_name || 'เช่น الرياضيات الأساسية')}">
           </label>
           <div class="lg:col-span-2 grid grid-cols-2 gap-2">
             <label class="block">
@@ -1016,6 +1020,7 @@ async function _loadStudentsForSelectedClass() {
 function _readForm() {
   _state.form = {
     classId: document.getElementById('exam-class-id')?.value || '',
+    subjectLabel: document.getElementById('exam-subject-label')?.value || '',
     lang: document.getElementById('exam-lang')?.value || 'th',
     examType: document.getElementById('exam-type')?.value || '',
     semester: document.getElementById('exam-semester')?.value || '',
@@ -1052,7 +1057,7 @@ function _ensureClassSelectedBeforePrint() {
 function _bind() {
   _cleanupTeacherAutocompletes()
   const redrawFields = [
-    'exam-lang', 'exam-type', 'exam-semester', 'exam-year', 'exam-date',
+    'exam-lang', 'exam-type', 'exam-subject-label', 'exam-semester', 'exam-year', 'exam-date',
     'exam-start', 'exam-end', 'exam-amount', 'exam-room', 'exam-period-part',
     'exam-class-part', 'exam-invigilator-1', 'exam-invigilator-2',
   ]
@@ -1127,7 +1132,9 @@ export async function renderExamDocuments(teacher) {
       loadingStudents: false,
       form,
     }
-    if (!EXAM_TYPE_OPTIONS.includes(_state.form.examType)) {
+    // เดิมรีเซ็ตกลับเป็นค่าเริ่มต้นถ้าไม่ตรงกับ EXAM_TYPE_OPTIONS — ตอนนี้ครูพิมพ์เองได้อิสระ
+    // (เช่น แปลเป็นภาษาอาหรับ/ยาวี) จึงเช็คแค่ว่างเปล่าจริงๆ เท่านั้น ไม่บังคับให้ตรงกับตัวเลือกที่มี
+    if (!_state.form.examType) {
       _state.form.examType = DEFAULT_FORM.examType
     }
     if (pendingClassId) _saveDraft()
