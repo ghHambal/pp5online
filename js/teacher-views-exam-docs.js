@@ -110,6 +110,18 @@ const LANGS = {
     examRoom: 'غرفة الاختبار',
     groupPart: 'المجموعة (القسم)',
     periodPart: 'الحصة (وقت الاختبار)',
+    envSchoolName: 'مدرسة عزيزستان',
+    envTerm: 'امتحان نهاية الفصل',
+    envYear: 'للعام الدراسي',
+    envSubject: 'المادة',
+    envClass: 'اسم الصف',
+    envTeacher: 'اسم المعلم',
+    envInvigilatorHeading: 'المراقبون',
+    envDate: 'التاريخ',
+    envPeriod: 'الحصة',
+    envGroup: 'المجموعة',
+    envRoomNo: 'رقم الغرفة',
+    envFooterDept: 'شئون التعليم الديني',
   },
   jawi: {
     key: 'jawi',
@@ -156,6 +168,18 @@ const LANGS = {
     examRoom: 'بيليق ڤريقسا',
     groupPart: 'كومڤولن / بهاڬين',
     periodPart: 'حصة (ماس ڤريقسا)',
+    envSchoolName: 'مدرسة عزيزستان',
+    envTerm: 'ڤڤريقسأن أخير ڤڠكل',
+    envYear: 'تاهون ڤڠاجين',
+    envSubject: 'ڤلاجرن',
+    envClass: 'نام كلس',
+    envTeacher: 'ڬورو ڤلاجرن',
+    envInvigilatorHeading: 'ڤڠاول',
+    envDate: 'تغكل',
+    envPeriod: 'حصة',
+    envGroup: 'كروف',
+    envRoomNo: 'نومبور بيليق',
+    envFooterDept: 'شئون التعليم الديني',
   },
 }
 
@@ -389,10 +413,6 @@ const _invigilatorLine = (no, name) => name
   ? `${no}. .................................................... <span class="textColor">(${_htmlEsc(name)})</span>`
   : `${no}. ...........................................................................................`
 
-// รายชื่อผู้คุมสอบแบบเรียงเลข "1./2." ใช้ในซองแบบศาสนา (ต่างจาก _invigilatorLine
-// ที่เป็นเส้นสำหรับเซ็นชื่อสด — อันนี้แค่พิมพ์ชื่อกำกับในซองเฉยๆ ไม่มีที่เซ็น)
-const _invigilatorListLine = (no, name) => `${no}. <span class="textColor">${_htmlEsc(name || '')}</span>`
-
 const _signature = (labels, form) => `
   <div class="signature">
     <div style="margin-top: 20px;">${_htmlEsc(labels.examiner)}</div>
@@ -436,30 +456,53 @@ const _infoBlock = (labels, data, form) => `
     </div>
   </div>`
 
-// ซองแบบศาสนา (อาหรับ/ยาวี) — โครงหน้ากระดาษแนวตั้งตามใบปะหน้าซองจริงของฝ่ายศาสนา:
-// รวม 2 ข้อมูลไว้บรรทัดเดียวกัน, มีรายชื่อผู้คุมสอบแบบเรียงเลข, ปิดท้ายด้วยตารางสรุป 4 แถว
-// (ใช้คำ label ที่มีอยู่แล้วในระบบ ยังไม่ได้ถอดคำจากภาพจริงทีละตัวอักษร)
-const _envelopeReligious = (labels, data, form, classParts) => `
-  <div class="infoNPR infoNPR1">
-    ${_htmlEsc(labels.examType)} <span class="textColor">${_htmlEsc(form.examType || '')}</span>
-    ${_htmlEsc(labels.year)} <span class="textColor">${_htmlEsc(form.academicYear || '')}</span>
+// หัวกระดาษแบบโลโก้เดียวตรงกลาง + ชื่อโรงเรียนใต้โลโก้ (ใช้กับซองแบบศาสนาเท่านั้น
+// ต่างจาก _header ปกติที่มี 2 โลโก้ซ้าย-ขวา คั่นด้วยชื่อเอกสาร)
+const _headerSingleLogo = title => `
+  <div class="header-single">
+    <img src="${LOGO_LEFT}" alt="">
+    <h2>${_htmlEsc(title)}</h2>
+  </div>`
+
+// รายการผู้คุมสอบแบบ "-1 / -2" ต่อท้ายเส้นกรอกชื่อ (เลขอยู่ขวาสุดตามการอ่านขวาไปซ้าย
+// ของอักษรอาหรับ/ยาวี) ใช้ในซองแบบศาสนาเท่านั้น ต่างจาก _invigilatorLine ที่เป็นบรรทัด
+// เซ็นชื่อสดในใบลงชื่อ/ใบขาดสอบ
+const _envInvigilatorRow = (no, name) => `
+  <div class="env-line env-invigilator-row">
+    -${no} <span class="textColor env-blank-full">${_htmlEsc(name || '')}</span>
+  </div>`
+
+// ซองแบบศาสนา (อาหรับ/ยาวี) — ถอดโครงจากใบปะหน้าซองจริงของฝ่ายศาสนา (กระดาษแนวตั้ง
+// โลโก้เดียว+ชื่อโรงเรียน, บรรทัดรวมข้อมูล, หัวข้อ "ผู้คุมสอบ" แยกเป็นรายการเรียงเลข,
+// ปิดท้ายด้วยตารางสรุป 4 แถว และป้ายฝ่ายกิจการศาสนาที่มุมล่างซ้าย)
+// ภาษาอาหรับแปลความหมายเอา ไม่ได้มีภาพต้นฉบับแยก — โครงเดียวกับยาวีทุกจุด
+const _envelopeReligious = (labels, data, form, classParts) => {
+  const [gradeNum, roomNum] = String(classParts.room || '').split('/')
+  return `
+  <div class="env-line">
+    ${_htmlEsc(labels.envTerm)} <span class="textColor env-blank-sm">${_htmlEsc(form.semester || '')}</span>
+    ${_htmlEsc(labels.envYear)} <span class="textColor env-blank-sm">${_htmlEsc(form.academicYear || '')}</span>
   </div>
-  <div class="infoNPR infoNPR2">
-    ${_htmlEsc(labels.envelopeSubject)} <span class="textColor">${_htmlEsc(data.subjectName)}</span>
-    ${_htmlEsc(labels.envelopeClass)} <span class="textColor">${_htmlEsc(data.className)}</span>
+  <div class="env-line">
+    ${_htmlEsc(labels.envSubject)} <span class="textColor env-blank-lg">${_htmlEsc(data.subjectName || '')}</span>
+    ${_htmlEsc(labels.envClass)} <span class="textColor env-blank-sm">${_htmlEsc(gradeNum || '')}</span> / <span class="textColor env-blank-sm">${_htmlEsc(roomNum || '')}</span>
   </div>
-  <div class="envelope-examiners">
-    <div>${_invigilatorListLine(1, form.invigilator1)}</div>
-    <div>${_invigilatorListLine(2, form.invigilator2)}</div>
+  <div class="env-line">
+    ${_htmlEsc(labels.envTeacher)} <span class="textColor env-blank-lg">${_htmlEsc(data.teacherName || '')}</span>
   </div>
+  <div class="env-line env-invigilator-heading">${_htmlEsc(labels.envInvigilatorHeading)}:-</div>
+  ${_envInvigilatorRow(1, form.invigilator1)}
+  ${_envInvigilatorRow(2, form.invigilator2)}
   <table class="envelope-summary-table">
     <tbody>
-      <tr><th>${_htmlEsc(labels.examDate)}</th><td class="textColor">${_htmlEsc(form.examDateLabel || _thaiFullDate(form.examDate))}</td></tr>
-      <tr><th>${_htmlEsc(labels.periodPart)}</th><td class="textColor">${_htmlEsc(form.examTimeLabel || _timeRange(form))}</td></tr>
-      <tr><th>${_htmlEsc(labels.groupPart)}</th><td class="textColor">${_htmlEsc(form.classPart || '')}</td></tr>
-      <tr><th>${_htmlEsc(labels.examRoom)}</th><td class="textColor">${_htmlEsc(form.examRoom || classParts.room || '')}</td></tr>
+      <tr><th>${_htmlEsc(labels.envDate)}</th><td class="textColor">${_htmlEsc(form.examDateLabel || _thaiFullDate(form.examDate))}</td></tr>
+      <tr><th>${_htmlEsc(labels.envPeriod)}</th><td class="textColor">${_htmlEsc(form.examTimeLabel || _timeRange(form))}</td></tr>
+      <tr><th>${_htmlEsc(labels.envGroup)}</th><td class="textColor">${_htmlEsc(form.classPart || '')}</td></tr>
+      <tr><th>${_htmlEsc(labels.envRoomNo)}</th><td class="textColor">${_htmlEsc(form.examRoom || '')}</td></tr>
     </tbody>
-  </table>`
+  </table>
+  <div class="env-footer-dept">${_htmlEsc(labels.envFooterDept)}</div>`
+}
 
 // สร้าง "ชุดเอกสาร" หนึ่งชุดจากรายชื่อนักเรียนที่กำหนด — แยกออกมาจาก _buildPrintHtml
 // เพื่อให้เรียกซ้ำได้ 2 ครั้ง (ชาย/หญิงคนละชุด) ตอนเลือก "พิมพ์ทีเดียวทั้งสองเพศ"
@@ -593,31 +636,90 @@ const _buildDocBatch = (studentsList, mode) => {
         margin-top: 50px;
       }
 
-      .infoNPR {
+      .exam-doc-paper.envelope-religious {
+        display: flex;
+        flex-direction: column;
+        padding-top: 14mm;
+      }
+
+      .header-single {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        margin-bottom: 20px;
+      }
+
+      .header-single img {
+        width: 100px;
+        margin-bottom: 10px;
+      }
+
+      .header-single h2 {
+        font-size: 20pt;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .env-line {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 10px;
-        font-size: 14pt;
-        margin-top: 16px;
+        gap: 12px;
+        font-size: 17pt;
+        margin-top: 34px;
       }
 
-      .envelope-examiners {
-        margin-top: 40px;
-        font-size: 13pt;
+      .env-blank-sm {
+        display: inline-block;
+        min-width: 60px;
+        text-align: center;
       }
 
-      .envelope-examiners div {
-        margin-bottom: 14px;
+      .env-blank-lg {
+        display: inline-block;
+        flex-grow: 1;
+        min-width: 220px;
+      }
+
+      .env-blank-full {
+        display: inline-block;
+        flex-grow: 1;
+        min-width: 260px;
+      }
+
+      .env-invigilator-heading {
+        font-size: 17pt;
+        font-weight: 700;
+        margin-top: 46px;
+      }
+
+      .env-invigilator-row {
+        font-size: 16pt;
+        margin-top: 28px;
       }
 
       .envelope-summary-table {
-        margin-top: 40px;
+        margin-top: 54px;
+      }
+
+      .envelope-summary-table th,
+      .envelope-summary-table td {
+        font-size: 15pt;
+        padding: 14px;
       }
 
       .envelope-summary-table th {
         width: 45%;
         background: #f3f4f6;
+      }
+
+      .exam-doc-paper .env-footer-dept {
+        margin-top: auto;
+        padding-top: 24px;
+        font-size: 11pt;
+        direction: rtl;
+        text-align: left;
       }
 
       .textColor {
@@ -859,8 +961,8 @@ const _buildDocBatch = (studentsList, mode) => {
       </div>
     </div>
     ` : `
-    <div class="exam-doc-paper ${dirClass} ${includePortrait ? 'exam-doc-page-break' : ''}">
-      ${_header(labels.envelopeTitle)}
+    <div class="exam-doc-paper ${dirClass} envelope-religious ${includePortrait ? 'exam-doc-page-break' : ''}">
+      ${_headerSingleLogo(labels.envSchoolName)}
       ${_envelopeReligious(labels, data, form, classParts)}
     </div>
     `) : ''}
