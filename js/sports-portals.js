@@ -1,3 +1,4 @@
+import { renderAwardsStaff } from './sports-awards-admin.js'
 import { supabase } from './supabase.js'
 import { getFriendlyErrorMessage } from './ui.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
@@ -1355,6 +1356,7 @@ export async function renderShirtSummary() {
       if(membershipSection)membershipSection.before(galleryTypeSection)
       else el.querySelector('.max-w-7xl')?.appendChild(galleryTypeSection)
       await renderGalleryUploadTypeAdmin(el,event)
+      await renderAwardsStaff(el.querySelector('.max-w-7xl') || el,event.id)
       const settingsGrid=el.querySelector('#cfg-dues-amount')?.closest('.grid')
       settingsGrid?.insertAdjacentHTML('beforeend',`<div class="rounded-2xl border p-4 bg-violet-50 border-violet-200"><h3 class="font-bold text-sm text-violet-900">ค่าเสื้อกีฬาสี (บาท/คน)</h3><p class="text-xs text-violet-700 mt-1">ยอดที่ครูที่ปรึกษาศาสนาจะบันทึกเมื่อสแกนรับชำระ แยกชาย/หญิงเพราะราคาต่างกัน ตั้งเป็น 0 เพื่อปิดรับชำระของเพศนั้นชั่วคราว</p><div class="grid grid-cols-2 gap-2 mt-3"><label class="block"><span class="text-xs text-violet-700">👦 ชาย</span><input id="cfg-shirt-payment-amount-m" type="number" min="0" step="1" value="${Number(cfg?.shirt_payment_amount_m||0)}" class="mt-1 w-full border border-violet-200 rounded-xl px-3 py-2 text-sm bg-white"></label><label class="block"><span class="text-xs text-violet-700">👧 หญิง</span><input id="cfg-shirt-payment-amount-w" type="number" min="0" step="1" value="${Number(cfg?.shirt_payment_amount_w||0)}" class="mt-1 w-full border border-violet-200 rounded-xl px-3 py-2 text-sm bg-white"></label></div></div>`)
       el.querySelector('#cfg-shirt-payment-amount-m')?.addEventListener('input',e=>{renderShirtSummary.pendingCfg={...(renderShirtSummary.pendingCfg||{}),shirt_payment_amount_m:Math.max(0,Number(e.target.value)||0)}})
@@ -3982,12 +3984,14 @@ function _resolveGalleryItemFields(selectedId){
 // openSportsGalleryModal (รวมทุกสี) ต้องมี calendarMap ({id:label}) ประกอบเพราะรูปที่ผูกปฏิทิน
 // ไม่มี join แบบ sports(name) ให้มาด้วยตรงๆ
 function _galleryPhotoGroupKey(p){
+  if(p.custom_label==='พิธีมอบเหรียญ') return 'award-ceremonies'
   if(p.sport_id) return p.sport_id
   if(p.calendar_event_id) return `cal:${p.calendar_event_id}`
   if(p.custom_label) return `label:${p.custom_label}`
   return 'general'
 }
 function _galleryPhotoGroupLabel(p,calendarMap,uploadTypeMap={}){
+  if(p.custom_label==='พิธีมอบเหรียญ') return '🏅 พิธีมอบเหรียญ'
   if(p.sports?.name) return p.sports.name
   if(p.calendar_event_id) return `📅 ${calendarMap?.[p.calendar_event_id]?.label||'ปฏิทินกิจกรรม'}`
   if(p.custom_label){
@@ -4368,7 +4372,7 @@ function openGalleryLightbox(modalRoot,group,colorMap,nameMap,startIdx=0){
   const photoInfo=p=>{
     const color=colorMap[p.team_color_id]
     const uploader=nameMap[p.uploaded_by]||'ไม่ระบุ'
-    return `<b>${esc(uploader)}</b>${color?` · <span style="color:${esc(color.hex_color)}">สี${esc(color.name)}</span>`:''} · ${new Date(p.taken_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})}`
+    return `${p.custom_label==='พิธีมอบเหรียญ'?`<span>${esc(p.caption||p.sports?.name||'พิธีมอบเหรียญ')}</span><br>`:''}<b>${esc(uploader)}</b>${color?` · <span style="color:${esc(color.hex_color)}">สี${esc(color.name)}</span>`:''} · ${new Date(p.taken_at).toLocaleString('th-TH',{dateStyle:'medium',timeStyle:'short'})}`
   }
   const goPrev=()=>{if(idx>0){idx--;render()}}
   const goNext=()=>{if(idx<group.photos.length-1){idx++;render()}else stopSlideshow()}

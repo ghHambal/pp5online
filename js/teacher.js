@@ -17,7 +17,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.701'
+import { APP_VERSION } from './version.js?v=10.22.702'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -656,6 +656,7 @@ async function _applyRoleMenus() {
     regradeCfg,
     regradePendingRes,
     sportsEvaluatorRes,
+    awardsAccessRes,
   ] = await Promise.all([
     safe(getSystemConfig(), {}),
     _teacher ? safe(supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle(), { data: null }) : Promise.resolve({ data: null }),
@@ -666,6 +667,7 @@ async function _applyRoleMenus() {
     safe(getRegradeConfig(), {}),
     _teacher ? safe(supabase.from('regrade_subjects').select('id', { count: 'exact', head: true }).eq('teacher_id', _teacher.id).eq('status', 'จำนงแล้ว'), { count: 0 }) : Promise.resolve({ count: 0 }),
     safe(supabase.from('sports_score_evaluators').select('id').eq('profile_id', _teacher?.profile_id).eq('is_active', true), { data: [] }),
+    safe(supabase.rpc('sports_awards_access'), { data: null }),
   ])
 
   if (!hasPrayer && _teacher) {
@@ -725,6 +727,7 @@ async function _applyRoleMenus() {
   toggle('menu-sports-overview-admin', !!isSportsManager)
   const isSportsEvaluator = isSportsManager || (sportsEvaluatorRes?.data?.length > 0)
   toggle('menu-sports-evaluation', !!isSportsEvaluator)
+  toggleBlock('menu-awards-group', awardsAccessRes?.data?.allowed === true)
 
   let isShirtVoteManager = false
   try {

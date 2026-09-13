@@ -1,0 +1,50 @@
+diff --git a/src/components/AwardsLink.jsx b/src/components/AwardsLink.jsx
+new file mode 100644
+index 0000000..0ff7338
+--- /dev/null
++++ b/src/components/AwardsLink.jsx
+@@ -0,0 +1,7 @@
++import React from 'react';
++export function AwardsLink() {
++  const embedded = location.pathname.endsWith('/azizgames.html');
++  const href = embedded ? new URL('sports-awards.html', location.href).href
++    : 'https://ghhambal.github.io/pp5online/sports-awards.html';
++  return <a href={href} target="_blank" rel="noopener noreferrer" className="inline-flex rounded-xl border border-amber-700 bg-amber-950 px-4 py-3 text-amber-100 font-bold">🏅 ศูนย์มอบเหรียญ ↗</a>;
++}
+diff --git a/src/pages/Gallery.jsx b/src/pages/Gallery.jsx
+index ad2457a..134e843 100644
+--- a/src/pages/Gallery.jsx
++++ b/src/pages/Gallery.jsx
+@@ -127 +127,2 @@ export const Gallery = () => {
+-        const key = p.sport_id || 'general';
++        const isCeremony = p.custom_label === 'พิธีมอบเหรียญ';
++        const key = isCeremony ? 'award-ceremonies' : p.sport_id || 'general';
+@@ -131 +132 @@ export const Gallery = () => {
+-        if (!byKey[key]) byKey[key] = { key, label: p.sports?.name || 'ภาพทั่วไป/บรรยากาศ', iconUrl, photos: [] };
++        if (!byKey[key]) byKey[key] = { key, label: isCeremony ? '🏅 พิธีมอบเหรียญ' : p.sports?.name || 'ภาพทั่วไป/บรรยากาศ', iconUrl, photos: [] };
+@@ -502,0 +504 @@ export const Gallery = () => {
++              {activePhoto.custom_label === 'พิธีมอบเหรียญ' && <p>{activePhoto.caption || activePhoto.sports?.name}</p>}
+diff --git a/src/pages/Matches.jsx b/src/pages/Matches.jsx
+index 04796ef..6374836 100644
+--- a/src/pages/Matches.jsx
++++ b/src/pages/Matches.jsx
+@@ -0,0 +1 @@
++import { AwardsLink } from '../components/AwardsLink';
+@@ -277,0 +279 @@ export const Matches = () => {
++      <AwardsLink />
+diff --git a/src/pages/Results.jsx b/src/pages/Results.jsx
+index 2abb850..7cb7cf4 100644
+--- a/src/pages/Results.jsx
++++ b/src/pages/Results.jsx
+@@ -0,0 +1 @@
++import { AwardsLink } from '../components/AwardsLink';
+@@ -541,0 +543 @@ export const Results = () => {
++      <AwardsLink />
+diff --git a/src/pages/Settings.jsx b/src/pages/Settings.jsx
+index 5e7c96c..11ce807 100644
+--- a/src/pages/Settings.jsx
++++ b/src/pages/Settings.jsx
+@@ -0,0 +1 @@
++import { AwardsLink } from '../components/AwardsLink';
+@@ -922,0 +924 @@ export const Settings = () => {
++      <div><AwardsLink /><p className="text-sm text-slate-400 mt-2">ผู้ดูแลเข้าสู่ระบบ ปพ.5 แล้วเปิดศูนย์มอบเหรียญเพื่อมอบหมายครูทีมงาน</p></div>

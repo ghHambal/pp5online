@@ -1,0 +1,2 @@
+# Bundled libraries contain intentional whitespace inside template literals.
+public/azizgames/assets/*.js -whitespace linguist-generated=true
