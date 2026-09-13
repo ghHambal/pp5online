@@ -4,7 +4,7 @@ import {
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   updateColumnSortOrders,
   getStudentScores, saveStudentScore, getSystemConfig, getMyClasses,
-  detectAssignmentKind, getSheetColumnOptions,
+  detectAssignmentKind, getSheetColumnOptionsForTypes,
   getClassStudents, fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
   syncAutoAttendanceScoreColumns, setColumnAutoAttendanceSync,
   getReadingScoreColumns, getReadingScores,
@@ -154,13 +154,12 @@ export async function renderGradesGrid(teacher, classData) {
   try {
     // ถ้า virtual class (มี source_class_id) → ดึง score columns + scores จาก source
     const scoreClassId = classData.source_class_id ?? classData.id
-    const [students, rawCols, rawScoreRows, midSheetOpts, finSheetOpts, regularSheetOpts, sysCfg, allMyClasses, regradeCfg] = await Promise.all([
+    const columnsPromise = getScoreColumns(scoreClassId)
+    const [students, rawCols, rawScoreRows, [midSheetOpts, finSheetOpts, regularSheetOpts], sysCfg, allMyClasses, regradeCfg] = await Promise.all([
       getClassStudents(classData.id),
-      getScoreColumns(scoreClassId),
-      getStudentScores(scoreClassId),
-      getSheetColumnOptions(classData.id, 'กลางภาค'),
-      getSheetColumnOptions(classData.id, 'ปลายภาค'),
-      getSheetColumnOptions(classData.id, 'ระหว่างเรียน'),
+      columnsPromise,
+      columnsPromise.then(cols => getStudentScores(scoreClassId, cols)),
+      getSheetColumnOptionsForTypes(classData.id, ['กลางภาค', 'ปลายภาค', 'ระหว่างเรียน']),
       getSystemConfig().catch(()=>({})),
       teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
       getRegradeConfig().catch(()=>({})),

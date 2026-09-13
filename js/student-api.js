@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { isMissingFunction } from './supabase-errors.js'
 import { _generateSessions, _dateInputValue } from './teacher-views-utils.js'
 import { getClassSessionDOWs } from './api.js'
 
@@ -25,8 +26,12 @@ export async function updateStudentEmail(newEmail) {
 export async function getMyEnrolledClasses(studentId) {
   const { data: rpcClasses, error: rpcErr } = await supabase
     .rpc('get_student_enrolled_classes', { p_student_id: studentId })
-  if (!rpcErr && Array.isArray(rpcClasses) && rpcClasses.length) {
+  if (!rpcErr && Array.isArray(rpcClasses)) {
     return rpcClasses
+  }
+
+  if (!isMissingFunction(rpcErr, 'get_student_enrolled_classes')) {
+    throw rpcErr ?? new Error('ข้อมูลรายวิชาจากระบบไม่ถูกต้อง')
   }
 
   const { data, error } = await supabase
@@ -45,8 +50,10 @@ export async function getMyEnrolledClasses(studentId) {
     .eq('student_id', studentId)
   if (!error) {
     const classes = (data ?? []).map(r => r.classes).filter(Boolean)
-    if (classes.length) return classes
+    if (classes.length || !data?.length) return classes
   }
+  // Only a missing embed relationship can use the compatibility query.
+  if (error && error.code !== 'PGRST200') throw error
 
   // Fallback for the student portal: if a deep PostgREST embed fails or returns
   // null nested rows, keep the page useful by loading the class rows directly.
@@ -401,28 +408,82 @@ export async function getStudentAllAnnouncements(studentId) {
 }
 
 // ─── GPA calculation for student ─────────────────────────────────────────────
+const GPA_PAGE_SIZE = 1000
+const GPA_ID_BATCH_SIZE = 200
+
+// Keyset pagination: keep reading until an empty page, including when the server
+// cap is lower than our requested limit. No COUNT query or short-page assumption.
+// Cursor is non-null and unique within each scope: enrollment id, column id,
+// assignment_id/student (score reads are restricted to known assignment IDs).
+async function _fetchGpaPages(buildQuery, cursorColumn) {
+  const rows = []
+  let cursor = null
+  while (true) {
+    let query = buildQuery().order(cursorColumn, { ascending: true }).limit(GPA_PAGE_SIZE)
+    if (cursor !== null) query = query.gt(cursorColumn, cursor)
+    const { data, error } = await query
+    if (error) throw error
+    if (!Array.isArray(data)) throw new Error('ข้อมูล GPA จากระบบไม่ถูกต้อง')
+    if (!data.length) return rows
+    const nextCursor = data[data.length - 1][cursorColumn]
+    if (nextCursor == null || !Number.isFinite(Number(nextCursor)) || (cursor !== null && Number(nextCursor) <= Number(cursor))) {
+      throw new Error('ไม่สามารถโหลดข้อมูล GPA หน้าถัดไปได้')
+    }
+    rows.push(...data)
+    cursor = nextCursor
+  }
+}
+
+async function _fetchGpaBatches(ids, buildQuery, cursorColumn) {
+  const rows = []
+  // Bound URL length and concurrency; do not fan out one request per subject.
+  for (let offset = 0; offset < ids.length; offset += GPA_ID_BATCH_SIZE) {
+    const batch = ids.slice(offset, offset + GPA_ID_BATCH_SIZE)
+    const batchRows = await _fetchGpaPages(() => buildQuery(batch), cursorColumn)
+    for (const row of batchRows) rows.push(row)
+  }
+  return rows
+}
+
 export async function getStudentGPA(studentId) {
-  const { data: enrollment } = await supabase
+  const enrollment = await _fetchGpaPages(() => supabase
     .from('class_students')
     .select(`
+      id,
       class_id,
       classes(id, subject_group_override, master_subjects(
         subject_name, subject_code, credit, subject_group,
         teachers(full_name, category)
       ))
     `)
-    .eq('student_id', studentId)
+    .eq('student_id', studentId), 'id')
   if (!enrollment?.length) return { samai: [], sasana: [] }
 
-  const results = await Promise.all(enrollment.map(async e => {
+  // Preserve legacy GPA scope: use the enrolled class, not source_class_id.
+  // Following source classes would change GPA behavior and is not part of H1.
+  const classIds = [...new Set(enrollment.filter(e => e.classes?.master_subjects).map(e => e.class_id))]
+  const columns = await _fetchGpaBatches(classIds, ids => supabase
+    .from('class_score_columns')
+    .select('id, class_id, assignment_type, max_score')
+    .in('class_id', ids)
+    .not('assignment_type', 'eq', 'คะแนนพิเศษ'), 'id')
+  const columnsByClass = new Map()
+  for (const column of columns) {
+    if (!columnsByClass.has(column.class_id)) columnsByClass.set(column.class_id, [])
+    columnsByClass.get(column.class_id).push(column)
+  }
+  const scoreRows = await _fetchGpaBatches(columns.map(c => c.id), ids => supabase
+    .from('student_scores')
+    .select('assignment_id, original_score, retake_score, final_score')
+    .eq('student_id', studentId)
+    .in('assignment_id', ids), 'assignment_id')
+  const scoresByColumn = new Map(scoreRows.map(row => [row.assignment_id, row]))
+
+  const results = enrollment.map(e => {
     const cls = e.classes
     const ms  = cls?.master_subjects
     if (!ms) return null
-    const { data: cols } = await supabase
-      .from('class_score_columns')
-      .select('id, assignment_type, max_score')
-      .eq('class_id', e.class_id)
-      .not('assignment_type', 'eq', 'คะแนนพิเศษ')
+    const cols = columnsByClass.get(e.class_id) ?? []
     if (!cols?.length) return {
       classId: cls.id, subjectName: ms.subject_name, subjectCode: ms.subject_code,
       credit: ms.credit ?? 1, grade: null, score: null, maxScore: null, scoredCount: 0, totalCols: 0,
@@ -430,11 +491,7 @@ export async function getStudentGPA(studentId) {
       groupOverride: cls.subject_group_override ?? null,
       teacherName: ms.teachers?.full_name ?? '—'
     }
-    const { data: scores } = await supabase
-      .from('student_scores')
-      .select('assignment_id, original_score, retake_score, final_score')
-      .eq('student_id', studentId)
-      .in('assignment_id', cols.map(c => c.id))
+    const scores = cols.map(c => scoresByColumn.get(c.id)).filter(Boolean)
     const scoreMap = Object.fromEntries((scores ?? []).map(s => [s.assignment_id, s]))
     // ยังคิดเกรดไม่ได้จนกว่าครูจะกรอกคะแนนครบทุกช่อง — ถ้านับช่องที่ยังไม่กรอกเป็น 0 ไปก่อน
     // นักเรียนจะเห็นเกรดเฉลี่ยต่ำผิดปกติ/ไม่ผ่าน ทั้งที่ครูแค่ยังตรวจไม่เสร็จ (เจอบั๊กจริง 2026-09-08)
@@ -463,7 +520,7 @@ export async function getStudentGPA(studentId) {
       groupOverride: cls.subject_group_override ?? null,
       teacherName: ms.teachers?.full_name ?? '—'
     }
-  }))
+  })
 
   const valid = results.filter(Boolean)
   const _isSasana = r => r.groupOverride

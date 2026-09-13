@@ -1,4 +1,6 @@
 import { supabase } from './supabase.js'
+import { readInFlight } from './read-requests.js'
+import { isMissingColumn } from './supabase-errors.js'
 
 export async function getClassScoreRounding(classId) {
   const { data, error } = await supabase.from('class_score_display_settings').select('rounding').eq('class_id', classId).maybeSingle()
@@ -45,7 +47,11 @@ async function _fetchAllRows(buildQuery, pageSize = 1000) {
 }
 
 // ─── System Config ────────────────────────────────────────────────────────────
-export async function getSystemConfig() {
+export function getSystemConfig() {
+  return readInFlight(['system_config', 'all-keys'], () => _getSystemConfig())
+}
+
+async function _getSystemConfig() {
   const { data, error } = await supabase
     .from('system_config')
     .select('key, value')
@@ -77,13 +83,17 @@ const _TEACHER_PROFILE_COLUMNS_BASE = 'id, teacher_code, username, login_email, 
 // overview_prefs เป็นคอลัมน์ที่เพิ่มทีหลัง (patch_teacher_overview_prefs.sql) — ถ้าใครยังไม่ได้รัน
 // migration select จะ error "column does not exist" ทันที ต้อง fallback ตัดคอลัมน์นี้ออกแทนการ throw
 // เพราะฟังก์ชันนี้เรียกทุกครั้งที่ครูล็อกอิน พังทั้งระบบไม่ได้แค่เพราะฟีเจอร์เสริมตัวเดียว
-export async function getMyTeacherProfile(profileId) {
+export function getMyTeacherProfile(profileId) {
+  return readInFlight(['teacher-profile', profileId], () => _getMyTeacherProfile(profileId))
+}
+
+async function _getMyTeacherProfile(profileId) {
   let { data, error } = await supabase
     .from('teachers')
     .select(`${_TEACHER_PROFILE_COLUMNS_BASE}, overview_prefs`)
     .eq('profile_id', profileId)
     .maybeSingle()
-  if (error) {
+  if (isMissingColumn(error, 'overview_prefs')) {
     console.warn('getMyTeacherProfile: overview_prefs column missing, retrying without it — run patch_teacher_overview_prefs.sql', error)
     ;({ data, error } = await supabase
       .from('teachers')
@@ -450,7 +460,11 @@ export async function getChatTiersByProfileIds(profileIds) {
   return Object.fromEntries((data ?? []).map(r => [r.profile_id, r.tier]))
 }
 
-export async function getMyClasses(teacherId) {
+export function getMyClasses(teacherId) {
+  return readInFlight(['teacher-classes', teacherId, 'all-terms'], () => _getMyClasses(teacherId))
+}
+
+async function _getMyClasses(teacherId) {
   // ดึงคอร์สก่อน แล้วหา classes ที่ผูกกับคอร์สเหล่านั้น
   const subjects = await getMySubjects(teacherId)
   const ids = (subjects ?? []).map(s => s.id)
@@ -494,7 +508,11 @@ export async function getClassStudentCount(classId) {
   return count ?? 0
 }
 
-export async function getMySubjects(teacherId) {
+export function getMySubjects(teacherId) {
+  return readInFlight(['teacher-subjects', teacherId, 'all-terms'], () => _getMySubjects(teacherId))
+}
+
+async function _getMySubjects(teacherId) {
   // ไม่มี teacherId = คืน [] เสมอ (fail closed) — ถ้าต้องการวิชาทั้งระบบจริงๆ ให้เรียก getMasterSubjects() ตรงๆ
   // (เดิมคืนทุกวิชาทั้งโรงเรียนถ้า teacherId ว่าง กลายเป็นช่องโหว่ถ้ามีจุดเรียกที่ teacher ยังโหลดไม่เสร็จ)
   if (!teacherId) return []
@@ -1453,6 +1471,23 @@ export async function getSheetColumnOptions(classId, assignmentType = null) {
   return { cols, isFixed }
 }
 
+// One class lookup + one config read for a single grid load; no settled cache.
+export async function getSheetColumnOptionsForTypes(classId, assignmentTypes) {
+  const sg = await _getSkillGroup(classId)
+  let rows = []
+  if (sg) {
+    const { data, error } = await supabase.from('score_column_config')
+      .select('assignment_type, allowed_columns, is_fixed')
+      .eq('skill_group', sg).in('assignment_type', assignmentTypes)
+    if (error) console.warn('[sheetColOpts]', error.message, { sg, assignmentTypes })
+    rows = data ?? []
+  }
+  return assignmentTypes.map(type => {
+    const selected = rows.filter(row => row.assignment_type === type)
+    return { cols: _parseAllowedCols(selected), isFixed: selected.some(row => row.is_fixed) }
+  })
+}
+
 // map assignment_type ใน class_score_columns ('midterm'/'final') → Thai ใน score_column_config
 export function colTypeToThai(assignmentType) {
   if (assignmentType === 'final') return 'ปลายภาค'
@@ -1464,10 +1499,16 @@ export function colTypeToThai(assignmentType) {
 // student_scores schema: id, assignment_id (=class_score_columns.id),
 //   student_id, original_score, retake_score, final_score
 
-export async function getStudentScores(classId) {
+export async function getStudentScores(classId, loadedColumns = null) {
+  // loadedColumns must come from getScoreColumns(classId) in this same action.
   // join ผ่าน class_score_columns เพื่อกรองตาม classId
-  const { data: cols } = await supabase
-    .from('class_score_columns').select('id').eq('class_id', classId)
+  let cols = loadedColumns
+  if (cols === null) {
+    const { data, error } = await supabase
+      .from('class_score_columns').select('id').eq('class_id', classId)
+    if (error) throw error
+    cols = data
+  }
   if (!cols?.length) return []
   const colIds = cols.map(c => c.id)
   const { data, error } = await supabase

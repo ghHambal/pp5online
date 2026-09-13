@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { isMissingFunction } from './supabase-errors.js'
 
 const PAGE_SIZE = 1000
 const DEFAULT_DAYS = 14
@@ -133,6 +134,10 @@ async function loadPublicSnapshot(startDate, endDate) {
       students: Array.isArray(data.students) ? data.students : [],
       records: Array.isArray(data.records) ? data.records : [],
     }
+  }
+  // H6 only: do not amplify timeouts/permission/network failures into direct reads.
+  if (!isMissingFunction(error, 'get_public_prayer_dashboard_snapshot')) {
+    throw error ?? new Error('ข้อมูลแดชบอร์ดละหมาดจากระบบไม่ถูกต้อง')
   }
   console.warn('Public prayer dashboard RPC unavailable, falling back to direct reads:', error)
   const [students, records] = await Promise.all([
