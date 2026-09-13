@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { createShirtHandoffs } from './sports-shirt-handoffs.js'
 
 const PW_KEY = 'sports_shirt_monitor_pw'
 const root = document.getElementById('shirt-monitor-root')
@@ -42,7 +43,7 @@ const byRoomThenName = (a, b) => {
 }
 
 async function fetchSnapshot(password) {
-  const { data, error } = await supabase.rpc('get_public_sports_shirt_snapshot', { p_password: password })
+  const { data, error } = await supabase.rpc('get_sports_shirt_handoff_snapshot', { p_password: password })
   if (error) throw error
   return data
 }
@@ -67,8 +68,8 @@ function renderGate(onSuccess) {
     root.querySelector('#gate-submit').disabled = true
     try {
       const data = await fetchSnapshot(pw)
-      sessionStorage.setItem(PW_KEY, pw)
-      onSuccess(data)
+      try { sessionStorage.setItem(PW_KEY, pw) } catch {}
+      onSuccess(data, pw)
     } catch (e) {
       errEl.classList.remove('hidden')
       root.querySelector('#gate-submit').disabled = false
@@ -78,7 +79,7 @@ function renderGate(onSuccess) {
   input.addEventListener('keydown', e => { if (e.key === 'Enter') submit() })
 }
 
-function renderDashboard(snapshot) {
+function renderDashboard(snapshot, password) {
   const amountM = Number(snapshot.shirt_payment_amount_m) || 0
   const amountW = Number(snapshot.shirt_payment_amount_w) || 0
   const amountForGender = g => g === 'W' ? amountW : amountM
@@ -158,12 +159,13 @@ function renderDashboard(snapshot) {
   root.innerHTML = `
     <div class="space-y-4">
       <div class="no-print flex flex-wrap items-center justify-between gap-3">
-        <div class="inline-flex p-1 rounded-xl bg-white border border-slate-200 gap-1">
+        <div class="inline-flex flex-wrap p-1 rounded-xl bg-white border border-slate-200 gap-1">
           <button type="button" data-tab="size" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👕 ไซซ์เสื้อ</button>
           <button type="button" data-tab="payment" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">💰 ค่าเสื้อ</button>
+          <button type="button" data-tab="handoff" class="px-4 py-2 rounded-lg text-xs font-bold">📦 รับมอบเสื้อรายห้อง</button>
           <button type="button" data-tab="teacher" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👔 ไซซ์เสื้อครู/บุคลากร</button>
         </div>
-        <div class="inline-flex p-1 rounded-xl bg-slate-100 gap-1">
+        <div id="shirt-genders" class="inline-flex p-1 rounded-xl bg-slate-100 gap-1">
           <button type="button" data-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👦 ชาย</button>
           <button type="button" data-gender="W" class="px-4 py-2 rounded-lg text-xs font-bold transition-all">👧 หญิง</button>
           <button type="button" data-gender="UNKNOWN" class="px-4 py-2 rounded-lg text-xs font-bold transition-all hidden">❔ ไม่ระบุเพศ</button>
@@ -171,6 +173,8 @@ function renderDashboard(snapshot) {
         </div>
       </div>
 
+      <div id="shirt-handoff-panel" class="no-print hidden"></div>
+      <div id="shirt-standard-panel" class="space-y-4">
       <div id="role-filter-row" class="no-print"></div>
 
       <div id="search-row" class="no-print">
@@ -196,7 +200,13 @@ function renderDashboard(snapshot) {
 
       <div id="shirt-list" class="no-print space-y-4"></div>
       <div id="print-content" class="print-only"></div>
+      </div>
     </div>`
+
+  const handoffs = createShirtHandoffs({root, getSnapshot: () => snapshot,
+    save: async args => { const {error} = await supabase.rpc('save_sports_shirt_handoff', {p_password: password, ...args}); if(error) throw error },
+    refresh: async () => { snapshot = await fetchSnapshot(password) }, onChange: () => render(),
+  })
 
   // ---- การ์ดสรุปตามสี (กดกรองได้) ----
   const renderColorCards = () => {
@@ -630,7 +640,7 @@ function renderDashboard(snapshot) {
             const confirmedCount = students.filter(s => rowStatus(s).sizeOk).length
             const paidCount = students.filter(s => rowStatus(s).paid).length
             return `<tr class="border-t border-slate-100">
-              <td class="p-2 font-bold text-slate-700 whitespace-nowrap">${esc(room)}</td>
+              <td class="p-2 font-bold text-slate-700 whitespace-nowrap">${esc(room)}<div class="mt-2">${handoffs.roomButton(room)}</div></td>
               <td class="p-2 text-slate-600">${esc(homeroomTeacherOf(room))}</td>
               <td class="p-2 text-center">${students.length}</td>
               ${activeTab === 'size' ? `
@@ -647,7 +657,11 @@ function renderDashboard(snapshot) {
   }
 
   const render = () => {
+    root.querySelector('#shirt-standard-panel').classList.toggle('hidden', activeTab === 'handoff')
+    root.querySelector('#shirt-handoff-panel').classList.toggle('hidden', activeTab !== 'handoff')
+    root.querySelector('#shirt-genders').classList.toggle('hidden', activeTab === 'handoff')
     root.querySelectorAll('[data-tab]').forEach(b => { const on = b.dataset.tab === activeTab; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
+    if (activeTab === 'handoff') { handoffs.render(); return }
     // ตัวเลือกเพศ "ไม่ระบุเพศ" มีความหมายเฉพาะแท็บครู/บุคลากร (นักเรียนรู้เพศจากสีเสมอ) โผล่เฉพาะแท็บนั้น
     root.querySelector('[data-gender="UNKNOWN"]').classList.toggle('hidden', activeTab !== 'teacher')
     root.querySelectorAll('[data-gender]').forEach(b => { const on = b.dataset.gender === gender; b.classList.toggle('bg-pink-600', on); b.classList.toggle('text-white', on) })
@@ -687,7 +701,7 @@ function renderDashboard(snapshot) {
         <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div class="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center justify-between gap-2 flex-wrap">
             <div><b class="text-sm">ห้อง ${esc(room)}</b><span class="text-xs text-slate-500 ml-2">ครูที่ปรึกษา: ${esc(homeroomTeacherOf(room))}</span></div>
-            <span class="text-xs text-slate-500 font-bold">${students.length} คน</span>
+            <span class="text-xs text-slate-500 font-bold">${students.length} คน</span>${handoffs.roomButton(room)}
           </div>
           <table class="w-full text-xs">
             <thead><tr class="text-slate-400 text-left">
@@ -819,14 +833,15 @@ function renderDashboard(snapshot) {
 }
 
 async function init() {
-  const cachedPw = sessionStorage.getItem(PW_KEY)
+  let cachedPw
+  try { cachedPw = sessionStorage.getItem(PW_KEY) } catch {}
   if (cachedPw) {
     try {
       const data = await fetchSnapshot(cachedPw)
-      renderDashboard(data)
+      renderDashboard(data, cachedPw)
       return
     } catch (e) {
-      sessionStorage.removeItem(PW_KEY)
+      try { sessionStorage.removeItem(PW_KEY) } catch {}
     }
   }
   renderGate(renderDashboard)
