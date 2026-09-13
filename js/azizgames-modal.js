@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.699'
+import { APP_VERSION } from './version.js?v=10.22.700'
 import { supabase } from './supabase.js'
 
 const AZIZGAMES_PATH = 'azizgames.html'

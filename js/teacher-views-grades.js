@@ -1,3 +1,5 @@
+import { getClassScoreRounding, saveClassScoreRounding } from './api.js'
+import { isBonus, normalizeRounding } from './score-display.js'
 import {
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   updateColumnSortOrders,
@@ -332,10 +334,10 @@ export async function renderGradesGrid(teacher, classData) {
         : 'คะแนนระบบกลาง: แก้ไขไม่ได้'
 
     // แยก column_type
-    const bonusCols    = allCols.filter(c => c.column_type === 'bonus')
+    const bonusCols    = allCols.filter(isBonus)
     const derivedCols  = allCols.filter(c => c.column_type === 'derived')
     const overrideCols = allCols.filter(c => c.column_type === 'override')
-    const regularCols  = allCols.filter(c => (c.column_type ?? 'regular') === 'regular')
+    const regularCols  = allCols.filter(c => (c.column_type ?? 'regular') === 'regular' && !isBonus(c))
     const colById = Object.fromEntries(allCols.map(c => [c.id, c]))
     // midCols/finalCols เฉพาะ regular (ไม่นับ bonus/derived ซ้ำ)
     const midCols   = regularCols.filter(c => c.assignment_type !== 'final' && c.assignment_type !== 'ปลายภาค')
@@ -345,7 +347,7 @@ export async function renderGradesGrid(teacher, classData) {
     // ── โหลด/บันทึกสถานะ toggle ต่อครู ────────────────────────────────────────
     const _toggleKey    = `gradeToggles_${teacher?.id ?? 'guest'}_${classData.id}`
     const _savedToggles = (() => { try { return JSON.parse(localStorage.getItem(_toggleKey) ?? '{}') } catch { return {} } })()
-    const _saveToggles  = () => localStorage.setItem(_toggleKey, JSON.stringify({ columnRoundSettings, toggleForceGrade, toggleKhuna, toggleRead, showBonusCols }))
+    const _saveToggles  = () => { try { localStorage.setItem(_toggleKey, JSON.stringify({ columnRoundSettings, toggleForceGrade, toggleKhuna, toggleRead, showBonusCols })) } catch {} }
 
     let showBonusCols    = _savedToggles.showBonusCols    ?? false
     let showFormulaLink  = false
@@ -392,8 +394,9 @@ export async function renderGradesGrid(teacher, classData) {
     // ตั้งค่าปัดเลขแยกทีละคอลัมน์ — คีย์: 'mid_subtotal'/'fin_subtotal'/'total' สำหรับผลรวม,
     // column.id ตรงๆ สำหรับคอลัมน์กลางภาค/ปลายภาค/อื่นๆ/พิเศษ, `derived_${column.id}` สำหรับคอลัมน์สูตร
     // true = ปัดเป็นจำนวนเต็ม, false/ไม่มีคีย์ = แสดงทศนิยมแบบเดิม (ไม่กระทบคะแนนจริงที่บันทึกไว้)
-    let columnRoundSettings = _savedToggles.columnRoundSettings ?? {}
-    if (!('total' in columnRoundSettings)) columnRoundSettings.total = _savedToggles.toggleRound ?? true
+    let roundingLoadError = false
+    const sharedRounding = await getClassScoreRounding(classData.id).catch(() => { roundingLoadError = true; return null })
+    let columnRoundSettings = normalizeRounding(sharedRounding ?? _savedToggles.columnRoundSettings ?? { total: _savedToggles.toggleRound ?? true })
     const _isColRounded = key => !!columnRoundSettings[key]
     // สำหรับช่องกรอกคะแนนเอง (mid/final/override/bonus) — ปัดแค่ตอนแสดงผล ไม่แตะค่าที่บันทึกจริง
     const _fmtEntryScore = (colId, v) => {
@@ -757,7 +760,8 @@ export async function renderGradesGrid(teacher, classData) {
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[85vh] flex flex-col overflow-hidden">
           <div class="px-4 py-3 border-b border-gray-100 flex-shrink-0">
             <h3 class="font-bold text-gray-800 text-sm">🔢 ตั้งค่าการปัดเลขคะแนน</h3>
-            <p class="text-[11px] text-gray-400 mt-0.5">เลือกได้อิสระทีละคอลัมน์ — ไม่กระทบคะแนนจริงที่บันทึกไว้ แค่ปรับการแสดงผล</p>
+            <p class="text-[11px] text-gray-500 mt-0.5">ปัดเฉพาะการแสดงผล ไม่แก้คะแนนต้นฉบับหรือเกรด กดบันทึกใช้ร่วมกันเพื่อใช้ในหน้าครู นักเรียน และ ปพ.5</p>
+            ${roundingLoadError ? '<p class="text-xs text-red-600 mt-1">ยังโหลดค่าร่วมไม่ได้ กรุณาตรวจการติดตั้ง SQL และการเชื่อมต่อ</p>' : ''}
           </div>
           <div class="overflow-y-auto flex-1 px-4 py-2">
             <p class="text-[11px] font-bold text-amber-600 uppercase tracking-wide mt-2 mb-1">ผลรวม</p>
@@ -771,11 +775,30 @@ export async function renderGradesGrid(teacher, classData) {
             ${showBonusCols && bonusCols.length ? `<p class="text-[11px] font-bold text-amber-500 uppercase tracking-wide mt-3 mb-1">คะแนนเก็บ/พิเศษ</p>${bonusCols.map(c=>_rowHtml(c.id, c.assignment_name, c.max_score)).join('')}` : ''}
           </div>
           <div class="px-4 py-3 border-t border-gray-100 flex-shrink-0">
+            <button id="round-settings-save" class="w-full mb-2 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold">บันทึกใช้ร่วมกัน</button>
             <button id="round-settings-close" class="w-full py-2.5 rounded-xl bg-gray-100 text-gray-600 text-sm font-semibold hover:bg-gray-200">ปิด</button>
           </div>
         </div>`
       document.body.appendChild(pop)
       const _close = () => pop.remove()
+      pop.querySelector('#round-settings-save').addEventListener('click', async e => {
+        const btn = e.currentTarget
+        btn.disabled = true
+        btn.textContent = 'กำลังบันทึก…'
+        pop.querySelectorAll('.round-set-toggle').forEach(b => { b.disabled = true })
+        try {
+          await saveClassScoreRounding(classData.id, normalizeRounding(columnRoundSettings))
+          roundingLoadError = false
+          _saveToggles()
+          showToast('บันทึกค่าปัดเลขร่วมสำหรับครู นักเรียน และ ปพ.5 แล้ว', 'success')
+          _close()
+        } catch (err) {
+          showToast('บันทึกค่าร่วมไม่สำเร็จ กรุณาตรวจการติดตั้ง SQL: ' + getFriendlyErrorMessage(err), 'error')
+          btn.disabled = false
+          btn.textContent = 'บันทึกใช้ร่วมกัน'
+          pop.querySelectorAll('.round-set-toggle').forEach(b => { b.disabled = false })
+        }
+      })
       pop.querySelector('#round-settings-close').addEventListener('click', _close)
       pop.addEventListener('click', e => { if (e.target === pop) _close() })
       pop.querySelectorAll('.round-set-toggle').forEach(btn => {
@@ -1702,6 +1725,16 @@ export async function renderGradesGrid(teacher, classData) {
       }
 
       // ── Score input + force grade (single listener on table, not wrap) ──
+      tbl.addEventListener('focusin', e => {
+        const inp = e.target.closest('.grade-input')
+        if (!inp) return
+        const raw = _getScore(Number(inp.dataset.sid), Number(inp.dataset.col))
+        inp.value = raw == null ? '' : String(raw)
+      })
+      tbl.addEventListener('focusout', e => {
+        const inp = e.target.closest('.grade-input')
+        if (inp) inp.value = _fmtEntryScore(inp.dataset.col, inp.value)
+      })
       tbl.addEventListener('change', async e => {
         const gradeInp=e.target.closest('.grade-input')
         const forceInp=e.target.closest('.force-input')
@@ -1713,6 +1746,8 @@ export async function renderGradesGrid(teacher, classData) {
             return
           }
           let val=gradeInp.value.trim()
+          const previous = _getScore(sid, colId)
+          if ((val === '' && previous == null) || (val !== '' && previous != null && Number(val) === Number(previous))) return
           const currentHist = scoreMap[sid]?.[colId]?.history ?? []
           if(!scoreMap[sid])scoreMap[sid]={}
           gradeInp.style.outline='2px solid #6366f1';gradeInp.style.outlineOffset='1px'
@@ -1722,7 +1757,7 @@ export async function renderGradesGrid(teacher, classData) {
             if(!result){gradeInp.value=scoreMap[sid][colId]?.final??'';return}
             const{final,history,clamped}=result
             scoreMap[sid][colId]={orig:history[0]?.d??final,retake:null,final,history}
-            gradeInp.value = final!==null ? String(final) : ''
+            gradeInp.value = _fmtEntryScore(colId, final)
             gradeInp.title = ''
             if(clamped) showToast(`คะแนนเกินคะแนนเต็ม ปรับให้เป็น ${final} อัตโนมัติ`,'warning')
             // update hist indicator

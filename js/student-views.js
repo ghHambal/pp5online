@@ -1,3 +1,5 @@
+import { getClassScoreRounding } from './api.js'
+import { isBonus, isFinal, roundKey, displayScore, effectiveScore } from './score-display.js'
 import {
   getMyEnrolledClasses, getMyScores, getMyAttendance,
   getMyExamRequests, submitExamRequest, cancelExamRequest,
@@ -21,7 +23,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.699'
+import { APP_VERSION } from './version.js?v=10.22.700'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -1871,18 +1873,22 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   const ms = cls.master_subjects
   const teacher = ms?.teachers
 
-  const _getVal = c => parseFloat(scoreMap[c.id]?.final_score ?? scoreMap[c.id]?.original_score ?? 0) || 0
-  const specialCols = columns.filter(c => c.assignment_type === 'คะแนนพิเศษ')
-  const midCols  = columns.filter(c => c.assignment_type !== 'final' && c.assignment_type !== 'คะแนนพิเศษ')
-  const finCols  = columns.filter(c => c.assignment_type === 'final')
+  const roundSettings = await getClassScoreRounding(classId).catch(() => { showToast('โหลดค่าปัดเลขร่วมไม่สำเร็จ', 'error'); return null })
+  const _getVal = c => effectiveScore(columns, c, id => scoreMap[id]?.final_score ?? scoreMap[id]?.original_score)
+  const specialCols = columns.filter(isBonus)
+  const derivedCols = columns.filter(c => c.column_type === 'derived')
+  const midCols  = columns.filter(c => !isFinal(c) && !isBonus(c) && !['override', 'derived'].includes(c.column_type))
+  const finCols  = columns.filter(c => isFinal(c) && !isBonus(c) && !['override', 'derived'].includes(c.column_type))
   const midMax   = midCols.reduce((s,c) => s+(c.max_score||0), 0)
   const finMax   = finCols.reduce((s,c) => s+(c.max_score||0), 0)
   const midScore    = midCols.reduce((s,c) => s+_getVal(c), 0)
   const finScore    = finCols.reduce((s,c) => s+_getVal(c), 0)
   const specialScore = specialCols.reduce((s,c) => s+_getVal(c), 0)
-  const total    = midScore + finScore + specialScore  // รวม bonus ใน total ที่แสดง
-  const totalMax = midMax + finMax                     // แต่ % คำนวณจาก mid+final เท่านั้น
-  const pct      = totalMax > 0 ? ((midScore + finScore) / totalMax * 100) : 0
+  const derivedScore = derivedCols.reduce((s,c) => s + _getVal(c), 0)
+  const derivedMax = derivedCols.reduce((s,c) => s + Number(c.max_score || 0), 0)
+  const total    = midScore + finScore + derivedScore
+  const totalMax = midMax + finMax + derivedMax
+  const pct      = totalMax > 0 ? total / totalMax * 100 : 0
 
   const attTotal   = attendance.length
   const attPresent = attendance.filter(a => a.status === 'present').length
@@ -1900,8 +1906,8 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   // Score table row
   const _scoreTableRow = (col) => {
     const sc = scoreMap[col.id]
-    const hasScore = sc && (sc.final_score != null || sc.original_score != null)
-    const val = hasScore ? (parseFloat(sc?.final_score ?? sc?.original_score) || 0) : null
+    const hasScore = col.column_type === 'derived' || sc && (sc.final_score != null || sc.original_score != null)
+    const val = hasScore ? _getVal(col) : null
     const pctCol = (val != null && col.max_score > 0) ? Math.round(val / col.max_score * 100) : null
     const hasRetake = sc?.retake_score != null
 
@@ -1911,7 +1917,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         ${hasRetake ? `<span class="ml-1 text-[10px] text-purple-500">(ปรับ)</span>` : ''}
       </td>
       <td class="py-2.5 px-3 text-center text-xs font-bold ${val != null ? 'text-blue-600' : 'text-gray-300'} whitespace-nowrap">
-        ${val != null ? val.toFixed(1).replace(/\.0$/, '') : '—'}
+        ${val != null ? displayScore(roundSettings, roundKey(col), val, col.column_type === 'derived' ? 2 : 1) : '—'}
       </td>
       <td class="py-2.5 px-3 text-center text-xs text-gray-400 whitespace-nowrap">${col.max_score != null ? '/'+col.max_score : '<span class="text-amber-500 text-[10px]">โบนัส</span>'}</td>
       <td class="py-2.5 px-3 text-center text-xs ${val != null ? 'text-gray-500' : 'text-gray-300'} whitespace-nowrap">
@@ -1942,7 +1948,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
             ${cols.map(_scoreTableRow).join('')}
             <tr class="${summaryBg}">
               <td class="py-2.5 px-3 text-xs font-bold text-gray-700">รวม</td>
-              <td class="py-2.5 px-3 text-center text-xs font-bold text-gray-800">${totalScore.toFixed(1).replace(/\.0$/,'')}</td>
+              <td class="py-2.5 px-3 text-center text-xs font-bold text-gray-800">${displayScore(roundSettings, cols === midCols ? 'mid_subtotal' : cols === finCols ? 'fin_subtotal' : 'bonus_subtotal', totalScore)}</td>
               <td class="py-2.5 px-3 text-center text-xs font-bold text-gray-500">/${maxScore}</td>
               <td class="py-2.5 px-3 text-center text-xs font-bold text-gray-600">${sumPct}%</td>
             </tr>
@@ -1969,9 +1975,9 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         <p class="text-[11px] text-gray-400 mt-0.5">${teacher?.full_name ?? '—'} · ${_roomDisplay(cls.class_name)}</p>
       </div>
       <div class="flex-shrink-0 text-right">
-        <p class="text-2xl font-bold text-gray-800">${totalMax > 0 ? (midScore+finScore).toFixed(1).replace(/\.0$/,'') : '—'}</p>
+        <p class="text-2xl font-bold text-gray-800">${totalMax > 0 ? displayScore(roundSettings, 'total', total) : '—'}</p>
         <p class="text-[10px] text-gray-400">/${totalMax} คะแนน</p>
-        ${specialScore > 0 ? `<p class="text-[10px] text-amber-500 font-medium">+${specialScore.toFixed(1).replace(/\.0$/,'')} โบนัส</p>` : ''}
+        ${specialScore > 0 ? `<p class="text-[10px] text-amber-500 font-medium">คะแนนพิเศษ ${specialScore.toFixed(1).replace(/\.0$/,'')} (แยก ไม่บวกยอดรวม)</p>` : ''}
         ${grade
           ? `<span class="inline-block mt-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${grade.cls}">${grade.label}</span>`
           : ''}
@@ -2199,7 +2205,8 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         : `<div>
             ${_scoreTable(midCols, midScore, midMax, 'bg-blue-50', '📘 กลางภาค')}
             ${_scoreTable(finCols, finScore, finMax, 'bg-purple-50', '📙 ปลายภาค')}
-            ${specialCols.length ? _scoreTable(specialCols, specialCols.reduce((s,c)=>s+_getVal(c),0), 0, 'bg-amber-50', '⭐ คะแนนพิเศษ/โบนัส') : ''}
+            ${_scoreTable(derivedCols, derivedScore, derivedMax, 'bg-indigo-50', '🔢 คะแนนสูตร')}
+            ${specialCols.length ? _scoreTable(specialCols, specialCols.reduce((s,c)=>s+_getVal(c),0), 0, 'bg-amber-50', '⭐ คะแนนพิเศษ (ไม่รวมเกรด)') : ''}
           </div>`}
     </div>
     ${attTotal > 0 ? `

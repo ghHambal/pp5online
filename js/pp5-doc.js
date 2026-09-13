@@ -1,3 +1,5 @@
+import { getClassScoreRounding } from './api.js'
+import { isBonus, roundKey, displayScore, effectiveScore } from './score-display.js'
 import {
   getSystemConfig, getClassStudents, getClassAttendanceAll,
   getScoreColumns, getStudentScores, getCourseDocPage2,
@@ -432,13 +434,25 @@ async function _loadDocData(classId) {
   const filteredScoreColumns = (srcClassId
     ? scoreColumns.filter(c => !AUTO_COL_NAMES.has(c.assignment_name))
     : scoreColumns
-  ).filter(c => c.column_type !== 'override')
+  ).filter(c => c.column_type !== 'override' && !isBonus(c))
 
   // score map: { studentId: { columnId: score } }
   const scoreMap = {}
   for (const r of scores) {
     if (!scoreMap[r.student_id]) scoreMap[r.student_id] = {}
     scoreMap[r.student_id][r.score_column_id] = r.score
+  }
+
+  let roundingWarning = ''
+  const roundSettings = await getClassScoreRounding(classId).catch(() => {
+    roundingWarning = 'โหลดค่าปัดเลขร่วมไม่สำเร็จ คะแนนที่แสดงใช้รูปแบบเริ่มต้น กรุณาติดตั้ง SQL หรือตรวจการเชื่อมต่อก่อนใช้เอกสารจริง'
+    return null
+  })
+  for (const row of Object.values(scoreMap)) {
+    const raw = { ...row }
+    for (const col of filteredScoreColumns) {
+      if (col.column_type === 'derived' || (raw[col.id] != null && col.bonus_formula)) row[col.id] = effectiveScore(scoreColumns, col, id => raw[id])
+    }
   }
 
   // homeroom advisors
@@ -490,6 +504,7 @@ async function _loadDocData(classId) {
   // (เดิมโค้ดหาคอลัมน์ชื่อมี "อ่าน" ในคะแนนรายวิชาซึ่งไม่เคยมีจริง เลยไม่เคยขึ้นในเอกสารเลย)
   let readingEvalMap = {}
   const docWarnings = []
+  if (roundingWarning) docWarnings.push(roundingWarning)
   try {
     const rCols = await getReadingScoreColumns(academicYear, semester)
     if (rCols.length) {
@@ -514,7 +529,7 @@ async function _loadDocData(classId) {
     throw new Error(`โหลดผลประเมินการอ่านไม่สำเร็จ: ${err?.message ?? 'ไม่ทราบสาเหตุ'}`)
   }
 
-  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet, moralScores, moralMax, moralColName, readingEvalMap, docWarnings }
+  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, roundSettings, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet, moralScores, moralMax, moralColName, readingEvalMap, docWarnings }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
@@ -1403,7 +1418,7 @@ function _buildScorePage(d, chunk, startNo) {
   const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้าหมวดวิชา'
 
   // แบ่ง between / final / special
-  // คะแนนพิเศษ: ไม่แสดงเป็นคอลัมน์ในตาราง แต่ยังนับรวมใน "รวมคะแนนระหว่างภาค"
+  // คะแนนพิเศษแสดงแยกในหน้าคะแนนนักเรียน ไม่บวกเข้าเอกสารหรือเกรด
   const _isFinal   = c => c.assignment_type === 'ปลายภาค' || c.assignment_type === 'final'
   const _isSpecial = c => c.assignment_type === 'คะแนนพิเศษ'
   const betweenCols = scoreColumns.filter(c => !_isFinal(c) && !_isSpecial(c))
@@ -1451,15 +1466,14 @@ function _buildScorePage(d, chunk, startNo) {
       </tr>`
     }
     const sc    = scoreMap[st.id] ?? {}
-    const bScores = allBetween.map(c => c.id ? (sc[c.id] ?? '') : '')
-    const fScores = allFinal.map(c => c.id ? (sc[c.id] ?? '') : '')
-    const bSum  = betweenCols.reduce((s,c)=>s+(sc[c.id]??0),0)
-              + specialCols.reduce((s,c)=>s+(sc[c.id]??0),0)  // รวมคะแนนพิเศษเข้าไปด้วย
+    const bScores = allBetween.map(c => c.id ? displayScore(d.roundSettings, roundKey(c), sc[c.id], c.column_type === 'derived' ? 2 : 1) : '')
+    const fScores = allFinal.map(c => c.id ? displayScore(d.roundSettings, roundKey(c), sc[c.id], c.column_type === 'derived' ? 2 : 1) : '')
+    const bSum  = betweenCols.reduce((s,c)=>s+Number(sc[c.id]??0),0)
     const fSum  = finalCols.reduce((s,c)=>s+(sc[c.id]??0),0)
     const total = bSum + fSum
     const bPct  = betweenMax > 0 ? bSum / betweenMax * 100 : 0
     const fPct  = finalMax   > 0 ? fSum / finalMax   * 100 : 0
-    const grade = _calcGrade(total)
+    const grade = _calcGrade(betweenMax + finalMax > 0 ? total / (betweenMax + finalMax) * 100 : 0)
     const charLabel = _gradeToKhunaLabel(grade)
 
     return `<tr>
@@ -1467,10 +1481,10 @@ function _buildScorePage(d, chunk, startNo) {
       <td>${_esc(st.student_code??'')}</td>
       <td class="gs-name" style="border-right:2.0px solid #000;">${_esc(st.full_name??'')}</td>
       ${bScores.map(v=>`<td>${v}</td>`).join('')}
-      <td style="font-weight:700;">${bSum||''}</td>
+      <td style="font-weight:700;">${displayScore(d.roundSettings, 'mid_subtotal', bSum)}</td>
       ${fScores.map(v=>`<td>${v}</td>`).join('')}
-      <td style="font-weight:700;">${fSum||''}</td>
-      <td style="font-weight:700;border-right:2.0px solid #000;">${total||''}</td>
+      <td style="font-weight:700;">${displayScore(d.roundSettings, 'fin_subtotal', fSum)}</td>
+      <td style="font-weight:700;border-right:2.0px solid #000;">${displayScore(d.roundSettings, 'total', total)}</td>
       <td>${_esc(readingEvalMap?.[st.id] ?? '')}</td>
       <td style="border-right:2.0px solid #000;">${_esc(charLabel)}</td>
       <td style="font-weight:700;">${grade}</td>
@@ -1973,9 +1987,8 @@ function _buildScorePageVOC(d, chunk, startNo) {
       </tr>`
     }
     const sc = scoreMap[st.id] ?? {}
-    const objScores = objCols.map(c => sc[c.id] ?? '')
+    const objScores = objCols.map(c => displayScore(d.roundSettings, roundKey(c), sc[c.id], c.column_type === 'derived' ? 2 : 1))
     const objSum    = objCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
-              + specialCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
     const moralScore = moralScores?.[st.id] ?? ''
     const total = objSum + (Number(moralScore) || 0)
     const grade = (st.special_result && VOC_SPECIAL_KEYS.includes(st.special_result))
@@ -1986,9 +1999,9 @@ function _buildScorePageVOC(d, chunk, startNo) {
       <td class="voc-c-id voc-center">${_esc(st.student_code??'')}</td>
       <td class="voc-c-name">${_esc(st.full_name??'')}</td>
       ${objScores.map(v=>`<td class="voc-center">${v}</td>`).join('')}
-      <td class="voc-center voc-bold">${objSum||''}</td>
+      <td class="voc-center voc-bold">${displayScore(d.roundSettings, 'mid_subtotal', objSum)}</td>
       <td class="voc-center">${moralScore}</td>
-      <td class="voc-center voc-bold">${total||''}</td>
+      <td class="voc-center voc-bold">${displayScore(d.roundSettings, 'total', total)}</td>
       <td class="voc-center voc-bold">${grade}</td>
       <td></td>
     </tr>`

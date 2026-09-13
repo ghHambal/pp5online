@@ -79,11 +79,13 @@ export async function getMyEnrolledClasses(studentId) {
 
 // ─── Scores ───────────────────────────────────────────────────────────────────
 export async function getMyScores(studentId, classId) {
-  const { data: cols } = await supabase
+  const { data: cols, error: colsError } = await supabase
     .from('class_score_columns')
-    .select('id, assignment_name, assignment_type, max_score, sheet_column')
+    .select('id, assignment_name, assignment_type, max_score, sheet_column, column_type, formula, formula_refs, bonus_formula, sort_order')
     .eq('class_id', classId)
+    .order('sort_order', { ascending: true })
     .order('id')
+  if (colsError) throw colsError
   if (!cols?.length) return { columns: [], scores: [] }
 
   const { data: scores, error } = await supabase

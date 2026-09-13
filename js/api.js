@@ -1,5 +1,16 @@
 import { supabase } from './supabase.js'
 
+export async function getClassScoreRounding(classId) {
+  const { data, error } = await supabase.from('class_score_display_settings').select('rounding').eq('class_id', classId).maybeSingle()
+  if (error) throw error
+  return data?.rounding ?? null
+}
+
+export async function saveClassScoreRounding(classId, rounding) {
+  const { error } = await supabase.from('class_score_display_settings').upsert({ class_id: classId, rounding }, { onConflict: 'class_id' })
+  if (error) throw error
+}
+
 const STUDENT_QUERY_RANGE = [0, 9999]
 const STUDENT_QUERY_PAGE_SIZE = 1000
 
