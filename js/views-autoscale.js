@@ -4,6 +4,8 @@ import { emptySchedule, validateSchedule, scheduledTier } from '../supabase/func
 import { estimateComputeCost } from './autoscale-cost.js';
 
 const days = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+const dayButtonClass = enabled => `border rounded-xl px-4 py-2 min-w-[180px] text-left shadow-sm transition ${enabled ? 'bg-green-700 border-green-700 text-white hover:bg-green-800' : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200'}`;
+const dayButtonContent = enabled => `<span class="block font-semibold">${enabled ? '🟢 เปิดใช้งาน' : '⚪ ปิดใช้งาน'}</span><span class="block text-xs mt-1">${enabled ? 'กดเพื่อปิดวันนี้' : 'กดเพื่อเปิดวันนี้'}</span>`;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
 
 export async function renderAutoscaleSettings() {
@@ -38,11 +40,11 @@ export async function renderAutoscaleSettings() {
         ${state.mode !== 'schedule' ? '<p class="mt-3 text-red-700">ยังไม่พบ backend ตารางเวลารุ่นใหม่ ต้องรัน patch_autoscale_schedule.sql และ deploy autoscale-tick ก่อนเปิดใช้งาน (push หน้าเว็บอย่างเดียวไม่เปลี่ยนระบบเดิม)</p>' : ''}
         <p class="text-sm text-gray-600 mt-2">กำลังเครื่องใช้ร่วมกันทั้งโรงเรียน ในช่วงที่กำหนดใช้ Medium นอกช่วงใช้ Micro ไม่ปรับตาม health check อีก</p>
         <p class="text-sm text-gray-600 mt-2">ปิดใช้งาน = หยุดสั่งปรับเครื่องและคงระดับเดิม ไม่ใช่ปิดฐานข้อมูล การปรับอาจใช้เวลาหลายนาทีและทำให้การบันทึกสะดุด ควรเผื่อเวลาก่อนเริ่ม/หลังเลิกงาน</p>
-        <p class="mt-3 font-semibold">สถานะตารางที่แสดง: ${config.enabled ? '🟢 เปิดใช้งาน' : '⚪ ปิดใช้งาน'} · เป้าหมายตามเวลาตอนนี้: ${targetLabel}</p>
+        <div class="mt-4 border rounded-xl p-4 ${config.enabled ? 'bg-green-50 border-green-300 text-green-900' : 'bg-gray-100 border-gray-300 text-gray-800'}"><p class="text-lg font-bold">สถานะตารางที่แสดง: ${config.enabled ? '🟢 เปิดใช้งาน' : '⚪ ปิดใช้งาน'}</p><p class="text-sm mt-1">เป้าหมายตามเวลาตอนนี้: ${targetLabel}</p></div>
         <p class="text-xs text-gray-500 mt-2">ระดับที่ระบบตรวจพบล่าสุด: ${esc(state.currentTier || 'ยังไม่มีข้อมูลใหม่')} · ตรวจล่าสุด: ${state.updatedAt ? esc(new Date(state.updatedAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })) : '—'}</p>
         <p class="text-xs text-gray-500 mt-1">${esc(state.lastAction || 'ยังไม่มีการปรับ')} ${state.lastError ? '· ' + esc(state.lastError) : ''}</p>
         <p class="text-xs text-gray-500 mt-1">สถานะงาน: ${esc(state.status || '—')} · คำสั่งที่รอยืนยัน: ${esc(state.pendingTier || 'ไม่มี')} · เว้นคำสั่งถึง: ${state.nextResizeAllowedAt ? esc(new Date(state.nextResizeAllowedAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })) : '—'}</p>
-        <div class="flex gap-3 mt-4"><button id="as-enable" class="bg-green-700 text-white rounded-xl px-4 py-2">เปิดใช้งาน</button><button id="as-disable" class="bg-gray-700 text-white rounded-xl px-4 py-2">ปิดใช้งาน</button><button id="as-refresh" class="border rounded-xl px-4 py-2">รีเฟรชสถานะ</button></div>
+        <div class="flex flex-wrap gap-3 mt-4"><button id="as-enable" class="border rounded-xl px-4 py-2 ${config.enabled ? 'bg-green-700 border-green-700 text-white shadow-sm' : 'bg-white border-green-700 text-green-800'}">เปิดใช้งาน${config.enabled ? ' ✓' : ''}</button><button id="as-disable" class="border rounded-xl px-4 py-2 ${!config.enabled ? 'bg-gray-700 border-gray-700 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-700'}">ปิดใช้งาน${!config.enabled ? ' ✓' : ''}</button><button id="as-refresh" class="border rounded-xl px-4 py-2">รีเฟรชสถานะ</button></div>
       </div>
       <div class="bg-white border rounded-2xl p-5 shadow-sm">
         <h2 class="font-bold">💰 ประมาณค่า Compute ตามตารางเมื่อเปิดใช้งาน</h2>
@@ -54,7 +56,7 @@ export async function renderAutoscaleSettings() {
       <form id="as-form" class="space-y-4">
         <div id="as-periods" class="space-y-4">${config.periods.map((period, index) => `<section class="bg-white border rounded-2xl p-5 shadow-sm" data-period="${index}">
           <div class="flex flex-wrap gap-3 items-end"><label>วันที่เริ่ม<input required type="date" name="startDate" value="${esc(period.startDate)}" class="block border rounded-lg p-2"></label><label>วันที่สิ้นสุด<input required type="date" name="endDate" value="${esc(period.endDate)}" class="block border rounded-lg p-2"></label><button type="button" data-remove="${index}" class="text-red-600 border rounded-lg p-2">ลบช่วงนี้</button></div>
-          <div class="mt-4 space-y-2">${period.days.map((day, d) => `<div class="flex flex-wrap gap-3 items-center" data-day="${d}" data-enabled="${day.enabled}"><span class="w-20">${days[d]}</span><button type="button" data-day-action class="border rounded-lg px-3 py-2">${day.enabled ? 'ใช้งาน · ปิดวัน' : 'ไม่ใช้งาน · เปิดวัน'}</button><input aria-label="เวลาเริ่ม${days[d]}" type="time" required name="start" value="${esc(day.start)}" class="border rounded-lg p-2"><span>ถึง</span><input aria-label="เวลาสิ้นสุด${days[d]}" type="time" required name="end" value="${esc(day.end)}" class="border rounded-lg p-2"></div>`).join('')}</div>
+          <div class="mt-4 space-y-2">${period.days.map((day, d) => `<div class="flex flex-wrap gap-3 items-center" data-day="${d}" data-enabled="${day.enabled}"><span class="w-20 font-medium">${days[d]}</span><button type="button" data-day-action class="${dayButtonClass(day.enabled)}">${dayButtonContent(day.enabled)}</button><input aria-label="เวลาเริ่ม${days[d]}" type="time" required name="start" value="${esc(day.start)}" class="border rounded-lg p-2"><span>ถึง</span><input aria-label="เวลาสิ้นสุด${days[d]}" type="time" required name="end" value="${esc(day.end)}" class="border rounded-lg p-2"></div>`).join('')}</div>
         </section>`).join('')}</div>
         <p class="text-sm text-gray-500">เพิ่มได้หลายช่วงวันที่ ช่วงซ้อนกันจะใช้ Medium หากตรงกับช่วงใดช่วงหนึ่ง เวลาต้องเริ่มและสิ้นสุดภายในวันเดียวกัน</p>
         <div class="flex gap-3"><button type="button" id="as-add" class="border bg-white rounded-xl px-4 py-2">＋ เพิ่มช่วงวันที่</button><button type="submit" class="bg-indigo-700 text-white rounded-xl px-4 py-2">บันทึกตารางเวลา</button></div>
@@ -102,7 +104,7 @@ export async function renderAutoscaleSettings() {
       draw();
     };
     content.querySelectorAll('[data-remove]').forEach(button => button.onclick = () => { config = collect(); config.periods.splice(Number(button.dataset.remove), 1); draw(); });
-    content.querySelectorAll('[data-day-action]').forEach(button => button.onclick = () => { const row = button.closest('[data-day]'); row.dataset.enabled = row.dataset.enabled === 'true' ? 'false' : 'true'; button.textContent = row.dataset.enabled === 'true' ? 'ใช้งาน · ปิดวัน' : 'ไม่ใช้งาน · เปิดวัน'; updateCosts(); });
+    content.querySelectorAll('[data-day-action]').forEach(button => button.onclick = () => { const row = button.closest('[data-day]'); row.dataset.enabled = row.dataset.enabled === 'true' ? 'false' : 'true'; const enabled = row.dataset.enabled === 'true'; button.className = dayButtonClass(enabled); button.innerHTML = dayButtonContent(enabled); updateCosts(); });
   };
   draw();
 }

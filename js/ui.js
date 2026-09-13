@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.698'
+import { APP_VERSION } from './version.js?v=10.22.699'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.699': [
+    '🟢 ตั้งค่ากำลังเครื่อง: แสดงสถานะเปิด/ปิดชัดเจนด้วยปุ่มรายวันสีเขียว/เทา พร้อมคำอธิบายการกด และกรอบสถานะรวมพร้อมเครื่องหมายยืนยันบนปุ่ม',
+  ],
   '10.22.698': [
     '🗓️ แอดมินตั้งช่วงวันที่และเวลาแยกแต่ละวันเพื่อใช้ Medium/Micro พร้อมปุ่มเปิด/ปิดอัตโนมัติ แท็กประมาณค่า Compute รายวัน/สัปดาห์/เดือน และ backend ป้องกันคำสั่งปรับเครื่องซ้ำ (ต้องติดตั้ง SQL และ Edge Function รุ่นใหม่)',
   ],
