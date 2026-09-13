@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.703'
+import { APP_VERSION } from './version.js?v=10.22.704'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.704': [
+    '💰 หน้ารับมอบเสื้อรายห้อง: เพิ่มจำนวนผู้ชำระแล้ว ยอดรับชำระและยอดค้าง พร้อมรายละเอียดรายคนและวันที่ชำระจากข้อมูลเดิมของระบบ',
+  ],
   '10.22.703': [
     '📦 รับมอบเสื้อกีฬาสีรายห้อง: บันทึกผู้รับและยอดรับสะสม แยกยังไม่รับ/รับบางส่วน/รับครบ พร้อมตัวอย่างหมายเหตุ เรื่องค้าง และประวัติการแก้ไข',
   ],

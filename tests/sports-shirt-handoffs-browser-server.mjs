@@ -1,9 +1,9 @@
 // Local fixture; the Supabase module is replaced, so no production data is changed.
 import {createServer} from 'vite'
 const mock = `
-const target=[{id:'a',name:'นักเรียน ก',color:'แดง',size:'M',confirmed:true},{id:'b',name:'นักเรียน ข',color:'ฟ้า',size:'L',confirmed:true},{id:'c',name:'นักเรียน ค',confirmed:false}];
+const target=[{id:'a',name:'นักเรียน ก',gender:'M',color:'แดง',size:'M',confirmed:true},{id:'b',name:'นักเรียน ข',gender:'W',color:'ฟ้า',size:'L',confirmed:true},{id:'c',name:'นักเรียน ค',gender:'M',confirmed:false}];
 const row={room:'ม.1/1',target,target_hash:'h1',revision:0,receipts:[],issues:[],history:[]};
-const snap={handoff_event_id:'e1',handoff_rooms:[row],homeroom_teachers:[{main_room:'ม.1/1',teacher_name:'ครูที่ปรึกษาทดสอบ'}],students:target.map(t=>({id:t.id,main_room:row.room,full_name:t.name,gender:'M'})),shirt_requests:[],team_colors:[]};
+const snap={shirt_payment_amount_m:200,shirt_payment_amount_w:250,shirt_payments:[{student_id:'a',amount:180,paid_at:'2026-09-13T10:00:00Z'}],handoff_event_id:'e1',handoff_rooms:[row],homeroom_teachers:[{main_room:'ม.1/1',teacher_name:'ครูที่ปรึกษาทดสอบ'}],students:target.map(t=>({id:t.id,main_room:row.room,full_name:t.name,gender:'M'})),shirt_requests:[],team_colors:[]};
 const saved=new Set();let failed=false;
 export const supabase={rpc:async(fn,p)=>{
  if(p.p_password!=='shirt-test-only')return {error:{message:'รหัสผ่านไม่ถูกต้อง'}};

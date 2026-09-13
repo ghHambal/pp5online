@@ -18,6 +18,44 @@ export function handoffState(row) {
   status:received === 0 ? 'pending' : received < target ? 'partial' : 'complete',
   issues:(row.issues || []).filter(i => !i.resolved_at).length,changed:received>target}
 }
+// Payment records are the source of paid status, matching the existing payment tab.
+// A later price change must not turn a recorded payment into an invented debt.
+export function roomPaymentState(row, snapshot) {
+ const payments = new Map((snapshot.shirt_payments || []).map(p => [p.student_id, p]))
+ const amount = value => { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : 0 }
+ const students = (row.target || []).map(student => {
+  const payment = payments.get(student.id)
+  const price = student.gender === 'M' ? amount(snapshot.shirt_payment_amount_m)
+   : student.gender === 'W' ? amount(snapshot.shirt_payment_amount_w) : 0
+  return {...student, payment, status: payment ? 'paid' : price > 0 ? 'unpaid' : 'waiting',
+   paidAmount: payment ? amount(payment.amount) : 0, dueAmount: !payment && price > 0 ? price : 0}
+ })
+ return {students, paid: students.filter(s => s.status === 'paid').length,
+  unpaid: students.filter(s => s.status === 'unpaid').length,
+  waiting: students.filter(s => s.status === 'waiting').length,
+  paidAmount: students.reduce((n,s) => n + s.paidAmount, 0),
+  dueAmount: students.reduce((n,s) => n + s.dueAmount, 0)}
+}
+const money = value => Number(value).toLocaleString('th-TH', {maximumFractionDigits:2})
+const paymentSummary = payment => `<div class="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2" aria-label="สรุปค่าเสื้อทั้งห้อง">
+ <span class="text-emerald-700">💰 ชำระแล้ว ${payment.paid} คน · ${money(payment.paidAmount)} บาท</span>
+ <span class="text-red-700">ยังไม่ชำระ ${payment.unpaid} คน · ค้าง ${money(payment.dueAmount)} บาท</span>
+ ${payment.waiting ? `<span class="text-amber-700">รอระบุราคา/เพศ ${payment.waiting} คน</span>` : ''}
+ </div>`
+const paymentDetails = payment => `<section class="border border-slate-200 rounded-xl p-4 space-y-2">
+ <h3 class="font-bold">💰 ค่าเสื้อกีฬาสีของห้องนี้</h3>${paymentSummary(payment)}
+ <p class="text-xs text-slate-500">รวมทุกคนในห้อง ทั้งผู้ที่ยืนยันและยังไม่ยืนยันไซซ์</p>
+ <details><summary class="cursor-pointer text-sm font-bold">ดูสถานะชำระเงินรายคน (${payment.students.length} คน)</summary>
+ <div class="overflow-x-auto mt-2"><table class="w-full text-xs text-left"><thead><tr class="border-b text-slate-500">
+ <th class="p-2">นักเรียน</th><th class="p-2">สี / ไซซ์</th><th class="p-2">สถานะ</th><th class="p-2 text-right">ชำระแล้ว (บาท)</th><th class="p-2 text-right">ค้าง (บาท)</th><th class="p-2">วันที่ชำระ</th>
+ </tr></thead><tbody>${payment.students.map(s => `<tr class="border-b border-slate-100">
+ <td class="p-2"><span class="block">${esc(s.name)}</span><span class="text-slate-500">${esc(s.student_code)}</span></td>
+ <td class="p-2">${esc(s.color || '—')} / ${esc(s.size || '—')}</td>
+ <td class="p-2 whitespace-nowrap ${s.status==='paid'?'text-emerald-700':s.status==='unpaid'?'text-red-700':'text-amber-700'}">${{paid:'ชำระแล้ว',unpaid:'ยังไม่ชำระ',waiting:'รอระบุราคา/เพศ'}[s.status]}</td>
+ <td class="p-2 text-right">${s.payment ? money(s.paidAmount) : '—'}</td><td class="p-2 text-right">${s.status==='waiting'?'—':money(s.dueAmount)}</td>
+ <td class="p-2 whitespace-nowrap">${s.payment?.paid_at ? esc(time(s.payment.paid_at)) : '—'}</td>
+ </tr>`).join('') || '<tr><td colspan="6" class="p-2 text-slate-500">ไม่มีนักเรียนในห้องปัจจุบัน</td></tr>'}</tbody></table></div></details>
+ </section>`
 const labels = {pending:'ยังไม่ได้รับ',partial:'รับบางส่วน',complete:'รับครบตามยอดยืนยัน'}
 const time = value => new Date(value).toLocaleString('th-TH',{timeZone:'Asia/Bangkok',dateStyle:'short',timeStyle:'short'})
 export function createShirtHandoffs({root,getSnapshot,save,refresh,onChange}) {
@@ -35,7 +73,7 @@ export function createShirtHandoffs({root,getSnapshot,save,refresh,onChange}) {
   panel.innerHTML=`<div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3"><h2 class="font-bold text-lg">📦 รับมอบเสื้อรายห้อง</h2><p class="text-sm text-slate-500">ยอดรับสะสมของทั้งห้องตามไซซ์ที่ยืนยันแล้ว รวมทุกสีและเพศ • หมายเหตุเปลี่ยนไซซ์จะไม่แก้ข้อมูลไซซ์เดิม</p><input aria-label="ค้นหาห้องรับเสื้อ" class="${input}" placeholder="ค้นหาห้อง / ครูที่ปรึกษา / ผู้รับ / หมายเหตุ" value="${esc(query)}"><div class="flex flex-wrap gap-2">${Object.entries({all:'ทั้งหมด',...labels,issues:'มีเรื่องค้าง'}).map(([key,label])=>`<button type="button" class="${button} ${filter===key?'ring-2 ring-pink-500':''}" data-handoff-filter="${key}">${label} (${rows().filter(r=>key==='all'||(key==='issues'?handoffState(r).issues>0:handoffState(r).status===key)).length})</button>`).join('')}</div><div id="handoff-room-list" class="space-y-3"></div></div>`
   const renderList=()=>{
    const list=rows().filter(r=>(filter==='all'||(filter==='issues'?handoffState(r).issues>0:handoffState(r).status===filter)) && JSON.stringify([r.room,r.receipts,r.issues,(getSnapshot().homeroom_teachers||[]).filter(t=>t.main_room===r.room)]).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>a.room.localeCompare(b.room,'th',{numeric:true}))
-   panel.querySelector('#handoff-room-list').innerHTML=list.map(r=>`<div class="border border-slate-200 rounded-xl p-3 flex flex-wrap justify-between gap-3 items-center"><div><b>ห้อง ${esc(r.room)}</b><p class="text-xs text-slate-500">${esc((getSnapshot().homeroom_teachers||[]).filter(t=>t.main_room===r.room).map(t=>t.teacher_name).join(' / '))}</p>${handoffState(r).unconfirmed?`<p class="text-xs text-amber-700">ยังไม่ยืนยันไซซ์ ${handoffState(r).unconfirmed} คน</p>`:''}</div>${roomButton(r.room)}</div>`).join('') || '<p class="p-4 text-slate-500">ไม่พบห้องตามเงื่อนไข</p>'
+   panel.querySelector('#handoff-room-list').innerHTML=list.map(r=>`<div class="border border-slate-200 rounded-xl p-3 flex flex-wrap justify-between gap-3 items-center"><div><b>ห้อง ${esc(r.room)}</b><p class="text-xs text-slate-500">${esc((getSnapshot().homeroom_teachers||[]).filter(t=>t.main_room===r.room).map(t=>t.teacher_name).join(' / '))}</p>${handoffState(r).unconfirmed?`<p class="text-xs text-amber-700">ยังไม่ยืนยันไซซ์ ${handoffState(r).unconfirmed} คน</p>`:''}${paymentSummary(roomPaymentState(r,getSnapshot()))}</div>${roomButton(r.room)}</div>`).join('') || '<p class="p-4 text-slate-500">ไม่พบห้องตามเงื่อนไข</p>'
   }
   panel.querySelector('input').oninput=e=>{query=e.target.value;renderList()}
   panel.querySelectorAll('[data-handoff-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.handoffFilter;render()})
@@ -52,6 +90,7 @@ export function createShirtHandoffs({root,getSnapshot,save,refresh,onChange}) {
   const totals=new Map()
   row.target.filter(t=>t.confirmed).forEach(t=>{const key=`${t.color||'ไม่ระบุสี'} / ${t.size}`;totals.set(key,(totals.get(key)||0)+1)})
   dialog.innerHTML=`<div class="p-5 space-y-4"><div class="flex justify-between gap-2"><h2 class="text-xl font-bold">รับมอบเสื้อ · ห้อง ${esc(room)}</h2><button type="button" data-close class="${button}">ปิด</button></div><div>${badges(row)}</div><p class="text-sm">นักเรียน ${row.target.length} คน · ยืนยันไซซ์ ${s.target} คน · ยังไม่ยืนยัน ${s.unconfirmed} คน · เหลือรับ ${s.remaining} ตัว</p><details><summary class="cursor-pointer text-sm font-bold">ดูยอดจัดเสื้อทั้งห้องแยกสี / ไซซ์</summary><div class="flex flex-wrap gap-2 mt-2">${[...totals].map(([key,n])=>`<span class="bg-slate-100 p-2 rounded text-xs">${esc(key)}: ${n}</span>`).join('')}</div></details>
+   ${paymentDetails(roomPaymentState(row,snap))}
    <form id="handoff-form" class="space-y-3 border rounded-xl p-4">
     <h3 class="font-bold">บันทึกการรับครั้งนี้</h3><label class="block text-sm">ชื่อผู้บันทึก<input name="recorder_name" class="${input}" maxlength="200" minlength="2" required value="${esc(snap.handoff_recorder||recorder)}" ${snap.handoff_recorder?'readonly':''}></label>
     <label class="block text-sm">ผู้มารับ<select name="receiver_kind" class="${input}">${Object.entries(kinds).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label>
