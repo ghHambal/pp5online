@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="https://lh3.googleusercontent.com/d/12LFb-wrdhwJH9qHHnWP6KAorwq306rjf" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AZIZGAMES กีฬาสีออนไลน์</title>
+    <script>
+      (() => {
+        const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/';
+        const version = '10.22.638-athlete-registration-progress';
+        const stylesheet = document.createElement('link');
+        stylesheet.rel = 'stylesheet';
+        stylesheet.crossOrigin = 'anonymous';
+        stylesheet.href = `${base}azizgames/assets/index-DFF77I5Z.css?v=${version}`;
+        document.head.appendChild(stylesheet);
+
+        ['azizgames/assets/index-Dz4haeOx.js', 'azizgames-public-controls.js'].forEach((src) => {
+          const script = document.createElement('script');
+          script.type = 'module';
+          script.crossOrigin = 'anonymous';
+          script.src = `${base}${src}?v=${version}`;
+          document.head.appendChild(script);
+        });
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
