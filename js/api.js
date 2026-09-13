@@ -2455,13 +2455,15 @@ export async function deleteLifeSkillColumn(id) {
 }
 
 // ─── Life Skill Scores (teacher) ─────────────────────────────────────────────
-export async function getLifeSkillScores(columnIds) {
+export async function getLifeSkillScores(columnIds, studentIds = []) {
   if (!columnIds.length) return []
-  const { data, error } = await supabase.from('life_skill_scores')
-    .select('id, student_id, column_id, score')
-    .in('column_id', columnIds)
-  if (error) throw error
-  return data ?? []
+  return _fetchAllRows(() => {
+    let q = supabase.from('life_skill_scores')
+      .select('id, student_id, column_id, score')
+      .in('column_id', columnIds)
+    if (studentIds.length) q = q.in('student_id', studentIds)
+    return q.order('id')
+  })
 }
 
 export async function upsertLifeSkillScore(studentId, columnId, score, teacherId) {
@@ -2568,11 +2570,12 @@ export async function getAllLifeSkillScores(academicYear, semester) {
     .eq('academic_year', academicYear).eq('semester', semester)
     .order('sort_order')
   if (!cols?.length) return { columns: [], scores: [] }
-  const { data: raw } = await supabase.from('life_skill_scores')
-    .select('student_id, column_id, score')
+  const raw = await _fetchAllRows(() => supabase.from('life_skill_scores')
+    .select('id, student_id, column_id, score')
     .in('column_id', cols.map(c => c.id))
-  const stuMap = await _fetchStudentsById([...new Set((raw ?? []).map(r => r.student_id))])
-  const scores = (raw ?? []).map(r => ({ ...r, students: stuMap[r.student_id] ?? null }))
+    .order('id'))
+  const stuMap = await _fetchStudentsById([...new Set(raw.map(r => r.student_id))])
+  const scores = raw.map(r => ({ ...r, students: stuMap[r.student_id] ?? null }))
   return { columns: cols ?? [], scores }
 }
 
@@ -3244,12 +3247,13 @@ export async function getLifeSkillScoresForClass(studentIds, academicYear, semes
     .eq('semester', semester)
   const colIds = (cols ?? []).map(c => c.id)
   if (!colIds.length) return { columns: cols ?? [], scores: [] }
-  const { data: scores } = await supabase
+  const scores = await _fetchAllRows(() => supabase
     .from('life_skill_scores')
-    .select('student_id, column_id, score')
+    .select('id, student_id, column_id, score')
     .in('student_id', studentIds)
     .in('column_id', colIds)
-  return { columns: cols ?? [], scores: scores ?? [] }
+    .order('id'))
+  return { columns: cols ?? [], scores }
 }
 
 // ─── Supervisor / Role System ─────────────────────────────────────────────────

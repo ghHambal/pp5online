@@ -2608,7 +2608,9 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
     }
 
     const colIds  = columns.map(c => c.id)
-    const scores  = await getLifeSkillScores(colIds).catch(()=>[])
+    // จำกัดตามนักเรียนในห้อง และ helper แบ่งหน้าให้เอง ป้องกันคะแนนหายจากเพดาน
+    // PostgREST 1,000 แถวเมื่อจำนวนคะแนนทักษะชีวิตทั้งโรงเรียนมากขึ้น
+    const scores  = await getLifeSkillScores(colIds, students.map(s => s.id)).catch(()=>[])
     const scoreMap = {}  // scoreMap[studentId][columnId] = score
     scores.forEach(s => {
       if (!scoreMap[s.student_id]) scoreMap[s.student_id] = {}
@@ -2648,7 +2650,7 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
               <th class="${stickyM} ${thBase} bg-gray-50 text-left px-3" style="left:100px;min-width:180px">ชื่อ-นามสกุล</th>
               ${columns.map(c=>`
               <th class="${thBase} bg-emerald-50 text-emerald-800" style="min-width:80px">
-                <div class="font-semibold leading-tight">${c.name}</div>
+                <div class="font-semibold leading-tight">${c.name === 'เดินสวนสนาม' ? '🔒 ' : ''}${c.name}</div>
                 <div class="text-[10px] font-normal text-emerald-600 mt-0.5">/${c.max_score}</div>
               </th>`).join('')}
               <th id="ls-total-th" class="${thBase} bg-indigo-50 text-indigo-700" style="min-width:70px">
@@ -2676,13 +2678,20 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
                 </td>
                 ${columns.map(c => {
                   const val = sScores[c.id] ?? ''
+                  if (c.name === 'เดินสวนสนาม') {
+                    return `<td class="border border-gray-100 px-2 py-2 text-center bg-slate-50 text-slate-600 font-semibold"
+                      title="คะแนนส่วนกลาง ครูที่ปรึกษาไม่สามารถแก้ไขได้">
+                      ${val === '' ? '—' : val}
+                    </td>`
+                  }
                   return `<td class="border border-gray-100 p-0 ls-score-cell"
                     data-sid="${s.id}" data-cid="${c.id}" data-max="${c.max_score}">
                     <input type="number" min="0" max="${c.max_score}" step="0.5"
                       class="ls-input w-full h-full px-2 py-2 text-center text-xs bg-transparent outline-none
                              focus:bg-indigo-50 focus:ring-2 focus:ring-inset focus:ring-indigo-300 transition"
                       value="${val}" placeholder="—"
-                      data-sid="${s.id}" data-cid="${c.id}" data-max="${c.max_score}" data-row="${i}" data-col="${columns.findIndex(x=>x.id===c.id)}" />
+                      data-initial-value="${val}"
+                      data-sid="${s.id}" data-cid="${c.id}" data-max="${c.max_score}" data-row="${i}" data-col="${columns.filter(x=>x.name!=='เดินสวนสนาม').findIndex(x=>x.id===c.id)}" />
                   </td>`
                 }).join('')}
                 <td class="border border-gray-100 text-center font-semibold text-indigo-700 ls-total" data-sid="${s.id}">
@@ -2714,7 +2723,7 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
 
     // ── Spreadsheet keyboard navigation + auto-save ──────────────────────────
     const inputs   = [...document.querySelectorAll('.ls-input')]
-    const numCols  = columns.length
+    const numCols  = columns.filter(c => c.name !== 'เดินสวนสนาม').length
     const numRows  = students.length
 
     const _getInput = (row, col) =>
@@ -2751,12 +2760,15 @@ export async function renderLifeSkillScore(teacher, homeroomRooms) {
       const cid    = +inp.dataset.cid
       const max    = +inp.dataset.max
       const rawVal = inp.value.trim()
+      // blur จากการเลื่อนผ่านช่องต้องไม่ยิง upsert ซ้ำ และต้องไม่เปลี่ยนค่าที่โหลดไม่สำเร็จเป็น null
+      if (rawVal === (inp.dataset.initialValue ?? '')) return
       const score  = rawVal === '' ? null : parseFloat(rawVal)
       if (score !== null && (score < 0 || score > max)) {
         _flashCell(inp, false); return
       }
       try {
         await upsertLifeSkillScore(sid, cid, score, teacher?.id ?? null)
+        inp.dataset.initialValue = rawVal
         _flashCell(inp, true)
         _updateTotal(sid)
       } catch (err) {
