@@ -9,6 +9,7 @@
 // หมายเหตุ: secret ชื่อ MANAGEMENT_ACCESS_TOKEN ห้ามขึ้นต้นด้วย SUPABASE_
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'npm:@supabase/supabase-js@2'
+import { emptySchedule, validateSchedule, scheduledTier } from './schedule.js'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -17,8 +18,6 @@ const PROJECT_REF = SUPABASE_URL.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] ?
 const MANAGEMENT_API = 'https://api.supabase.com/v1'
 const CEILING_TIER = 'ci_medium'
 const NORMAL_TIER = 'ci_micro'
-const DOWNGRADE_AFTER_HEALTHY_CHECKS = 18 // 18*5min = 90 นาที
-const POST_RESIZE_SETTLE_MS = 15000
 const NOTIFY_POSITIONS = ['academic_samai', 'academic_religion', 'academic_pvch', 'executive']
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
@@ -26,6 +25,7 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 
 async function mgmtFetch(path: string, options: RequestInit = {}) {
   const res = await fetch(`${MANAGEMENT_API}${path}`, {
+    signal: AbortSignal.timeout(20000),
     ...options,
     headers: { Authorization: `Bearer ${PAT}`, 'Content-Type': 'application/json', ...(options.headers || {}) },
   })
@@ -38,16 +38,18 @@ async function mgmtFetch(path: string, options: RequestInit = {}) {
 
 // system_config.value เป็นคอลัมน์ text ไม่ใช่ jsonb — ต้อง stringify/parse เอง
 async function loadState() {
-  const { data } = await admin.from('system_config').select('value').eq('key', 'autoscaleState').maybeSingle()
+  const { data, error } = await admin.from('system_config').select('value').eq('key', 'autoscaleState').maybeSingle()
+  if (error) throw error
   if (!data?.value) return { consecutiveHealthyChecks: 0, lastAction: null }
-  try { return JSON.parse(data.value) } catch { return { consecutiveHealthyChecks: 0, lastAction: null } }
+  return JSON.parse(data.value)
 }
 
 async function saveState(state: Record<string, unknown>) {
-  await admin.from('system_config').upsert(
+  const { error } = await admin.from('system_config').upsert(
     { key: 'autoscaleState', value: JSON.stringify(state), updated_at: new Date().toISOString() },
     { onConflict: 'key' },
   )
+  if (error) throw error
 }
 
 // กันการชนกันแบบ lease lock ผ่านแถวเดียวใน system_config (key='autoscaleLock',
@@ -60,7 +62,7 @@ async function saveState(state: Record<string, unknown>) {
 // หน้าตายกลางคันไม่ทันปลดล็อก (ถือว่าล็อกหมดอายุถ้าเก่ากว่า LOCK_STALE_MS)
 const LOCK_STALE_MS = 4 * 60 * 1000 // 4 นาที (สั้นกว่ารอบ 5 นาทีของ trigger)
 
-async function tryAcquireLock(): Promise<boolean> {
+async function tryAcquireLock(): Promise<string | null> {
   const now = new Date().toISOString()
   const staleThreshold = new Date(Date.now() - LOCK_STALE_MS).toISOString()
   const { data, error } = await admin
@@ -70,14 +72,16 @@ async function tryAcquireLock(): Promise<boolean> {
     .lt('value', staleThreshold)
     .select()
   if (error) throw error
-  return !!data && data.length > 0
+  return data?.length ? now : null
 }
 
-async function releaseLock() {
-  await admin
+async function releaseLock(token: string) {
+  const { error } = await admin
     .from('system_config')
     .update({ value: '1970-01-01T00:00:00.000Z', updated_at: new Date().toISOString() })
     .eq('key', 'autoscaleLock')
+    .eq('value', token)
+  if (error) throw error
 }
 
 async function checkHealthy() {
@@ -97,7 +101,8 @@ async function getCurrentTier() {
   const addons = await mgmtFetch(`/projects/${PROJECT_REF}/billing/addons`)
   const current = addons?.selected_addons?.find((a: { type: string }) => a.type === 'compute_instance')
   console.log('[selected compute addon]', JSON.stringify(current))
-  return current?.variant?.id ?? NORMAL_TIER
+  if (!current?.variant?.id) throw new Error('อ่านระดับเครื่องไม่ได้ หยุดโดยไม่ส่งคำสั่งปรับ')
+  return current.variant.id
 }
 
 async function setComputeTier(tier: string) {
@@ -185,59 +190,72 @@ async function notify(title: string, message: string) {
 
 async function runAutoscale() {
   const state = await loadState()
-  const currentTier = await getCurrentTier().catch(e => {
-    console.error('อ่าน tier ปัจจุบันไม่สำเร็จ (จะถือว่าเป็น micro):', e.message)
-    return NORMAL_TIER
-  })
-  console.log('[tier ปัจจุบัน]', currentTier)
-
-  const healthy = await checkHealthy().catch(e => {
-    console.error('health check ล้มเหลว ถือว่าไม่ปกติไว้ก่อน:', e.message)
-    return false
-  })
-
-  if (!healthy) {
-    state.consecutiveHealthyChecks = 0
-    if (currentTier !== CEILING_TIER) {
-      try {
-        await setComputeTier(CEILING_TIER)
-        state.lastAction = `upgrade -> ${CEILING_TIER} @ ${new Date().toISOString()}`
-        await sleep(POST_RESIZE_SETTLE_MS)
-        await notify(
-          '⚠️ ระบบ PP5 Online ปรับ compute อัตโนมัติ',
-          'ตรวจพบระบบมีผู้ใช้งานพร้อมกันหนาแน่น (PostgREST/Database ไม่ปกติ) ได้อัปเกรด compute เป็น Medium ให้อัตโนมัติแล้วเพื่อรองรับโหลด หากพบว่าระบบยังโหลดช้าอยู่ กรุณารอสักครู่แล้วลองใหม่อีกครั้ง',
-        )
-      } catch (e) {
-        console.error('สั่ง resize ไม่สำเร็จ (จะลองใหม่รอบถัดไป):', (e as Error).message)
-        state.lastAction = `upgrade attempt failed @ ${new Date().toISOString()}: ${(e as Error).message}`
-        await notify(
-          '🔴 ระบบ PP5 Online มีปัญหาหนัก',
-          'ระบบไม่ปกติต่อเนื่อง และสคริปต์อัปเกรด compute อัตโนมัติยังไม่สำเร็จ จะลองใหม่อัตโนมัติทุก 5 นาที หากยังไม่ดีขึ้น กรุณาแจ้งผู้ดูแลระบบให้เข้าไปตรวจสอบด้วยตนเองด่วน',
-        )
-      }
-    } else {
-      console.log('อยู่ที่เพดานสูงสุด (Medium) แล้ว ไม่ต้องอัปเกรดเพิ่ม')
-    }
+  const { data, error } = await admin.from('system_config').select('value').eq('key', 'autoscaleSchedule').maybeSingle()
+  if (error) throw error
+  const config = data ? validateSchedule(JSON.parse(data.value)) : emptySchedule()
+  const target = scheduledTier(config)
+  state.mode = 'schedule'
+  state.targetTier = target
+  state.lastCheckedAt = new Date().toISOString()
+  state.consecutiveHealthyChecks = 0 // ไม่ใช้ตัวนับเดิมในการตัดสินใจอีก
+  if (!target) {
+    state.status = 'disabled'
+    await saveState(state)
+    return state
+  }
+  let currentTier
+  try { currentTier = await getCurrentTier() } catch (error) {
+    state.lastError = String(error)
+    state.status = 'read_failed'
+    await saveState(state)
+    return state
+  }
+  state.currentTier = currentTier
+  // billing addon อาจเปลี่ยนก่อน restart เสร็จ ตรวจ health ยืนยันในรอบถัดไป
+  if (state.pendingTier && currentTier === state.pendingTier && await checkHealthy().catch(() => false)) {
+    const confirmed = state.pendingTier
+    state.pendingTier = null
+    state.lastConfirmedAt = new Date().toISOString()
+    state.lastAction = `confirmed -> ${confirmed} @ ${state.lastConfirmedAt}`
+    state.lastError = null
+    await saveState(state)
+    await notify(confirmed === CEILING_TIER ? '⚠️ ระบบ PP5 Online ปรับ compute ตามตารางเวลา' : '✅ ระบบ PP5 Online ลด compute ตามตารางเวลา', `ตรวจยืนยันระดับ ${confirmed === CEILING_TIER ? 'Medium' : 'Micro'} และสุขภาพระบบปกติแล้ว (ตารางเวลาไทย)`)
+  }
+  // ไม่ย้อนคำสั่งหรือ retry ถี่ ระหว่าง resize / หลังเพิ่งสั่งเปลี่ยนเครื่อง
+  if (Date.now() < Date.parse(state.nextResizeAllowedAt || '1970-01-01')) {
+    state.status = state.pendingTier ? 'processing' : 'cooldown'
+  } else if (state.pendingTier && Date.now() - Date.parse(state.lastRequestedAt) < 30 * 60000) {
+    state.status = 'processing'
+  } else if (state.pendingTier) {
+    // ไม่เดาว่า timeout = ล้มเหลว เพราะคำสั่งอาจยังดำเนินอยู่
+    state.status = 'needs_attention'
+    state.lastError = 'ยังยืนยันการปรับเครื่องไม่ได้ กรุณาตรวจ Supabase Dashboard ก่อนดำเนินการต่อ'
+  } else if (currentTier === target) {
+    state.status = 'on_target'
+  } else if (![NORMAL_TIER, CEILING_TIER].includes(currentTier)) {
+    state.status = 'needs_attention'
+    state.lastError = 'พบระดับเครื่องที่ตั้งเองนอก Micro/Medium ระบบจะไม่เปลี่ยนทับ'
   } else {
-    state.consecutiveHealthyChecks = (state.consecutiveHealthyChecks || 0) + 1
-    console.log(`ปกติต่อเนื่อง ${state.consecutiveHealthyChecks}/${DOWNGRADE_AFTER_HEALTHY_CHECKS} ครั้ง`)
-    if (currentTier !== NORMAL_TIER && state.consecutiveHealthyChecks >= DOWNGRADE_AFTER_HEALTHY_CHECKS) {
-      try {
-        await setComputeTier(NORMAL_TIER)
-        state.consecutiveHealthyChecks = 0
-        state.lastAction = `downgrade -> ${NORMAL_TIER} @ ${new Date().toISOString()}`
-        await sleep(POST_RESIZE_SETTLE_MS)
-        await notify(
-          '✅ ระบบ PP5 Online กลับสู่ปกติแล้ว',
-          'ระบบใช้งานได้ปกติต่อเนื่องมาสักพักแล้ว ได้ลด compute กลับเป็น Micro ให้อัตโนมัติเรียบร้อย',
-        )
-      } catch (e) {
-        console.error('สั่ง downgrade ไม่สำเร็จ (จะลองใหม่รอบถัดไป):', (e as Error).message)
-        state.lastAction = `downgrade attempt failed @ ${new Date().toISOString()}: ${(e as Error).message}`
-      }
+    // บันทึกก่อน PATCH: หาก response ขาดตอน จะไม่ยิงซ้ำรอบถัดไป
+    state.pendingTier = target
+    state.lastRequestedAt = new Date().toISOString()
+    state.nextResizeAllowedAt = new Date(Date.now() + 15 * 60000).toISOString()
+    state.status = 'processing'
+    await saveState(state)
+    try {
+      await setComputeTier(target)
+      state.lastAction = `requested -> ${target} @ ${state.lastRequestedAt}`
+      state.lastError = null
+    } catch (error) {
+      state.lastError = String(error)
+      state.lastAction = `resize attempt failed @ ${state.lastRequestedAt}`
+      // คำตอบ HTTP ปฏิเสธแน่นอน retry หลัง cooldown; timeout คง pending ไว้
+      if (/HTTP (400|401|403|404|409|422|429):/.test(state.lastError)) state.pendingTier = null
+      state.status = 'resize_failed'
+      await saveState(state)
+      await notify('🔴 ระบบ PP5 Online ปรับ compute ตามตารางเวลาไม่สำเร็จ', 'คำสั่งปรับกำลังเครื่องไม่สำเร็จ ระบบเว้นช่วงก่อนลองใหม่ โปรดตรวจสถานะในหน้าตั้งค่ากำลังเครื่องและ Supabase Dashboard')
     }
   }
-
   await saveState(state)
   console.log('[state]', JSON.stringify(state))
   return state
@@ -269,7 +287,7 @@ Deno.serve(async (req: Request) => {
   // แถวใน system_config (ดูฟังก์ชัน tryAcquireLock/releaseLock ด้านบน)
   const gotLock = await tryAcquireLock().catch(e => {
     console.error('เช็คล็อกไม่สำเร็จ (จะถือว่าไม่ได้ล็อก ข้ามรอบนี้):', (e as Error).message)
-    return false
+    return null
   })
   if (!gotLock) {
     console.log('มี invocation อื่นกำลังทำงานอยู่ (หรือเช็คล็อกพลาด) ข้ามรอบนี้ไปกันชนกัน')
@@ -282,6 +300,6 @@ Deno.serve(async (req: Request) => {
     console.error('autoscale-tick ล้มเหลว:', err)
     return new Response(JSON.stringify({ ok: false, error: String(err) }), { status: 500 })
   } finally {
-    await releaseLock().catch(e => console.error('ปลดล็อกไม่สำเร็จ:', (e as Error).message))
+    await releaseLock(gotLock).catch(e => console.error('ปลดล็อกไม่สำเร็จ:', (e as Error).message))
   }
 })

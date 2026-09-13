@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import { emptySchedule, validateSchedule, scheduledTier } from '../supabase/functions/autoscale-tick/schedule.js';
+import { estimateComputeCost } from '../js/autoscale-cost.js';
+
+const config = { schemaVersion: 1, enabled: true, periods: [{ startDate: '2026-09-15', endDate: '2026-09-30', days: Array.from({ length: 7 }, () => ({ enabled: true, start: '07:00', end: '19:00' })) }] };
+assert.equal(scheduledTier(emptySchedule()), null);
+assert.equal(scheduledTier(config, new Date('2026-09-15T00:00:00Z')), 'ci_medium');
+assert.equal(scheduledTier(config, new Date('2026-09-14T23:59:00Z')), 'ci_micro');
+assert.equal(scheduledTier(config, new Date('2026-09-15T11:59:59Z')), 'ci_medium');
+assert.equal(scheduledTier(config, new Date('2026-09-15T12:00:00Z')), 'ci_micro');
+assert.equal(scheduledTier(config, new Date('2026-09-30T11:00:00Z')), 'ci_medium');
+assert.equal(scheduledTier(config, new Date('2026-10-01T00:00:00Z')), 'ci_micro');
+const weekend = structuredClone(config);
+weekend.periods[0].days[0].enabled = false;
+assert.equal(scheduledTier(weekend, new Date('2026-09-20T01:00:00Z')), 'ci_micro');
+const overlap = structuredClone(weekend);
+overlap.periods.push(structuredClone(config.periods[0]));
+assert.equal(scheduledTier(overlap, new Date('2026-09-20T01:00:00Z')), 'ci_medium');
+const invalid = structuredClone(config);
+invalid.periods[0].startDate = '2026-02-30';
+assert.throws(() => validateSchedule(invalid));
+invalid.periods[0].startDate = '2026-09-15';
+invalid.periods[0].days[0].end = '06:00';
+assert.throws(() => validateSchedule(invalid));
+assert.throws(() => validateSchedule({ ...emptySchedule(), enabled: true }));
+const costs = estimateComputeCost(config, '2026-09-15');
+assert.equal(costs.day.mediumHours, 12);
+assert.ok(Math.abs(costs.day.usd - (12 * 0.0822 + 12 * 0.01344)) < 1e-10);
+assert.equal(costs.week.mediumHours, 72); // Monday outside date range
+assert.equal(costs.month.days, 30);
+assert.equal(costs.month.mediumHours, 16 * 12);
+assert.equal(estimateComputeCost(overlap, '2026-09-20').day.mediumHours, 12);
+assert.equal(estimateComputeCost(emptySchedule(), '2028-02-10').month.days, 29);
+console.log('autoscale schedule and costs: assertions passed');

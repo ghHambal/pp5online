@@ -1,29 +1,11 @@
-name: DB Auto-scale (manual override — ตัวหลักคือ pg_cron ใน Supabase แล้ว)
-
-# ⚠️ ปิด schedule trigger แล้ว (2026-09-09) — GitHub Actions schedule ไม่รันเอง
-# สม่ำเสมอ (รันเองอัตโนมัติได้แค่ 1 ครั้งใน ~5 ชม. แรก ทั้งที่ตั้งไว้ทุก 5 นาที)
-# ย้ายตัวจับเวลาหลักไปเป็น pg_cron ของ Supabase เอง (ดู
-# supabase/functions/autoscale-tick/ + patch_setup_autoscale_pg_cron.sql +
-# AUTOSCALE_HANDOFF.md) เก็บ workflow นี้ไว้เป็น manual override/debug เท่านั้น
-# (workflow_dispatch ยังใช้ได้ปกติ กดรันมือได้ทุกเมื่อ)
-#
-# ตรวจสุขภาพ PP5_Online (PostgREST/Database)
-# ไม่ปกติต่อเนื่อง -> อัปเกรด compute เป็น Medium อัตโนมัติ (เพดานสูงสุด)
-# ปกติต่อเนื่องนานพอ -> ลดกลับ Micro อัตโนมัติ
-# state (ตัวนับ) เก็บใน branch แยก "autoscale-state" ไม่แตะ main
-# เลยไม่ trigger deploy.yml
+name: DB schedule (manual tick — same Edge Function and lease)
 
 on:
   workflow_dispatch:
     inputs:
-      downgrade_after_healthy_checks:
-        description: 'จำนวนครั้งปกติติดต่อกันก่อน downgrade (ปกติ 18 = 90 นาที) — ใส่เลขต่ำๆ เพื่อ debug/บังคับทดสอบเท่านั้น'
-        required: false
-        default: ''
       test_notify_only:
-        description: 'true = ทดสอบแค่ path แจ้งเตือน/ประกาศ ไม่แตะ compute เลย'
+        description: 'ทดสอบแจ้งเตือนเท่านั้น ไม่ปรับเครื่อง'
         type: boolean
-        required: false
         default: false
 
 concurrency:
@@ -31,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   SUPABASE_PROJECT_REF: isupghduywzqbmnjgtip
@@ -41,47 +23,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-
-      - name: โหลด state เดิม (ถ้ามี)
-        run: |
-          git fetch origin autoscale-state --depth 1 2>/dev/null || true
-          if git show origin/autoscale-state:state.json > .autoscale-state.json 2>/dev/null; then
-            echo "โหลด state เดิมสำเร็จ"
-          else
-            echo '{"consecutiveHealthyChecks":0,"lastAction":null}' > .autoscale-state.json
-            echo "ไม่มี state เดิม เริ่มใหม่"
-          fi
-          cat .autoscale-state.json
-
-      - name: ตรวจสุขภาพ + ปรับ compute ถ้าจำเป็น
+      - name: เรียกตารางเวลาร่วม (ไม่ใช้ตัวนับเก่า)
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
-          DOWNGRADE_AFTER_HEALTHY_CHECKS: ${{ inputs.downgrade_after_healthy_checks }}
+          TEST_NOTIFY_ONLY: ${{ inputs.test_notify_only }}
         run: |
-          if [ "${{ inputs.test_notify_only }}" = "true" ]; then
-            node scripts/db-autoscale.mjs .autoscale-state.json --test-notify
+          if [ "$TEST_NOTIFY_ONLY" = "true" ]; then
+            node scripts/db-autoscale.mjs --test-notify
           else
-            node scripts/db-autoscale.mjs .autoscale-state.json
+            node scripts/db-autoscale.mjs
           fi
-
-      - name: บันทึก state กลับ (orphan branch เฉพาะ ไม่ยุ่งกับ main)
-        run: |
-          git config user.name "db-autoscale-bot"
-          git config user.email "actions@users.noreply.github.com"
-          rm -rf /tmp/autoscale-state-branch
-          mkdir /tmp/autoscale-state-branch
-          cp .autoscale-state.json /tmp/autoscale-state-branch/state.json
-          cd /tmp/autoscale-state-branch
-          git init -q
-          git checkout -q -b autoscale-state
-          git add state.json
-          git -c user.name="db-autoscale-bot" -c user.email="actions@users.noreply.github.com" \
-            commit -q -m "state @ $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          git remote add origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
-          git push -q -f origin autoscale-state:autoscale-state

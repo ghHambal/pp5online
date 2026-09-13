@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { renderAutoscaleSettings } from './views-autoscale.js'
 import { showToast, showPageLoader, setButtonLoading, checkAndShowChangelog, initHeavyLoadBanner, getFriendlyErrorMessage } from './ui.js'
 import { renderOverview, renderTeachers, renderClasses, renderStudents, renderTeacherTable,
          renderSettings, renderImport, renderSubjects, renderSubjectTable, renderCurriculum,
@@ -22,7 +23,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.683'
+import { APP_VERSION } from './version.js?v=10.22.698'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
@@ -843,6 +844,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'course-doc-lang':  () => renderCourseDocLangConfig(null, true),
     'announcements':    () => renderAnnouncements(),
     'autoscale-history': () => renderAutoscaleHistory(),
+    'autoscale-settings': () => renderAutoscaleSettings(),
     'work-calendar':    () => renderWorkCalendar(null),
     'role-permissions': () => renderRolePermissions(),
     'religion-groups':  renderReligionGroups,

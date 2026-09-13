@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><title>Auto-scale UI fixture (mock database)</title></head>
+<body><h1 id="page-title">UI test fixture — no live writes</h1><main id="main-content"></main>
+<script type="module">
+import { supabase } from '../js/supabase.js';
+import { renderAutoscaleSettings } from '../js/views-autoscale.js';
+let config = { schemaVersion: 1, enabled: false, periods: [] };
+const state = { mode: 'schedule', currentTier: 'ci_micro', status: 'disabled' };
+supabase.from = () => ({
+  select() { return this; }, eq() { return this; },
+  async in() { return { data: [{ key: 'autoscaleSchedule', value: JSON.stringify(config) }, { key: 'autoscaleState', value: JSON.stringify(state) }], error: null }; },
+  async maybeSingle() { return { data: { value: JSON.stringify(config) }, error: null }; },
+  async upsert(row) { config = JSON.parse(row.value); return { error: null }; },
+});
+await renderAutoscaleSettings();
+</script></body></html>
