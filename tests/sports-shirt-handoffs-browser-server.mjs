@@ -1,13 +1,14 @@
 // Local fixture; the Supabase module is replaced, so no production data is changed.
 import {createServer} from 'vite'
 const mock = `
-const target=[{id:'a',name:'นักเรียน ก',gender:'M',color:'แดง',size:'M',confirmed:true},{id:'b',name:'นักเรียน ข',gender:'W',color:'ฟ้า',size:'L',confirmed:true},{id:'c',name:'นักเรียน ค',gender:'M',confirmed:false}];
+const target=[{id:'a',name:'นักเรียน ก',gender:'M',color_id:'red',color:'แดง',size:'M',confirmed:true},{id:'b',name:'นักเรียน ข',gender:'W',color_id:'blue',color:'ฟ้า',size:'L',confirmed:true},{id:'c',name:'นักเรียน ค',gender:'M',color_id:'red',color:'แดง',size:'XL',confirmed:false}];
 const row={room:'ม.1/1',target,target_hash:'h1',revision:0,receipts:[],issues:[],history:[]};
-const snap={shirt_payment_amount_m:200,shirt_payment_amount_w:250,shirt_payments:[{student_id:'a',amount:180,paid_at:'2026-09-13T10:00:00Z'}],handoff_event_id:'e1',handoff_rooms:[row],homeroom_teachers:[{main_room:'ม.1/1',teacher_name:'ครูที่ปรึกษาทดสอบ'}],students:target.map(t=>({id:t.id,main_room:row.room,full_name:t.name,gender:'M'})),shirt_requests:[],team_colors:[]};
-const saved=new Set();let failed=false;
+const snap={shirt_payment_amount_m:200,shirt_payment_amount_w:250,shirt_payments:[{student_id:'a',amount:180,paid_at:'2026-09-13T10:00:00Z'}],handoff_event_id:'e1',handoff_rooms:[row],homeroom_teachers:[{main_room:'ม.1/1',teacher_name:'ครูที่ปรึกษาทดสอบ'}],students:target.map(t=>({id:t.id,main_room:row.room,full_name:t.name,gender:'M'})),shirt_requests:[],team_colors:[{id:'red',name:'แดง',hex_color:'#ef4444'},{id:'blue',name:'ฟ้า',hex_color:'#0ea5e9'}]};
+const saved=new Set();let failed=false;let reads=0;
 export const supabase={rpc:async(fn,p)=>{
+ document.documentElement.dataset.fixtureRpcCount=String(Number(document.documentElement.dataset.fixtureRpcCount||0)+1);
  if(p.p_password!=='shirt-test-only')return {error:{message:'รหัสผ่านไม่ถูกต้อง'}};
- if(fn==='get_sports_shirt_handoff_snapshot')return {data:structuredClone(snap)};
+ if(fn==='get_sports_shirt_handoff_snapshot'){reads++;if(reads>1&&new URL(location).searchParams.has('refresh'))target[2].confirmed=true;return {data:structuredClone(snap)}};
  if(fn==='save_sports_shirt_handoff'){
   if(saved.has(p.p_request_id))return {data:{}};
   if(p.p_revision!==row.revision)return {error:{message:'มีการบันทึกโดยทีมงานอื่นแล้ว กรุณารีเฟรช'}};

@@ -20,8 +20,7 @@ export function handoffState(row) {
 }
 // Payment records are the source of paid status, matching the existing payment tab.
 // A later price change must not turn a recorded payment into an invented debt.
-export function roomPaymentState(row, snapshot) {
- const payments = new Map((snapshot.shirt_payments || []).map(p => [p.student_id, p]))
+export function roomPaymentState(row, snapshot, payments = new Map((snapshot.shirt_payments || []).map(p => [p.student_id, p]))) {
  const amount = value => { const n = Number(value); return Number.isFinite(n) && n > 0 ? n : 0 }
  const students = (row.target || []).map(student => {
   const payment = payments.get(student.id)
@@ -36,6 +35,33 @@ export function roomPaymentState(row, snapshot) {
   paidAmount: students.reduce((n,s) => n + s.paidAmount, 0),
   dueAmount: students.reduce((n,s) => n + s.dueAmount, 0)}
 }
+export function roomColorSizes(row, snapshot) {
+ const colors = new Map((snapshot.team_colors || []).map((color,index) => [color.id, {...color,index}]))
+ const sizes = snapshot.allowed_sizes?.length ? snapshot.allowed_sizes : ['SS','S','M','L','XL','2X','2XL','3X','3XL','4X','4XL','5X','5XL','6X','6XL','7X','7XL','8X','8XL']
+ const rank = size => { const index=sizes.indexOf(size); return index<0?sizes.length:index }
+ const groups = new Map()
+ for (const student of row.target || []) {
+  const key=student.color_id || student.color || 'unknown'
+  const color=colors.get(student.color_id)
+  if (!groups.has(key)) groups.set(key, {key,name:color?.name || student.color || 'ไม่ระบุสี',
+   hex:/^#[0-9a-f]{6}$/i.test(color?.hex_color || '') ? color.hex_color : '#64748b',
+   order:color?.index ?? colors.size,confirmed:0,pending:0,sizes:new Map()})
+  const group=groups.get(key)
+  if (student.confirmed && student.size) {
+   group.confirmed++
+   group.sizes.set(student.size,(group.sizes.get(student.size)||0)+1)
+  } else group.pending++
+ }
+ return [...groups.values()].sort((a,b)=>a.order-b.order || a.name.localeCompare(b.name,'th')).map(group=>({
+  ...group,sizes:[...group.sizes].sort(([a],[b])=>rank(a)-rank(b)||a.localeCompare(b,'th',{numeric:true}))
+ }))
+}
+const colorSizeCards = groups => `<div class="space-y-2" aria-label="สรุปสีและไซซ์เสื้อทั้งห้อง">
+ <p class="text-xs font-bold text-slate-500">👕 ยอดจัดเสื้อทั้งห้องตามไซซ์ที่ยืนยันแล้ว</p>
+ <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${groups.map(group=>`<div class="rounded-xl border border-slate-200 bg-white p-3 shadow-sm" style="border-top:3px solid ${group.hex}">
+ <div class="flex flex-wrap items-center justify-between gap-2"><b class="text-sm flex items-center gap-2"><span class="w-3 h-3 rounded-full inline-block" style="background:${group.hex}"></span>${esc(group.name)}</b><span class="text-xs font-bold">ยืนยัน ${group.confirmed} ตัว</span></div>
+ <div class="flex flex-wrap gap-2 mt-2">${group.sizes.map(([size,count])=>`<span class="rounded-lg bg-slate-100 px-2 py-1 text-xs">${esc(size)} <b>× ${count}</b></span>`).join('') || '<span class="text-xs text-slate-400">ยังไม่มีไซซ์ที่ยืนยัน</span>'}</div>
+ ${group.pending?`<p class="text-xs text-amber-700 mt-2">รอยืนยันไซซ์ ${group.pending} คน</p>`:''}</div>`).join('') || '<p class="text-xs text-slate-500">ยังไม่มีข้อมูลนักเรียนในห้อง</p>'}</div></div>`
 const money = value => Number(value).toLocaleString('th-TH', {maximumFractionDigits:2})
 const paymentSummary = payment => `<div class="flex flex-wrap gap-x-4 gap-y-1 text-xs mt-2" aria-label="สรุปค่าเสื้อทั้งห้อง">
  <span class="text-emerald-700">💰 ชำระแล้ว ${payment.paid} คน · ${money(payment.paidAmount)} บาท</span>
@@ -63,17 +89,37 @@ export function createShirtHandoffs({root,getSnapshot,save,refresh,onChange}) {
  let filter = 'all', query = '', recorder = '', busy = false, pending = null
  const rows = () => getSnapshot().handoff_rooms || []
  const rowOf = room => rows().find(r => r.room === room)
+ // Derived views live only with their snapshot; every successful refresh replaces it.
+ // Build payment/advisor indexes once, and reuse room cards while searching/filtering.
+ let summarySnapshot, summaries = new Map()
+ const summaryOf = row => {
+  const snapshot=getSnapshot()
+  if (snapshot !== summarySnapshot) {
+   const payments=new Map((snapshot.shirt_payments||[]).map(p=>[p.student_id,p]))
+   const advisors=new Map()
+   for(const teacher of snapshot.homeroom_teachers||[]) {
+    if(!advisors.has(teacher.main_room))advisors.set(teacher.main_room,[])
+    advisors.get(teacher.main_room).push(teacher.teacher_name)
+   }
+   summaries=new Map(rows().map(r=>[r.room,{state:handoffState(r),
+    payment:roomPaymentState(r,snapshot,payments),cards:colorSizeCards(roomColorSizes(r,snapshot)),
+    advisors:(advisors.get(r.room)||[]).join(' / '),
+    search:JSON.stringify([r.room,r.receipts,r.issues,advisors.get(r.room)]).toLowerCase()}]))
+   summarySnapshot=snapshot
+  }
+  return summaries.get(row.room)
+ }
  const badges = row => {
-  const s = handoffState(row)
+  const s = summaryOf(row).state
   return `<span class="inline-block rounded-full px-2 py-1 text-xs ${s.status==='complete'?'bg-emerald-100 text-emerald-700':s.status==='partial'?'bg-amber-100 text-amber-800':'bg-slate-100 text-slate-600'}">${labels[s.status]} · ${s.received}/${s.target} ตัว</span> ${s.issues ? `<span class="text-xs text-red-700 bg-red-50 rounded-full px-2 py-1">เรื่องค้าง ${s.issues}</span>`:''} ${s.changed?'<span class="text-xs text-red-700">ยอดยืนยันลดลง กรุณาตรวจสอบ</span>':''}`
  }
  const roomButton = room => rowOf(room) ? `<button type="button" data-handoff-room="${esc(room)}" class="${button}">${badges(rowOf(room))} · ดู/บันทึก</button>` : ''
  function render() {
   if (!getSnapshot().handoff_event_id) {panel.innerHTML='<p class="p-5 bg-amber-50 rounded-xl">ระบบรับมอบเสื้อยังไม่พร้อมใช้งาน กรุณาลองรีเฟรชภายหลัง</p>';return}
-  panel.innerHTML=`<div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3"><h2 class="font-bold text-lg">📦 รับมอบเสื้อรายห้อง</h2><p class="text-sm text-slate-500">ยอดรับสะสมของทั้งห้องตามไซซ์ที่ยืนยันแล้ว รวมทุกสีและเพศ • หมายเหตุเปลี่ยนไซซ์จะไม่แก้ข้อมูลไซซ์เดิม</p><input aria-label="ค้นหาห้องรับเสื้อ" class="${input}" placeholder="ค้นหาห้อง / ครูที่ปรึกษา / ผู้รับ / หมายเหตุ" value="${esc(query)}"><div class="flex flex-wrap gap-2">${Object.entries({all:'ทั้งหมด',...labels,issues:'มีเรื่องค้าง'}).map(([key,label])=>`<button type="button" class="${button} ${filter===key?'ring-2 ring-pink-500':''}" data-handoff-filter="${key}">${label} (${rows().filter(r=>key==='all'||(key==='issues'?handoffState(r).issues>0:handoffState(r).status===key)).length})</button>`).join('')}</div><div id="handoff-room-list" class="space-y-3"></div></div>`
+  panel.innerHTML=`<div class="bg-white border border-slate-200 rounded-xl p-4 space-y-3"><h2 class="font-bold text-lg">📦 รับมอบเสื้อรายห้อง</h2><p class="text-sm text-slate-500">ยอดรับสะสมของทั้งห้องตามไซซ์ที่ยืนยันแล้ว รวมทุกสีและเพศ • หมายเหตุเปลี่ยนไซซ์จะไม่แก้ข้อมูลไซซ์เดิม</p><input aria-label="ค้นหาห้องรับเสื้อ" class="${input}" placeholder="ค้นหาห้อง / ครูที่ปรึกษา / ผู้รับ / หมายเหตุ" value="${esc(query)}"><div class="flex flex-wrap gap-2">${Object.entries({all:'ทั้งหมด',...labels,issues:'มีเรื่องค้าง'}).map(([key,label])=>`<button type="button" class="${button} ${filter===key?'ring-2 ring-pink-500':''}" data-handoff-filter="${key}">${label} (${rows().filter(r=>key==='all'||(key==='issues'?summaryOf(r).state.issues>0:summaryOf(r).state.status===key)).length})</button>`).join('')}</div><div id="handoff-room-list" class="space-y-3"></div></div>`
   const renderList=()=>{
-   const list=rows().filter(r=>(filter==='all'||(filter==='issues'?handoffState(r).issues>0:handoffState(r).status===filter)) && JSON.stringify([r.room,r.receipts,r.issues,(getSnapshot().homeroom_teachers||[]).filter(t=>t.main_room===r.room)]).toLowerCase().includes(query.toLowerCase())).sort((a,b)=>a.room.localeCompare(b.room,'th',{numeric:true}))
-   panel.querySelector('#handoff-room-list').innerHTML=list.map(r=>`<div class="border border-slate-200 rounded-xl p-3 flex flex-wrap justify-between gap-3 items-center"><div><b>ห้อง ${esc(r.room)}</b><p class="text-xs text-slate-500">${esc((getSnapshot().homeroom_teachers||[]).filter(t=>t.main_room===r.room).map(t=>t.teacher_name).join(' / '))}</p>${handoffState(r).unconfirmed?`<p class="text-xs text-amber-700">ยังไม่ยืนยันไซซ์ ${handoffState(r).unconfirmed} คน</p>`:''}${paymentSummary(roomPaymentState(r,getSnapshot()))}</div>${roomButton(r.room)}</div>`).join('') || '<p class="p-4 text-slate-500">ไม่พบห้องตามเงื่อนไข</p>'
+   const list=rows().filter(r=>(filter==='all'||(filter==='issues'?summaryOf(r).state.issues>0:summaryOf(r).state.status===filter)) && summaryOf(r).search.includes(query.toLowerCase())).sort((a,b)=>a.room.localeCompare(b.room,'th',{numeric:true}))
+   panel.querySelector('#handoff-room-list').innerHTML=list.map(r=>`<div class="border border-slate-200 rounded-xl p-3 space-y-3"><div class="flex flex-wrap justify-between gap-3 items-center"><div><b>ห้อง ${esc(r.room)}</b><p class="text-xs text-slate-500">${esc(summaryOf(r).advisors)}</p>${summaryOf(r).state.unconfirmed?`<p class="text-xs text-amber-700">ยังไม่ยืนยันไซซ์ ${summaryOf(r).state.unconfirmed} คน</p>`:''}${paymentSummary(summaryOf(r).payment)}</div>${roomButton(r.room)}</div>${summaryOf(r).cards}</div>`).join('') || '<p class="p-4 text-slate-500">ไม่พบห้องตามเงื่อนไข</p>'
   }
   panel.querySelector('input').oninput=e=>{query=e.target.value;renderList()}
   panel.querySelectorAll('[data-handoff-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.handoffFilter;render()})
@@ -86,11 +132,9 @@ export function createShirtHandoffs({root,getSnapshot,save,refresh,onChange}) {
  function open(room) {
   const row = rowOf(room)
   if(!row || busy)return
-  const s=handoffState(row), snap=getSnapshot()
-  const totals=new Map()
-  row.target.filter(t=>t.confirmed).forEach(t=>{const key=`${t.color||'ไม่ระบุสี'} / ${t.size}`;totals.set(key,(totals.get(key)||0)+1)})
-  dialog.innerHTML=`<div class="p-5 space-y-4"><div class="flex justify-between gap-2"><h2 class="text-xl font-bold">รับมอบเสื้อ · ห้อง ${esc(room)}</h2><button type="button" data-close class="${button}">ปิด</button></div><div>${badges(row)}</div><p class="text-sm">นักเรียน ${row.target.length} คน · ยืนยันไซซ์ ${s.target} คน · ยังไม่ยืนยัน ${s.unconfirmed} คน · เหลือรับ ${s.remaining} ตัว</p><details><summary class="cursor-pointer text-sm font-bold">ดูยอดจัดเสื้อทั้งห้องแยกสี / ไซซ์</summary><div class="flex flex-wrap gap-2 mt-2">${[...totals].map(([key,n])=>`<span class="bg-slate-100 p-2 rounded text-xs">${esc(key)}: ${n}</span>`).join('')}</div></details>
-   ${paymentDetails(roomPaymentState(row,snap))}
+  const summary=summaryOf(row), s=summary.state, snap=getSnapshot()
+  dialog.innerHTML=`<div class="p-5 space-y-4"><div class="flex justify-between gap-2"><h2 class="text-xl font-bold">รับมอบเสื้อ · ห้อง ${esc(room)}</h2><button type="button" data-close class="${button}">ปิด</button></div><div>${badges(row)}</div><p class="text-sm">นักเรียน ${row.target.length} คน · ยืนยันไซซ์ ${s.target} คน · ยังไม่ยืนยัน ${s.unconfirmed} คน · เหลือรับ ${s.remaining} ตัว</p>${summary.cards}
+   ${paymentDetails(summary.payment)}
    <form id="handoff-form" class="space-y-3 border rounded-xl p-4">
     <h3 class="font-bold">บันทึกการรับครั้งนี้</h3><label class="block text-sm">ชื่อผู้บันทึก<input name="recorder_name" class="${input}" maxlength="200" minlength="2" required value="${esc(snap.handoff_recorder||recorder)}" ${snap.handoff_recorder?'readonly':''}></label>
     <label class="block text-sm">ผู้มารับ<select name="receiver_kind" class="${input}">${Object.entries(kinds).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label>

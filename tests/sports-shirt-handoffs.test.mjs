@@ -1,6 +1,6 @@
 import {test} from 'node:test'
 import assert from 'node:assert/strict'
-import {handoffState,notePresets,roomPaymentState} from '../js/sports-shirt-handoffs.js'
+import {handoffState,notePresets,roomPaymentState,roomColorSizes} from '../js/sports-shirt-handoffs.js'
 test('whole-room totals, independent issue tags, cancellation and roster changes',()=>{
  const room={target:[{confirmed:true,color:'red'},{confirmed:true,color:'blue'},{confirmed:false}],receipts:[],issues:[]}
  assert.equal(handoffState(room).status,'pending')
@@ -24,4 +24,20 @@ test('payment summary uses recorded payments and gender prices across the whole 
  const waiting=roomPaymentState(row,{...snapshot,shirt_payment_amount_m:0,shirt_payment_amount_w:null})
  assert.equal(waiting.paid,1);assert.equal(waiting.waiting,3);assert.equal(waiting.dueAmount,0)
  assert.equal(roomPaymentState({target:[]},{}).students.length,0)
+})
+
+test('color cards count only confirmed sizes and keep pending/color identity intact',()=>{
+ const snapshot={allowed_sizes:['S','M','L','XL','2XL'],team_colors:[{id:'red',name:'แดง',hex_color:'#ef4444'},{id:'blue',name:'ฟ้า',hex_color:'invalid'}]}
+ const row={target:[{color_id:'red',size:'L',confirmed:true},{color_id:'red',size:'S',confirmed:true},{color_id:'red',size:'L',confirmed:true},{color_id:'red',size:'XL',confirmed:false},{color_id:'blue',size:'2XL',confirmed:true},{color:'เขียว',size:'M',confirmed:false},{confirmed:false}]}
+ const groups=roomColorSizes(row,snapshot)
+ assert.deepEqual(groups[0].sizes,[['S',1],['L',2]])
+ assert.equal(groups[0].confirmed,3);assert.equal(groups[0].pending,1)
+ assert.equal(groups[1].hex,'#64748b')
+ assert.equal(groups.find(g=>g.name==='เขียว').pending,1)
+ assert.equal(groups.find(g=>g.name==='ไม่ระบุสี').pending,1)
+ assert.equal(groups.reduce((n,g)=>n+g.confirmed,0),handoffState(row).target)
+ assert.deepEqual(roomColorSizes({target:[]},snapshot),[])
+ const changed={...row,target:[...row.target,{color_id:'red',size:'M',confirmed:true}]}
+ assert.deepEqual(roomColorSizes(changed,snapshot)[0].sizes,[['S',1],['M',1],['L',2]])
+ assert.equal(roomColorSizes(row,snapshot)[0].confirmed,3)
 })
