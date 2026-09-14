@@ -1909,6 +1909,18 @@ export async function createSubject(payload, coTeacherIds = []) {
   return data
 }
 
+export async function updateSubjectAtomic(id, payload, coTeacherIds = null) {
+  // One transaction: a failure must not leave the course or co-teachers half saved.
+  // Omitted coTeacherIds preserves the list (e.g. the admin's course-only editor).
+  const { error } = await supabase.rpc('update_subject_atomic', {
+    p_subject_id: id,
+    p_payload: payload,
+    p_co_teacher_ids: coTeacherIds,
+  })
+  if (error) throw error
+}
+
+
 export async function updateSubject(id, payload, coTeacherIds = []) {
   const { error } = await supabase
     .from('master_subjects').update(payload).eq('id', id)

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.705'
+import { APP_VERSION } from './version.js?v=10.22.706'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.706': [
+    '📚 แก้การบันทึกคอร์สวิชาของครู: บันทึกข้อมูลวิชาและครูร่วมสอนพร้อมกัน ตรวจสิทธิ์โดยไม่วนซ้ำ และป้องกันรายชื่อครูร่วมสอนหายเมื่อโหลดข้อมูลไม่สำเร็จ',
+  ],
   '10.22.705': [
     '👕 รับมอบเสื้อรายห้อง: เพิ่มการ์ดแยกสีและจำนวนแต่ละไซซ์ที่ยืนยันแล้ว พร้อมยอดรอยืนยัน ใช้ snapshot เดิมและสรุปครั้งเดียวต่อการโหลดข้อมูล',
   ],

@@ -1178,8 +1178,16 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
   const [depts, teachers, coTeachers] = await Promise.all([
     getDepartments().catch(()=>[]),
     getTeachers().catch(()=>[]),
-    (editData && !isClone) ? getSubjectCoTeachers(editData.id).catch(()=>[]) : Promise.resolve([]),
+    (editData && !isClone) ? getSubjectCoTeachers(editData.id).catch(err => {
+      showToast('โหลดครูร่วมสอนไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      return null
+    }) : Promise.resolve([]),
   ])
+  if (coTeachers === null) {
+    setContent(`<div class="p-6 text-center text-gray-600">โหลดข้อมูลคอร์สไม่ครบ กรุณาเปิดคอร์สใหม่อีกครั้ง
+      <button class="block mx-auto mt-4 text-indigo-600" onclick="window._goBack()">กลับ</button></div>`)
+    return
+  }
   let _selectedCoTeachers = coTeachers ?? []
 
   // unique dept rows — deduplicate by id (ไม่ใช้ dept_code เพราะ SOC มี 2 แถว: สังคมฯ + อิญติมาอียะห์)
