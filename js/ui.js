@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.707'
+import { APP_VERSION } from './version.js?v=10.22.708'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.708': [
+    '🔗 ระบบดูแล ↔ ปพ.5: รองรับห้องสามัญและห้องศาสนาที่ใช้ชื่อท้ายห้องเดียวกัน โดยจับคู่จากรหัสนักเรียนและรองรับข้อมูลเดิมที่ส่งไว้แล้ว',
+  ],
   '10.22.707': [
     '📋 ปรับลำดับรายชื่อในใบรายชื่อนักเรียนให้เรียงตามรหัสนักเรียนก่อน เพื่อให้พิมพ์และตรวจสอบรายชื่อสอดคล้องกับลำดับจริงของห้องเรียน',
   ],
