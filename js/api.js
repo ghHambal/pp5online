@@ -1314,31 +1314,45 @@ export async function deleteHolidayByDate(academicYear, semester, holidayDate) {
 }
 
 // ข้อมูลเช็คชื่อที่ดึงมาจากระบบดูแล (bookmarklet) รอครูนำไปใช้ในหน้าเช็คชื่อรายวิชา
-export async function getExternalAttendanceStaging(mainRoom, checkDate) {
-  const { data, error } = await supabase
-    .from('external_attendance_staging')
-    .select('student_code, status, raw_name, imported_at')
-    .eq('main_room', mainRoom).eq('check_date', checkDate)
-  if (error) throw error
-  return data ?? []
+// roomAliases ใช้รองรับห้องศาสนาที่ระบบดูแลเลือกได้ด้วยชื่อห้องสามัญ เช่น
+// ม.4/11 Berlian ↔ อป.1/11 Berlian โดยยังจับคู่ปลายทางด้วย student_code อีกชั้นหนึ่ง
+export async function getExternalAttendanceStaging(mainRoom, checkDate, roomAliases = []) {
+  const roomKeys = [...new Set([mainRoom, ...(Array.isArray(roomAliases) ? roomAliases : [])].filter(Boolean))]
+  if (!roomKeys.length) return []
+  return _fetchAllRows(() => {
+    let query = supabase
+      .from('external_attendance_staging')
+      .select('main_room, student_code, status, raw_name, imported_at')
+      .eq('check_date', checkDate)
+    query = roomKeys.length === 1 ? query.eq('main_room', roomKeys[0]) : query.in('main_room', roomKeys)
+    return query.order('id')
+  })
 }
 
 // เหมือน getExternalAttendanceStaging แต่ดึงทุกวันที่ที่มีของห้องนั้น (สำหรับนำเข้าทีเดียวหลายวัน)
-export async function getExternalAttendanceStagingByRoom(mainRoom) {
-  const { data, error } = await supabase
-    .from('external_attendance_staging')
-    .select('student_code, status, raw_name, check_date, imported_at')
-    .eq('main_room', mainRoom)
-  if (error) throw error
-  return data ?? []
+export async function getExternalAttendanceStagingByRoom(mainRoom, roomAliases = []) {
+  const roomKeys = [...new Set([mainRoom, ...(Array.isArray(roomAliases) ? roomAliases : [])].filter(Boolean))]
+  if (!roomKeys.length) return []
+  return _fetchAllRows(() => {
+    let query = supabase
+      .from('external_attendance_staging')
+      .select('main_room, student_code, status, raw_name, check_date, imported_at')
+    query = roomKeys.length === 1 ? query.eq('main_room', roomKeys[0]) : query.in('main_room', roomKeys)
+    return query.order('id')
+  })
 }
 
 // ส่งเช็คชื่อจากหน้าวิชาที่เปิดอยู่ออกไปรอให้บุ๊กมาร์กฝั่งระบบดูแลมาดึงไปติ๊กให้ (ทิศทางย้อนกลับ)
 export async function exportAttendanceToStudentCare(mainRoom, checkDate, records) {
-  const rows = records.map(r => ({
-    main_room: mainRoom, check_date: checkDate, student_code: r.studentCode,
-    status: r.status, student_name: r.studentName ?? null, source_class_id: r.classId ?? null,
-  }))
+  // บันทึกทั้ง room หลักและ room alias ต่อรายคน ไม่กระจายข้อมูลของนักเรียนไปทุกห้อง
+  // roomAliases ถูกคำนวณจาก students.main_room/religion_room ในหน้า attendance
+  const rows = records.flatMap(r => {
+    const roomKeys = [...new Set([mainRoom, ...(Array.isArray(r.roomAliases) ? r.roomAliases : [])].filter(Boolean))]
+    return roomKeys.map(room => ({
+      main_room: room, check_date: checkDate, student_code: r.studentCode,
+      status: r.status, student_name: r.studentName ?? null, source_class_id: r.classId ?? null,
+    }))
+  })
   const { error } = await supabase
     .from('pp5_attendance_export')
     .upsert(rows, { onConflict: 'main_room,check_date,student_code' })

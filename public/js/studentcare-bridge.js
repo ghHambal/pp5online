@@ -148,6 +148,34 @@
     return rows
   }
 
+  // ระบบดูแลบางรุ่นมีตัวเลือกเฉพาะห้องสามัญ แต่ข้อมูลนักเรียนใน PP5 มีห้องศาสนาอีกชื่อหนึ่ง
+  // อ่านคู่ห้องจาก student_code โดยตรง แทนการเดาจาก prefix ของชื่อห้อง
+  async function fetchStudentRooms(studentCodes) {
+    const codes = [...new Set(studentCodes.filter(Boolean))]
+    const byCode = new Map()
+    for (let i = 0; i < codes.length; i += 100) {
+      const chunk = codes.slice(i, i + 100)
+      const query = new URLSearchParams({
+        select: 'student_code,main_room,religion_room',
+        student_code: `in.(${chunk.join(',')})`,
+      })
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/students?${query}`, {
+        headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}` },
+      })
+      if (!res.ok) throw new Error(`อ่านคู่ห้องนักเรียนไม่สำเร็จ (${res.status})`)
+      const rows = await res.json()
+      rows.forEach(row => byCode.set(String(row.student_code), row))
+    }
+    return byCode
+  }
+
+  function roomAliasesForStudent(student, selectedRoom) {
+    const aliases = []
+    if (student && student.main_room === selectedRoom && student.religion_room) aliases.push(student.religion_room)
+    if (student && student.religion_room === selectedRoom && student.main_room) aliases.push(student.main_room)
+    return aliases
+  }
+
   async function run() {
     const mainRoom = findMainRoom()
     const checkDate = findCheckDateISO()
@@ -161,12 +189,25 @@
       return
     }
 
+    let studentRooms
+    try {
+      studentRooms = await fetchStudentRooms(withStatus.map(r => r.studentCode))
+    } catch (err) {
+      console.error('[pp5-studentcare-bridge] room lookup failed', err)
+      toast('จับคู่ห้องสามัญ/ศาสนาไม่สำเร็จ — กรุณาลองใหม่อีกครั้ง', 'error')
+      return
+    }
+
     toast(`กำลังส่งข้อมูล ${withStatus.length} คน (ห้อง ${mainRoom} · ${checkDate}) เข้า pp5-online...`, 'info')
 
-    const payload = withStatus.map(r => ({
-      main_room: mainRoom, check_date: checkDate, student_code: r.studentCode,
-      status: r.status, raw_name: r.name, source: 'studentcare_v4',
-    }))
+    const payload = withStatus.flatMap(r => {
+      const student = studentRooms.get(String(r.studentCode))
+      const roomKeys = [...new Set([mainRoom, ...roomAliasesForStudent(student, mainRoom)].filter(Boolean))]
+      return roomKeys.map(room => ({
+        main_room: room, check_date: checkDate, student_code: r.studentCode,
+        status: r.status, raw_name: r.name, source: 'studentcare_v4',
+      }))
+    })
 
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/external_attendance_staging?on_conflict=main_room,check_date,student_code`, {
@@ -183,7 +224,8 @@
         const text = await res.text().catch(() => '')
         throw new Error(`${res.status} ${text}`.slice(0, 200))
       }
-      toast(`✅ ส่งสำเร็จ ${withStatus.length} คน — ไปเปิดหน้าเช็คชื่อวิชาใน pp5-online ห้อง ${mainRoom} วันที่ ${checkDate} เพื่อดึงเข้าได้เลย`, 'success')
+      const roomCount = new Set(payload.map(r => r.main_room)).size
+      toast(`✅ ส่งสำเร็จ ${withStatus.length} คน ครอบคลุม ${roomCount} ชื่อห้อง — ไปเปิดหน้าเช็คชื่อวิชาใน pp5-online ได้เลย`, 'success')
     } catch (err) {
       console.error('[pp5-studentcare-bridge]', err)
       toast('ส่งข้อมูลไม่สำเร็จ: ' + (err && err.message || ''), 'error')

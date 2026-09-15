@@ -309,6 +309,7 @@ export async function renderAttendanceGrid(teacher, classData) {
     document.getElementById('btn-att-import-studentcare-bulk')?.addEventListener('click', async () => {
       const mainRoom = _dominantRoom(students, classData)
       if (!mainRoom) { showToast('หาห้องเรียนหลักของนักเรียนกลุ่มนี้ไม่เจอ', 'error'); return }
+      const roomLookupKeys = _studentCareRoomLookupKeys(students, classData, mainRoom)
 
       const isSupported = (window._pp5DonorTierIndex ?? 0) >= 2
       const access = _checkStudentCareRoomAccess(teacher?.id, mainRoom, isSupported)
@@ -317,7 +318,7 @@ export async function renderAttendanceGrid(teacher, classData) {
 
       let staged
       try {
-        staged = await getExternalAttendanceStagingByRoom(mainRoom)
+        staged = await getExternalAttendanceStagingByRoom(mainRoom, roomLookupKeys)
       } catch (err) {
         showToast('ดึงข้อมูลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         return
@@ -333,7 +334,11 @@ export async function renderAttendanceGrid(teacher, classData) {
       const dateGroups = Object.keys(byDate).sort().map(date => {
         // วันหนึ่งอาจตรงกับมากกว่า 1 คาบของวิชานี้ (เช่นสอนซ้ำวันเดียวกัน) — เอาให้ครบทุกคาบที่ตรงวันนั้น
         const ns = sessions.filter(s => s.ds === date).map(s => s.n)
-        const byCode = Object.fromEntries(byDate[date].map(r => [r.student_code, r]))
+        const byCode = {}
+        byDate[date].forEach(r => {
+          // ถ้ามีข้อมูลทั้งห้องศาสนาและ alias ห้องสามัญ ให้ข้อมูลห้องหลักของคลาสชนะเสมอ
+          if (!byCode[r.student_code] || r.main_room === mainRoom) byCode[r.student_code] = r
+        })
         const matched = students.map(s => ({ student: s, staged: byCode[s.student_code] })).filter(x => x.staged)
         const hasExisting = ns.length ? matched.some(({ student }) => ns.some(n => attMap[student.id]?.[n] != null)) : false
         return { date, ns, matched, isHoliday: holidaySet.has(date), hasExisting }
@@ -2216,7 +2221,11 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
 
     let staged
     try {
-      staged = await getExternalAttendanceStaging(mainRoom, date)
+      staged = await getExternalAttendanceStaging(
+        mainRoom,
+        date,
+        _studentCareRoomLookupKeys(students, classData, mainRoom)
+      )
     } catch (err) {
       showToast('ดึงข้อมูลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       return
@@ -2226,7 +2235,11 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       return
     }
 
-    const byCode = Object.fromEntries(staged.map(r => [r.student_code, r]))
+    const byCode = {}
+    staged.forEach(r => {
+      // ถ้ามีข้อมูลทั้งห้องศาสนาและ alias ห้องสามัญ ให้ข้อมูลห้องหลักของคลาสชนะเสมอ
+      if (!byCode[r.student_code] || r.main_room === mainRoom) byCode[r.student_code] = r
+    })
     const matched = students.map(s => ({ student: s, staged: byCode[s.student_code] })).filter(x => x.staged)
     if (!matched.length) {
       showToast('มีข้อมูลจากระบบดูแลสำหรับวันนี้ แต่ไม่ตรงกับรหัสนักเรียนในห้องนี้เลยสักคน', 'error')
@@ -2261,7 +2274,10 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       const active = Array.from(row?.querySelectorAll('.att-modal-status') ?? [])
         .find(b => !b.className.includes('bg-white'))
       const status = active?.dataset.status ?? 'present'
-      return { studentCode: s.student_code, status, studentName: s.full_name, classId: classData.id }
+      return {
+        studentCode: s.student_code, status, studentName: s.full_name, classId: classData.id,
+        roomAliases: _studentCareRoomAliasesForStudent(s, mainRoom),
+      }
     })
 
     const btn = modal.querySelector('#btn-att-export-studentcare')
@@ -4357,6 +4373,24 @@ function _dominantRoom(students, classData) {
   const counts = {}
   students.forEach(s => { if (s[field]) counts[s[field]] = (counts[s[field]] || 0) + 1 })
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || ''
+}
+
+// ระบบดูแลบางรุ่นเลือกได้เฉพาะห้องสามัญ แต่คลาสศาสนาใน PP5 ใช้ religion_room
+// จึงค้นหาทั้งห้องหลักและห้องสามัญที่เป็นคู่กัน เพื่อรองรับข้อมูลเก่าที่ staging ไว้ด้วยคีย์ห้องสามัญ
+function _studentCareRoomLookupKeys(students, classData, selectedRoom) {
+  const keys = new Set([selectedRoom].filter(Boolean))
+  if (_isReligionSubject(classData)) {
+    students.forEach(s => { if (s.main_room) keys.add(s.main_room) })
+  }
+  return [...keys]
+}
+
+// คืน alias เฉพาะของนักเรียนคนนั้น ป้องกันการคัดลอก attendance ไปยังห้องอื่นที่ไม่เกี่ยวข้อง
+function _studentCareRoomAliasesForStudent(student, selectedRoom) {
+  const aliases = []
+  if (student?.main_room === selectedRoom && student.religion_room) aliases.push(student.religion_room)
+  if (student?.religion_room === selectedRoom && student.main_room) aliases.push(student.main_room)
+  return aliases
 }
 
 // ฟีเจอร์เชื่อมข้อมูลกับระบบดูแล — ครูทุกคนใช้ได้ฟรี "ห้องแรกที่ใช้" เท่านั้น จะใช้ห้องอื่นเพิ่มต้องสนับสนุนระดับ 2 ขึ้นไป
