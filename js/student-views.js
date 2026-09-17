@@ -23,7 +23,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.708'
+import { APP_VERSION } from './version.js?v=10.22.709'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -1889,6 +1889,13 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   const total    = midScore + finScore + derivedScore
   const totalMax = midMax + finMax + derivedMax
   const pct      = totalMax > 0 ? total / totalMax * 100 : 0
+  // เกณฑ์เกรดมาตรฐาน ปพ.5: คำนวณเกรดเมื่อคะแนนทุกหัวข้อที่นำไปคิดเกรดครบแล้วเท่านั้น
+  const gradeCols = columns.filter(c => !isBonus(c))
+  const scoredGradeCols = gradeCols.filter(c => {
+    const sc = scoreMap[c.id]
+    return c.column_type === 'derived' || (sc && (sc.final_score != null || sc.original_score != null))
+  })
+  const gradeComplete = gradeCols.length > 0 && scoredGradeCols.length === gradeCols.length
 
   const attTotal   = attendance.length
   const attPresent = attendance.filter(a => a.status === 'present').length
@@ -1901,7 +1908,11 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
     if (p >= 50) return { label:'พอใช้',    cls:'bg-yellow-100 text-yellow-700' }
     return              { label:'ปรับปรุง', cls:'bg-red-100 text-red-600' }
   }
-  const grade = totalMax > 0 ? _gradeLabel(pct) : null
+  const _gradePoint = (p) => p >= 80 ? 4.0 : p >= 75 ? 3.5 : p >= 70 ? 3.0 : p >= 65 ? 2.5
+    : p >= 60 ? 2.0 : p >= 55 ? 1.5 : p >= 50 ? 1.0 : 0.0
+  const grade = gradeComplete && totalMax > 0
+    ? { ..._gradeLabel(pct), point: _gradePoint(pct) }
+    : null
 
   // Score table row
   const _scoreTableRow = (col) => {
@@ -1979,8 +1990,10 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
         <p class="text-[10px] text-gray-400">/${totalMax} คะแนน</p>
         ${specialScore > 0 ? `<p class="text-[10px] text-amber-500 font-medium">คะแนนพิเศษ ${specialScore.toFixed(1).replace(/\.0$/,'')} (แยก ไม่บวกยอดรวม)</p>` : ''}
         ${grade
-          ? `<span class="inline-block mt-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${grade.cls}">${grade.label}</span>`
-          : ''}
+          ? `<div class="mt-1 flex items-center justify-end gap-1.5"><span class="inline-flex items-center px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-sm font-extrabold">เกรด ${grade.point.toFixed(1)}</span><span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${grade.cls}">${grade.label}</span></div>`
+          : totalMax > 0
+            ? `<span class="inline-block mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600">ยังไม่สรุปเกรด (${scoredGradeCols.length}/${gradeCols.length} หัวข้อ)</span>`
+            : ''}
       </div>
     </div>`
 

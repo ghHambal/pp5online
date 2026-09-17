@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.708'
+import { APP_VERSION } from './version.js?v=10.22.709'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.709': [
+    '🎓 หน้าคะแนนนักเรียน: แสดงเกรดรายวิชาตามเกณฑ์ ปพ.5 และแจ้งสถานะเมื่อกรอกคะแนนยังไม่ครบ',
+  ],
   '10.22.708': [
     '🔗 ระบบดูแล ↔ ปพ.5: รองรับห้องสามัญและห้องศาสนาที่ใช้ชื่อท้ายห้องเดียวกัน โดยจับคู่จากรหัสนักเรียนและรองรับข้อมูลเดิมที่ส่งไว้แล้ว',
   ],
