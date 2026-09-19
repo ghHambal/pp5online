@@ -241,23 +241,24 @@ export async function getUnassignedRegradeSubjects(category) {
 }
 
 export async function assignSubjectTeacherBulk(subjectCode, category, teacherId) {
-  const { data, error } = await supabase.from('regrade_subjects')
-    .update({ teacher_id: teacherId, updated_at: new Date().toISOString() })
-    .eq('subject_code', subjectCode).eq('category', category).is('teacher_id', null)
-    .select('id')
+  const { data, error } = await supabase.rpc('assign_regrade_subject_teacher_bulk', {
+    p_subject_code: subjectCode,
+    p_category: category,
+    p_teacher_id: teacherId,
+  })
   if (error) throw error
-  return data?.length ?? 0
+  return Number(data ?? 0)
 }
 
 // มอบหมายเฉพาะบางแถวที่หัวหน้ากลุ่มสาระเลือกไว้ (แบ่งนักเรียนวิชาเดียวกันให้ครูคนละคนได้) —
-// RLS policy regrade_subjects_depthead_assign คุมสิทธิ์อยู่แล้ว (ต้องเป็นแถวที่ยังไม่มีครู + อยู่ในหมวดตัวเอง)
+// RPC ฝั่งฐานข้อมูลคุมสิทธิ์ว่าเป็นหัวหน้ากลุ่มสาระและเป็นแถวที่ยังไม่มีครูในหมวดตัวเอง
 export async function assignSubjectTeacherByIds(rowIds, teacherId) {
-  const { data, error } = await supabase.from('regrade_subjects')
-    .update({ teacher_id: teacherId, updated_at: new Date().toISOString() })
-    .in('id', rowIds).is('teacher_id', null)
-    .select('id')
+  const { data, error } = await supabase.rpc('assign_regrade_subject_teacher_by_ids', {
+    p_row_ids: rowIds,
+    p_teacher_id: teacherId,
+  })
   if (error) throw error
-  return data?.length ?? 0
+  return Number(data ?? 0)
 }
 
 export async function getRegradeDistinctClassLevels() {
