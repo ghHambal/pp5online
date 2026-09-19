@@ -476,34 +476,6 @@ function renderNav(items) {
   document.querySelectorAll('.council-nav-link').forEach(btn => {
     btn.addEventListener('click', () => { activeView = btn.dataset.view; render() })
   })
-  document.getElementById('btn-delete-council-application')?.addEventListener('click', () => {
-    councilDeleteApplicationId = Number(document.getElementById('btn-delete-council-application').dataset.id)
-    render()
-  })
-  document.getElementById('btn-cancel-council-delete')?.addEventListener('click', () => {
-    councilDeleteApplicationId = null
-    render()
-  })
-  document.getElementById('council-delete-backdrop')?.addEventListener('click', e => {
-    if (e.target.id === 'council-delete-backdrop') { councilDeleteApplicationId = null; render() }
-  })
-  document.getElementById('btn-confirm-council-delete')?.addEventListener('click', async () => {
-    const reason = document.getElementById('council-delete-reason')?.value.trim()
-    if (!reason) { showToast('กรุณากรอกเหตุผลการลบ', 'warning'); return }
-    const btn = document.getElementById('btn-confirm-council-delete')
-    btn.disabled = true; btn.textContent = 'กำลังลบ...'
-    try {
-      await deleteCouncilApplication(councilDeleteApplicationId, reason)
-      showToast('ลบใบสมัครแบบเก็บประวัติแล้ว ✅', 'success')
-      councilDeleteApplicationId = null
-      adminAppDetailId = null
-      adminApps = null
-      render()
-    } catch (err) {
-      showToast('ลบใบสมัครไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
-      btn.disabled = false; btn.textContent = 'ยืนยันลบ'
-    }
-  })
   document.querySelectorAll('.council-nav-group-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const g = groupsWithItems.find(x => x.id === btn.dataset.group)
@@ -5409,6 +5381,36 @@ function wireApplicationsAdminEvents() {
   document.getElementById('btn-admin-app-detail-close')?.addEventListener('click', () => { adminAppDetailId = null; render() })
   document.getElementById('admin-app-detail-backdrop')?.addEventListener('click', e => {
     if (e.target.id === 'admin-app-detail-backdrop') { adminAppDetailId = null; render() }
+  })
+  document.getElementById('btn-delete-council-application')?.addEventListener('click', e => {
+    councilDeleteApplicationId = Number(e.currentTarget.dataset.id)
+    render()
+  })
+  document.getElementById('btn-cancel-council-delete')?.addEventListener('click', () => {
+    councilDeleteApplicationId = null
+    render()
+  })
+  document.getElementById('council-delete-backdrop')?.addEventListener('click', e => {
+    if (e.target.id === 'council-delete-backdrop') { councilDeleteApplicationId = null; render() }
+  })
+  document.getElementById('btn-confirm-council-delete')?.addEventListener('click', async () => {
+    const reason = document.getElementById('council-delete-reason')?.value.trim()
+    if (!reason) { showToast('กรุณากรอกเหตุผลการลบ', 'warning'); return }
+    const btn = document.getElementById('btn-confirm-council-delete')
+    btn.disabled = true
+    btn.textContent = 'กำลังลบ...'
+    try {
+      await deleteCouncilApplication(councilDeleteApplicationId, reason)
+      showToast('ลบใบสมัครแบบเก็บประวัติแล้ว ✅', 'success')
+      councilDeleteApplicationId = null
+      adminAppDetailId = null
+      adminApps = null
+      render()
+    } catch (err) {
+      showToast('ลบใบสมัครไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      btn.disabled = false
+      btn.textContent = 'ยืนยันลบ'
+    }
   })
 
   document.querySelectorAll('.schedule-form').forEach(form => {
