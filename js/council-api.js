@@ -124,7 +124,7 @@ export async function getMyCouncilApplications(studentId) {
       council_members!council_applications_peer_endorsed_by_member_id_fkey(students(full_name)),
       requested_peer_endorser:council_members!council_applications_requested_peer_endorser_id_fkey(students(full_name)),
       council_positions(position_name, gender, is_elected)`)
-    .eq('student_id', studentId).is('deleted_at', null).order('created_at', { ascending: false })
+    .eq('student_id', studentId).order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
 }
@@ -171,7 +171,7 @@ export async function getPendingEndorsements(mainRooms) {
   if (!mainRooms?.length) return []
   const { data, error } = await supabase.from('council_applications')
     .select('id, position_id, motivation, photo_url, status, created_at, gpa_general, gpa_religious, intro_video_url, council_positions(position_name, gender), students(id, full_name, student_code, main_room, image_url, photo_url)')
-    .eq('status', 'pending').is('endorsed_at', null).is('deleted_at', null)
+    .eq('status', 'pending').is('endorsed_at', null)
     .order('created_at')
   if (error) throw error
   return (data ?? []).filter(a => mainRooms.includes(a.students?.main_room))
@@ -207,7 +207,7 @@ export async function getPendingPeerEndorsements(gender, memberId) {
     .select(`id, position_id, motivation, photo_url, status, created_at, requested_peer_endorser_id,
       council_positions!inner(position_name, gender),
       students(id, full_name, student_code, main_room, image_url, photo_url)`)
-    .eq('status', 'pending').is('peer_endorsed_at', null).is('deleted_at', null)
+    .eq('status', 'pending').is('peer_endorsed_at', null)
     .eq('council_positions.gender', gender)
     .eq('requested_peer_endorser_id', memberId)
     .order('created_at')
@@ -255,7 +255,6 @@ export async function getCouncilApplicationsForAdmin(academicYear) {
       students(id, full_name, student_code, main_room, image_url, photo_url, profile_id),
       council_interviews(id, scheduled_at, location, interviewer_teacher_id, result, score, scores, comment),
       council_candidates(id, election_config_id, ballot_number)`)
-    .is('deleted_at', null)
     .order('created_at', { ascending: false })
   if (academicYear) q = q.eq('academic_year', academicYear)
   const { data, error } = await q
@@ -462,7 +461,7 @@ export async function getInterviewedForNomination(gender) {
       students(id, full_name, student_code, main_room, image_url, photo_url),
       council_positions!inner(id, position_name, gender, is_elected),
       council_interviews(score, comment)`)
-    .eq('status', 'interviewed').is('deleted_at', null)
+    .eq('status', 'interviewed')
     .eq('council_positions.gender', gender).eq('council_positions.is_elected', false)
   if (error) throw error
   return data ?? []
