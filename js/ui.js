@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.709'
+import { APP_VERSION } from './version.js?v=10.22.710'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,7 +1005,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
-  '10.22.709': [
+  '10.22.710': [
+    '🛡️ ระบบสภานักเรียน: บังคับระดับชั้น/GPA/ช่วงเวลารับสมัครฝั่งฐานข้อมูล และเพิ่ม soft delete ใบสมัครสำหรับแอดมิน',
+  ],
+  '10.22.710': [
     '🎓 หน้าคะแนนนักเรียน: แสดงเกรดรายวิชาตามเกณฑ์ ปพ.5 และแจ้งสถานะเมื่อกรอกคะแนนยังไม่ครบ',
   ],
   '10.22.708': [

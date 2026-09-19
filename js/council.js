@@ -22,6 +22,7 @@ import {
   confirmApplicationEndorsement, declineApplicationEndorsement,
   getPendingPeerEndorsements, submitPeerEndorsement, updateRequestedPeerEndorser,
   getCouncilApplicationsForAdmin, scheduleCouncilInterview, saveCouncilInterviewScore,
+  deleteCouncilApplication,
   promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow,
   getCandidatesForElection, publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
   getCouncilActivities, createActivity, updateActivityStatus, updateActivityOwnership,
@@ -81,6 +82,22 @@ const MIN_APPLY_CERTIFICATES = 5 // ค่า fallback ก่อนโหลด 
 function minApplyCertificates() {
   return Number(ctx?.cfg?.council_min_certificates) || MIN_APPLY_CERTIFICATES
 }
+const DEFAULT_COUNCIL_ELIGIBLE_GRADES = 'ม.3,ม.4,ม.5'
+function getEligibleCouncilGradeLevels() {
+  return String(ctx?.cfg?.council_eligible_grade_levels || DEFAULT_COUNCIL_ELIGIBLE_GRADES)
+    .split(/[,\n]/).map(s => s.trim()).filter(Boolean)
+}
+function isStudentEligibleByGrade(student) {
+  const grade = studentGradeLevel(student)
+  return !!grade && getEligibleCouncilGradeLevels().includes(grade)
+}
+function councilEligibilityMessage(student) {
+  const levels = getEligibleCouncilGradeLevels().join(', ')
+  const grade = studentGradeLevel(student)
+  return grade
+    ? `ไม่สามารถสมัครสภานักเรียนได้ การรับสมัครครั้งนี้เปิดสำหรับระดับ ${levels} เท่านั้น ระดับชั้นปัจจุบันของคุณ: ${grade}`
+    : 'ไม่สามารถสมัครสภานักเรียนได้ ไม่พบระดับชั้นจากห้องสามัญหรือห้องศาสนา กรุณาติดต่อผู้ดูแลระบบ'
+}
 function newBlankCertificateSlots(n) {
   return Array.from({ length: n }, () => ({ file: null, title: '', previewUrl: null, isPdf: false }))
 }
@@ -138,6 +155,7 @@ let flowSubtab = null
 // สถานะที่โหลดแบบ lazy ตอนเปิดหน้าจอนั้นๆ ครั้งแรก (ไม่ต้องโหลดทุกอย่างตั้งแต่ init)
 let adminApps = null // null = ยังไม่โหลด, [] = โหลดแล้วแต่ไม่มีข้อมูล
 let adminAppDetailId = null // id ของใบสมัครที่กำลังเปิดดูแบบเต็ม (ป๊อบอัพ) — null = ปิดอยู่
+let councilDeleteApplicationId = null
 let myAppDetailId = null // id ของใบสมัครของตัวเองที่นักเรียนกำลังเปิดดูแบบเต็ม (ป๊อบอัพ) — null = ปิดอยู่
 let appsFilter = 'all' // ฟิลเตอร์สถานะในหน้า "จัดการใบสมัคร" (สเปคข้อ 8.4)
 let appsGenderTab = 'M' // แถบสลับชาย/หญิงในหน้า "จัดการใบสมัคร" — เพิ่มตามที่ผู้ใช้ขอ 2026-08-23
@@ -458,6 +476,34 @@ function renderNav(items) {
   document.querySelectorAll('.council-nav-link').forEach(btn => {
     btn.addEventListener('click', () => { activeView = btn.dataset.view; render() })
   })
+  document.getElementById('btn-delete-council-application')?.addEventListener('click', () => {
+    councilDeleteApplicationId = Number(document.getElementById('btn-delete-council-application').dataset.id)
+    render()
+  })
+  document.getElementById('btn-cancel-council-delete')?.addEventListener('click', () => {
+    councilDeleteApplicationId = null
+    render()
+  })
+  document.getElementById('council-delete-backdrop')?.addEventListener('click', e => {
+    if (e.target.id === 'council-delete-backdrop') { councilDeleteApplicationId = null; render() }
+  })
+  document.getElementById('btn-confirm-council-delete')?.addEventListener('click', async () => {
+    const reason = document.getElementById('council-delete-reason')?.value.trim()
+    if (!reason) { showToast('กรุณากรอกเหตุผลการลบ', 'warning'); return }
+    const btn = document.getElementById('btn-confirm-council-delete')
+    btn.disabled = true; btn.textContent = 'กำลังลบ...'
+    try {
+      await deleteCouncilApplication(councilDeleteApplicationId, reason)
+      showToast('ลบใบสมัครแบบเก็บประวัติแล้ว ✅', 'success')
+      councilDeleteApplicationId = null
+      adminAppDetailId = null
+      adminApps = null
+      render()
+    } catch (err) {
+      showToast('ลบใบสมัครไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      btn.disabled = false; btn.textContent = 'ยืนยันลบ'
+    }
+  })
   document.querySelectorAll('.council-nav-group-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const g = groupsWithItems.find(x => x.id === btn.dataset.group)
@@ -714,7 +760,7 @@ function renderOverviewView() {
   // ยังไม่มี council_election_config เลย — ซ่อนปุ่มไปเลยสำหรับคนทั่วไป ส่วนแอดมิน
   // ยังเห็นปุ่มไว้พาไปตั้งค่าเปิดใช้งานได้ แต่เปลี่ยนข้อความให้ตรงสถานะจริง ไม่ใช่กล่องว่าง
   const showElectionEntry = hasElection || ctx.isAdmin
-  const showApplyEntry = ctx.role === 'student'
+  const showApplyEntry = ctx.role === 'student' && isStudentEligibleByGrade(ctx.student)
   const electionLabel = hasElection ? 'การเลือกตั้ง' : 'ตั้งค่าการเลือกตั้ง'
   const electionSub = hasElection ? '' : 'ยังไม่เปิดใช้งาน — แตะเพื่อตั้งค่า'
 
@@ -765,6 +811,13 @@ function renderApplyView() {
   if (!gender) {
     return `<div class="bg-[var(--gold-soft)] border border-[var(--gold-soft-line)] rounded-2xl p-4 text-center text-[var(--gold-ink)] text-sm">
       ⚠️ ไม่พบข้อมูลเพศของนักเรียน ติดต่อผู้ดูแลระบบเพื่อสมัครสภานักเรียน
+    </div>`
+  }
+
+  if (!isStudentEligibleByGrade(ctx.student)) {
+    return `<div class="bg-[var(--gold-soft)] border border-[var(--gold-soft-line)] rounded-2xl p-4 text-center text-[var(--gold-ink)] text-sm">
+      ⚠️ ${esc(councilEligibilityMessage(ctx.student))}
+      <p class="mt-1 text-xs">${esc(ctx.student.main_room || ctx.student.religion_room || 'ไม่พบข้อมูลห้อง')}</p>
     </div>`
   }
 
@@ -1390,7 +1443,7 @@ function renderAdminAppDetailModal() {
   if (!adminAppDetailId) return ''
   const a = adminApps?.find(x => x.id === adminAppDetailId)
   if (!a) return ''
-  return renderAppDetailModalBody(a, a.students, { closeId: 'btn-admin-app-detail-close', backdropId: 'admin-app-detail-backdrop' })
+  return renderAppDetailModalBody(a, a.students, { closeId: 'btn-admin-app-detail-close', backdropId: 'admin-app-detail-backdrop', canDelete: !!ctx.isAdmin })
 }
 
 // นักเรียนดูใบสมัครของตัวเองแบบเต็ม (เหมือนที่แอดมิน/ครูเห็น) — reuse modal เดียวกัน
@@ -1453,7 +1506,7 @@ function openPeerEndorserPickerModal(applicationId, gender) {
   })
 }
 
-function renderAppDetailModalBody(a, student, { closeId, backdropId, isOwner = false }) {
+function renderAppDetailModalBody(a, student, { closeId, backdropId, isOwner = false, canDelete = false }) {
   const genderCls = GENDER_BADGE_FIXED[a.council_positions?.gender] ?? 'bg-[var(--bg-2)] text-[var(--muted)]'
   return `
     <div class="fixed inset-0 z-[80] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4" id="${backdropId}">
@@ -1525,9 +1578,35 @@ function renderAppDetailModalBody(a, student, { closeId, backdropId, isOwner = f
               ${a.requested_peer_endorser_id ? '🔄 เปลี่ยนพี่สภา' : '➕ เลือกพี่สภา'}
             </button>
           </div>` : ''}
+          ${canDelete && ['pending', 'rejected'].includes(a.status) ? `
+          <button type="button" id="btn-delete-council-application" data-id="${a.id}" class="w-full py-2.5 rounded-xl bg-[var(--bad)] text-white text-sm font-bold">🗑️ ลบใบสมัคร</button>` : ''}
         </div>
       </div>
     </div>`
+}
+
+function renderCouncilDeleteModal() {
+  if (!councilDeleteApplicationId) return ''
+  const a = adminApps?.find(x => x.id === councilDeleteApplicationId)
+  if (!a) return ''
+  return `<div id="council-delete-backdrop" class="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4">
+    <div class="bg-[var(--surface)] rounded-2xl p-5 max-w-md w-full space-y-3">
+      <p class="text-base font-bold text-[var(--ink)]">🗑️ ยืนยันการนำใบสมัครนี้ออกจากระบบ?</p>
+      <div class="text-sm text-[var(--ink-2)] space-y-1">
+        <p><b>ชื่อ–สกุล:</b> ${esc(a.students?.full_name)}</p>
+        <p><b>รหัสนักเรียน:</b> ${esc(a.students?.student_code)}</p>
+        <p><b>ห้อง:</b> ${esc(a.students?.main_room || a.students?.religion_room || '—')}</p>
+        <p><b>ตำแหน่ง:</b> ${esc(a.council_positions?.position_name)}</p>
+        <p><b>สถานะ:</b> ${esc(APPLICATION_STATUS_LABEL[a.status] || a.status)}</p>
+      </div>
+      <p class="text-xs text-[var(--bad)]">โปรดตรวจสอบข้อมูลให้ถูกต้องก่อนดำเนินการ</p>
+      <textarea id="council-delete-reason" required rows="3" placeholder="เหตุผลการลบ (จำเป็น)" class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-sm bg-[var(--surface)] text-[var(--ink)]"></textarea>
+      <div class="flex gap-2">
+        <button type="button" id="btn-cancel-council-delete" class="flex-1 py-2.5 rounded-xl border border-[var(--line)] text-sm">ยกเลิก</button>
+        <button type="button" id="btn-confirm-council-delete" class="flex-1 py-2.5 rounded-xl bg-[var(--bad)] text-white text-sm font-bold">ยืนยันลบ</button>
+      </div>
+    </div>
+  </div>`
 }
 
 async function loadExecAdvisorPositions() {
@@ -1666,7 +1745,7 @@ function renderExecDashboardView() {
         </div>` : `<p class="text-xs text-[var(--muted-2)]">ยังไม่มีครูที่ปรึกษาสภานักเรียน</p>`}
       </div>
     </div>
-    ${renderAdminAppDetailModal()}`
+    ${renderAdminAppDetailModal()}${renderCouncilDeleteModal()}`
 }
 
 function renderApplicationsAdminView() {
@@ -1828,7 +1907,7 @@ function renderApplicationsAdminView() {
       }).join('')
     : `<div class="space-y-3">${list.map(card).join('')}</div>`
 
-  return `${genderTabs}${filterBar}${extraFilterBar}${datalist}${body}${renderAdminAppDetailModal()}`
+  return `${genderTabs}${filterBar}${extraFilterBar}${datalist}${body}${renderAdminAppDetailModal()}${renderCouncilDeleteModal()}`
 }
 
 // ─── รายชื่อสภานักเรียนปัจจุบัน (public, จัดกลุ่มตามเพศ→ตำแหน่ง) ──────────────────
@@ -3165,7 +3244,7 @@ function renderSettingsGeneral() {
         </div>
         <div>
           <label class="block text-xs font-medium text-[var(--muted)] mb-1">ระดับชั้นที่สมัครได้ (คั่นด้วย ,)</label>
-          <input name="council_eligible_grade_levels" value="${esc(cfg.council_eligible_grade_levels || 'ม.4,ม.5,ม.6')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+          <input name="council_eligible_grade_levels" value="${esc(cfg.council_eligible_grade_levels || DEFAULT_COUNCIL_ELIGIBLE_GRADES)}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
         </div>
         <div>
           <label class="block text-xs font-medium text-[var(--muted)] mb-1">จำนวนเกียรติบัตร/รางวัลขั้นต่ำที่ต้องแนบ</label>
@@ -4145,6 +4224,10 @@ function wireContentEvents() {
     btn.addEventListener('click', () => handlePeerEndorsement(btn.dataset.id))
   })
   document.getElementById('btn-open-apply')?.addEventListener('click', () => {
+    if (!isStudentEligibleByGrade(ctx.student)) {
+      showToast(councilEligibilityMessage(ctx.student), 'warning')
+      return
+    }
     showApplyForm = true
     const draft = loadApplyDraft()
     applyDraftPrompt = (draft && draft.step > 1) ? draft : null
@@ -4291,6 +4374,10 @@ function wireContentEvents() {
     if (e.target.id === 'apply-confirm-backdrop') { showApplyConfirm = false; render() }
   })
   document.getElementById('btn-apply-confirm-submit')?.addEventListener('click', async () => {
+    if (!isStudentEligibleByGrade(ctx.student)) {
+      showToast(councilEligibilityMessage(ctx.student), 'error')
+      return
+    }
     const btn = document.getElementById('btn-apply-confirm-submit')
     btn.disabled = true; btn.textContent = 'กำลังส่ง...'
     try {
