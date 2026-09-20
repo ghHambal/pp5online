@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.733'
+import { APP_VERSION } from './version.js?v=10.22.734'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.734': [
+    '🔗 เพิ่ม Deep Link ศูนย์ระเบียบ เปิดแท็บและเลขข้อที่อ้างถึงได้โดยตรง พร้อมปุ่มลิงก์ตรงในแต่ละข้อ',
+  ],
   '10.22.733': [
     '🎨 เพิ่มปุ่มจัดสีช่องคะแนนตามเปอร์เซ็นต์คะแนนเต็มในหน้ากรอกคะแนน',
   ],

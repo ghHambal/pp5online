@@ -72,7 +72,21 @@ const APPLICATION_STATUS_LABEL = {
 }
 
 let ctx = null
-let activeView = 'overview'
+const initialRouteParams = new URLSearchParams(window.location.search)
+const initialRouteView = initialRouteParams.get('view')
+const hasExplicitViewRoute = Boolean(initialRouteView)
+let activeView = initialRouteView || 'overview'
+
+function setActiveView(view, { preserveDetail = false } = {}) {
+  activeView = view
+  const url = new URL(window.location.href)
+  url.searchParams.set('view', view)
+  if (!preserveDetail) {
+    url.searchParams.delete('clause')
+    url.searchParams.delete('version')
+  }
+  window.history.replaceState(null, '', url)
+}
 // ─── สมัครสภานักเรียน — wizard 5 ขั้น (สเปคข้อ 8.2 + เกียรติบัตร/รางวัลขั้นต่ำ 5 รายการ) ──
 let showApplyForm = false // true = กำลังแสดง wizard (แทนปุ่มเปิดฟอร์ม)
 let applyStep = 1 // 1 เลือกตำแหน่ง / 2 เกรด+แรงจูงใจ / 3 รูปถ่าย / 4 วิดีโอแนะนำตัว / 5 เกียรติบัตร/รางวัล / 6 เลือกพี่สภารับรอง (มีเงื่อนไข)
@@ -330,7 +344,7 @@ async function init() {
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
   }
   electionYear = Number(cfg.academicYear) || (new Date().getFullYear() + 543)
-  if (role === 'teacher' && pendingEndorsements.length) activeView = 'endorse'
+  if (role === 'teacher' && pendingEndorsements.length && !hasExplicitViewRoute) setActiveView('endorse')
   render()
 }
 
@@ -476,12 +490,12 @@ function renderNav(items) {
   }).join('')}</div>`
 
   document.querySelectorAll('.council-nav-link').forEach(btn => {
-    btn.addEventListener('click', () => { activeView = btn.dataset.view; render() })
+    btn.addEventListener('click', () => { setActiveView(btn.dataset.view); render() })
   })
   document.querySelectorAll('.council-nav-group-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const g = groupsWithItems.find(x => x.id === btn.dataset.group)
-      if (g.items.length === 1) { activeView = g.items[0].id; mobileSheetGroup = null; render() }
+      if (g.items.length === 1) { setActiveView(g.items[0].id); mobileSheetGroup = null; render() }
       else { mobileSheetGroup = mobileSheetGroup === g.id ? null : g.id; renderMobileSheet(items) }
     })
   })
@@ -514,7 +528,7 @@ function renderMobileSheet(items) {
     if (e.target.id === 'mobile-sheet-backdrop') { mobileSheetGroup = null; render() }
   })
   document.querySelectorAll('.mobile-sheet-item').forEach(btn => {
-    btn.addEventListener('click', () => { activeView = btn.dataset.view; mobileSheetGroup = null; render() })
+    btn.addEventListener('click', () => { setActiveView(btn.dataset.view); mobileSheetGroup = null; render() })
   })
 }
 
@@ -4090,7 +4104,7 @@ function render() {
   setNavChromeVisible(true)
 
   const items = getNavItems()
-  if (!items.some(it => it.id === activeView)) activeView = 'overview'
+  if (!items.some(it => it.id === activeView)) setActiveView('overview')
   renderNav(items)
 
   // เนื้อหาเต็มพื้นที่ที่มีจริง (ไม่ล็อก max-width) — ตามที่ผู้ใช้ทักท้วงว่าจอใหญ่ยังมีขอบว่าง
@@ -4141,7 +4155,7 @@ function wireContentEvents() {
     btn.addEventListener('click', () => { fullscreenFlow = btn.dataset.flow; flowSubtab = null; render() })
   })
   document.querySelectorAll('.goto-view').forEach(btn => {
-    btn.addEventListener('click', () => { activeView = btn.dataset.view; render() })
+    btn.addEventListener('click', () => { setActiveView(btn.dataset.view); render() })
   })
   document.querySelectorAll('.roster-gender-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => { rosterGenderTab = btn.dataset.gender; render() })

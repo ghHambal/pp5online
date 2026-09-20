@@ -22,6 +22,34 @@ const STATUS_LABEL = {
 let state = {
   versions: null, selectedVersionId: null, content: null, loading: false, error: null,
   query: '', sectionFilter: 'all', editingClauseId: null, addingClause: false,
+  routeClauseNo: null, focusRouteClause: false,
+}
+
+function getRouteClauseNo() {
+  const value = Number(new URLSearchParams(window.location.search).get('clause'))
+  return Number.isInteger(value) && value > 0 ? value : null
+}
+
+function syncRouteClause() {
+  const routeClauseNo = getRouteClauseNo()
+  if (routeClauseNo === state.routeClauseNo) return
+  if (routeClauseNo) {
+    state.routeClauseNo = routeClauseNo
+    state.query = 'ข้อที่ ' + routeClauseNo
+    state.focusRouteClause = true
+  } else {
+    if (state.routeClauseNo && state.query === 'ข้อที่ ' + state.routeClauseNo) state.query = ''
+    state.routeClauseNo = null
+    state.focusRouteClause = false
+  }
+}
+
+function clearRouteClause() {
+  state.routeClauseNo = null
+  state.focusRouteClause = false
+  const url = new URL(window.location.href)
+  url.searchParams.delete('clause')
+  window.history.replaceState(null, '', url)
 }
 
 function selectedVersion() {
@@ -38,6 +66,12 @@ async function loadRegulation(onChange) {
     state.content = state.selectedVersionId
       ? await getCouncilRegulationContent(state.selectedVersionId)
       : { sections: [], clauses: [] }
+    const routeClauseNo = getRouteClauseNo()
+    if (routeClauseNo) {
+      state.routeClauseNo = routeClauseNo
+      state.query = 'ข้อที่ ' + routeClauseNo
+      state.focusRouteClause = true
+    }
   } catch (error) {
     state.error = error
   } finally {
@@ -124,10 +158,15 @@ function clauseCard(clause, section, canEdit) {
   const title = String(clause.title ?? '').trim()
   const body = String(clause.body ?? '')
   const showTitle = title && !body.startsWith(title)
-  return '<article class="border border-[var(--line-soft)] bg-[var(--surface)] rounded-2xl p-4 shadow-sm">'
+  const isRouteTarget = state.routeClauseNo === Number(clause.clause_no)
+  const directLink = 'council.html?view=regulation&clause=' + encodeURIComponent(clause.clause_no)
+  return '<article id="regulation-clause-' + esc(clause.clause_no) + '" class="border border-[var(--line-soft)] bg-[var(--surface)] rounded-2xl p-4 shadow-sm' + (isRouteTarget ? ' ring-2 ring-[var(--primary)]' : '') + '">'
     + '<div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="text-sm font-bold text-[var(--primary)]">ข้อ ' + thaiDigits(clause.clause_no) + '</p>'
     + (showTitle ? '<p class="text-sm font-semibold text-[var(--ink)] mt-1">' + esc(title) + '</p>' : '') + '</div>'
-    + (canEdit ? '<button type="button" class="regulation-edit-clause flex-shrink-0 px-3 py-1.5 rounded-lg border border-[var(--line)] text-xs font-bold text-[var(--muted)] hover:bg-[var(--surface-2)]" data-id="' + clause.id + '">แก้ไข</button>' : '')
+    + '<div class="flex items-center gap-2 flex-shrink-0">'
+    + '<a href="' + directLink + '" class="regulation-clause-link px-2.5 py-1.5 rounded-lg border border-[var(--line)] text-xs font-bold text-[var(--muted)] hover:bg-[var(--surface-2)]" title="เปิดลิงก์ตรงของข้อนี้">🔗 ลิงก์ข้อ</a>'
+    + (canEdit ? '<button type="button" class="regulation-edit-clause px-3 py-1.5 rounded-lg border border-[var(--line)] text-xs font-bold text-[var(--muted)] hover:bg-[var(--surface-2)]" data-id="' + clause.id + '">แก้ไข</button>' : '')
+    + '</div>'
     + '</div><div class="text-sm leading-7 text-[var(--ink-2)] mt-3 whitespace-pre-line">' + esc(clause.body) + '</div>'
     + '<p class="text-[0.6875rem] text-[var(--muted-2)] mt-3">หมวด ' + thaiDigits(section.section_no) + ' · ' + esc(section.title) + '</p></article>'
 }
@@ -145,6 +184,7 @@ function addForm(sections) {
 }
 
 export function renderCouncilRegulationView(ctx, onChange = () => {}) {
+  syncRouteClause()
   ensureLoaded(onChange)
   if (state.loading && state.versions === null) return '<div class="max-w-5xl mx-auto"><div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-8 text-center text-sm text-[var(--muted)]">กำลังโหลดระเบียบสภานักเรียน...</div></div>'
   if (state.error) return '<div class="max-w-5xl mx-auto"><div class="bg-[var(--surface)] border border-red-200 rounded-2xl p-6 text-center"><p class="text-sm font-bold text-red-700">โหลดระเบียบไม่สำเร็จ</p><p class="text-xs text-[var(--muted)] mt-2">' + esc(state.error.message || state.error) + '</p><button type="button" class="regulation-retry mt-4 px-4 py-2 rounded-xl bg-[var(--primary)] text-white text-xs font-bold">ลองใหม่</button></div></div>'
@@ -191,13 +231,14 @@ export function wireCouncilRegulationEvents(ctx, onChange) {
     state.content = null
     loadSelectedVersion(onChange)
   })
-  document.getElementById('regulation-section-filter')?.addEventListener('change', e => { state.sectionFilter = e.target.value; onChange() })
+  document.getElementById('regulation-section-filter')?.addEventListener('change', e => { clearRouteClause(); state.sectionFilter = e.target.value; onChange() })
   document.getElementById('regulation-search-form')?.addEventListener('submit', e => {
     e.preventDefault()
+    clearRouteClause()
     state.query = document.getElementById('regulation-search')?.value ?? ''
     onChange()
   })
-  document.querySelector('.regulation-clear-filter')?.addEventListener('click', () => { state.query = ''; state.sectionFilter = 'all'; onChange() })
+  document.querySelector('.regulation-clear-filter')?.addEventListener('click', () => { clearRouteClause(); state.query = ''; state.sectionFilter = 'all'; onChange() })
   document.querySelector('.regulation-print')?.addEventListener('click', () => {
     const version = selectedVersion()
     if (version) {
@@ -208,6 +249,13 @@ export function wireCouncilRegulationEvents(ctx, onChange) {
       openHtmlPrintOverlay(printHtml(version, sections, filtered, scopeLabel))
     }
   })
+  if (state.focusRouteClause) {
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById('regulation-clause-' + state.routeClauseNo)
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      state.focusRouteClause = false
+    })
+  }
   if (!ctx?.isAdmin) return
   document.querySelector('.regulation-add-clause')?.addEventListener('click', () => { state.addingClause = true; onChange() })
   document.querySelector('.regulation-cancel-add')?.addEventListener('click', () => { state.addingClause = false; onChange() })
