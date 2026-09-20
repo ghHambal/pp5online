@@ -6261,7 +6261,6 @@ function bindEvents() {
           // (บาง row มี team_a_id บาง row ไม่มี) PostgREST จะรวม column set ของทั้ง batch แล้วเติม null ให้ row ที่ไม่ได้ระบุ
           // ทำให้ค่าจริงของ row อื่นที่ไม่ได้ตั้งใจแตะ (เช่นทีมที่จับสลากไว้จริงในรอบแรก) ถูกลบไปด้วย — เคยเกิดเหตุจริงมาแล้ว
           const commonRows = []
-          const refRows = []
           ;['MS', 'HS'].forEach(level => {
             BRACKET[level].forEach(def => {
               commonRows.push({
@@ -6270,20 +6269,32 @@ function bindEvents() {
                 winner_team_id: null, loser_team_id: null,
                 clock_status: 'not_started', clock_half: null, clock_started_at: null, clock_elapsed_before: 0, clock_half_started_elapsed: 0,
               })
-              // ทุก row ในชุดนี้มี key ชุดเดียวกันเป๊ะเสมอ (team_a_id/team_b_id ทั้งคู่) กันปัญหา PostgREST เติม null ให้ row ที่ key ไม่ครบ
-              if (def.refA || def.refB) refRows.push({ level, match_code: def.code, team_a_id: null, team_b_id: null })
             })
           })
           const { error } = await SB.from('azfutsal_matches').upsert(commonRows, { onConflict: 'level,match_code' })
           if (error) { azToast('ล้างผลไม่สำเร็จ: ' + error.message); return }
-          if (refRows.length) {
-            const { error: refErr } = await SB.from('azfutsal_matches').upsert(refRows, { onConflict: 'level,match_code' })
-            if (refErr) { azToast('ล้างทีมรอบถัดไปไม่สำเร็จ: ' + refErr.message); return }
-          }
           const { error: delErr } = await SB.from('azfutsal_match_events').delete().in('level', ['MS', 'HS'])
           if (delErr) { azToast('ลบผู้ทำประตู/การ์ดไม่สำเร็จ: ' + delErr.message); return }
           await refresh()
           azToast('ล้างผลการแข่งขันทั้งหมดแล้ว')
+        }
+      }
+      draw(); return
+    }
+    if (act === 'resetAllMatchSchedule') {
+      S.pendingConfirm = {
+        message: 'ล้างโปรแกรมประกบคู่และกำหนดการของทุกนัดจริงหรือไม่?\nทีมที่จับคู่ไว้และเวลาแข่ง/รายงานตัวของโปรแกรมจะถูกล้าง แต่จะไม่ลบทีม นักกีฬา การชำระเงิน หรือรายงานตัว',
+        danger: true, confirmLabel: 'ล้างโปรแกรมการแข่งขัน',
+        run: async () => {
+          const { error } = await SB.from('azfutsal_matches')
+            .update({
+              team_a_id: null, team_b_id: null,
+              ready_time: null, kickoff_time: null,
+            })
+            .in('level', ['MS', 'HS'])
+          if (error) { azToast('ล้างโปรแกรมไม่สำเร็จ: ' + error.message); return }
+          await refresh()
+          azToast('ล้างโปรแกรมประกบคู่แล้ว — ผลการแข่งขันและข้อมูลทีมยังคงอยู่')
         }
       }
       draw(); return
@@ -7064,8 +7075,13 @@ function adminOps() {
     `)}
     ${box(`
       <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#dc2626">⚠️ ล้างผลการแข่งขันทั้งหมด</div>
-      <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ใช้ตอนทดสอบระบบบันทึกผล — ล้างสกอร์ ผู้ทำประตู ใบเหลือง/ใบแดง และนาฬิกาจับเวลาของ<b>ทุกนัด</b>กลับเป็นค่าเริ่มต้น (ยังไม่เริ่มแข่ง) รวมถึงทีมที่เข้ารอบต่อไปแบบที่แอดมินเลือกเอง (เช่น รอบแก้ตัว ม.ต้น) กลับเป็นค่าว่าง เพื่อให้จับสลาก/บันทึกผลใหม่ได้ตั้งแต่ต้น<br><b>ไม่กระทบ</b> ทีม/นักกีฬา/การชำระเงิน/การรายงานตัว และ<b>ไม่กระทบ</b>คู่แข่งขันรอบแรกที่จับสลากไว้แล้ว</div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ใช้ตอนทดสอบระบบบันทึกผล — ล้างเฉพาะสกอร์ ผู้ทำประตู ใบเหลือง/ใบแดง และนาฬิกาจับเวลาของ<b>ทุกนัด</b>กลับเป็นค่าเริ่มต้น (ยังไม่เริ่มแข่ง) โดยเก็บทีมที่จับคู่ไว้และโปรแกรมเดิมทั้งหมด<br><b>ไม่กระทบ</b> ทีม/นักกีฬา/การชำระเงิน/การรายงานตัว/โปรแกรมประกบคู่</div>
       <button data-act="resetAllMatchResults" style="width:100%;padding:10px;border-radius:10px;border:none;background:#dc2626;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">🗑️ ล้างผลการแข่งขันทั้งหมด</button>
+    `)}
+    ${box(`
+      <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#b45309">⚠️ ล้างโปรแกรมประกบคู่</div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:10px">ล้างทีมคู่แข่งขันและเวลาแข่ง/รายงานตัวของ<b>ทุกนัด</b> เพื่อจัดโปรแกรมใหม่ โดยไม่ลบรายการแข่งขัน ทีม นักกีฬา หรือข้อมูลการชำระเงิน</div>
+      <button data-act="resetAllMatchSchedule" style="width:100%;padding:10px;border-radius:10px;border:none;background:#b45309;color:#fff;font-weight:700;font-size:13.5px;cursor:pointer">🧹 ล้างโปรแกรมการแข่งขันทั้งหมด</button>
     `)}
     ${box(`
       <div style="font-weight:700;font-size:14px;margin-bottom:4px;color:#dc2626">⚠️ ล้างข้อมูลรายงานตัวทั้งหมด</div>
