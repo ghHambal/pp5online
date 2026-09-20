@@ -962,10 +962,13 @@ function _buildPage1(d) {
     const stScores = scoreMap[st.id] ?? {}
     const total = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0)
     const forcedGrade = scoreMap[st.id]?.__force
-    let grade = forcedGrade != null && forcedGrade !== '' && Number.isFinite(Number(forcedGrade))
-      ? Number(forcedGrade)
-      : 0
-    if (!grade && maxTotal > 0) {
+    const hasForcedGrade = forcedGrade != null && String(forcedGrade).trim() !== ''
+    const forcedNumber = hasForcedGrade ? Number(forcedGrade) : NaN
+    if (hasForcedGrade && !Number.isFinite(forcedNumber)) {
+      continue
+    }
+    let grade = hasForcedGrade ? forcedNumber : 0
+    if (!hasForcedGrade && maxTotal > 0) {
       const pct = (total / maxTotal) * 100
       grade = _calcGrade(pct)
     }
@@ -1009,7 +1012,11 @@ function _buildPage1(d) {
       <span>รหัสวิชา</span><span class="uline w-cd">${_esc(ms.subject_code??'')}</span>
     </div>`
 
-  const gradeRow = [4,'3.5',3,'2.5',2,'1.5',1,0].map(g=>`<td>${gradeCounts[String(g)]||'-'}</td>`).join('')
+  const gradeRow = [
+    ...[4,'3.5',3,'2.5',2,'1.5',1,0].map(g=>gradeCounts[String(g)]||'-'),
+    '-',
+    '-',
+  ].map(value=>`<td>${value}</td>`).join('')
   const readRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalReadCount[k]||'-'}</td>`).join('')
   const charRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalCharCount[k]||'-'}</td>`).join('')
 
