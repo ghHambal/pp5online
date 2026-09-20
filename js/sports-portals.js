@@ -1891,7 +1891,7 @@ export async function renderSportsOverviewAdmin() {
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
 
-const EVAL_CATEGORY_LABEL={parade:'🕌 ขบวนพาเหรด/ความร่วมมือสี',page:'📣 หน้าเว็บเพจ',color_eval:'🎨 วันเข้าสี/วันกีฬาสีจริง'}
+const EVAL_CATEGORY_LABEL={parade:'🕌 ขบวนพาเหรด/ความร่วมมือสี',page:'📣 หน้าเว็บเพจ',color_eval:'🎨 วันเข้าสีเดิม',sports_day:'🏟️ วันกีฬาสีจริง'}
 // สีปกติของแต่ละสี (คงที่ตามชื่อสีจริง) — ใช้แทน team_colors.hex_color เพราะสีนั้นแก้ไขได้ผ่านคำขอ
 // เปลี่ยนอัตลักษณ์สี (ทำให้อาจไม่ใช่สีตามชื่อ เช่นสีแดงอาจถูกปรับเป็นเฉดอื่น) หน้าประเมินต้องการสี
 // อ้างอิงมาตรฐานที่กรรมการคุ้นเคย ไม่ใช่สีอัตลักษณ์ที่แต่ละสีปรับแต่งเอง
@@ -1917,12 +1917,13 @@ export async function renderSportsEvaluationWorkspace() {
     const judgeUsername='pp5:'+profileId
     // entries ดึงมาทั้งหมด (ไม่กรองเฉพาะของฉัน) เพราะใช้ร่วมกันทั้ง 4 แท็บ: prefill คะแนนของฉันเอง,
     // สรุปคะแนนทุกสี, และสถานะความครบถ้วนของผู้ประเมินทุกคน — กันยิง query ซ้ำซ้อนหลายรอบ
-    const [{data:colors},{data:criteria},{data:myAssignments},{data:entries},{data:totals}]=await Promise.all([
+    const [{data:colors},{data:criteria},{data:myAssignments},{data:entries},{data:totals},{data:sessions}]=await Promise.all([
       supabase.from('team_colors').select('id,name,hex_color,logo_url,gender').eq('event_id',event.id).order('gender').order('display_order'),
-      supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('category').order('display_order'),
+      supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).eq('is_active',true).order('category').order('display_order'),
       supabase.from('sports_score_evaluators').select('*').eq('event_id',event.id).eq('profile_id',profileId).eq('is_active',true),
-      supabase.from('sports_score_entries').select('criteria_id,team_color_id,judge_username,score,updated_at').eq('event_id',event.id),
+      supabase.from('sports_score_entries').select('criteria_id,team_color_id,session_id,judge_username,score,updated_at').eq('event_id',event.id),
       supabase.from('color_totals').select('*').eq('event_id',event.id),
+      supabase.from('sports_evaluation_sessions').select('*').eq('event_id',event.id).order('session_type').order('day_no'),
     ])
     let allEvaluators=[], allTeachers=[], azizJudges=[]
     if(isAdmin){
@@ -1935,7 +1936,7 @@ export async function renderSportsEvaluationWorkspace() {
     }
     const teacherByProfile=new Map(allTeachers.map(t=>[t.profile_id,t]))
     const criteriaById=new Map((criteria||[]).map(c=>[c.id,c]))
-    const scoreMap=new Map((entries||[]).filter(e=>e.judge_username===judgeUsername).map(e=>[`${e.criteria_id}|${e.team_color_id}`,Number(e.score)]))
+    const scoreMap=new Map((entries||[]).filter(e=>e.judge_username===judgeUsername).map(e=>[`${e.criteria_id}|${e.team_color_id}|${e.session_id||''}`,Number(e.score)]))
 
     // เกณฑ์ที่ฉันประเมินได้ — assignment ที่ criteria_id ว่าง = ทุกหัวข้อในหมวดนั้น, ระบุมา = หัวข้อเดียว
     const assignedCategories=new Set((myAssignments||[]).filter(a=>!a.criteria_id).map(a=>a.category))
@@ -1943,8 +1944,8 @@ export async function renderSportsEvaluationWorkspace() {
     const myCriteria=(criteria||[]).filter(c=>assignedCategories.has(c.category)||assignedCriteriaIds.has(c.id))
 
     const myCategories=[...new Set(myCriteria.map(c=>c.category))]
-    let gender='M', evalCategory=myCategories[0]||null, evalSession=null
-    let summaryGender='M', summaryExpandedId=null
+    let gender='M', evalCategory=myCategories[0]||null, evalSession=null, selectedColorId=null, scoreDirty=false
+    let summaryGender='M', summaryExpandedId=null, summarySportsDay='cumulative'
     // ตัดชื่อหัวข้อที่ตั้งแบบ "รอบ/วัน - หัวข้อย่อย" (เช่น "เข้าสีครั้งที่ 1 - การซ้อมกีฬา") เอาส่วน
     // หน้า " - " มาเป็นชื่อรอบ ไว้จัดกลุ่มให้เลือกทีละรอบ กันหัวข้อทั้งหมวดยาวเป็นสิบข้อโผล่พร้อมกัน
     const sessionOf=name=>{ const i=String(name||'').indexOf(' - '); return i===-1?name:name.slice(0,i) }
@@ -1958,11 +1959,29 @@ export async function renderSportsEvaluationWorkspace() {
       // จัดกลุ่มหัวข้อในหมวดนี้ตามรอบ/วัน แล้วเลือกโชว์ทีละรอบผ่านดรอปดาวน์ — ถ้ามีรอบเดียว
       // (ไม่มี " - " ในชื่อเลยสักหัวข้อ) ก็โชว์ทั้งหมดตรงๆ ไม่ต้องมีดรอปดาวน์ให้รก
       const sessionMap=new Map()
-      catCriteria.forEach(crit=>{ const s=sessionOf(crit.name); if(!sessionMap.has(s))sessionMap.set(s,[]); sessionMap.get(s).push(crit) })
-      const sessionNames=[...sessionMap.keys()]
-      if(!evalSession||!sessionNames.includes(evalSession)) evalSession=sessionNames[0]||null
-      const sessionCriteria=sessionNames.length>1?(sessionMap.get(evalSession)||[]):catCriteria
+      if(evalCategory==='sports_day'){
+        ;(sessions||[]).filter(s=>s.session_type==='sports_day').forEach(s=>{
+          const rows=catCriteria.filter(c=>c.session_id===s.id)
+          if(rows.length)sessionMap.set(s.id,{label:s.name,criteria:rows})
+        })
+      }else{
+        catCriteria.forEach(crit=>{ const s=sessionOf(crit.name); if(!sessionMap.has(s))sessionMap.set(s,{label:s,criteria:[]}); sessionMap.get(s).criteria.push(crit) })
+      }
+      const sessionIds=[...sessionMap.keys()]
+      if(!evalSession||!sessionIds.includes(evalSession)) evalSession=sessionIds[0]||null
+      const sessionEntry=sessionMap.get(evalSession)
+      const sessionCriteria=sessionEntry?.criteria||catCriteria
+      const sessionNames=sessionIds.map(id=>sessionMap.get(id).label)
+      const activeSession=(sessions||[]).find(s=>s.id===evalSession)
+      const sessionClosed=activeSession?.status==='closed' && !isAdmin
       const colorsForGender=(colors||[]).filter(c=>c.gender===gender)
+      if(!selectedColorId || !colorsForGender.some(c=>c.id===selectedColorId)) selectedColorId=colorsForGender[0]?.id||null
+      const selectedColor=colorsForGender.find(c=>c.id===selectedColorId)||null
+      const colorStatus=color=>{
+        const values=sessionCriteria.map(crit=>scoreMap.get(`${crit.id}|${color.id}|${crit.session_id||''}`))
+        const saved=values.filter(v=>v !== undefined).length
+        return { saved, total: values.length, complete: values.length > 0 && saved === values.length }
+      }
       return `<section class="bg-white border rounded-2xl p-5">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
           <div><h2 class="font-bold">📝 ให้คะแนนประเมิน</h2><p class="text-xs text-gray-500 mt-1">กรอกคะแนนแต่ละสีแล้วกดบันทึกด้านล่าง — แก้ไขซ้ำได้เสมอ</p></div>
@@ -1972,39 +1991,59 @@ export async function renderSportsEvaluationWorkspace() {
           </div>
         </div>
         ${myCategories.length>1?`<div class="flex flex-wrap gap-2 mb-4">${myCategories.map(cat=>`<button type="button" data-eval-cattab="${cat}" class="px-4 py-2 rounded-xl text-xs font-bold border transition ${cat===evalCategory?'bg-indigo-600 text-white border-indigo-600':'text-gray-600 border-gray-200 hover:bg-gray-50'}">${esc(EVAL_CATEGORY_LABEL[cat]||cat)}</button>`).join('')}</div>`:''}
-        ${sessionNames.length>1?`<div class="mb-4"><label class="text-xs font-bold text-gray-600 block mb-1.5">📅 เลือกรอบ/วันที่จะประเมิน</label><select id="eval-session-select" class="w-full sm:w-80 border rounded-xl px-3 py-2.5 text-sm font-bold">${sessionNames.map(s=>`<option value="${esc(s)}" ${s===evalSession?'selected':''}>${esc(s)}</option>`).join('')}</select></div>`:''}
-        <div class="grid sm:grid-cols-2 gap-3">
-          ${colorsForGender.map((c,idx)=>{
-            const canonicalName=(gender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M)[idx]||c.name
-            const swatch=HOUSE_COLOR_HEX[canonicalName]||c.hex_color||'#94a3b8'
-            const initial=esc((canonicalName||'?').slice(0,1))
-            return `<div class="rounded-2xl border overflow-hidden" style="border-color:${esc(swatch)}55">
-              <div class="flex items-center gap-3 p-3" style="background:${esc(swatch)}14">
-                ${c.logo_url?`<img data-color-logo src="${esc(c.logo_url)}" class="w-11 h-11 rounded-full object-cover border-2 flex-shrink-0 bg-white" style="border-color:${esc(swatch)}"><div data-color-logo-fallback class="hidden w-11 h-11 rounded-full items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`:`<div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`}
-                <b class="text-sm" style="color:${esc(swatch)}">สี${esc(canonicalName)}</b>
-              </div>
-              <div class="p-3 space-y-2 bg-white">
-                ${sessionCriteria.map(crit=>{
-                  const v=scoreMap.get(`${crit.id}|${c.id}`)
-                  const critSession=sessionOf(crit.name)
-                  const topicLabel=(sessionNames.length>1&&critSession!==crit.name)?crit.name.slice(critSession.length+3):crit.name
-                  return `<div class="flex items-center justify-between gap-2">
-                    <label class="text-xs text-gray-600 flex-1">${esc(topicLabel)}</label>
-                    <div class="flex items-center gap-1 flex-shrink-0">
-                      <input type="number" min="0" max="${Number(crit.max_score)}" value="${v??''}" data-score-input data-crit="${crit.id}" data-color="${c.id}" class="w-16 border rounded-lg px-2 py-1.5 text-center text-sm">
-                      <span class="text-[10px] text-gray-400 w-10">/ ${Number(crit.max_score)}</span>
-                    </div>
-                  </div>`
-                }).join('')}
-              </div>
-            </div>`
-          }).join('')}
+        ${sessionIds.length>1?`<div class="mb-4"><label class="text-xs font-bold text-gray-600 block mb-1.5">${evalCategory==='sports_day'?'🏟️ เลือกวันกีฬาสีจริง':'📅 เลือกรอบ/วันที่จะประเมิน'}</label><select id="eval-session-select" class="w-full sm:w-80 border rounded-xl px-3 py-2.5 text-sm font-bold">${sessionIds.map(id=>`<option value="${esc(id)}" ${id===evalSession?'selected':''}>${esc(sessionMap.get(id).label)}</option>`).join('')}</select></div>`:''}
+        <div class="sticky top-2 z-10 -mx-1 px-1 py-2 mb-3 bg-white/95 backdrop-blur">
+          <div class="flex gap-2 overflow-x-auto pb-1">
+            ${colorsForGender.map((c,idx)=>{
+              const canonicalName=(gender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M)[idx]||c.name
+              const swatch=HOUSE_COLOR_HEX[canonicalName]||c.hex_color||'#94a3b8'
+              const status=colorStatus(c)
+              const active=c.id===selectedColorId
+              return `<button type="button" data-eval-color="${c.id}" ${scoreDirty&&!active?'disabled':''} class="flex-shrink-0 min-w-[92px] px-3 py-2 rounded-xl border text-left transition ${active?'ring-2 ring-indigo-500 border-indigo-400':'border-gray-200'} ${scoreDirty&&!active?'opacity-50 cursor-not-allowed':''}" style="background:${esc(swatch)}12">
+                <span class="block text-xs font-bold" style="color:${esc(swatch)}">สี${esc(canonicalName)}</span>
+                <span class="block text-[10px] text-gray-500 mt-0.5">${status.complete?'✓ ครบแล้ว':status.saved?`${status.saved}/${status.total} บันทึกแล้ว`:'ยังไม่เริ่ม'}</span>
+              </button>`
+            }).join('')}
+          </div>
+          ${selectedColor?`          <p class="text-xs text-gray-500 mt-2">กำลังประเมิน: <b>สี${esc((gender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M)[colorsForGender.indexOf(selectedColor)]||selectedColor.name)}</b>${sessionClosed?' · ปิดรับคะแนนแล้ว':scoreDirty?' · มีการแก้ไขที่ยังไม่ได้บันทึก':''}</p>`:''}
         </div>
-        <button id="eval-submit" type="button" class="mt-4 px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold">💾 บันทึกคะแนนประเมิน</button>
+        ${selectedColor?(()=>{
+          const idx=colorsForGender.indexOf(selectedColor)
+          const canonicalName=(gender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M)[idx]||selectedColor.name
+          const swatch=HOUSE_COLOR_HEX[canonicalName]||selectedColor.hex_color||'#94a3b8'
+          const initial=esc((canonicalName||'?').slice(0,1))
+          const values=sessionCriteria.map(crit=>scoreMap.get(`${crit.id}|${selectedColor.id}|${crit.session_id||''}`)).filter(v=>v !== undefined)
+          const currentTotal=values.reduce((sum,value)=>sum+Number(value||0),0)
+          const maxTotal=sessionCriteria.reduce((sum,crit)=>sum+Number(crit.max_score||0),0)
+          return `<div class="rounded-2xl border overflow-hidden" style="border-color:${esc(swatch)}55">
+            <div class="flex items-center gap-3 p-3" style="background:${esc(swatch)}14">
+              ${selectedColor.logo_url?`<img data-color-logo src="${esc(selectedColor.logo_url)}" class="w-11 h-11 rounded-full object-cover border-2 flex-shrink-0 bg-white" style="border-color:${esc(swatch)}"><div data-color-logo-fallback class="hidden w-11 h-11 rounded-full items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`:`<div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`}
+              <div><b class="text-sm" style="color:${esc(swatch)}">สี${esc(canonicalName)}</b><p class="text-xs text-gray-500 mt-0.5">รวม <span id="eval-current-total">${currentTotal}</span> / ${maxTotal}</p></div>
+            </div>
+            <div class="p-3 space-y-2 bg-white">
+              ${sessionCriteria.map(crit=>{
+                const v=scoreMap.get(`${crit.id}|${selectedColor.id}|${crit.session_id||''}`)
+                const critSession=sessionOf(crit.name)
+                const topicLabel=(sessionNames.length>1&&critSession!==crit.name)?crit.name.slice(critSession.length+3):crit.name
+                return `<div class="flex items-center justify-between gap-2">
+                  <label class="text-xs text-gray-600 flex-1">${esc(topicLabel)}</label>
+                  <div class="flex items-center gap-1 flex-shrink-0">
+                    <input type="number" inputmode="numeric" min="0" max="${Number(crit.max_score)}" step="1" value="${v??''}" data-score-input data-crit="${crit.id}" data-color="${selectedColor.id}" ${sessionClosed?'disabled':''} class="w-16 border rounded-lg px-2 py-1.5 text-center text-sm">
+                    <span class="text-[10px] text-gray-400 w-10">/ ${Number(crit.max_score)}</span>
+                  </div>
+                </div>`
+              }).join('')}
+            </div>
+          </div>`
+        })():''}
+        <div class="sticky bottom-2 z-10 mt-4 flex items-center justify-between gap-3 rounded-xl bg-white/95 backdrop-blur py-2">
+          <span class="text-xs text-gray-500">${scoreDirty?'กรุณาบันทึกก่อนเปลี่ยนสี':'เลือกสีจากแถบด้านบน'}</span>
+          <button id="eval-submit" type="button" ${sessionClosed?'disabled':''} class="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold disabled:opacity-50">${sessionClosed?'🔒 ปิดรับคะแนน':'💾 บันทึกสีนี้'}</button>
+        </div>
       </section>`
     }
 
-    const criteriaSettingsHtml=()=>['parade','color_eval','page'].map(cat=>{
+    const criteriaSettingsHtml=()=>['parade','page','color_eval','sports_day'].map(cat=>{
       const rows=(criteria||[]).filter(c=>c.category===cat)
       return `<div class="mb-4"><h4 class="text-sm font-bold text-gray-700 mb-2">${EVAL_CATEGORY_LABEL[cat]}</h4><div class="space-y-1.5" data-crit-cat="${cat}">${rows.map(c=>`<div class="flex items-center gap-2 bg-gray-50 rounded-lg p-2" data-crit-row="${c.id}"><span class="flex-1 text-sm" data-crit-view>${esc(c.name)}</span><span class="text-xs text-gray-500 w-20 text-right" data-crit-view>เต็ม ${Number(c.max_score)}</span><button type="button" data-crit-edit="${c.id}" class="px-2 py-1 text-xs border rounded-lg text-indigo-600">แก้ไข</button><button type="button" data-crit-del="${c.id}" class="px-2 py-1 text-xs border rounded-lg text-red-600">ลบ</button></div>`).join('')||'<p class="text-xs text-gray-400">ยังไม่มีหัวข้อ</p>'}</div></div>`
     }).join('')
@@ -2019,8 +2058,18 @@ export async function renderSportsEvaluationWorkspace() {
       }).join('')
     }
 
+    const sportsDaySettingsHtml=()=>{
+      const rows=(sessions||[]).filter(s=>s.session_type==='sports_day').sort((a,b)=>a.day_no-b.day_no)
+      return `<div class="mb-6"><h3 class="font-bold text-sm mb-3">🏟️ วันกีฬาสีจริง</h3><div class="grid sm:grid-cols-2 gap-3">${rows.map(s=>`<div class="border rounded-xl p-3 space-y-2">
+        <div class="flex items-center justify-between"><b>วันที่ ${s.day_no}</b><span class="text-xs font-bold ${s.status==='open'?'text-emerald-600':s.status==='closed'?'text-red-600':'text-gray-500'}">${s.status==='open'?'เปิดรับคะแนน':s.status==='closed'?'ปิดรับคะแนน':'ยังไม่เปิด'}</span></div>
+        <input data-session-name="${s.id}" value="${esc(s.name)}" class="w-full border rounded-lg px-2 py-1.5 text-sm">
+        <input data-session-date="${s.id}" type="date" value="${s.event_date||''}" class="w-full border rounded-lg px-2 py-1.5 text-sm">
+        <div class="flex gap-2"><select data-session-status="${s.id}" class="flex-1 border rounded-lg px-2 py-1.5 text-sm"><option value="upcoming" ${s.status==='upcoming'?'selected':''}>ยังไม่เปิด</option><option value="open" ${s.status==='open'?'selected':''}>เปิดรับคะแนน</option><option value="closed" ${s.status==='closed'?'selected':''}>ปิดรับคะแนน</option></select><button type="button" data-session-save="${s.id}" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold">บันทึก</button></div>
+      </div>`).join('')}</div></div>`
+    }
     const settingsTabContent=()=>`<section class="bg-white border rounded-2xl p-5">
       <div class="mb-4"><h2 class="font-bold">⚙️ ตั้งค่าการประเมิน</h2><p class="text-xs text-gray-500 mt-1">จัดการหัวข้อ/คะแนนเต็ม และมอบหมายครูผู้ประเมิน</p></div>
+      ${sportsDaySettingsHtml()}
       <div class="grid lg:grid-cols-2 gap-6">
         <div>
           <h3 class="font-bold text-sm mb-3">📋 หัวข้อเกณฑ์การประเมิน</h3>
@@ -2028,8 +2077,9 @@ export async function renderSportsEvaluationWorkspace() {
           <div class="grid sm:grid-cols-4 gap-2 mt-3">
             <select id="crit-new-category" class="border rounded-xl px-3 py-2 text-sm">
               <option value="parade">🕌 ขบวนพาเหรด/ความร่วมมือสี</option>
-              <option value="color_eval">🎨 วันเข้าสี/วันกีฬาสีจริง</option>
+              <option value="color_eval">🎨 วันเข้าสีเดิม</option>
               <option value="page">📣 หน้าเว็บเพจ</option>
+              <option value="sports_day">🏟️ วันกีฬาสีจริง</option>
             </select>
             <input id="crit-new-name" placeholder="ชื่อหัวข้อ" class="border rounded-xl px-3 py-2 text-sm sm:col-span-2">
             <input id="crit-new-max" type="number" min="1" value="10" class="border rounded-xl px-3 py-2 text-sm" placeholder="คะแนนเต็ม">
@@ -2042,8 +2092,9 @@ export async function renderSportsEvaluationWorkspace() {
           <div id="eval-teacher-picker-wrap" class="mb-2"></div>
           <div class="flex flex-wrap gap-3 mb-2 text-xs font-bold">
             <label class="flex items-center gap-1.5"><input type="checkbox" data-eval-cat="parade">🕌 ขบวนพาเหรด/ความร่วมมือสี</label>
-            <label class="flex items-center gap-1.5"><input type="checkbox" data-eval-cat="color_eval">🎨 วันเข้าสี/วันกีฬาสีจริง</label>
+            <label class="flex items-center gap-1.5"><input type="checkbox" data-eval-cat="color_eval">🎨 วันเข้าสีเดิม</label>
             <label class="flex items-center gap-1.5"><input type="checkbox" data-eval-cat="page">📣 หน้าเว็บเพจ</label>
+            <label class="flex items-center gap-1.5"><input type="checkbox" data-eval-cat="sports_day">🏟️ วันกีฬาสีจริง</label>
           </div>
           <input id="eval-role-label" placeholder="ตำแหน่ง เช่น หัวหน้า/ผู้ช่วย (ไม่บังคับ)" class="border rounded-xl px-3 py-2 text-sm w-full mb-2">
           <button id="eval-add-btn" type="button" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold">➕ เพิ่มผู้ประเมิน</button>
@@ -2062,6 +2113,31 @@ export async function renderSportsEvaluationWorkspace() {
       return {crit,avg,count:vals.length}
     }).filter(x=>x.count>0)
     const scoreBar=(label,val,max)=>`<div class="space-y-1"><div class="flex justify-between text-xs text-gray-500"><span>${esc(label)}</span><span class="font-bold text-gray-700">${Number(val).toLocaleString('th-TH')} / ${Number(max).toLocaleString('th-TH')}</span></div><div class="w-full h-1.5 rounded-full bg-gray-100 overflow-hidden"><div class="h-full bg-indigo-500 rounded-full" style="width:${max?Math.min(100,val/max*100):0}%"></div></div></div>`
+    const sportsDaySummary=()=>{
+      const daySessions=(sessions||[]).filter(s=>s.session_type==='sports_day').sort((a,b)=>a.day_no-b.day_no)
+      if(!daySessions.length)return ''
+      const relevantCriteria=(criteria||[]).filter(c=>c.category==='sports_day')
+      const scoreFor=(colorId,sessionId)=>{
+        return relevantCriteria.filter(c=>c.session_id===sessionId).reduce((sum,c)=>{
+          const vals=(entries||[]).filter(e=>e.criteria_id===c.id&&e.team_color_id===colorId).map(e=>Number(e.score)).filter(Number.isFinite)
+          return sum+(vals.length?vals.reduce((a,v)=>a+v,0)/vals.length:0)
+        },0)
+      }
+      const maxFor=sessionId=>relevantCriteria.filter(c=>c.session_id===sessionId).reduce((sum,c)=>sum+Number(c.max_score||0),0)
+      const rows=(colors||[]).filter(c=>c.gender===summaryGender).map((c,idx)=>{
+        const values=daySessions.map(s=>scoreFor(c.id,s.id))
+        const maxes=daySessions.map(maxFor)
+        const total=summarySportsDay==='cumulative'?values.reduce((a,v)=>a+v,0):values[Number(summarySportsDay)-1]||0
+        const max=summarySportsDay==='cumulative'?maxes.reduce((a,v)=>a+v,0):maxes[Number(summarySportsDay)-1]||0
+        return {c,name:(summaryGender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M)[idx]||c.name,total,max,values}
+      }).sort((a,b)=>b.total-a.total)
+      return `<section class="bg-white border rounded-2xl p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 class="font-bold">🏟️ สรุปวันกีฬาสีจริง</h2><p class="text-xs text-gray-500 mt-1">คะแนนเฉลี่ยจากผู้ประเมิน แยกวันและสะสม 4 วัน</p></div>
+          <div class="flex flex-wrap gap-1">${daySessions.map(s=>`<button type="button" data-summary-sports-day="${s.day_no}" class="px-3 py-1.5 rounded-lg text-xs font-bold ${summarySportsDay===String(s.day_no)?'bg-indigo-600 text-white':'bg-gray-100 text-gray-600'}">วันที่ ${s.day_no}</button>`).join('')}<button type="button" data-summary-sports-day="cumulative" class="px-3 py-1.5 rounded-lg text-xs font-bold ${summarySportsDay==='cumulative'?'bg-indigo-600 text-white':'bg-gray-100 text-gray-600'}">สะสม</button></div>
+        </div>
+        <div class="space-y-2">${rows.map((r,rank)=>`<div class="flex items-center gap-3 rounded-xl border p-3"><span class="w-7 text-center font-bold text-gray-400">#${rank+1}</span><span class="flex-1 font-bold">สี${esc(r.name)}</span><span class="font-black">${r.total.toFixed(2)} / ${r.max}</span></div>`).join('')}</div>
+      </section>`
+    }
     const summaryTabContent=()=>{
       const colorsForGender=(colors||[]).filter(c=>c.gender===summaryGender)
       const order=summaryGender==='W'?HOUSE_ORDER_W:HOUSE_ORDER_M
@@ -2070,7 +2146,7 @@ export async function renderSportsEvaluationWorkspace() {
         const t=totalsByColor.get(c.id)||{}
         return {c,canonicalName,t,grand:Number(t.grand_total)||0}
       }).sort((a,b)=>b.grand-a.grand)
-      return `<section class="bg-white border rounded-2xl p-5">
+      return `${sportsDaySummary()}<section class="bg-white border rounded-2xl p-5">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
           <div><h2 class="font-bold">🏅 สรุปคะแนนทุกสี</h2><p class="text-xs text-gray-500 mt-1">รวมคะแนนกรรมการ + วิชาการ + กีฬา + เหรียญรางวัล ข้อมูลเดียวกับระบบกีฬาสีหลัก อัปเดตสด</p></div>
           <div class="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
@@ -2182,35 +2258,75 @@ export async function renderSportsEvaluationWorkspace() {
       </div>`
 
       el.querySelectorAll('[data-eval-main-tab]').forEach(b=>b.onclick=()=>{activeTab=b.dataset.evalMainTab;draw()})
-      el.querySelectorAll('[data-eval-gender]').forEach(b=>b.onclick=()=>{gender=b.dataset.evalGender;draw()})
-      el.querySelectorAll('[data-eval-cattab]').forEach(b=>b.onclick=()=>{evalCategory=b.dataset.evalCattab;draw()})
+      el.querySelectorAll('[data-eval-gender]').forEach(b=>b.onclick=()=>{
+        if(scoreDirty)return toast('กรุณาบันทึกคะแนนของสีปัจจุบันก่อนเปลี่ยนกลุ่มสี','warning')
+        gender=b.dataset.evalGender;selectedColorId=null;draw()
+      })
+      el.querySelectorAll('[data-eval-cattab]').forEach(b=>b.onclick=()=>{
+        if(scoreDirty)return toast('กรุณาบันทึกคะแนนของสีปัจจุบันก่อนเปลี่ยนหัวข้อ','warning')
+        evalCategory=b.dataset.evalCattab;selectedColorId=null;draw()
+      })
       el.querySelectorAll('[data-color-logo]').forEach(img=>img.onerror=()=>{img.classList.add('hidden');const fb=img.nextElementSibling;fb?.classList.remove('hidden');fb?.classList.add('flex')})
-      el.querySelector('#eval-session-select')?.addEventListener('change',e=>{evalSession=e.target.value;draw()})
+      el.querySelector('#eval-session-select')?.addEventListener('change',e=>{
+        if(scoreDirty){e.target.value=evalSession||'';return toast('กรุณาบันทึกคะแนนของสีปัจจุบันก่อนเปลี่ยนรอบ','warning')}
+        evalSession=e.target.value;selectedColorId=null;draw()
+      })
+      el.querySelectorAll('[data-eval-color]').forEach(b=>b.onclick=()=>{
+        if(scoreDirty)return toast('กรุณาบันทึกคะแนนของสีปัจจุบันก่อนสลับสี','warning')
+        selectedColorId=b.dataset.evalColor;draw()
+      })
+      el.querySelectorAll('[data-score-input]').forEach(input=>input.addEventListener('input',()=>{
+        const value=input.value.trim()
+        if(value!=='' && (Number(value)<0 || Number(value)>Number(input.max))){
+          input.value=Math.max(0,Math.min(Number(input.max),Number(value)||0))
+        }
+        scoreDirty=true
+      }))
 
       el.querySelector('#eval-submit')?.addEventListener('click',async()=>{
         const rows=[]
         el.querySelectorAll('[data-score-input]').forEach(inp=>{
           const v=String(inp.value).trim()
           if(v==='')return
-          rows.push({event_id:event.id,criteria_id:inp.dataset.crit,team_color_id:inp.dataset.color,judge_username:judgeUsername,score:Number(v),updated_at:new Date().toISOString()})
+          const crit=criteriaById.get(inp.dataset.crit)
+          rows.push({event_id:event.id,criteria_id:inp.dataset.crit,team_color_id:inp.dataset.color,session_id:crit?.session_id||null,judge_username:judgeUsername,score:Number(v),updated_at:new Date().toISOString()})
         })
         if(!rows.length)return toast('กรุณากรอกคะแนนอย่างน้อย 1 ช่อง','error')
+        const activeSession=(sessions||[]).find(s=>s.id===evalSession)
+        if(activeSession?.status==='closed' && !isAdmin)return toast('รอบนี้ปิดรับคะแนนแล้ว','error')
         const btn=el.querySelector('#eval-submit'); btn.disabled=true;btn.textContent='กำลังบันทึก...'
-        const {error}=await supabase.from('sports_score_entries').upsert(rows,{onConflict:'criteria_id,team_color_id,judge_username'})
+        const {error}=await supabase.from('sports_score_entries').upsert(rows,{onConflict:'criteria_id,team_color_id,judge_username,session_id'})
         btn.disabled=false;btn.textContent='💾 บันทึกคะแนนประเมิน'
         if(error)return toast(error.message,'error')
-        rows.forEach(r=>scoreMap.set(`${r.criteria_id}|${r.team_color_id}`,r.score))
+        rows.forEach(r=>scoreMap.set(`${r.criteria_id}|${r.team_color_id}|${r.session_id||''}`,r.score))
+        scoreDirty=false
         toast('บันทึกคะแนนประเมินแล้ว')
+        draw()
       })
 
       if(activeTab==='summary'){
         el.querySelectorAll('[data-sum-gender]').forEach(b=>b.onclick=()=>{summaryGender=b.dataset.sumGender;summaryExpandedId=null;draw()})
         el.querySelectorAll('[data-toggle-expand]').forEach(b=>b.onclick=()=>{const id=b.dataset.toggleExpand;summaryExpandedId=summaryExpandedId===id?null:id;draw()})
+        el.querySelectorAll('[data-summary-sports-day]').forEach(b=>b.onclick=()=>{summarySportsDay=b.dataset.summarySportsDay;draw()})
       }
 
       if(activeTab!=='settings'||!isAdmin)return
 
       teacherPicker=_createPickerSelect({wrap:el.querySelector('#eval-teacher-picker-wrap'),items:allTeachers.map(t=>({id:t.profile_id,label:t.full_name,sub:t.teacher_code,photo:t.image_url})),placeholder:'พิมพ์ชื่อครู...',emptyLabel:'-- เลือกครูผู้ประเมิน --',photoClass:'w-7 h-9 rounded object-cover flex-shrink-0 border'})
+
+      el.querySelectorAll('[data-session-save]').forEach(button=>button.addEventListener('click',async()=>{
+        const id=button.dataset.sessionSave
+        const payload={
+          name:el.querySelector(`[data-session-name="${id}"]`)?.value.trim(),
+          event_date:el.querySelector(`[data-session-date="${id}"]`)?.value||null,
+          status:el.querySelector(`[data-session-status="${id}"]`)?.value,
+          updated_at:new Date().toISOString(),
+        }
+        if(!payload.name)return toast('กรุณาระบุชื่อวัน','error')
+        const {error}=await supabase.from('sports_evaluation_sessions').update(payload).eq('id',id)
+        if(error)return toast(error.message,'error')
+        toast('บันทึกวันกีฬาสีแล้ว'); renderSportsEvaluationWorkspace()
+      }))
 
       el.querySelector('#crit-new-add')?.addEventListener('click',async()=>{
         const category=el.querySelector('#crit-new-category').value

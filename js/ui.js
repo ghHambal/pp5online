@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.713'
+import { APP_VERSION } from './version.js?v=10.22.715'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.715': [
+    '🏟️ เพิ่มการประเมินกีฬาสีจริง 4 วัน แยกคะแนนรายสีและบังคับบันทึกก่อนสลับสี',
+  ],
   '10.22.714': [
     '🔐 ระบบแก้ค้างเก่า: แก้การมอบหมายครูโดยตรวจสิทธิ์หัวหน้ากลุ่มสาระผ่านฐานข้อมูลโดยตรง',
   ],
