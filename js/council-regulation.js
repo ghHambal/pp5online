@@ -9,6 +9,11 @@ import {
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 const thaiDigits = value => String(value).replace(/[0-9]/g, d => '๐๑๒๓๔๕๖๗๘๙'[Number(d)])
+const normalizeSearch = value => String(value ?? '')
+  .replace(/[๐-๙]/g, d => String('๐๑๒๓๔๕๖๗๘๙'.indexOf(d)))
+  .replace(/ข้อ\s*ที่/g, 'ข้อ')
+  .replace(/\s+/g, ' ')
+  .trim()
 const STATUS_LABEL = {
   draft: 'ฉบับร่าง', pending_approval: 'รออนุมัติ', approved: 'อนุมัติแล้ว',
   effective: 'มีผลบังคับใช้', superseded: 'ถูกแทนที่ด้วยฉบับใหม่', archived: 'เก็บถาวร',
@@ -62,20 +67,22 @@ function ensureLoaded(onChange) {
 
 function filteredClauses(version, sections, clauses) {
   const sectionMap = new Map(sections.map(s => [s.id, s]))
-  const query = state.query.trim().toLocaleLowerCase()
+  const query = normalizeSearch(state.query).toLocaleLowerCase()
   return clauses.filter(clause => {
     const section = sectionMap.get(clause.section_id)
     if (state.sectionFilter !== 'all' && String(section?.id) !== String(state.sectionFilter)) return false
     if (!query) return true
     const haystack = [
-      'ข้อ ' + clause.clause_no, clause.title, clause.body, ...(clause.keywords ?? []),
+      clause.clause_no, 'ข้อ ' + clause.clause_no, 'ข้อที่ ' + clause.clause_no,
+      clause.title, clause.body, ...(clause.keywords ?? []),
       section?.title, 'หมวด ' + (section?.section_no ?? ''), version?.title,
-    ].filter(Boolean).join(' ').toLocaleLowerCase()
-    return haystack.includes(query)
+    ].filter(Boolean).join(' ')
+    const normalizedHaystack = normalizeSearch(haystack).toLocaleLowerCase()
+    return normalizedHaystack.includes(query)
   })
 }
 
-function printHtml(version, sections, clauses) {
+function printHtml(version, sections, clauses, scopeLabel = '') {
   const groups = sections.map(section => ({
     section,
     clauses: clauses.filter(c => c.section_id === section.id),
@@ -94,6 +101,7 @@ function printHtml(version, sections, clauses) {
     + '.clause{margin:0 0 4mm;text-align:justify;white-space:pre-line}.clause-no{font-weight:700}.source{font-size:11pt;margin-top:10mm;color:#555}a{color:inherit}'
     + '</style></head><body><h1>' + esc(version?.title) + '</h1><div class="meta">ฉบับ ' + esc(version?.version_label)
     + ' · สถานะ: ' + esc(STATUS_LABEL[version?.status] || version?.status) + '</div>'
+    + (scopeLabel ? '<div class="meta">' + esc(scopeLabel) + ' · ' + clauses.length + ' ข้อ</div>' : '')
     + (version?.status !== 'effective' ? '<div class="draft">เอกสารฉบับร่าง/เอกสารอ้างอิง ยังไม่ใช่ระเบียบที่มีผลบังคับใช้</div>' : '')
     + body + source + '</body></html>'
 }
@@ -148,11 +156,13 @@ export function renderCouncilRegulationView(ctx, onChange = () => {}) {
   const filtered = filteredClauses(version, sections, clauses)
   const grouped = sections.map(section => ({ section, clauses: filtered.filter(c => c.section_id === section.id) })).filter(g => g.clauses.length)
   const canEdit = !!ctx?.isAdmin && ['draft', 'pending_approval'].includes(version.status)
+  const hasFilter = Boolean(normalizeSearch(state.query) || state.sectionFilter !== 'all')
+  if (state.loading && state.content === null) return '<div class="max-w-5xl mx-auto"><div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-8 text-center text-sm text-[var(--muted)]">กำลังโหลดฉบับที่เลือก...</div></div>'
   let html = '<div class="max-w-5xl mx-auto space-y-4"><section class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5 md:p-6">'
     + '<div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4"><div><p class="text-xs font-bold text-[var(--primary)] mb-1">📚 ระเบียบและประกาศ</p>'
     + '<h1 class="text-xl md:text-2xl font-bold text-[var(--ink)]">' + esc(version.title) + '</h1><p class="text-xs text-[var(--muted)] mt-2">ฉบับ '
     + esc(version.version_label) + ' · ' + esc(STATUS_LABEL[version.status] || version.status) + ' · โหมด ' + (version.implementation_mode === 'enforced' ? 'บังคับใช้' : 'อ้างอิง/เตรียมการ') + '</p></div>'
-    + '<div class="flex flex-wrap gap-2"><button type="button" class="regulation-print px-4 py-2.5 rounded-xl bg-[var(--primary)] text-white text-xs font-bold">🖨️ พิมพ์ฉบับนี้</button>'
+    + '<div class="flex flex-wrap gap-2"><button type="button" class="regulation-print px-4 py-2.5 rounded-xl bg-[var(--primary)] text-white text-xs font-bold">🖨️ ' + (hasFilter ? 'พิมพ์ผลการค้นหา' : 'พิมพ์ฉบับนี้') + '</button>'
     + (version.source_document_url ? '<a href="' + esc(version.source_document_url) + '" target="_blank" rel="noopener" class="px-4 py-2.5 rounded-xl border border-[var(--line)] text-[var(--ink-2)] text-xs font-bold">🔗 เปิดต้นฉบับ</a>' : '')
     + (canEdit ? '<button type="button" class="regulation-add-clause px-4 py-2.5 rounded-xl border border-[var(--primary-soft-line)] text-[var(--primary)] text-xs font-bold">➕ เพิ่มข้อ</button>' : '')
     + '</div></div><div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-900"><strong>สถานะสำคัญ:</strong> ฉบับนี้เป็นฉบับร่าง/ฉบับรออนุมัติ ใช้ติดตามและเตรียมงาน ยังไม่ใช่ระเบียบที่มีผลบังคับใช้</div>'
@@ -163,7 +173,7 @@ export function renderCouncilRegulationView(ctx, onChange = () => {}) {
   html += '</section>'
   if (state.addingClause && canEdit) html += addForm(sections)
   html += '<section class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5"><form id="regulation-search-form" class="flex flex-col md:flex-row gap-2">'
-    + '<input id="regulation-search" value="' + esc(state.query) + '" placeholder="ค้นหา เช่น ข้อ 15, การเลือกตั้ง, การเงิน, การลาออก" class="flex-1 border border-[var(--line)] rounded-xl px-4 py-3 text-sm bg-[var(--surface)] text-[var(--ink)]">'
+    + '<input id="regulation-search" value="' + esc(state.query) + '" placeholder="ค้นหา เช่น ข้อที่ 15, การเลือกตั้ง, การเงิน, การลาออก" class="flex-1 border border-[var(--line)] rounded-xl px-4 py-3 text-sm bg-[var(--surface)] text-[var(--ink)]">'
     + '<select id="regulation-section-filter" class="border border-[var(--line)] rounded-xl px-3 py-3 text-sm bg-[var(--surface)] text-[var(--ink)]"><option value="all">ทุกหมวด</option>'
     + sections.map(s => '<option value="' + s.id + '" ' + (String(state.sectionFilter) === String(s.id) ? 'selected' : '') + '>หมวด ' + thaiDigits(s.section_no) + ' · ' + esc(s.title) + '</option>').join('')
     + '</select><button type="submit" class="px-5 py-3 rounded-xl bg-[var(--primary)] text-white text-sm font-bold">ค้นหา</button></form>'
@@ -190,7 +200,13 @@ export function wireCouncilRegulationEvents(ctx, onChange) {
   document.querySelector('.regulation-clear-filter')?.addEventListener('click', () => { state.query = ''; state.sectionFilter = 'all'; onChange() })
   document.querySelector('.regulation-print')?.addEventListener('click', () => {
     const version = selectedVersion()
-    if (version) openHtmlPrintOverlay(printHtml(version, state.content?.sections ?? [], state.content?.clauses ?? []))
+    if (version) {
+      const sections = state.content?.sections ?? []
+      const clauses = state.content?.clauses ?? []
+      const filtered = filteredClauses(version, sections, clauses)
+      const scopeLabel = state.query.trim() || state.sectionFilter !== 'all' ? 'ผลการค้นหา/ตัวกรอง' : ''
+      openHtmlPrintOverlay(printHtml(version, sections, filtered, scopeLabel))
+    }
   })
   if (!ctx?.isAdmin) return
   document.querySelector('.regulation-add-clause')?.addEventListener('click', () => { state.addingClause = true; onChange() })
