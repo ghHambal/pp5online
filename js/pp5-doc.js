@@ -955,6 +955,7 @@ function _buildPage1(d) {
   // compute grade distribution
   const maxTotal = scoreColumns.reduce((s, c) => s + (c.max_score ?? 0), 0)
   const gradeCounts = { 4:0, '3.5':0, 3:0, '2.5':0, 2:0, '1.5':0, 1:0, 0:0 }
+  const specialGradeCounts = { 'ร':0, 'มส':0 }
   const evalReadCount  = { ดีเยี่ยม:0, ดี:0, ผ่าน:0, ไม่ผ่าน:0 }
   const evalCharCount  = { ดีเยี่ยม:0, ดี:0, ผ่าน:0, ไม่ผ่าน:0 }
 
@@ -965,6 +966,9 @@ function _buildPage1(d) {
     const hasForcedGrade = forcedGrade != null && String(forcedGrade).trim() !== ''
     const forcedNumber = hasForcedGrade ? Number(forcedGrade) : NaN
     if (hasForcedGrade && !Number.isFinite(forcedNumber)) {
+      const normalizedSpecial = String(forcedGrade).trim().replace(/\s+/g, '').replace(/\./g, '')
+      if (normalizedSpecial === 'ร') specialGradeCounts['ร']++
+      if (normalizedSpecial === 'มส') specialGradeCounts['มส']++
       continue
     }
     let grade = hasForcedGrade ? forcedNumber : 0
@@ -1014,8 +1018,8 @@ function _buildPage1(d) {
 
   const gradeRow = [
     ...[4,'3.5',3,'2.5',2,'1.5',1,0].map(g=>gradeCounts[String(g)]||'-'),
-    '-',
-    '-',
+    specialGradeCounts['ร'] || '-',
+    specialGradeCounts['มส'] || '-',
   ].map(value=>`<td>${value}</td>`).join('')
   const readRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalReadCount[k]||'-'}</td>`).join('')
   const charRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalCharCount[k]||'-'}</td>`).join('')
@@ -1729,7 +1733,7 @@ function _buildPage1VOC(d) {
   if (!_hideScores) for (const st of students) {
     const specialResult = _normalizeVocSpecialResult(st.special_result)
     if (specialResult && VOC_SPECIAL_KEYS.includes(specialResult)) {
-      if (specialResult !== 'ม.ส.') specialCounts[specialResult]++
+      specialCounts[specialResult]++
       continue
     }
     const stScores = scoreMap[st.id] ?? {}
@@ -1751,7 +1755,7 @@ function _buildPage1VOC(d) {
     ['3.5','75 - 79','จำนวนนักเรียนเข้าสอบ', examCount],
     [3,'70 - 74','จำนวนนักเรียนไม่มีสิทธิ์สอบ (ข.ร.)', specialCounts['ข.ร.']],
     ['2.5','65 - 69','จำนวนนักเรียนขาดสอบ (ข.ส.)', specialCounts['ข.ส.']],
-    [2,'60 - 64','จำนวนนักเรียนไม่สมบูรณ์ (ม.ส.)', null],
+    [2,'60 - 64','จำนวนนักเรียนไม่สมบูรณ์ (ม.ส.)', specialCounts['ม.ส.']],
     ['1.5','55 - 59','จำนวนนักเรียนขาดการปฏิบัติงาน (ข.ป.)', specialCounts['ข.ป.']],
     [1,'50 - 54','จำนวนนักเรียนผ่าน (ผ)', passCount],
     [0,'0 - 49','จำนวนนักเรียนไม่ผ่าน (ม.ผ.)', failCount],
