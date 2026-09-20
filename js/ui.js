@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.723'
+import { APP_VERSION } from './version.js?v=10.22.724'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.724': [
+    '📄 แก้การนับเกรดอัปเกรด/บังคับรูปแบบ 4.0 ในสรุปหน้าปก และใช้ - แทนค่าว่างทุกช่องที่ไม่มีข้อมูล',
+  ],
   '10.22.723': [
     '📄 ปรับสรุปเกรดหน้าปก ปพ.5 ให้นับเกรดบังคับ และแสดง - เมื่อไม่มีนักเรียนในเกรดนั้น',
   ],

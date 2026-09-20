@@ -961,7 +961,10 @@ function _buildPage1(d) {
   if (!_hideScores) for (const st of students) {
     const stScores = scoreMap[st.id] ?? {}
     const total = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0)
-    let grade = scoreMap[st.id]?.__force || 0
+    const forcedGrade = scoreMap[st.id]?.__force
+    let grade = forcedGrade != null && forcedGrade !== '' && Number.isFinite(Number(forcedGrade))
+      ? Number(forcedGrade)
+      : 0
     if (!grade && maxTotal > 0) {
       const pct = (total / maxTotal) * 100
       grade = _calcGrade(pct)
@@ -1007,8 +1010,8 @@ function _buildPage1(d) {
     </div>`
 
   const gradeRow = [4,'3.5',3,'2.5',2,'1.5',1,0].map(g=>`<td>${gradeCounts[String(g)]||'-'}</td>`).join('')
-  const readRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalReadCount[k]||''}</td>`).join('')
-  const charRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalCharCount[k]||''}</td>`).join('')
+  const readRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalReadCount[k]||'-'}</td>`).join('')
+  const charRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalCharCount[k]||'-'}</td>`).join('')
 
   return `
   <div class="page-p1">
@@ -1739,7 +1742,7 @@ function _buildPage1VOC(d) {
   ].map(([g, range, remark, cnt]) => `
     <tr>
       <td>${g}</td><td>${range}</td><td>${gradeCounts[String(g)] || '-'}</td>
-      <td class="voc-remark">${remark}</td><td>${cnt || ''}</td>
+      <td class="voc-remark">${remark}</td><td>${cnt || '-'}</td>
     </tr>`).join('')
 
   return `
