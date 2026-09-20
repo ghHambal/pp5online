@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.715'
+import { APP_VERSION } from './version.js?v=10.22.716'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.716': [
+    '🏟️ แอดมินเห็นและเข้าประเมินหมวดวันกีฬาสีจริงได้ แม้ยังไม่ได้มอบหมายตัวเองเป็นผู้ประเมิน',
+  ],
   '10.22.715': [
     '🏟️ เพิ่มการประเมินกีฬาสีจริง 4 วัน แยกคะแนนรายสีและบังคับบันทึกก่อนสลับสี',
   ],

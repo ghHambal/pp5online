@@ -1941,7 +1941,11 @@ export async function renderSportsEvaluationWorkspace() {
     // เกณฑ์ที่ฉันประเมินได้ — assignment ที่ criteria_id ว่าง = ทุกหัวข้อในหมวดนั้น, ระบุมา = หัวข้อเดียว
     const assignedCategories=new Set((myAssignments||[]).filter(a=>!a.criteria_id).map(a=>a.category))
     const assignedCriteriaIds=new Set((myAssignments||[]).filter(a=>a.criteria_id).map(a=>a.criteria_id))
-    const myCriteria=(criteria||[]).filter(c=>assignedCategories.has(c.category)||assignedCriteriaIds.has(c.id))
+    // แอดมินต้องตรวจสอบ/ให้คะแนนได้ทุกหมวดจากหน้าเดียว รวมถึงวันกีฬาสีจริง
+    // ส่วนผู้ประเมินทั่วไปยังจำกัดตาม assignment ที่ได้รับมอบหมาย
+    const myCriteria=isAdmin
+      ? (criteria||[])
+      : (criteria||[]).filter(c=>assignedCategories.has(c.category)||assignedCriteriaIds.has(c.id))
 
     const myCategories=[...new Set(myCriteria.map(c=>c.category))]
     let gender='M', evalCategory=myCategories[0]||null, evalSession=null, selectedColorId=null, scoreDirty=false
