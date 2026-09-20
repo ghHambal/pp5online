@@ -442,6 +442,13 @@ async function _loadDocData(classId) {
     if (!scoreMap[r.student_id]) scoreMap[r.student_id] = {}
     scoreMap[r.student_id][r.score_column_id] = r.score
   }
+  // เกรดที่ครูกำหนดบังคับเก็บอยู่ที่ class_students ไม่ใช่ score_rows
+  // ต้องแนบไว้กับ scoreMap เพื่อให้เอกสาร ปพ.5 ใช้ค่าเดียวกับหน้ากรอกคะแนน
+  for (const st of students) {
+    if (!st.special_result) continue
+    if (!scoreMap[st.id]) scoreMap[st.id] = {}
+    scoreMap[st.id].__force = st.special_result
+  }
 
   let roundingWarning = ''
   const roundSettings = await getClassScoreRounding(classId).catch(() => {
@@ -954,8 +961,8 @@ function _buildPage1(d) {
   if (!_hideScores) for (const st of students) {
     const stScores = scoreMap[st.id] ?? {}
     const total = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0)
-    let grade = 0
-    if (maxTotal > 0) {
+    let grade = scoreMap[st.id]?.__force || 0
+    if (!grade && maxTotal > 0) {
       const pct = (total / maxTotal) * 100
       grade = _calcGrade(pct)
       const key = String(grade)
@@ -1473,7 +1480,7 @@ function _buildScorePage(d, chunk, startNo) {
     const total = bSum + fSum
     const bPct  = betweenMax > 0 ? bSum / betweenMax * 100 : 0
     const fPct  = finalMax   > 0 ? fSum / finalMax   * 100 : 0
-    const grade = _calcGrade(betweenMax + finalMax > 0 ? total / (betweenMax + finalMax) * 100 : 0)
+    const grade = sc.__force || _calcGrade(betweenMax + finalMax > 0 ? total / (betweenMax + finalMax) * 100 : 0)
     const charLabel = _gradeToKhunaLabel(grade)
 
     return `<tr>
