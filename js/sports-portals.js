@@ -2019,23 +2019,54 @@ export async function renderSportsEvaluationWorkspace() {
           const values=sessionCriteria.map(crit=>scoreMap.get(`${crit.id}|${selectedColor.id}|${crit.session_id||''}`)).filter(v=>v !== undefined)
           const currentTotal=values.reduce((sum,value)=>sum+Number(value||0),0)
           const maxTotal=sessionCriteria.reduce((sum,crit)=>sum+Number(crit.max_score||0),0)
+          const sportsGroupDefaults=[
+            ['อีบาดัต',2],['ความสะอาด',3],['เข้าแถว/เช็คชื่อ',3],
+            ['นักกีฬา',3],['สต๊าฟ',4],['กองเชียร์',4],
+          ]
+          const criteriaGroups=[]
+          sessionCriteria.forEach((crit,critIndex)=>{
+            const explicitGroup=crit.group_name||crit.group_key
+            const fallbackGroup=evalCategory==='sports_day'
+              ? (sportsGroupDefaults.find(([,count],groupIndex)=>{
+                  const start=sportsGroupDefaults.slice(0,groupIndex).reduce((sum,[,size])=>sum+size,0)
+                  return critIndex>=start&&critIndex<start+count
+                })?.[0]||'เกณฑ์อื่นๆ')
+              : sessionOf(crit.name)
+            const groupLabel=explicitGroup||fallbackGroup
+            let group=criteriaGroups.find(item=>item.label===groupLabel)
+            if(!group){group={label:groupLabel,criteria:[]};criteriaGroups.push(group)}
+            group.criteria.push(crit)
+          })
           return `<div class="rounded-2xl border overflow-hidden" style="border-color:${esc(swatch)}55">
             <div class="flex items-center gap-3 p-3" style="background:${esc(swatch)}14">
               ${selectedColor.logo_url?`<img data-color-logo src="${esc(selectedColor.logo_url)}" class="w-11 h-11 rounded-full object-cover border-2 flex-shrink-0 bg-white" style="border-color:${esc(swatch)}"><div data-color-logo-fallback class="hidden w-11 h-11 rounded-full items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`:`<div class="w-11 h-11 rounded-full flex items-center justify-center text-white font-black flex-shrink-0" style="background:${esc(swatch)}">${initial}</div>`}
               <div><b class="text-sm" style="color:${esc(swatch)}">สี${esc(canonicalName)}</b><p class="text-xs text-gray-500 mt-0.5">รวม <span id="eval-current-total">${currentTotal}</span> / ${maxTotal}</p></div>
             </div>
             <div class="p-3 space-y-2 bg-white">
-              ${sessionCriteria.map(crit=>{
-                const v=scoreMap.get(`${crit.id}|${selectedColor.id}|${crit.session_id||''}`)
-                const critSession=sessionOf(crit.name)
-                const topicLabel=(sessionNames.length>1&&critSession!==crit.name)?crit.name.slice(critSession.length+3):crit.name
-                return `<div class="flex items-center justify-between gap-2">
-                  <label class="text-xs text-gray-600 flex-1">${esc(topicLabel)}</label>
-                  <div class="flex items-center gap-1 flex-shrink-0">
-                    <input type="number" inputmode="numeric" min="0" max="${Number(crit.max_score)}" step="1" value="${v??''}" data-score-input data-crit="${crit.id}" data-color="${selectedColor.id}" ${sessionClosed?'disabled':''} class="w-16 border rounded-lg px-2 py-1.5 text-center text-sm">
-                    <span class="text-[10px] text-gray-400 w-10">/ ${Number(crit.max_score)}</span>
+              ${criteriaGroups.map((group,groupIndex)=>{
+                const groupValues=group.criteria.map(crit=>scoreMap.get(`${crit.id}|${selectedColor.id}|${crit.session_id||''}`))
+                const groupSaved=groupValues.filter(v=>v!==undefined).length
+                const groupMax=group.criteria.reduce((sum,crit)=>sum+Number(crit.max_score||0),0)
+                return `<details class="border rounded-xl overflow-hidden" ${groupIndex===0?'open':''}>
+                  <summary class="cursor-pointer list-none flex items-center justify-between gap-3 px-3 py-2.5 bg-gray-50 hover:bg-gray-100">
+                    <span class="text-xs font-bold text-gray-700">${esc(group.label)}</span>
+                    <span class="text-[10px] text-gray-500">${groupSaved}/${group.criteria.length} ข้อ · เต็ม ${groupMax}</span>
+                  </summary>
+                  <div class="p-3 space-y-2">
+                    ${group.criteria.map(crit=>{
+                      const v=scoreMap.get(`${crit.id}|${selectedColor.id}|${crit.session_id||''}`)
+                      const critSession=sessionOf(crit.name)
+                      const topicLabel=(sessionNames.length>1&&critSession!==crit.name)?crit.name.slice(critSession.length+3):crit.name
+                      return `<div class="flex items-center justify-between gap-2">
+                        <label class="text-xs text-gray-600 flex-1">${esc(topicLabel)}</label>
+                        <div class="flex items-center gap-1 flex-shrink-0">
+                          <input type="number" inputmode="numeric" min="0" max="${Number(crit.max_score)}" step="1" value="${v??''}" data-score-input data-crit="${crit.id}" data-color="${selectedColor.id}" ${sessionClosed?'disabled':''} class="w-16 border rounded-lg px-2 py-1.5 text-center text-sm">
+                          <span class="text-[10px] text-gray-400 w-10">/ ${Number(crit.max_score)}</span>
+                        </div>
+                      </div>`
+                    }).join('')}
                   </div>
-                </div>`
+                </details>`
               }).join('')}
             </div>
           </div>`
