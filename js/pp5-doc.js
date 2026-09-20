@@ -965,9 +965,9 @@ function _buildPage1(d) {
     if (!grade && maxTotal > 0) {
       const pct = (total / maxTotal) * 100
       grade = _calcGrade(pct)
-      const key = String(grade)
-      if (key in gradeCounts) gradeCounts[key]++
     }
+    const key = String(grade)
+    if (key in gradeCounts) gradeCounts[key]++
     const readLbl = readingEvalMap?.[st.id]
     if (readLbl && readLbl in evalReadCount) evalReadCount[readLbl]++
     const charLbl = _gradeToKhunaLabel(grade)
@@ -1006,7 +1006,7 @@ function _buildPage1(d) {
       <span>รหัสวิชา</span><span class="uline w-cd">${_esc(ms.subject_code??'')}</span>
     </div>`
 
-  const gradeRow = [4,'3.5',3,'2.5',2,'1.5',1,0].map(g=>`<td>${gradeCounts[String(g)]||''}</td>`).join('')
+  const gradeRow = [4,'3.5',3,'2.5',2,'1.5',1,0].map(g=>`<td>${gradeCounts[String(g)]||'-'}</td>`).join('')
   const readRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalReadCount[k]||''}</td>`).join('')
   const charRow  = ['ดีเยี่ยม','ดี','ผ่าน','ไม่ผ่าน'].map(k=>`<td>${evalCharCount[k]||''}</td>`).join('')
 
@@ -1719,7 +1719,8 @@ function _buildPage1VOC(d) {
     if (maxTotal > 0) {
       const total = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0) + (Number(moralScores?.[st.id]) || 0)
       const pct = (total / maxTotal) * 100
-      const g   = _calcGrade(pct)
+      const forced = st.special_result
+      const g = forced && /^[0-9]+(?:\.5)?$/.test(String(forced)) ? Number(forced) : _calcGrade(pct)
       const key = String(g)
       if (key in gradeCounts) gradeCounts[key]++
       if (hasScore) { if (g > 0) passCount++; else failCount++ }
@@ -1737,7 +1738,7 @@ function _buildPage1VOC(d) {
     [0,'0 - 49','จำนวนนักเรียนไม่ผ่าน (ม.ผ.)', failCount],
   ].map(([g, range, remark, cnt]) => `
     <tr>
-      <td>${g}</td><td>${range}</td><td>${gradeCounts[String(g)] || ''}</td>
+      <td>${g}</td><td>${range}</td><td>${gradeCounts[String(g)] || '-'}</td>
       <td class="voc-remark">${remark}</td><td>${cnt || ''}</td>
     </tr>`).join('')
 

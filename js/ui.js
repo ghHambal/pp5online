@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.722'
+import { APP_VERSION } from './version.js?v=10.22.723'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.723': [
+    '📄 ปรับสรุปเกรดหน้าปก ปพ.5 ให้นับเกรดบังคับ และแสดง - เมื่อไม่มีนักเรียนในเกรดนั้น',
+  ],
   '10.22.722': [
     '🎨 เพิ่มสวิตช์เลือกสีเกรดบังคับในเอกสาร ปพ.5 เป็นสีแดงหรือสีดำ',
   ],
