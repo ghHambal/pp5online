@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.728'
+import { APP_VERSION } from './version.js?v=10.22.729'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.729': [
+    '📄 รวมค่า มส และ ม.ส. เป็นเกรดเดียวกัน และไม่แสดงจำนวนในสรุป ปพ.5',
+  ],
   '10.22.728': [
     '📄 ปรับช่อง ร และ มส ในสรุปหน้าปกให้แสดง - ตามรูปแบบสรุปเกรดตัวเลข',
   ],

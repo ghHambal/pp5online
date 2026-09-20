@@ -1697,6 +1697,11 @@ function _buildPage5(d) {
 
 const VOC_SPECIAL_KEYS = ['ข.ร.', 'ข.ส.', 'ม.ส.', 'ข.ป.']
 
+function _normalizeVocSpecialResult(value) {
+  const compact = String(value ?? '').trim().replace(/\s+/g, '').replace(/\./g, '')
+  return compact === 'มส' ? 'ม.ส.' : String(value ?? '').trim()
+}
+
 function _buildPage1VOC(d) {
   const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions, moralScores, moralMax } = d
 
@@ -1722,7 +1727,11 @@ function _buildPage1VOC(d) {
   let passCount = 0, failCount = 0, examCount = 0
 
   if (!_hideScores) for (const st of students) {
-    if (st.special_result && VOC_SPECIAL_KEYS.includes(st.special_result)) { specialCounts[st.special_result]++; continue }
+    const specialResult = _normalizeVocSpecialResult(st.special_result)
+    if (specialResult && VOC_SPECIAL_KEYS.includes(specialResult)) {
+      if (specialResult !== 'ม.ส.') specialCounts[specialResult]++
+      continue
+    }
     const stScores = scoreMap[st.id] ?? {}
     const hasScore = scoreColumns.some(c => stScores[c.id] != null)
     if (hasScore) examCount++
@@ -1742,7 +1751,7 @@ function _buildPage1VOC(d) {
     ['3.5','75 - 79','จำนวนนักเรียนเข้าสอบ', examCount],
     [3,'70 - 74','จำนวนนักเรียนไม่มีสิทธิ์สอบ (ข.ร.)', specialCounts['ข.ร.']],
     ['2.5','65 - 69','จำนวนนักเรียนขาดสอบ (ข.ส.)', specialCounts['ข.ส.']],
-    [2,'60 - 64','จำนวนนักเรียนไม่สมบูรณ์ (ม.ส.)', specialCounts['ม.ส.']],
+    [2,'60 - 64','จำนวนนักเรียนไม่สมบูรณ์ (ม.ส.)', null],
     ['1.5','55 - 59','จำนวนนักเรียนขาดการปฏิบัติงาน (ข.ป.)', specialCounts['ข.ป.']],
     [1,'50 - 54','จำนวนนักเรียนผ่าน (ผ)', passCount],
     [0,'0 - 49','จำนวนนักเรียนไม่ผ่าน (ม.ผ.)', failCount],
@@ -2010,9 +2019,10 @@ function _buildScorePageVOC(d, chunk, startNo) {
     const objSum    = objCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
     const moralScore = moralScores?.[st.id] ?? ''
     const total = objSum + (Number(moralScore) || 0)
-    const forcedGrade = Boolean(st.special_result && VOC_SPECIAL_KEYS.includes(st.special_result))
+    const specialResult = _normalizeVocSpecialResult(st.special_result)
+    const forcedGrade = Boolean(specialResult && VOC_SPECIAL_KEYS.includes(specialResult))
     const grade = forcedGrade
-      ? st.special_result
+      ? specialResult
       : _calcGrade(denom ? (total / denom) * 100 : 0)
     return `<tr>
       <td class="voc-center">${startNo+idx}</td>
