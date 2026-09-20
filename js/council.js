@@ -8,6 +8,7 @@ import { openCouncilCheckinScanner } from './council-checkin-scanner.js'
 import { CERT_PRESET_LABELS, defaultLayoutFor, openCertificatePrint as openCentralCertificatePrint } from './certificate-engine.js'
 import { openCertificateLayoutEditor } from './certificate-editor.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
+import { renderCouncilRegulationView, wireCouncilRegulationEvents } from './council-regulation.js'
 import {
   getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate, updateCertificateTemplateLayout,
   issueCertificate as issueCentralCertificate, getCertificatesBySource,
@@ -385,6 +386,7 @@ function getNavItems() {
   const items = [{ id: 'overview', icon: '🏠', label: 'หน้าหลัก', group: 'main' }]
   // งานสภา — สาธารณะ/สมาชิกสภา
   items.push({ id: 'news', icon: '📣', label: 'ประกาศ', group: 'council' })
+  items.push({ id: 'regulation', icon: '📚', label: 'ระเบียบ/ประกาศ', group: 'council' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภาของเรา', group: 'council' })
   items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม', group: 'council' })
   if (ctx.isChair || ctx.isAdmin || ctx.isCouncilAdvisor) items.push({ id: 'chairteam', icon: '👔', label: 'เสนอคณะทำงาน', group: 'council' })
@@ -4054,6 +4056,7 @@ function renderMyCouncilProfileView() {
 
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
+  regulation: () => renderCouncilRegulationView(ctx, render),
   endorse: renderEndorseView,
   apps: renderApplicationsAdminView,
   news: renderNewsView,
@@ -4133,6 +4136,7 @@ function renderFullscreenFlow() {
 }
 
 function wireContentEvents() {
+  wireCouncilRegulationEvents(ctx, render)
   document.querySelectorAll('.flow-entry-btn').forEach(btn => {
     btn.addEventListener('click', () => { fullscreenFlow = btn.dataset.flow; flowSubtab = null; render() })
   })

@@ -34,6 +34,50 @@ export async function updateCouncilConfig(updates) {
   if (error) throw error
 }
 
+// ─── ระเบียบ/ประกาศสภานักเรียน — อ่านได้ทุกผู้ใช้ที่ล็อกอิน; แก้ผ่าน RPC เฉพาะผู้ดูแล ───
+export async function getCouncilRegulationVersions() {
+  const { data, error } = await supabase.from('council_regulation_versions')
+    .select('id, regulation_key, version_label, title, status, implementation_mode, source_document_url, effective_date, created_at, updated_at')
+    .neq('status', 'archived')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getCouncilRegulationContent(versionId) {
+  const [sectionsResult, clausesResult] = await Promise.all([
+    supabase.from('council_regulation_sections').select('id, version_id, section_no, title, sort_order').eq('version_id', versionId).order('sort_order'),
+    supabase.from('council_regulation_clauses').select('id, version_id, section_id, clause_no, title, body, keywords, sort_order, updated_at').eq('version_id', versionId).order('sort_order'),
+  ])
+  if (sectionsResult.error) throw sectionsResult.error
+  if (clausesResult.error) throw clausesResult.error
+  return { sections: sectionsResult.data ?? [], clauses: clausesResult.data ?? [] }
+}
+
+export async function updateCouncilRegulationClause({ clauseId, title, body, keywords }) {
+  const { data, error } = await supabase.rpc('update_council_regulation_clause', {
+    p_clause_id: clauseId,
+    p_title: title,
+    p_body: body,
+    p_keywords: keywords ?? [],
+  })
+  if (error) throw error
+  return data
+}
+
+export async function createCouncilRegulationClause({ versionId, sectionId, clauseNo, title, body, keywords }) {
+  const { data, error } = await supabase.rpc('create_council_regulation_clause', {
+    p_version_id: versionId,
+    p_section_id: sectionId,
+    p_clause_no: clauseNo,
+    p_title: title,
+    p_body: body,
+    p_keywords: keywords ?? [],
+  })
+  if (error) throw error
+  return data
+}
+
 // ─── ตำแหน่ง ────────────────────────────────────────────────────────────────
 export async function getCouncilPositions() {
   const { data, error } = await supabase.from('council_positions')
