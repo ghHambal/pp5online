@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.719'
+import { APP_VERSION } from './version.js?v=10.22.720'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.720': [
+    '⚙️ จัดกลุ่มหัวข้อในหน้าตั้งค่า และเพิ่มรอบวันเข้าสีครั้งที่ 2/วันซ้อมใหญ่สำหรับเพิ่มหรือลบเกณฑ์แยกกัน',
+  ],
   '10.22.719': [
     '📋 รวมเกณฑ์เพจและการเดินพาเหรดเป็นกลุ่มเดียว พร้อมเปิดให้กรอกคะแนนทันที',
   ],

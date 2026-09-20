@@ -1968,6 +1968,13 @@ export async function renderSportsEvaluationWorkspace() {
           const rows=catCriteria.filter(c=>c.session_id===s.id)
           if(rows.length)sessionMap.set(s.id,{label:s.name,criteria:rows})
         })
+      }else if(evalCategory==='color_eval'){
+        ;(sessions||[]).filter(s=>s.session_type==='color_day').sort((a,b)=>(a.day_no||0)-(b.day_no||0)).forEach(s=>{
+          const rows=catCriteria.filter(c=>c.session_id===s.id)
+          if(rows.length)sessionMap.set(s.id,{label:s.name,criteria:rows})
+        })
+        const legacy=catCriteria.filter(c=>!c.session_id)
+        if(legacy.length)sessionMap.set('legacy',{label:'หัวข้อเดิมที่ยังไม่ผูกวัน',criteria:legacy})
       }else if(evalCategory==='page'||evalCategory==='parade'){
         // เพจและการเดินพาเหรดเป็นหัวข้อเดียวต่อการประเมิน
         // แสดงเกณฑ์ทั้งหมดพร้อมกัน ไม่ต้องเลือกหัวข้อย่อยทีละรายการ
@@ -2084,10 +2091,22 @@ export async function renderSportsEvaluationWorkspace() {
       </section>`
     }
 
-    const criteriaSettingsHtml=()=>['parade','page','color_eval','sports_day'].map(cat=>{
-      const rows=(criteria||[]).filter(c=>c.category===cat)
-      return `<div class="mb-4"><h4 class="text-sm font-bold text-gray-700 mb-2">${EVAL_CATEGORY_LABEL[cat]}</h4><div class="space-y-1.5" data-crit-cat="${cat}">${rows.map(c=>`<div class="flex items-center gap-2 bg-gray-50 rounded-lg p-2" data-crit-row="${c.id}"><span class="flex-1 text-sm" data-crit-view>${esc(c.name)}</span><span class="text-xs text-gray-500 w-20 text-right" data-crit-view>เต็ม ${Number(c.max_score)}</span><button type="button" data-crit-edit="${c.id}" class="px-2 py-1 text-xs border rounded-lg text-indigo-600">แก้ไข</button><button type="button" data-crit-del="${c.id}" class="px-2 py-1 text-xs border rounded-lg text-red-600">ลบ</button></div>`).join('')||'<p class="text-xs text-gray-400">ยังไม่มีหัวข้อ</p>'}</div></div>`
-    }).join('')
+    const criteriaSettingsHtml=()=>{
+      const criterionRows=rows=>rows.map(c=>`<div class="flex items-center gap-2 bg-gray-50 rounded-lg p-2" data-crit-row="${c.id}"><span class="flex-1 text-sm" data-crit-view>${esc(c.name)}</span><span class="text-xs text-gray-500 w-20 text-right" data-crit-view>เต็ม ${Number(c.max_score)}</span><button type="button" data-crit-edit="${c.id}" class="px-2 py-1 text-xs border rounded-lg text-indigo-600">แก้ไข</button><button type="button" data-crit-del="${c.id}" class="px-2 py-1 text-xs border rounded-lg text-red-600">ลบ</button></div>`).join('')||'<p class="text-xs text-gray-400">ยังไม่มีหัวข้อ</p>'
+      return ['parade','page','color_eval','sports_day'].map(cat=>{
+        const catRows=(criteria||[]).filter(c=>c.category===cat)
+        const catSessions=cat==='color_eval'
+          ? (sessions||[]).filter(s=>s.session_type==='color_day').sort((a,b)=>(a.day_no||0)-(b.day_no||0))
+          : cat==='sports_day' ? (sessions||[]).filter(s=>s.session_type==='sports_day').sort((a,b)=>a.day_no-b.day_no) : []
+        const groups=catSessions.map(s=>({label:s.name,rows:catRows.filter(c=>c.session_id===s.id)}))
+        if(!catSessions.length)groups.push({label:'หัวข้อทั้งหมด',rows:catRows})
+        if(cat==='color_eval'){
+          const legacy=catRows.filter(c=>!c.session_id)
+          if(legacy.length)groups.push({label:'หัวข้อเดิมที่ยังไม่ผูกวัน',rows:legacy})
+        }
+        return `<div class="mb-4"><h4 class="text-sm font-bold text-gray-700 mb-2">${EVAL_CATEGORY_LABEL[cat]}</h4><div class="space-y-2" data-crit-cat="${cat}">${groups.map((group,groupIndex)=>`<details class="border rounded-xl overflow-hidden" ${groupIndex===0?'open':''}><summary class="cursor-pointer list-none flex items-center justify-between px-3 py-2 bg-gray-50 text-xs font-bold">${esc(group.label)}<span class="text-gray-500">${group.rows.length} หัวข้อ</span></summary><div class="p-2 space-y-1.5">${criterionRows(group.rows)}</div></details>`).join('')||'<p class="text-xs text-gray-400">ยังไม่มีหัวข้อ</p>'}</div></div>`
+      }).join('')
+    }
 
     const evaluatorsListHtml=()=>{
       if(!allEvaluators.length) return '<p class="text-sm text-gray-400 text-center py-4">ยังไม่มีผู้ประเมิน</p>'
@@ -2121,6 +2140,10 @@ export async function renderSportsEvaluationWorkspace() {
               <option value="color_eval">🎨 วันเข้าสีเดิม</option>
               <option value="page">📣 หน้าเว็บเพจ</option>
               <option value="sports_day">🏟️ วันกีฬาสีจริง</option>
+            </select>
+            <select id="crit-new-session" class="border rounded-xl px-3 py-2 text-sm sm:col-span-4">
+              <option value="">-- เลือกรอบ/วัน (จำเป็นสำหรับวันเข้าสีและวันกีฬาสีจริง) --</option>
+              ${(sessions||[]).filter(s=>s.session_type==='color_day'||s.session_type==='sports_day').sort((a,b)=>(a.session_type+a.day_no).localeCompare(b.session_type+b.day_no)).map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}
             </select>
             <input id="crit-new-name" placeholder="ชื่อหัวข้อ" class="border rounded-xl px-3 py-2 text-sm sm:col-span-2">
             <input id="crit-new-max" type="number" min="1" value="10" class="border rounded-xl px-3 py-2 text-sm" placeholder="คะแนนเต็ม">
@@ -2371,11 +2394,13 @@ export async function renderSportsEvaluationWorkspace() {
 
       el.querySelector('#crit-new-add')?.addEventListener('click',async()=>{
         const category=el.querySelector('#crit-new-category').value
+        const session_id=el.querySelector('#crit-new-session').value||null
         const name=el.querySelector('#crit-new-name').value.trim()
         const max_score=Number(el.querySelector('#crit-new-max').value)
         if(!name||!max_score||max_score<=0)return toast('กรอกชื่อหัวข้อและคะแนนเต็มให้ครบ','error')
+        if((category==='color_eval'||category==='sports_day')&&!session_id)return toast('กรุณาเลือกรอบ/วันที่ของหัวข้อนี้','error')
         const display_order=(criteria||[]).filter(c=>c.category===category).length
-        const {error}=await supabase.from('sports_score_criteria').insert({event_id:event.id,category,name,max_score,display_order})
+        const {error}=await supabase.from('sports_score_criteria').insert({event_id:event.id,category,session_id,name,max_score,display_order})
         if(error)return toast(error.message,'error')
         toast('เพิ่มหัวข้อแล้ว'); renderSportsEvaluationWorkspace()
       })
