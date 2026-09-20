@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.734'
+import { APP_VERSION } from './version.js?v=10.22.735'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.735': [
+    '🗓️ เพิ่มแท็บงานสัมภาษณ์และแต่งตั้งสมาชิก แยกตามฝ่าย ค้นหา และเชื่อมต่อ workflow เดิม',
+  ],
   '10.22.734': [
     '🔗 เพิ่ม Deep Link ศูนย์ระเบียบ เปิดแท็บและเลขข้อที่อ้างถึงได้โดยตรง พร้อมปุ่มลิงก์ตรงในแต่ละข้อ',
   ],

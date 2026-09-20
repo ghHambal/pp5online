@@ -178,6 +178,12 @@ let appsGradeFilter = '' // '' = ทุกระดับชั้น
 let appsPositionFilter = '' // '' = ทุกฝ่าย — ตั้งค่าแล้วจะสลับจากมุมมอง "จัดกลุ่มตามฝ่าย" เป็นรายการเรียบ
 let appsAdvisorEndorseFilter = '' // '' | 'yes' | 'no'
 let appsPeerEndorseFilter = '' // '' | 'yes' | 'no'
+let interviewGenderTab = 'M'
+let interviewFilter = 'all'
+let interviewSearch = ''
+let appointmentGenderTab = 'M'
+let appointmentFilter = 'ready'
+let appointmentSearch = ''
 let ivTeachers = null // null = ยังไม่โหลด — รายชื่อครูสำหรับเลือกเป็นกรรมการสัมภาษณ์ (ใช้ร่วมกับหน้ามอบสิทธิ์ด้วย)
 let councilAdvisors = null // null = ยังไม่โหลด — ทำเนียบครูที่ปรึกษาสภานักเรียน (หน้า "มอบสิทธิ์")
 let execAdvisorPositions = null // null = ยังไม่โหลด — [{teacher_id, position_id}] ทั้งหมด ใช้จับคู่ครูที่ปรึกษากับฝ่ายที่ดูแลในหน้า "ภาพรวม" ผู้บริหาร
@@ -421,6 +427,8 @@ function getNavItems() {
   }
   const isTeacherStaff = ctx.isAdmin || ctx.isCouncilAdvisor
   if (isTeacherStaff) items.push({ id: 'apps', icon: '📋', label: 'ใบสมัคร', group: 'teacherWork' })
+  if (isTeacherStaff) items.push({ id: 'interview', icon: '🗓️', label: 'สัมภาษณ์', group: 'teacherWork' })
+  if (isTeacherStaff) items.push({ id: 'appoint', icon: '✅', label: 'แต่งตั้งสมาชิก', group: 'teacherWork' })
   if (isTeacherStaff || ctx.membership.length) items.push({ id: 'eval', icon: '🎖️', label: 'ประเมิน/เกียรติบัตร', group: 'teacherWork' })
   // เอกสารโครงการ — เห็นด้วยกันทั้งครูที่ปรึกษาสภา/ประธานสภา (ริเริ่ม+รับรอง) และหัวหน้าฝ่าย
   // กิจการนักเรียน/ผู้อำนวยการ (อนุมัติขั้นถัดไป) แม้ไม่ใช่ครูที่ปรึกษาสภาก็ตาม
@@ -438,16 +446,16 @@ function getNavItems() {
     items.push({ id: 'myCouncilProfile', icon: '✍️', label: 'โปรไฟล์ของฉัน', group: 'system' })
   }
 
-  // สวิตช์เปิด/ปิดโมดูล (สเปคข้อ 8.18.4, council_modules) — บังคับใช้เฉพาะโมดูลที่ผูกกับ
-  // nav item เดี่ยวๆ ตรงๆ ได้เท่านั้น (interview/appoint/perms ยังไม่มี nav item แยกของตัวเอง
-  // เพราะฟีเจอร์นั้นยังไม่ได้สร้างเป็นหน้าต่างหาก — toggle เก็บไว้ล่วงหน้าให้ตรงสเปค แต่ยังไม่มีผล
-  // จนกว่าจะสร้างหน้านั้นจริง — chairteam/chairtasks มีหน้าแล้วตั้งแต่ Phase 6-7)
+  // สวิตช์เปิด/ปิดโมดูล (สเปคข้อ 8.18.4, council_modules) — ซ่อนเฉพาะแท็บที่ถูกปิดจากการตั้งค่า
+  // ส่วนสิทธิ์ผู้ใช้ยังคุมด้วย role/context แยกต่างหาก
   const modules = getModulesConfig()
   const hiddenByModule = new Set()
   if (modules.candidates === false) { hiddenByModule.add('candidates'); hiddenByModule.add('result') }
   if (modules.news === false) hiddenByModule.add('news')
   if (modules.evaluate === false) hiddenByModule.add('eval')
   if (modules.docs === false) hiddenByModule.add('docs')
+  if (modules.interview === false) hiddenByModule.add('interview')
+  if (modules.appoint === false) hiddenByModule.add('appoint')
   if (modules.chairteam === false) hiddenByModule.add('chairteam')
   if (modules.chairtasks === false) hiddenByModule.add('assignments')
   return items.filter(it => !hiddenByModule.has(it.id))
@@ -1896,6 +1904,70 @@ function renderApplicationsAdminView() {
     : `<div class="space-y-3">${list.map(card).join('')}</div>`
 
   return `${genderTabs}${filterBar}${extraFilterBar}${datalist}${body}${renderAdminAppDetailModal()}${renderCouncilDeleteModal()}`
+}
+
+function workflowSearchMatch(application, query) {
+  const q = String(query ?? '').trim().toLocaleLowerCase()
+  if (!q) return true
+  return [
+    application.students?.full_name,
+    application.students?.student_code,
+    application.students?.main_room,
+    application.council_positions?.position_name,
+  ].filter(Boolean).join(' ').toLocaleLowerCase().includes(q)
+}
+
+function renderInterviewView() {
+  if (!ctx.isAdmin && !ctx.isCouncilAdvisor) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะครูที่ปรึกษาสภาหรือแอดมินเท่านั้น</p>`
+  if (adminApps === null) { loadAdminApps(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลดข้อมูลสัมภาษณ์...</p>` }
+  if (interviewCriteria === null) { loadInterviewCriteria(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลดเกณฑ์สัมภาษณ์...</p>` }
+  if (ivTeachers === null) { loadIvTeachers(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลดรายชื่อกรรมการ...</p>` }
+
+  if (!['M', 'W'].includes(interviewGenderTab)) interviewGenderTab = 'M'
+  const genderApps = adminApps.filter(a => a.council_positions?.gender === interviewGenderTab)
+  const maxWeight = interviewCriteria.reduce((total, criterion) => total + Number(criterion.weight), 0)
+  const passThreshold = maxWeight / 2
+  const ready = a => a.status === 'pending' && a.endorsed_at && peerEndorsementSatisfied(a)
+  const scheduled = a => a.status === 'interview_scheduled'
+  const completed = a => ['interviewed', 'rejected'].includes(a.status)
+  const filterMatches = a => interviewFilter === 'ready' ? ready(a) : interviewFilter === 'scheduled' ? scheduled(a) : interviewFilter === 'completed' ? completed(a) : true
+  const list = genderApps.filter(a => filterMatches(a) && workflowSearchMatch(a, interviewSearch))
+  const counts = { all: genderApps.length, ready: genderApps.filter(ready).length, scheduled: genderApps.filter(scheduled).length, completed: genderApps.filter(completed).length }
+  const filters = [
+    ['all', 'ทั้งหมด'], ['ready', 'รอนัด'], ['scheduled', 'รอให้คะแนน'], ['completed', 'ประเมินแล้ว'],
+  ]
+  const genderTabs = ['M', 'W'].map(g => `<button type="button" class="interview-gender-tab-btn flex-1 py-2.5 rounded-full text-sm font-bold ${g === interviewGenderTab ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-gender="${g}">สภา${GENDER_LABEL[g]} <span class="${g === interviewGenderTab ? 'text-white/80' : 'text-[var(--muted-2)]'}">${adminApps.filter(a => a.council_positions?.gender === g).length}</span></button>`).join('')
+  const filterBar = filters.map(([id, label]) => `<button type="button" class="interview-filter-btn flex-shrink-0 px-3.5 py-2 rounded-full text-xs font-bold ${id === interviewFilter ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-filter="${id}">${label} <span class="${id === interviewFilter ? 'text-white/80' : 'text-[var(--muted-2)]'}">${counts[id]}</span></button>`).join('')
+  const datalist = `<datalist id="council-interview-teacher-datalist">${ivTeachers.map(t => `<option value="${esc(t.full_name)} · รหัส ${t.id}"></option>`).join('')}</datalist>`
+  const cards = list.map(a => {
+    const iv = a.council_interviews?.[0]
+    const [label, badge] = PIPELINE_STATUS_BADGE[a.status] ?? ['—', 'bg-[var(--bg-2)] text-[var(--muted)]']
+    const scheduleBlock = ready(a) ? `<form class="schedule-form space-y-2 pt-2 border-t border-[var(--line-soft)]" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}" data-profile-id="${esc(a.students?.profile_id ?? '')}" data-position-name="${esc(a.council_positions?.position_name ?? '')}">
+      <p class="text-xs font-semibold text-[var(--muted)]">นัดสัมภาษณ์</p><div class="grid grid-cols-2 gap-2"><input type="datetime-local" name="scheduled_at" required class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="text" name="location" placeholder="สถานที่" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div>
+      <input type="text" name="interviewerText" list="council-interview-teacher-datalist" placeholder="พิมพ์ชื่อครูกรรมการ (ไม่บังคับ)" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกนัดสัมภาษณ์</button></form>` : ''
+    const scoreBlock = scheduled(a) ? `<div class="pt-2 border-t border-[var(--line-soft)]"><p class="text-xs text-[var(--muted)] mb-2">📅 ${iv?.scheduled_at ? new Date(iv.scheduled_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : 'ยังไม่กำหนดเวลา'} ${iv?.location ? '· ' + esc(iv.location) : ''}</p><form class="score-form space-y-1.5" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}" data-max-weight="${maxWeight}" data-pass-threshold="${passThreshold}"><p class="text-xs font-semibold text-[var(--muted)]">ให้คะแนนสัมภาษณ์รายหัวข้อ</p>${interviewCriteria.map(c => `<div class="flex items-center gap-2"><span class="flex-1 text-xs text-[var(--ink-2)]">${esc(c.name)} <span class="text-[var(--muted-2)]">(เต็ม ${c.weight})</span></span><input type="number" min="0" max="${c.weight}" step="0.5" name="c_${c.id}" data-criterion-id="${c.id}" value="${iv?.scores?.[c.id] ?? ''}" class="score-input w-20 border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs text-center bg-[var(--surface)] text-[var(--ink)]"></div>`).join('')}<div class="flex items-center justify-between text-xs font-bold pt-1.5 border-t border-[var(--line-soft)]"><span>คะแนนรวม</span><span class="score-total-display text-[var(--primary)]">${iv?.score ?? 0} / ${maxWeight} · ต้อง ≥ ${passThreshold} จึงผ่าน</span></div><textarea name="comment" rows="2" placeholder="ความเห็นกรรมการ" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(iv?.comment ?? '')}</textarea><button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกผล</button></form></div>` : ''
+    const resultBlock = completed(a) ? `<div class="pt-2 border-t border-[var(--line-soft)] text-xs ${a.status === 'interviewed' ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}">${a.status === 'interviewed' ? '✅ ผ่านสัมภาษณ์' : '❌ ไม่ผ่านสัมภาษณ์'}${iv?.score != null ? ` · คะแนน ${iv.score}/${maxWeight}` : ''}${iv?.comment ? `<p class="text-[var(--muted)] mt-1">${esc(iv.comment)}</p>` : ''}</div>` : ''
+    return `<article class="rounded-xl border border-[var(--line-soft)] bg-[var(--surface)] p-3 space-y-2.5"><div class="flex items-center gap-3">${studentPhoto(a.students)}<div class="min-w-0 flex-1"><p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p><p class="text-xs text-[var(--muted)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · ${esc(a.council_positions?.position_name ?? '—')}</p></div><span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full ${badge}">${label}</span></div><button type="button" class="btn-view-app-detail w-full text-xs font-bold py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)]" data-id="${a.id}">📄 ดูใบสมัคร</button>${!ready(a) && a.status === 'pending' ? `<p class="text-xs text-[var(--gold-ink)] pt-1 border-t border-[var(--line-soft)]">⏳ ${endorsementStatusNote(a)} ก่อน จึงจะนัดสัมภาษณ์ได้</p>` : ''}${scheduleBlock}${scoreBlock}${resultBlock}</article>`
+  }).join('')
+  return `<div class="space-y-4"><section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-5"><p class="text-xs font-bold text-[var(--primary)]">🗓️ งานสัมภาษณ์</p><h1 class="text-xl font-bold text-[var(--ink)] mt-1">นัดหมายและประเมินผู้สมัคร</h1><p class="text-xs text-[var(--muted)] mt-2">แสดงเฉพาะข้อมูลใบสมัครของปีการศึกษาปัจจุบัน และใช้เกณฑ์คะแนนที่ตั้งไว้ในระบบ</p></section><div class="flex gap-2">${genderTabs}</div><div class="flex gap-2 overflow-x-auto pb-1">${filterBar}</div><div class="flex gap-2"><input id="interview-search" value="${esc(interviewSearch)}" placeholder="ค้นหาชื่อนักเรียน รหัส ห้อง หรือฝ่าย" class="flex-1 border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]"><button type="button" class="interview-clear-search px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold">ล้าง</button></div><p class="text-xs text-[var(--muted)]">แสดง ${list.length} รายการ จาก ${genderApps.length} รายการ</p>${datalist}${list.length ? `<div class="space-y-3">${cards}</div>` : `<div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-10 text-center text-sm text-[var(--muted)]">ไม่พบรายการในตัวกรองนี้</div>`}${renderAdminAppDetailModal()}</div>`
+}
+
+function renderAppointmentView() {
+  if (!ctx.isAdmin && !ctx.isCouncilAdvisor) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะครูที่ปรึกษาสภาหรือแอดมินเท่านั้น</p>`
+  if (adminApps === null) { loadAdminApps(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลดข้อมูลแต่งตั้ง...</p>` }
+  if (!['M', 'W'].includes(appointmentGenderTab)) appointmentGenderTab = 'M'
+  const genderApps = adminApps.filter(a => a.council_positions?.gender === appointmentGenderTab)
+  const ready = a => a.status === 'interviewed' && !a.council_positions?.is_elected
+  const appointed = a => a.status === 'appointed'
+  const filterMatches = a => appointmentFilter === 'ready' ? ready(a) : appointmentFilter === 'appointed' ? appointed(a) : ready(a) || appointed(a)
+  const list = genderApps.filter(a => filterMatches(a) && workflowSearchMatch(a, appointmentSearch))
+  const counts = { ready: genderApps.filter(ready).length, appointed: genderApps.filter(appointed).length, all: genderApps.filter(a => ready(a) || appointed(a)).length }
+  const genderTabs = ['M', 'W'].map(g => `<button type="button" class="appointment-gender-tab-btn flex-1 py-2.5 rounded-full text-sm font-bold ${g === appointmentGenderTab ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-gender="${g}">สภา${GENDER_LABEL[g]} <span class="${g === appointmentGenderTab ? 'text-white/80' : 'text-[var(--muted-2)]'}">${adminApps.filter(a => a.council_positions?.gender === g && (ready(a) || appointed(a))).length}</span></button>`).join('')
+  const filters = [['ready', 'รอแต่งตั้ง'], ['appointed', 'แต่งตั้งแล้ว'], ['all', 'ทั้งหมด']]
+  const filterBar = filters.map(([id, label]) => `<button type="button" class="appointment-filter-btn flex-shrink-0 px-3.5 py-2 rounded-full text-xs font-bold ${id === appointmentFilter ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-filter="${id}">${label} <span class="${id === appointmentFilter ? 'text-white/80' : 'text-[var(--muted-2)]'}">${counts[id]}</span></button>`).join('')
+  const cards = list.map(a => `<article class="rounded-xl border border-[var(--line-soft)] bg-[var(--surface)] p-3 space-y-2.5"><div class="flex items-center gap-3">${studentPhoto(a.students)}<div class="min-w-0 flex-1"><p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p><p class="text-xs text-[var(--muted)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · ${esc(a.council_positions?.position_name ?? '—')}</p></div><span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full ${a.status === 'appointed' ? PIPELINE_STATUS_BADGE.appointed[1] : PIPELINE_STATUS_BADGE.interviewed[1]}">${a.status === 'appointed' ? 'แต่งตั้งแล้ว' : 'รอแต่งตั้ง'}</span></div><button type="button" class="btn-view-app-detail w-full text-xs font-bold py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)]" data-id="${a.id}">📄 ดูใบสมัครและผลสัมภาษณ์</button>${ready(a) ? `<button type="button" class="btn-appoint-member w-full py-2 rounded-[10px] bg-[var(--ok)] hover:bg-[#106143] text-white text-xs font-bold" data-app-id="${a.id}">✅ แต่งตั้งเข้าตำแหน่ง</button>` : '<p class="text-xs text-[var(--ok)] pt-1 border-t border-[var(--line-soft)]">บันทึกสมาชิกภาพเรียบร้อยแล้ว</p>'}</article>`).join('')
+  const electedPassed = genderApps.filter(a => a.status === 'interviewed' && a.council_positions?.is_elected).length
+  return `<div class="space-y-4"><section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-5"><p class="text-xs font-bold text-[var(--primary)]">✅ การแต่งตั้งสมาชิก</p><h1 class="text-xl font-bold text-[var(--ink)] mt-1">ผู้ผ่านสัมภาษณ์ที่พร้อมเข้าสภา</h1><p class="text-xs text-[var(--muted)] mt-2">หน้านี้ใช้สำหรับตำแหน่งแต่งตั้งโดยตรง ส่วนตำแหน่งประธาน/รองประธานที่มาจากการเลือกตั้งให้ดำเนินการต่อในแท็บว่าที่ประธาน</p></section><div class="flex gap-2">${genderTabs}</div><div class="flex gap-2 overflow-x-auto pb-1">${filterBar}</div><div class="flex gap-2"><input id="appointment-search" value="${esc(appointmentSearch)}" placeholder="ค้นหาชื่อนักเรียน รหัส ห้อง หรือฝ่าย" class="flex-1 border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]"><button type="button" class="appointment-clear-search px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold">ล้าง</button></div><p class="text-xs text-[var(--muted)]">แสดง ${list.length} รายการ จาก ${counts[appointmentFilter]} รายการ · ผ่านสัมภาษณ์สายเลือกตั้งรอดำเนินการ ${electedPassed} รายการ</p>${list.length ? `<div class="space-y-3">${cards}</div>` : `<div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-10 text-center text-sm text-[var(--muted)]">ไม่พบรายการในตัวกรองนี้</div>`}${renderAdminAppDetailModal()}</div>`
 }
 
 // ─── รายชื่อสภานักเรียนปัจจุบัน (public, จัดกลุ่มตามเพศ→ตำแหน่ง) ──────────────────
@@ -4073,6 +4145,8 @@ const VIEW_RENDERERS = {
   regulation: () => renderCouncilRegulationView(ctx, render),
   endorse: renderEndorseView,
   apps: renderApplicationsAdminView,
+  interview: renderInterviewView,
+  appoint: renderAppointmentView,
   news: renderNewsView,
   activities: renderActivitiesView,
   eval: renderEvalView,
@@ -4419,6 +4493,7 @@ function wireContentEvents() {
   })
 
   wireApplicationsAdminEvents()
+  wireCouncilWorkflowTabEvents()
   wireElectionEvents()
   wireActivitiesEvents()
   wireNewsEvents()
@@ -4429,6 +4504,26 @@ function wireContentEvents() {
   wireMyDutyEvents()
   wireAssignmentsEvents()
   wirePermsEvents()
+}
+
+function wireCouncilWorkflowTabEvents() {
+  document.querySelectorAll('.interview-gender-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => { interviewGenderTab = btn.dataset.gender; render() })
+  })
+  document.querySelectorAll('.interview-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => { interviewFilter = btn.dataset.filter; render() })
+  })
+  document.getElementById('interview-search')?.addEventListener('change', e => { interviewSearch = e.target.value; render() })
+  document.querySelector('.interview-clear-search')?.addEventListener('click', () => { interviewSearch = ''; render() })
+
+  document.querySelectorAll('.appointment-gender-tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => { appointmentGenderTab = btn.dataset.gender; render() })
+  })
+  document.querySelectorAll('.appointment-filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => { appointmentFilter = btn.dataset.filter; render() })
+  })
+  document.getElementById('appointment-search')?.addEventListener('change', e => { appointmentSearch = e.target.value; render() })
+  document.querySelector('.appointment-clear-search')?.addEventListener('click', () => { appointmentSearch = ''; render() })
 }
 
 // ─── มอบสิทธิ์ครูที่ปรึกษาสภานักเรียน ──────────────────────────────────────────────────
