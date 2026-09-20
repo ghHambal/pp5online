@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.717'
+import { APP_VERSION } from './version.js?v=10.22.718'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.718': [
+    '📋 แสดงเกณฑ์เพจและการเดินพาเหรดทั้งหมดพร้อมกัน ไม่ต้องเลือกหัวข้อย่อยทีละข้อ',
+  ],
   '10.22.717': [
     '🗂️ จัดกลุ่มเกณฑ์วันกีฬาสีจริงเป็นหัวข้อย่อยแบบเปิด-ปิดได้ ลดรายการยาวบนหน้าประเมิน',
   ],

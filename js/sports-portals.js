@@ -1968,6 +1968,10 @@ export async function renderSportsEvaluationWorkspace() {
           const rows=catCriteria.filter(c=>c.session_id===s.id)
           if(rows.length)sessionMap.set(s.id,{label:s.name,criteria:rows})
         })
+      }else if(evalCategory==='page'||evalCategory==='parade'){
+        // เพจและการเดินพาเหรดเป็นหัวข้อเดียวต่อการประเมิน
+        // แสดงเกณฑ์ทั้งหมดพร้อมกัน ไม่ต้องเลือกหัวข้อย่อยทีละรายการ
+        if(catCriteria.length) sessionMap.set('all', {label:'หัวข้อทั้งหมด', criteria:catCriteria})
       }else{
         catCriteria.forEach(crit=>{ const s=sessionOf(crit.name); if(!sessionMap.has(s))sessionMap.set(s,{label:s,criteria:[]}); sessionMap.get(s).criteria.push(crit) })
       }
