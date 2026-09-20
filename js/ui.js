@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.737'
+import { APP_VERSION } from './version.js?v=10.22.738'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.738': [
+    '📝 เพิ่ม form key สำหรับแบบ 09/09.1, ฉบับแก้ไข และ immutable snapshot หลังอนุมัติ',
+  ],
   '10.22.737': [
     '📚 เพิ่มแท็บเอกสารและแบบฟอร์ม กิจกรรม YLA และโครงการ/กิจกรรม พร้อมค้นหา พิมพ์ และลิงก์ต้นฉบับ โดยคงแท็บสัมภาษณ์และแต่งตั้งไว้สำหรับงานครู',
   ],

@@ -38,7 +38,7 @@ import {
   getMyAssignments, getAssignmentsForGender, createAssignment, updateAssignmentStatus, deleteAssignment,
   getEvaluationCriteria, addCriterion, removeCriterion, getCouncilEvaluations, saveEvaluation, issueCertificate,
   getInterviewCriteria, addInterviewCriterion, removeInterviewCriterion,
-  getCouncilDocuments, createDocument, updateDocumentDraft, submitDocument,
+  getCouncilDocuments, createDocument, updateDocumentDraft, createDocumentRevision, submitDocument,
   decideAsAdvisor, decideAsDeptHead, decideAsDirector,
   getTeachersByPosition, addTeacherPosition, removeTeacherPosition,
   getAdvisorPositions, setAdvisorPositions, getAllAdvisorPositions,
@@ -2788,6 +2788,7 @@ function openCertificatePrint(member, evaluation) {
 //   pending_dept_head → pending_director → approved — ตีกลับขั้นไหนก็กลับเป็น draft เสมอ
 let docs = null
 let docEditingId = null // null=ไม่ได้แก้ไข, 'new'=ร่างใหม่, <id>=แก้ไขร่างเดิม
+let docFormKey = 'FORM_09_1_PROJECT_PROPOSAL'
 let docDetailId = null // id ของเอกสารที่กำลังเปิดดูรายละเอียดแบบเต็ม (ป๊อบอัพ)
 let myAdvisorPositionIds = null // null=ยังไม่โหลด — ฝ่ายที่ตัวเอง (ถ้าเป็นครูที่ปรึกษาสภา) ดูแล
 
@@ -2798,6 +2799,11 @@ const DOC_STATUS_BADGE = {
   pending_director: ['รอผู้อำนวยการ', 'text-[var(--gold-ink)] bg-[var(--gold-soft-line)] border-[var(--gold-soft-line)]'],
   approved: ['อนุมัติแล้ว', 'text-[#106143] bg-[var(--ok-soft-line)] border-[var(--ok-soft-line)]'],
 }
+const DOC_FORM_LABEL = {
+  FORM_09_ACTIVITY_APPROVAL: 'แบบ 09 ขออนุมัติจัดกิจกรรม',
+  FORM_09_1_PROJECT_PROPOSAL: 'แบบ 09.1 แบบเสนอโครงการ',
+}
+const docFormLabel = key => DOC_FORM_LABEL[key] ?? key ?? 'เอกสารโครงการ'
 
 async function loadDocs() {
   docs = await getCouncilDocuments(electionYear).catch(() => [])
@@ -3012,7 +3018,10 @@ function renderDocsView() {
   if (docEditingId !== null) return renderDocEditForm()
 
   const createBtn = canCreateDoc()
-    ? `<button type="button" id="btn-new-doc" class="w-full py-3 rounded-2xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold mb-4">➕ ร่างเอกสารโครงการใหม่</button>` : ''
+    ? `<div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
+        <button type="button" class="btn-new-doc py-3 rounded-2xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold" data-form-key="FORM_09_ACTIVITY_APPROVAL">➕ ร่างแบบ 09 ขออนุมัติกิจกรรม</button>
+        <button type="button" class="btn-new-doc py-3 rounded-2xl border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)] text-sm font-bold" data-form-key="FORM_09_1_PROJECT_PROPOSAL">➕ ร่างแบบ 09.1 เสนอโครงการ</button>
+      </div>` : ''
 
   if (!docs.length) return `${createBtn}<p class="text-sm text-[var(--muted-2)] text-center py-10">ยังไม่มีเอกสารโครงการ</p>`
 
@@ -3024,7 +3033,7 @@ function renderDocsView() {
         <div class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
             <p class="text-sm font-bold text-[var(--ink)]">${esc(d.title)}</p>
-            <p class="text-xs text-[var(--muted-2)]">${d.council_positions?.position_name ? esc(d.council_positions.position_name) + ' · ' : ''}${moneyFmt(budgetTotal(d))} บาท</p>
+            <p class="text-xs text-[var(--muted-2)]">${esc(docFormLabel(d.form_key || 'FORM_09_1_PROJECT_PROPOSAL'))} · v${Number(d.form_version) || 1} · ${d.council_positions?.position_name ? esc(d.council_positions.position_name) + ' · ' : ''}${moneyFmt(budgetTotal(d))} บาท</p>
           </div>
           <span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full border ${cls}">${label}</span>
         </div>
@@ -3036,7 +3045,7 @@ function renderDocsView() {
           ${canDecideAdvisor(d) || canDecideDeptHead(d) || canDecideDirector(d) ? `
             <button type="button" class="btn-approve-doc text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--ok)] hover:bg-[#106143] text-white" data-id="${d.id}">✅ อนุมัติ</button>
             <button type="button" class="btn-reject-doc text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${d.id}">❌ ไม่อนุมัติ</button>` : ''}
-          ${d.status === 'approved' ? `<button type="button" class="btn-print-doc text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${d.id}">🖨️ พิมพ์เอกสาร</button>` : ''}
+          ${d.status === 'approved' ? `<button type="button" class="btn-print-doc text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${d.id}">🖨️ พิมพ์เอกสาร</button>${canCreateDoc() ? `<button type="button" class="btn-new-doc-revision text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white" data-id="${d.id}">➕ สร้างฉบับแก้ไข</button>` : ''}` : ''}
         </div>
       </div>`
   }
@@ -3063,6 +3072,8 @@ function docFieldSelectOrInput({ name, placeholder, configKey, value, extraClass
 function renderDocEditForm() {
   const isNew = docEditingId === 'new'
   const d = isNew ? {} : (docs.find(x => x.id === docEditingId) ?? {})
+  const formKey = isNew ? docFormKey : (d.form_key || 'FORM_09_1_PROJECT_PROPOSAL')
+  const formLabel = docFormLabel(formKey)
   const origin = ctx.isChair && !ctx.isCouncilAdvisor && !ctx.isAdmin ? 'council' : (d.origin ?? (ctx.isChair ? 'council' : 'teacher'))
   if (councilAdvisors === null) loadPermsRosters() // โหลดครูที่ปรึกษาสภาแบบไม่บล็อกฟอร์ม — ใช้ทำ chip เพิ่มชื่อในช่องผู้รับผิดชอบ
   const advisorChips = councilAdvisors?.length ? `
@@ -3075,13 +3086,14 @@ function renderDocEditForm() {
   return `
     <div class="flex items-center gap-3 mb-4">
       <button type="button" id="btn-doc-form-back" class="w-8 h-8 rounded-full hover:bg-[var(--bg-2)] text-[var(--muted)] flex items-center justify-center flex-shrink-0 text-lg">←</button>
-      <h2 class="text-base font-bold text-[var(--ink)]">${isNew ? 'ร่างเอกสารโครงการใหม่' : 'แก้ไขร่างเอกสารโครงการ'}</h2>
+      <h2 class="text-base font-bold text-[var(--ink)]">${isNew ? 'ร่าง' : 'แก้ไขร่าง'}${esc(formLabel)}</h2>
     </div>
     <button type="button" id="btn-doc-ai-import-open" class="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)] text-xs font-bold mb-3">🤖 ใช้ AI ช่วยกรอกจากไฟล์ใบโครงการเดิม</button>
-    <form id="doc-form" class="space-y-3" data-origin="${origin}">
+    <form id="doc-form" class="space-y-3" data-origin="${origin}" data-form-key="${esc(formKey)}">
       <div class="bg-[var(--surface)] rounded-2xl shadow-[0_4px_12px_rgba(23,32,42,0.07)] border border-[var(--line-soft)] p-4 space-y-2.5">
         <p class="text-sm font-bold text-[var(--ink-2)]">ข้อมูลทั่วไป</p>
-        <input name="title" required placeholder="ชื่อโครงการ" value="${esc(d.title ?? '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        <p class="text-xs font-bold text-[var(--primary)] mb-1">${esc(formLabel)} · ฉบับร่าง v${Number(d.form_version) || 1}</p>
+        <input name="title" required placeholder="ชื่อโครงการหรือชื่อกิจกรรม" value="${esc(d.title ?? '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
         <div class="grid grid-cols-2 gap-2">
           ${docFieldSelectOrInput({ name: 'planArea', placeholder: 'แผนงาน', configKey: 'council_doc_plan_areas', value: d.plan_area })}
           ${docFieldSelectOrInput({ name: 'projectType', placeholder: 'ลักษณะโครงการ', configKey: 'council_doc_project_types', value: d.project_type })}
@@ -3160,7 +3172,7 @@ function renderDocumentPreviewBody(d, cfg) {
 
   return `
     ${cfg.council_logo_url ? `<img src="${esc(cfg.council_logo_url)}" style="height:64px;object-fit:contain;display:block;margin:0 auto 8px;" />` : ''}
-    <h1 style="text-align:center;font-size:20px;margin-bottom:2px;">แบบเสนอโครงการ</h1>
+    <h1 style="text-align:center;font-size:20px;margin-bottom:2px;">${esc(docFormLabel(d.form_key || 'FORM_09_1_PROJECT_PROPOSAL'))}</h1>
     <p style="text-align:center;color:#6e5f65;font-size:13px;margin-bottom:20px;">${councilName} · ปีการศึกษา ${d.academic_year}</p>
     <div style="margin-bottom:12px;"><b ${B}>ชื่อโครงการ</b>${esc(d.title)}</div>
     <div style="margin-bottom:12px;"><b ${B}>แผนงาน</b>${esc(d.plan_area || '—')} &nbsp;·&nbsp; <b style="display:inline">ลักษณะโครงการ</b> ${esc(d.project_type || '—')}</div>
@@ -3211,6 +3223,7 @@ function renderDocDetailModal() {
       <div class="flex items-center justify-between gap-3 px-4 py-3 border-b border-[var(--line)] flex-shrink-0">
         <div class="min-w-0">
           <p class="text-sm font-bold text-[var(--ink)] truncate">${esc(d.title)}</p>
+          <p class="text-[0.625rem] text-[var(--muted-2)] mt-0.5">${esc(docFormLabel(d.form_key || 'FORM_09_1_PROJECT_PROPOSAL'))} · v${Number(d.form_version) || 1} · แก้ไขครั้งที่ ${Number(d.document_revision) || 1}</p>
           <span class="text-[0.625rem] font-bold px-2 py-0.5 rounded-full border ${cls} inline-block mt-0.5">${label}</span>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
@@ -3228,7 +3241,7 @@ function renderDocDetailModal() {
 }
 
 function buildDocumentHtml(d, cfg) {
-  return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>โครงการ ${esc(d.title)}</title>
+  return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${esc(docFormLabel(d.form_key || 'FORM_09_1_PROJECT_PROPOSAL'))} ${esc(d.title)}</title>
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
       body { font-family: 'Sarabun', sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; line-height: 1.8; color: #1d1519; }
@@ -4147,7 +4160,7 @@ function renderMyCouncilProfileView() {
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
   regulation: () => renderCouncilRegulationView(ctx, render),
-  forms: () => renderCouncilResourceCenter({ kind: 'forms', esc }),
+  forms: () => renderCouncilResourceCenter({ kind: 'forms', esc, canOpenDocs: ctx.isAdmin || ctx.role === 'teacher' || ctx.isChair }),
   yla: () => renderCouncilResourceCenter({ kind: 'yla', esc }),
   activityDocs: () => renderCouncilResourceCenter({ kind: 'activityDocs', esc }),
   endorse: renderEndorseView,
@@ -5019,7 +5032,9 @@ function wireSettingsEvents() {
 
 // ─── เอกสารขออนุมัติโครงการ/กิจกรรม ─────────────────────────────────────────────
 function wireDocsEvents() {
-  document.getElementById('btn-new-doc')?.addEventListener('click', () => { docEditingId = 'new'; render() })
+  document.querySelectorAll('.btn-new-doc').forEach(btn => {
+    btn.addEventListener('click', () => { docFormKey = btn.dataset.formKey || 'FORM_09_1_PROJECT_PROPOSAL'; docEditingId = 'new'; render() })
+  })
   document.getElementById('btn-doc-form-back')?.addEventListener('click', () => { docEditingId = null; render() })
   document.getElementById('btn-doc-form-cancel')?.addEventListener('click', () => { docEditingId = null; render() })
 
@@ -5074,7 +5089,7 @@ function wireDocsEvents() {
     try {
       if (docEditingId === 'new') {
         await createDocument({
-          ...fields, origin, academicYear: electionYear,
+          ...fields, formKey: f.dataset.formKey || 'FORM_09_1_PROJECT_PROPOSAL', formVersion: 1, origin, academicYear: electionYear,
           createdByStudentId: origin === 'council' && ctx.student ? ctx.student.id : null,
           createdByTeacherId: origin === 'teacher' && ctx.teacher ? ctx.teacher.id : null,
         })
@@ -5100,6 +5115,24 @@ function wireDocsEvents() {
         render()
       } catch (err) {
         showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
+        btn.disabled = false
+      }
+    })
+  })
+
+  document.querySelectorAll('.btn-new-doc-revision').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      try {
+        await createDocumentRevision(Number(btn.dataset.id), {
+          createdByStudentId: ctx.student?.id ?? null,
+          createdByTeacherId: ctx.teacher?.id ?? null,
+        })
+        showToast('สร้างฉบับแก้ไขแล้ว ✅', 'success')
+        docs = null
+        render()
+      } catch (err) {
+        showToast('สร้างฉบับแก้ไขไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
       }
     })

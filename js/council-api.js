@@ -843,6 +843,8 @@ const DOC_FIELD_MAP = {
 export async function createDocument(fields) {
   const payload = {}
   Object.entries(fields).forEach(([k, v]) => { if (DOC_FIELD_MAP[k]) payload[DOC_FIELD_MAP[k]] = v })
+  payload.form_key = fields.formKey || 'FORM_09_1_PROJECT_PROPOSAL'
+  payload.form_version = Number(fields.formVersion) || 1
   payload.origin = fields.origin
   payload.academic_year = fields.academicYear
   payload.created_by_student_id = fields.createdByStudentId || null
@@ -858,6 +860,26 @@ export async function updateDocumentDraft(id, fields) {
   payload.updated_at = new Date().toISOString()
   const { error } = await supabase.from('council_documents').update(payload).eq('id', id)
   if (error) throw error
+}
+
+// Approved documents are immutable. A new editable revision copies only the form data,
+// never the approval trail or signatures from the previous approved record.
+export async function createDocumentRevision(id, { createdByStudentId = null, createdByTeacherId = null } = {}) {
+  const { data: source, error: sourceError } = await supabase.from('council_documents').select('*').eq('id', id).single()
+  if (sourceError) throw sourceError
+  const payload = {}
+  Object.values(DOC_FIELD_MAP).forEach(column => { if (column !== 'position_id') payload[column] = source[column] })
+  payload.position_id = source.position_id || null
+  payload.form_key = source.form_key || 'FORM_09_1_PROJECT_PROPOSAL'
+  payload.form_version = Number(source.form_version) || 1
+  payload.document_revision = (Number(source.document_revision) || 1) + 1
+  payload.origin = source.origin || 'council'
+  payload.academic_year = source.academic_year
+  payload.created_by_student_id = createdByStudentId || null
+  payload.created_by_teacher_id = createdByTeacherId || null
+  const { data, error } = await supabase.from('council_documents').insert(payload).select().single()
+  if (error) throw error
+  return data
 }
 
 // ส่งจากร่าง — ไปคิวครูที่ปรึกษาประจำฝ่ายก่อนถ้าสภาริเริ่มเอง (origin='council') หรือข้ามไปคิว

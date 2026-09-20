@@ -107,7 +107,7 @@ const RESOURCE_CONFIG = {
 
 const sourceUrlFor = tabId => `${COUNCIL_SOURCE_DOCUMENT_URL}?tab=${tabId}`
 
-export function renderCouncilResourceCenter({ kind, esc }) {
+export function renderCouncilResourceCenter({ kind, esc, canOpenDocs = false }) {
   const config = RESOURCE_CONFIG[kind] ?? RESOURCE_CONFIG.forms
   const cards = config.items.map(item => `
     <article class="council-resource-card rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4 space-y-3" data-resource-card data-resource-search="${esc([item.code, item.title, item.description, item.group].filter(Boolean).join(' '))}">
@@ -129,7 +129,7 @@ export function renderCouncilResourceCenter({ kind, esc }) {
       <div class="flex flex-wrap gap-2 pt-1">
         <button type="button" class="btn-print-council-resource text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-resource-code="${esc(item.code)}" data-resource-title="${esc(item.title)}" data-resource-description="${esc(item.description)}">🖨️ พิมพ์รายการ</button>
         <a href="${esc(sourceUrlFor(config.sourceTab))}" target="_blank" rel="noopener" class="text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)]">🔗 เปิดต้นฉบับ</a>
-        ${kind === 'forms' && item.key === 'FORM_09_1_PROJECT_PROPOSAL' ? '<button type="button" class="goto-view text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--primary)] text-white" data-view="docs">เปิดงานเอกสารโครงการ →</button>' : ''}
+        ${canOpenDocs && kind === 'forms' && ['FORM_09_ACTIVITY_APPROVAL', 'FORM_09_1_PROJECT_PROPOSAL'].includes(item.key) ? '<button type="button" class="goto-view text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--primary)] text-white" data-view="docs">เปิดงานเอกสารโครงการ →</button>' : ''}
       </div>
     </article>`).join('')
 
