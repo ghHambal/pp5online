@@ -5,7 +5,7 @@ import {
   updateColumnSortOrders,
   getStudentScores, saveStudentScore, getSystemConfig, getMyClasses,
   detectAssignmentKind, getSheetColumnOptionsForTypes,
-  getClassStudents, fillLifeSkillScoresForClass, fillPrayerScoresForReligionClass,
+  getClassStudents, getLifeSkillColumns, fillPrayerScoresForReligionClass,
   syncAutoAttendanceScoreColumns, setColumnAutoAttendanceSync,
   getReadingScoreColumns, getReadingScores,
   getTeacherExamRequests, updateExamResult, reviewExamRequest,
@@ -238,15 +238,17 @@ export async function renderGradesGrid(teacher, classData) {
     const _rsYear = parseInt(sysCfg.academicYear ?? 2568)
     const _rsSem  = parseInt(sysCfg.semester ?? 1)
     const subjectGroup = ms?.subject_group ?? ''
-    const isLifeSkillClass = classData?.skill_group === 'ชีวิต'
+    const isLifeSkillClass = (classData?.skill_group ?? '').trim() === 'ชีวิต'
     const isReligionClass = ['AGM', 'AGMVOC'].includes(subjectGroup)
     let scoreRows = rawScoreRows
     let priorityColumnNames = []
 
     if (isLifeSkillClass) {
-      const result = await fillLifeSkillScoresForClass(classData.id, _rsYear, _rsSem)
-      priorityColumnNames = result.columnNames ?? []
-      scoreRows = await getStudentScores(classData.id)
+      // The database now copies central scores in the advisor's save transaction.
+      // Opening a gradebook must not write stale scores back over a concurrent save.
+      const lifeColumns = await getLifeSkillColumns(
+        classData.academic_year ?? _rsYear, classData.semester ?? _rsSem, 'สามัญ')
+      priorityColumnNames = lifeColumns.slice(0, 3).map(c => c.name)
     } else if (isReligionClass) {
       const result = await fillPrayerScoresForReligionClass(classData.id, {
         semesterStart: sysCfg.semester_start,
@@ -296,7 +298,7 @@ export async function renderGradesGrid(teacher, classData) {
       readingEvalMap[parseInt(sidStr)] = { score100, label: g.label, cls: g.cls }
     }
 
-    let allCols = priorityColumnNames.length ? await getScoreColumns(classData.id) : rawCols
+    let allCols = priorityColumnNames.length ? await getScoreColumns(scoreClassId) : rawCols
     if (allCols.length === 0) {
       const mkCol = (type, n) => createScoreColumn({
         class_id: classData.id, assignment_name: `คะแนนที่ ${n}`,
@@ -396,6 +398,7 @@ export async function renderGradesGrid(teacher, classData) {
     let roundingLoadError = false
     const sharedRounding = await getClassScoreRounding(classData.id).catch(() => { roundingLoadError = true; return null })
     let columnRoundSettings = normalizeRounding(sharedRounding ?? _savedToggles.columnRoundSettings ?? { total: _savedToggles.toggleRound ?? true })
+    let forcedGradeColor = columnRoundSettings.forcedGradeColor === 'red' ? 'red' : 'black'
     const _isColRounded = key => !!columnRoundSettings[key]
     // สำหรับช่องกรอกคะแนนเอง (mid/final/override/bonus) — ปัดแค่ตอนแสดงผล ไม่แตะค่าที่บันทึกจริง
     const _fmtEntryScore = (colId, v) => {
@@ -764,6 +767,10 @@ export async function renderGradesGrid(teacher, classData) {
           </div>
           <div class="overflow-y-auto flex-1 px-4 py-2">
             <p class="text-[11px] font-bold text-amber-600 uppercase tracking-wide mt-2 mb-1">ผลรวม</p>
+            <div class="flex items-center justify-between gap-2 py-2 border-b border-gray-100">
+              <span class="text-xs text-gray-700">สีเกรดบังคับในเอกสาร ปพ.5</span>
+              <button type="button" id="forced-grade-color-toggle" class="px-2.5 py-1 rounded-lg text-[11px] font-semibold ${forcedGradeColor==='red'?'bg-red-500 text-white':'bg-gray-900 text-white'}">${forcedGradeColor==='red'?'สีแดง':'สีดำ'}</button>
+            </div>
             ${_rowHtml('mid_subtotal','รวมกลางภาค')}
             ${_rowHtml('fin_subtotal','รวมปลายภาค')}
             ${_rowHtml('total','คะแนนรวมทั้งหมด')}
@@ -786,7 +793,7 @@ export async function renderGradesGrid(teacher, classData) {
         btn.textContent = 'กำลังบันทึก…'
         pop.querySelectorAll('.round-set-toggle').forEach(b => { b.disabled = true })
         try {
-          await saveClassScoreRounding(classData.id, normalizeRounding(columnRoundSettings))
+          await saveClassScoreRounding(classData.id, { ...normalizeRounding(columnRoundSettings), forcedGradeColor })
           roundingLoadError = false
           _saveToggles()
           showToast('บันทึกค่าปัดเลขร่วมสำหรับครู นักเรียน และ ปพ.5 แล้ว', 'success')
@@ -799,6 +806,11 @@ export async function renderGradesGrid(teacher, classData) {
         }
       })
       pop.querySelector('#round-settings-close').addEventListener('click', _close)
+      pop.querySelector('#forced-grade-color-toggle').addEventListener('click', e => {
+        forcedGradeColor = forcedGradeColor === 'red' ? 'black' : 'red'
+        e.currentTarget.className = `px-2.5 py-1 rounded-lg text-[11px] font-semibold ${forcedGradeColor==='red'?'bg-red-500 text-white':'bg-gray-900 text-white'}`
+        e.currentTarget.textContent = forcedGradeColor === 'red' ? 'สีแดง' : 'สีดำ'
+      })
       pop.addEventListener('click', e => { if (e.target === pop) _close() })
       pop.querySelectorAll('.round-set-toggle').forEach(btn => {
         btn.addEventListener('click', () => {

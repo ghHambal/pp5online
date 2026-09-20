@@ -1421,7 +1421,7 @@ function _buildPage4(d) {
 }
 
 function _buildScorePage(d, chunk, startNo) {
-  const { cls, ms, teacher, deptHeadName, academicYear, semester, scoreColumns, scoreMap, readingEvalMap } = d
+  const { cls, ms, teacher, deptHeadName, academicYear, semester, scoreColumns, scoreMap, readingEvalMap, roundSettings } = d
   const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้าหมวดวิชา'
 
   // แบ่ง between / final / special
@@ -1480,6 +1480,7 @@ function _buildScorePage(d, chunk, startNo) {
     const total = bSum + fSum
     const bPct  = betweenMax > 0 ? bSum / betweenMax * 100 : 0
     const fPct  = finalMax   > 0 ? fSum / finalMax   * 100 : 0
+    const forcedGrade = Boolean(sc.__force)
     const grade = sc.__force || _calcGrade(betweenMax + finalMax > 0 ? total / (betweenMax + finalMax) * 100 : 0)
     const charLabel = _gradeToKhunaLabel(grade)
 
@@ -1494,7 +1495,7 @@ function _buildScorePage(d, chunk, startNo) {
       <td style="font-weight:700;border-right:2.0px solid #000;">${displayScore(d.roundSettings, 'total', total)}</td>
       <td>${_esc(readingEvalMap?.[st.id] ?? '')}</td>
       <td style="border-right:2.0px solid #000;">${_esc(charLabel)}</td>
-      <td style="font-weight:700;">${grade}</td>
+      <td style="font-weight:700;${forcedGrade ? `color:${roundSettings?.forcedGradeColor === 'red' ? '#c00' : '#000'};` : ''}">${grade}</td>
     </tr>`
   })
 
@@ -1977,7 +1978,7 @@ function _vsplit(s, max = 8) {
 // โดยไม่สนใจว่าเป็นกลางภาคหรือปลายภาค — "คะแนนคุณธรรม" ไม่ได้มาจากคอลัมน์ของวิชานี้ แต่ดึงจากคะแนน
 // "ความสะอาด" ในระบบทักษะชีวิต (ดู moralScores/moralMax ที่ _loadDocData ดึงมาให้แล้ว)
 function _buildScorePageVOC(d, chunk, startNo) {
-  const { cls, teacher, deptHeadName, scoreColumns, scoreMap, moralScores, moralMax, moralColName } = d
+  const { cls, teacher, deptHeadName, scoreColumns, scoreMap, moralScores, moralMax, moralColName, roundSettings } = d
   const _isSpecial  = c => c.assignment_type === 'คะแนนพิเศษ'
   const objCols     = scoreColumns.filter(c => !_isSpecial(c))
   const specialCols = scoreColumns.filter(c => _isSpecial(c))
@@ -1998,7 +1999,8 @@ function _buildScorePageVOC(d, chunk, startNo) {
     const objSum    = objCols.reduce((s,c) => s + (sc[c.id] ?? 0), 0)
     const moralScore = moralScores?.[st.id] ?? ''
     const total = objSum + (Number(moralScore) || 0)
-    const grade = (st.special_result && VOC_SPECIAL_KEYS.includes(st.special_result))
+    const forcedGrade = Boolean(st.special_result && VOC_SPECIAL_KEYS.includes(st.special_result))
+    const grade = forcedGrade
       ? st.special_result
       : _calcGrade(denom ? (total / denom) * 100 : 0)
     return `<tr>
@@ -2009,7 +2011,7 @@ function _buildScorePageVOC(d, chunk, startNo) {
       <td class="voc-center voc-bold">${displayScore(d.roundSettings, 'mid_subtotal', objSum)}</td>
       <td class="voc-center">${moralScore}</td>
       <td class="voc-center voc-bold">${displayScore(d.roundSettings, 'total', total)}</td>
-      <td class="voc-center voc-bold">${grade}</td>
+      <td class="voc-center voc-bold" style="${forcedGrade ? `color:${roundSettings?.forcedGradeColor === 'red' ? '#c00' : '#000'};` : ''}">${grade}</td>
       <td></td>
     </tr>`
   })
