@@ -2030,7 +2030,9 @@ export async function renderSportsEvaluationWorkspace() {
           const criteriaGroups=[]
           sessionCriteria.forEach((crit,critIndex)=>{
             const explicitGroup=crit.group_name||crit.group_key
-            const fallbackGroup=evalCategory==='sports_day'
+            const fallbackGroup=(evalCategory==='page'||evalCategory==='parade')
+              ? 'หัวข้อทั้งหมด'
+              : evalCategory==='sports_day'
               ? (sportsGroupDefaults.find(([,count],groupIndex)=>{
                   const start=sportsGroupDefaults.slice(0,groupIndex).reduce((sum,[,size])=>sum+size,0)
                   return critIndex>=start&&critIndex<start+count
