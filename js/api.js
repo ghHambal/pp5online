@@ -761,11 +761,23 @@ export async function getHomeroomTeachers(academicYear, semester) {
     .from('homeroom_teachers')
     .select('id, main_room, category, academic_year, semester, teacher_id, teachers(full_name, teacher_code, phone)')
     .order('main_room')
+    .order('category')
+    .order('id', { ascending: false })
   if (academicYear) q = q.eq('academic_year', academicYear)
   if (semester)     q = q.eq('semester', semester)
   const { data, error } = await q
   if (error) throw error
-  return data ?? []
+
+  // Keep the newest assignment if a legacy database still contains duplicates.
+  // The database migration adds the room/category uniqueness constraint, but
+  // this guard keeps documents deterministic during rollout and for old data.
+  const assignments = new Map()
+  for (const row of data ?? []) {
+    const key = [row.main_room, row.category, row.academic_year, row.semester].join('\u0000')
+    const current = assignments.get(key)
+    if (!current || Number(row.id) > Number(current.id)) assignments.set(key, row)
+  }
+  return [...assignments.values()]
 }
 
 export async function getUniqueRooms() {
@@ -1391,10 +1403,9 @@ export async function getSchoolHolidaysFull(academicYear, semester) {
 }
 
 export async function upsertHomeroomTeacher(payload) {
-  const { error } = await supabase
-    .from('homeroom_teachers')
-    .upsert(payload, { onConflict: 'teacher_id,main_room,category,academic_year,semester' })
-  if (error) throw error
+  // A room/category/year/semester has one current advisor. Replacing the
+  // assignment prevents a teacher profile save from accumulating old rows.
+  return assignHomeroomTeacher(payload)
 }
 
 export async function assignHomeroomTeacher(payload) {
