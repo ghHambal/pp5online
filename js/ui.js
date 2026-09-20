@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.732'
+import { APP_VERSION } from './version.js?v=10.22.733'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.733': [
+    '🎨 เพิ่มปุ่มจัดสีช่องคะแนนตามเปอร์เซ็นต์คะแนนเต็มในหน้ากรอกคะแนน',
+  ],
   '10.22.732': [
     '🔎 ศูนย์ระเบียบสภานักเรียนค้นหาเลขข้อแบบไทย/อารบิก พิมพ์เฉพาะผลค้นหา และแสดงสถานะขณะเปลี่ยนฉบับ',
   ],

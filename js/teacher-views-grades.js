@@ -348,7 +348,7 @@ export async function renderGradesGrid(teacher, classData) {
     // ── โหลด/บันทึกสถานะ toggle ต่อครู ────────────────────────────────────────
     const _toggleKey    = `gradeToggles_${teacher?.id ?? 'guest'}_${classData.id}`
     const _savedToggles = (() => { try { return JSON.parse(localStorage.getItem(_toggleKey) ?? '{}') } catch { return {} } })()
-    const _saveToggles  = () => { try { localStorage.setItem(_toggleKey, JSON.stringify({ columnRoundSettings, toggleForceGrade, toggleKhuna, toggleRead, showBonusCols })) } catch {} }
+    const _saveToggles  = () => { try { localStorage.setItem(_toggleKey, JSON.stringify({ columnRoundSettings, toggleForceGrade, toggleKhuna, toggleRead, showBonusCols, toggleScoreColors })) } catch {} }
 
     let showBonusCols    = _savedToggles.showBonusCols    ?? false
     let showFormulaLink  = false
@@ -412,10 +412,23 @@ export async function renderGradesGrid(teacher, classData) {
     let toggleForceGrade= _savedToggles.toggleForceGrade ?? false
     let toggleKhuna     = _savedToggles.toggleKhuna      ?? true
     let toggleRead      = _savedToggles.toggleRead       ?? true
+    let toggleScoreColors = _savedToggles.toggleScoreColors ?? false
     const _defaultForceGrades = ['0','ร','มส','มผ']
     const forceGradeOptions = sysCfg.forceGradeOptions
       ? String(sysCfg.forceGradeOptions).split(',').map(s=>s.trim()).filter(Boolean)
       : _defaultForceGrades
+
+    const _scoreColorStyle = (col, value) => {
+      if (!toggleScoreColors || value === '' || value == null || !Number.isFinite(Number(value)) || !(Number(col.max_score) > 0)) return ''
+      const ratio = Math.max(0, Math.min(1, Number(value) / Number(col.max_score)))
+      const hue = Math.round(ratio * 120)
+      return `background-color:hsl(${hue} 72% 88%);color:hsl(${hue} 55% 24%);`
+    }
+    const _applyScoreColor = (input, col, value) => {
+      const cell = input?.closest('td')
+      if (!cell) return
+      cell.style.cssText = `width:${cell.offsetWidth || colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(col, value)}`
+    }
 
     const _calcGradeRow = (sid) => {
       const midMax = _groupMax(midCols), finMax = _groupMax(finalCols)
@@ -658,6 +671,7 @@ export async function renderGradesGrid(teacher, classData) {
           <button id="btn-round-settings" type="button" class="text-[11px] px-3 py-1.5 rounded-lg font-semibold transition bg-gray-100 text-gray-500 hover:bg-gray-200">🔢 ปัดเลข</button>
           ${_tBtn('khuna','คุณลักษณะ',toggleKhuna)}
           ${_tBtn('read','การอ่าน',toggleRead)}
+          ${_tBtn('scoreColors','🎨 จัดสีช่องคะแนน',toggleScoreColors,'bg-emerald-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-gray-200')}
           <div class="w-px h-5 bg-gray-200 mx-1 self-center"></div>
           ${_tBtn('forceGrade','บังคับเกรด',toggleForceGrade,'bg-rose-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-gray-200')}
           ${_tBtn('bonus','⭐ คะแนนเก็บ/พิเศษ',showBonusCols,'bg-amber-500 text-white shadow-sm','bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100')}
@@ -732,6 +746,7 @@ export async function renderGradesGrid(teacher, classData) {
           if(t==='forceGrade')toggleForceGrade=!toggleForceGrade
           if(t==='khuna')toggleKhuna=!toggleKhuna
           if(t==='read')toggleRead=!toggleRead
+          if(t==='scoreColors')toggleScoreColors=!toggleScoreColors
           if(t==='bonus'){
             showBonusCols=!showBonusCols
             if(!showBonusCols) showFormulaLink=false
@@ -1658,7 +1673,7 @@ export async function renderGradesGrid(teacher, classData) {
             </div>
           </td>
           ${midCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-gray-100 text-center p-0 relative"
-            style="width:${colW}px;min-width:${colW}px;height:30px">
+            style="width:${colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(c,v)}">
             <input class="grade-input w-full h-full text-center text-xs ${_isLockedScoreColumn(c) ? 'bg-emerald-50/60 text-emerald-800 cursor-not-allowed' : 'bg-transparent focus:bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:rounded'}"
               type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/>
@@ -1666,7 +1681,7 @@ export async function renderGradesGrid(teacher, classData) {
             </td>`}).join('')}
           <td id="gmid-${s.id}" class="border border-gray-50 bg-blue-50/40 text-center text-[10px] text-blue-600 font-medium" style="width:34px">${midRaw>0?_fmtAgg('mid_subtotal', midRaw, 1):'—'}</td>
           ${finalCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-gray-100 text-center p-0 relative"
-            style="width:${colW}px;min-width:${colW}px;height:30px">
+            style="width:${colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(c,v)}">
             <input class="grade-input w-full h-full text-center text-xs ${_isLockedScoreColumn(c) ? 'bg-emerald-50/60 text-emerald-800 cursor-not-allowed' : 'bg-transparent focus:bg-purple-50 focus:outline-none focus:ring-1 focus:ring-purple-300 focus:rounded'}"
               type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score}" ${_isLockedScoreColumn(c) ? 'disabled title="คะแนนระบบกลาง: แก้ไขไม่ได้"' : ''}/>
@@ -1674,13 +1689,13 @@ export async function renderGradesGrid(teacher, classData) {
             </td>`}).join('')}
           <td id="gfin-${s.id}" class="border border-gray-50 bg-purple-50/40 text-center text-[10px] text-purple-600 font-medium" style="width:34px">${finRaw>0?_fmtAgg('fin_subtotal', finRaw, 1):'—'}</td>
           ${derivedCols.map(c=>{const dv=_calcDerived(c,s.id);const disp=dv!==null&&dv!==0?_fmtAgg(`derived_${c.id}`, dv, 2):'—';return `<td class="border border-indigo-100 bg-indigo-50/40 text-center text-xs text-indigo-700 font-medium grade-derived-td" style="width:${colW}px;min-width:${colW}px;height:30px" title="คำนวณจาก: ${c.formula??''}">${disp}</td>`}).join('')}
-          ${overrideCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-teal-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px">
+          ${overrideCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-teal-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(c,v)}">
             <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-teal-50 focus:outline-none focus:ring-1 focus:ring-teal-300 focus:rounded"
               type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/>
             ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
             </td>`}).join('')}
-          ${showBonusCols ? bonusCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-amber-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px">
+          ${showBonusCols ? bonusCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-amber-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(c,v)}">
             <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-amber-50 focus:outline-none focus:ring-1 focus:ring-amber-300 focus:rounded"
               type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/>
@@ -1769,6 +1784,7 @@ export async function renderGradesGrid(teacher, classData) {
             const{final,history,clamped}=result
             scoreMap[sid][colId]={orig:history[0]?.d??final,retake:null,final,history}
             gradeInp.value = _fmtEntryScore(colId, final)
+            _applyScoreColor(gradeInp, colById[colId], final)
             gradeInp.title = ''
             if(clamped) showToast(`คะแนนเกินคะแนนเต็ม ปรับให้เป็น ${final} อัตโนมัติ`,'warning')
             // update hist indicator
