@@ -9,6 +9,7 @@ import { CERT_PRESET_LABELS, defaultLayoutFor, openCertificatePrint as openCentr
 import { openCertificateLayoutEditor } from './certificate-editor.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import { renderCouncilRegulationView, wireCouncilRegulationEvents } from './council-regulation.js'
+import { renderCouncilResourceCenter, wireCouncilResourceEvents } from './council-resource-center.js'
 import {
   getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate, updateCertificateTemplateLayout,
   issueCertificate as issueCentralCertificate, getCertificatesBySource,
@@ -407,8 +408,11 @@ function getNavItems() {
   // งานสภา — สาธารณะ/สมาชิกสภา
   items.push({ id: 'news', icon: '📣', label: 'ประกาศ', group: 'council' })
   items.push({ id: 'regulation', icon: '📚', label: 'ระเบียบ/ประกาศ', group: 'council' })
+  items.push({ id: 'forms', icon: '🗂️', label: 'เอกสารและแบบฟอร์ม', group: 'council' })
+  items.push({ id: 'yla', icon: '🌱', label: 'กิจกรรม YLA', group: 'council' })
+  items.push({ id: 'activityDocs', icon: '🧩', label: 'โครงการและกิจกรรม', group: 'council' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภาของเรา', group: 'council' })
-  items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม', group: 'council' })
+  items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม/การเข้าร่วม', group: 'council' })
   if (ctx.isChair || ctx.isAdmin || ctx.isCouncilAdvisor) items.push({ id: 'chairteam', icon: '👔', label: 'เสนอคณะทำงาน', group: 'council' })
   if (ctx.isChair) items.push({ id: 'assignments', icon: '📌', label: 'มอบหมายงาน', group: 'council' })
   if (ctx.membership.length) items.push({ id: 'myduty', icon: '🎫', label: 'หน้าที่/งานของฉัน', group: 'council' })
@@ -433,7 +437,7 @@ function getNavItems() {
   // เอกสารโครงการ — เห็นด้วยกันทั้งครูที่ปรึกษาสภา/ประธานสภา (ริเริ่ม+รับรอง) และหัวหน้าฝ่าย
   // กิจการนักเรียน/ผู้อำนวยการ (อนุมัติขั้นถัดไป) แม้ไม่ใช่ครูที่ปรึกษาสภาก็ตาม
   if (isTeacherStaff || ctx.isChair || ctx.isStudentAffairsHead || ctx.isSchoolDirector) {
-    items.push({ id: 'docs', icon: '📄', label: 'เอกสารโครงการ', group: 'teacherWork' })
+    items.push({ id: 'docs', icon: '📄', label: 'งานเอกสารโครงการ', group: 'teacherWork' })
   }
   // ระบบ — ภาพรวมผู้บริหาร (สเปคข้อ 8.17) อ่านอย่างเดียว เห็นได้ทั้งแอดมินและผู้บริหาร
   if (ctx.isAdmin || ctx.isExecutive) items.push({ id: 'dashboard', icon: '📊', label: 'ภาพรวม', group: 'system' })
@@ -4143,6 +4147,9 @@ function renderMyCouncilProfileView() {
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
   regulation: () => renderCouncilRegulationView(ctx, render),
+  forms: () => renderCouncilResourceCenter({ kind: 'forms', esc }),
+  yla: () => renderCouncilResourceCenter({ kind: 'yla', esc }),
+  activityDocs: () => renderCouncilResourceCenter({ kind: 'activityDocs', esc }),
   endorse: renderEndorseView,
   apps: renderApplicationsAdminView,
   interview: renderInterviewView,
@@ -4225,6 +4232,14 @@ function renderFullscreenFlow() {
 
 function wireContentEvents() {
   wireCouncilRegulationEvents(ctx, render)
+  wireCouncilResourceEvents({
+    esc,
+    onKindChange: kind => {
+      const view = kind === 'forms' || kind === 'yla' || kind === 'activityDocs' ? kind : 'forms'
+      setActiveView(view)
+      render()
+    },
+  })
   document.querySelectorAll('.flow-entry-btn').forEach(btn => {
     btn.addEventListener('click', () => { fullscreenFlow = btn.dataset.flow; flowSubtab = null; render() })
   })
