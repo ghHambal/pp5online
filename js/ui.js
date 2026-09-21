@@ -1,5 +1,14 @@
 import { APP_VERSION } from './version.js?v=10.22.744'
 
+if (typeof window !== 'undefined' && !('rootSettings' in window)) {
+  Object.defineProperty(window, 'rootSettings', {
+    value: {},
+    writable: true,
+    configurable: true,
+    enumerable: true,
+  })
+}
+
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
   const colors = {
