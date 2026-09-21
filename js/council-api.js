@@ -1012,3 +1012,133 @@ export async function updateMyPhoto(teacherId, imageUrl) {
   const { error } = await supabase.from('teachers').update({ image_url: imageUrl }).eq('id', teacherId)
   if (error) throw error
 }
+
+// ─── กิจกรรม YLA — วงจรปฏิบัติจริง: กิจกรรม/ผู้เข้าร่วม/เช็กชื่อ/ประเมิน/ผล ───
+const DEFAULT_YLA_CRITERIA = [
+  ['ภาวะผู้นำและความคิดริเริ่ม', 20],
+  ['การทำงานเป็นทีม', 20],
+  ['การสื่อสาร', 20],
+  ['การวางแผนและแก้ปัญหา', 20],
+  ['ความรับผิดชอบและจริยธรรม', 20],
+]
+
+export async function getCouncilYlaEvents(academicYear) {
+  let q = supabase.from('council_yla_events')
+    .select('id, academic_year, event_code, title, description, status, start_date, end_date, location, capacity, created_by_teacher_id, created_at, updated_at')
+  if (academicYear) q = q.eq('academic_year', academicYear)
+  const { data, error } = await q.order('start_date', { ascending: false }).order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createCouncilYlaEvent({ academicYear, title, description, startDate, endDate, location, capacity, createdByTeacherId }) {
+  const { data: event, error } = await supabase.from('council_yla_events').insert({
+    academic_year: academicYear,
+    event_code: 'YLA',
+    title,
+    description: description || null,
+    status: 'draft',
+    start_date: startDate || null,
+    end_date: endDate || null,
+    location: location || null,
+    capacity: capacity || null,
+    created_by_teacher_id: createdByTeacherId || null,
+  }).select().single()
+  if (error) throw error
+
+  const { error: criteriaError } = await supabase.from('council_yla_criteria').insert(
+    DEFAULT_YLA_CRITERIA.map(([name, weight], sortOrder) => ({ event_id: event.id, name, weight, sort_order: sortOrder }))
+  )
+  if (criteriaError) throw criteriaError
+  return event
+}
+
+export async function updateCouncilYlaEventStatus(eventId, status) {
+  const { error } = await supabase.from('council_yla_events')
+    .update({ status, updated_at: new Date().toISOString() }).eq('id', eventId)
+  if (error) throw error
+}
+
+export async function getCouncilYlaEventDetail(eventId) {
+  const [participants, attendance, criteria, scores, results] = await Promise.all([
+    supabase.from('council_yla_participants')
+      .select('id, event_id, student_id, application_id, status, registered_at, updated_at, students(id, full_name, student_code, main_room, image_url, photo_url, profile_id)')
+      .eq('event_id', eventId).order('registered_at'),
+    supabase.from('council_yla_attendance')
+      .select('id, event_id, student_id, session_label, attendance_state, checked_in_at, note, recorded_by_teacher_id, updated_at')
+      .eq('event_id', eventId).order('session_label').order('student_id'),
+    supabase.from('council_yla_criteria')
+      .select('id, event_id, name, weight, sort_order, is_active').eq('event_id', eventId).eq('is_active', true).order('sort_order'),
+    supabase.from('council_yla_scores')
+      .select('id, event_id, student_id, criterion_id, score, comment, scored_by_teacher_id, updated_at').eq('event_id', eventId),
+    supabase.from('council_yla_results')
+      .select('id, event_id, student_id, total_score, strengths, areas_to_develop, recommended_position, recommended_division, final_result, finalized_by_teacher_id, finalized_at, updated_at').eq('event_id', eventId),
+  ])
+  for (const result of [participants, attendance, criteria, scores, results]) if (result.error) throw result.error
+  return {
+    participants: participants.data ?? [],
+    attendance: attendance.data ?? [],
+    criteria: criteria.data ?? [],
+    scores: scores.data ?? [],
+    results: results.data ?? [],
+  }
+}
+
+export async function addCouncilYlaParticipant({ eventId, studentId, applicationId }) {
+  const { error } = await supabase.from('council_yla_participants').insert({
+    event_id: eventId, student_id: studentId, application_id: applicationId || null, status: 'registered',
+  })
+  if (error) throw error
+}
+
+export async function updateCouncilYlaParticipantStatus(participantId, status) {
+  const { error } = await supabase.from('council_yla_participants')
+    .update({ status, updated_at: new Date().toISOString() }).eq('id', participantId)
+  if (error) throw error
+}
+
+export async function saveCouncilYlaAttendance({ eventId, studentId, sessionLabel, attendanceState, note, recordedByTeacherId }) {
+  const { error } = await supabase.from('council_yla_attendance').upsert({
+    event_id: eventId,
+    student_id: studentId,
+    session_label: sessionLabel || 'กิจกรรมหลัก',
+    attendance_state: attendanceState,
+    checked_in_at: attendanceState === 'present' || attendanceState === 'late' ? new Date().toISOString() : null,
+    note: note || null,
+    recorded_by_teacher_id: recordedByTeacherId || null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'event_id,student_id,session_label' })
+  if (error) throw error
+}
+
+export async function saveCouncilYlaScores({ eventId, studentId, scores, scoredByTeacherId }) {
+  const rows = Object.entries(scores).map(([criterionId, value]) => ({
+    event_id: eventId,
+    student_id: studentId,
+    criterion_id: Number(criterionId),
+    score: Number(value) || 0,
+    scored_by_teacher_id: scoredByTeacherId || null,
+    updated_at: new Date().toISOString(),
+  }))
+  if (!rows.length) return
+  const { error } = await supabase.from('council_yla_scores').upsert(rows, { onConflict: 'event_id,student_id,criterion_id' })
+  if (error) throw error
+}
+
+export async function saveCouncilYlaResult({ eventId, studentId, totalScore, strengths, areasToDevelop, recommendedPosition, recommendedDivision, finalResult, finalizedByTeacherId }) {
+  const finalised = finalResult && finalResult !== 'pending'
+  const { error } = await supabase.from('council_yla_results').upsert({
+    event_id: eventId,
+    student_id: studentId,
+    total_score: totalScore == null || totalScore === '' ? null : Number(totalScore),
+    strengths: strengths || null,
+    areas_to_develop: areasToDevelop || null,
+    recommended_position: recommendedPosition || null,
+    recommended_division: recommendedDivision || null,
+    final_result: finalResult || 'pending',
+    finalized_by_teacher_id: finalised ? (finalizedByTeacherId || null) : null,
+    finalized_at: finalised ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'event_id,student_id' })
+  if (error) throw error
+}

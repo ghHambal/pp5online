@@ -38,6 +38,9 @@ import {
   getMyAssignments, getAssignmentsForGender, createAssignment, updateAssignmentStatus, deleteAssignment,
   getEvaluationCriteria, addCriterion, removeCriterion, getCouncilEvaluations, saveEvaluation, issueCertificate,
   getInterviewCriteria, addInterviewCriterion, removeInterviewCriterion,
+  getCouncilYlaEvents, createCouncilYlaEvent, updateCouncilYlaEventStatus, getCouncilYlaEventDetail,
+  addCouncilYlaParticipant, updateCouncilYlaParticipantStatus, saveCouncilYlaAttendance,
+  saveCouncilYlaScores, saveCouncilYlaResult,
   getCouncilDocuments, createDocument, updateDocumentDraft, createDocumentRevision, submitDocument,
   decideAsAdvisor, decideAsDeptHead, decideAsDirector,
   getTeachersByPosition, addTeacherPosition, removeTeacherPosition,
@@ -195,6 +198,12 @@ const electionResults = {} // { M: { tally, eligible }, W: {...} } — ผลน
 let electionYear = null // ปีการศึกษาปัจจุบันที่ resolve แล้ว (จาก ctx.cfg.academicYear)
 let activities = null // null = ยังไม่โหลด
 const attendanceByActivity = {} // { [activityId]: Set<studentId> }
+let ylaEvents = null
+let ylaSelectedEventId = null
+let ylaDetail = null
+let ylaDetailLoadingId = null
+let ylaShowEventForm = false
+let ylaAdminAppsLoading = false
 let certTemplates = null // null = ยังไม่โหลด — เทมเพลตเกียรติบัตร (ใช้ร่วมกันทุกกิจกรรม)
 let certManageActivityId = null // id กิจกรรมที่กำลังเปิดแผงจัดการเกียรติบัตรอยู่ — null = ปิดอยู่
 const certRuleByActivity = {} // { [activityId]: rule row | null }
@@ -1417,6 +1426,230 @@ async function loadIvTeachers() {
   render()
 }
 
+// ─── กิจกรรม YLA — แยกจากสารบัญเอกสาร เพื่อให้บันทึกการดำเนินงานจริงได้ ──────────
+const YLA_STATUS_LABEL = { draft: 'ร่าง', planned: 'วางแผนแล้ว', active: 'กำลังดำเนินการ', completed: 'เสร็จสิ้น', cancelled: 'ยกเลิก' }
+const YLA_ATTENDANCE_LABEL = { present: 'มา', late: 'มาสาย', excused_leave: 'ลาโดยมีเหตุผล', unexcused_absence: 'ขาด' }
+const YLA_RESULT_LABEL = { pending: 'รอสรุป', pass: 'ผ่าน', fail: 'ไม่ผ่าน', withdrawn: 'ถอนตัว' }
+
+function isYlaManager() {
+  return !!(ctx?.isAdmin || ctx?.isCouncilAdvisor || ctx?.isStudentAffairsHead)
+}
+
+function ylaDateLabel(date) {
+  if (!date) return 'ยังไม่กำหนด'
+  return new Date(`${date}T00:00:00`).toLocaleDateString('th-TH', { dateStyle: 'medium' })
+}
+
+function ylaDateRange(event) {
+  if (!event?.start_date && !event?.end_date) return 'ยังไม่กำหนดช่วงเวลา'
+  return `${ylaDateLabel(event.start_date)}${event.end_date ? ` – ${ylaDateLabel(event.end_date)}` : ''}`
+}
+
+async function loadYlaEvents() {
+  ylaEvents = await getCouncilYlaEvents(electionYear).catch(() => [])
+  if (ylaSelectedEventId == null && ylaEvents.length) ylaSelectedEventId = ylaEvents[0].id
+  if (ylaSelectedEventId != null && !ylaEvents.some(e => e.id === ylaSelectedEventId)) {
+    ylaSelectedEventId = ylaEvents[0]?.id ?? null
+    ylaDetail = null
+  }
+  render()
+}
+
+async function loadYlaAdminApps() {
+  ylaAdminAppsLoading = true
+  adminApps = await getCouncilApplicationsForAdmin(electionYear).catch(() => [])
+  ylaAdminAppsLoading = false
+  render()
+}
+
+async function loadYlaDetail(eventId) {
+  ylaDetailLoadingId = eventId
+  ylaDetail = await getCouncilYlaEventDetail(eventId).catch(() => ({ participants: [], attendance: [], criteria: [], scores: [], results: [], error: true }))
+  ylaDetailLoadingId = null
+  render()
+}
+
+function ylaAttendanceFor(detail, studentId) {
+  return (detail?.attendance ?? [])
+    .filter(row => Number(row.student_id) === Number(studentId))
+    .sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')))[0]
+}
+
+function ylaResultFor(detail, studentId) {
+  return (detail?.results ?? []).find(row => Number(row.student_id) === Number(studentId))
+}
+
+function ylaScoreFor(detail, studentId, criterionId) {
+  return (detail?.scores ?? []).find(row => Number(row.student_id) === Number(studentId) && Number(row.criterion_id) === Number(criterionId))
+}
+
+function ylaTotalFor(detail, studentId) {
+  return (detail?.scores ?? [])
+    .filter(row => Number(row.student_id) === Number(studentId))
+    .reduce((sum, row) => sum + Number(row.score || 0), 0)
+}
+
+function ylaCandidateStudents(detail) {
+  const existingIds = new Set((detail?.participants ?? []).map(row => Number(row.student_id)))
+  const byStudentId = new Map()
+  for (const app of adminApps ?? []) {
+    const student = app.students
+    if (student?.id && !existingIds.has(Number(student.id)) && app.status !== 'rejected') {
+      byStudentId.set(Number(student.id), { student, applicationId: app.id })
+    }
+  }
+  for (const member of ctx.members ?? []) {
+    const student = member.students
+    if (student?.id && !existingIds.has(Number(student.id)) && !byStudentId.has(Number(student.id))) {
+      byStudentId.set(Number(student.id), { student, applicationId: null })
+    }
+  }
+  return [...byStudentId.values()].sort((a, b) => String(a.student.full_name ?? '').localeCompare(String(b.student.full_name ?? ''), 'th'))
+}
+
+function renderYlaParticipantManager({ event, detail }) {
+  const candidates = ylaCandidateStudents(detail)
+  const attendanceSession = ylaAttendanceFor(detail, detail?.participants?.[0]?.student_id)?.session_label || 'กิจกรรมหลัก'
+  const criteria = detail?.criteria ?? []
+  const rows = (detail?.participants ?? []).map(participant => {
+    const student = participant.students ?? {}
+    const attendance = ylaAttendanceFor(detail, participant.student_id)
+    const result = ylaResultFor(detail, participant.student_id)
+    const total = ylaTotalFor(detail, participant.student_id)
+    const scoreForm = criteria.map(criterion => {
+      const row = ylaScoreFor(detail, participant.student_id, criterion.id)
+      return `<div class="flex items-center gap-2"><span class="flex-1 text-xs text-[var(--ink-2)]">${esc(criterion.name)} <span class="text-[var(--muted-2)]">(เต็ม ${criterion.weight})</span></span><input type="number" min="0" max="${Number(criterion.weight)}" step="0.5" name="criterion_${criterion.id}" value="${row?.score ?? ''}" class="yla-score-input w-20 border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs text-center bg-[var(--surface)] text-[var(--ink)]" data-weight="${Number(criterion.weight)}"></div>`
+    }).join('')
+    return `<article class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4 space-y-3">
+      <div class="flex items-center gap-3">${studentPhoto(student)}<div class="min-w-0 flex-1"><p class="text-sm font-bold text-[var(--ink)] truncate">${esc(student.full_name ?? '—')}</p><p class="text-xs text-[var(--muted)]">${esc(student.student_code ?? '')} · ${esc(student.main_room ?? '')}</p></div><span class="text-[0.6875rem] font-bold px-2.5 py-1 rounded-full bg-[var(--primary-soft)] text-[var(--primary)]">${esc(participant.status === 'completed' ? 'จบกิจกรรม' : 'ผู้เข้าร่วม')}</span></div>
+      <div class="grid grid-cols-1 xl:grid-cols-3 gap-3">
+        <form class="yla-attendance-form rounded-xl border border-[var(--line-soft)] p-3 space-y-2" data-student-id="${participant.student_id}" data-event-id="${event.id}"><p class="text-xs font-bold text-[var(--primary)]">📝 การเข้าร่วม</p><input name="session_label" value="${esc(attendance?.session_label ?? attendanceSession)}" placeholder="ชื่อช่วง/ฐานกิจกรรม" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" required><select name="attendance_state" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">${Object.entries(YLA_ATTENDANCE_LABEL).map(([value, label]) => `<option value="${value}" ${attendance?.attendance_state === value ? 'selected' : ''}>${label}</option>`).join('')}</select><textarea name="note" rows="2" placeholder="หมายเหตุ" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(attendance?.note ?? '')}</textarea><button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกการเข้าร่วม</button></form>
+        <form class="yla-score-form rounded-xl border border-[var(--line-soft)] p-3 space-y-2" data-student-id="${participant.student_id}" data-event-id="${event.id}"><p class="text-xs font-bold text-[var(--primary)]">📊 ประเมินศักยภาพ</p>${scoreForm || '<p class="text-xs text-[var(--muted)]">ยังไม่มีเกณฑ์ประเมิน</p>'}<p class="text-xs font-bold border-t border-[var(--line-soft)] pt-2">รวม <span class="yla-score-total text-[var(--primary)]">${total}</span> / ${criteria.reduce((sum, c) => sum + Number(c.weight), 0)}</p><button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกคะแนน</button></form>
+        <form class="yla-result-form rounded-xl border border-[var(--line-soft)] p-3 space-y-2" data-student-id="${participant.student_id}" data-event-id="${event.id}"><p class="text-xs font-bold text-[var(--primary)]">✅ สรุปผลและข้อเสนอ</p><select name="final_result" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">${Object.entries(YLA_RESULT_LABEL).map(([value, label]) => `<option value="${value}" ${result?.final_result === value || (!result && value === 'pending') ? 'selected' : ''}>${label}</option>`).join('')}</select><input name="recommended_position" value="${esc(result?.recommended_position ?? '')}" placeholder="ตำแหน่งที่เหมาะสม" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input name="recommended_division" value="${esc(result?.recommended_division ?? '')}" placeholder="ฝ่ายที่เหมาะสม" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><textarea name="strengths" rows="2" placeholder="จุดเด่น" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(result?.strengths ?? '')}</textarea><textarea name="areas_to_develop" rows="2" placeholder="สิ่งที่ควรพัฒนา" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(result?.areas_to_develop ?? '')}</textarea><button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--ok)] text-white text-xs font-bold">บันทึกผลสรุป</button></form>
+      </div>
+      <div class="flex justify-end"><button type="button" class="yla-participant-status-btn text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--muted)]" data-participant-id="${participant.id}" data-status="${participant.status === 'completed' ? 'registered' : 'completed'}">${participant.status === 'completed' ? '↩️ เปิดสถานะผู้เข้าร่วม' : 'ทำเครื่องหมายว่าจบกิจกรรม'}</button></div>
+    </article>`
+  }).join('')
+  return `<section class="space-y-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><h2 class="text-base font-bold text-[var(--ink)]">ผู้เข้าร่วมและการติดตาม</h2><p class="text-xs text-[var(--muted)]">บันทึกแยกเป็นการเข้าร่วม คะแนน และผลสรุปรายบุคคล</p></div><span class="text-xs text-[var(--muted)]">${detail?.participants?.length ?? 0} คน</span></div><form id="yla-add-participant-form" class="rounded-2xl border border-dashed border-[var(--primary-45)] bg-[var(--primary-soft)] p-4 flex flex-col sm:flex-row gap-2" data-event-id="${event.id}"><select name="student_id" class="flex-1 border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]" required><option value="">เลือกนักเรียนหรือสมาชิกสภาเพื่อเพิ่ม</option>${candidates.map(({ student }) => `<option value="${student.id}">${esc(student.full_name)} · ${esc(student.student_code ?? '')} · ${esc(student.main_room ?? '')}</option>`).join('')}</select><button type="submit" class="px-4 py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold" ${candidates.length ? '' : 'disabled'}>เพิ่มผู้เข้าร่วม</button></form>${candidates.length ? '' : '<p class="text-xs text-[var(--muted)]">ไม่มีรายชื่อนักเรียนที่เพิ่มได้จากใบสมัคร/สมาชิกปัจจุบัน หรือเพิ่มไปแล้วทั้งหมด</p>'}${rows || '<div class="rounded-2xl border border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">ยังไม่มีผู้เข้าร่วม กดเพิ่มรายชื่อด้านบน</div>'}</section>`
+}
+
+function renderYlaStudentProgress({ event, detail }) {
+  const participants = detail?.participants ?? []
+  if (!participants.length) return `<div class="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center text-sm text-[var(--muted)]">กิจกรรมนี้ยังไม่มีข้อมูลการเข้าร่วมของคุณ</div>`
+  return `<div class="space-y-3">${participants.map(participant => {
+    const student = participant.students ?? {}
+    const attendance = ylaAttendanceFor(detail, participant.student_id)
+    const result = ylaResultFor(detail, participant.student_id)
+    const total = ylaTotalFor(detail, participant.student_id)
+    return `<article class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4 space-y-3"><div class="flex items-center gap-3">${studentPhoto(student)}<div class="flex-1"><p class="text-sm font-bold text-[var(--ink)]">${esc(student.full_name ?? 'ข้อมูลของฉัน')}</p><p class="text-xs text-[var(--muted)]">สถานะ: ${esc(participant.status === 'completed' ? 'จบกิจกรรม' : 'กำลังเข้าร่วม')}</p></div></div><div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs"><div class="rounded-xl bg-[var(--bg-2)] p-3"><p class="text-[var(--muted)]">การเข้าร่วมล่าสุด</p><p class="font-bold text-[var(--ink)] mt-1">${attendance ? `${esc(YLA_ATTENDANCE_LABEL[attendance.attendance_state] ?? attendance.attendance_state)} · ${esc(attendance.session_label)}` : 'ยังไม่บันทึก'}</p></div><div class="rounded-xl bg-[var(--bg-2)] p-3"><p class="text-[var(--muted)]">คะแนนสะสม</p><p class="font-bold text-[var(--primary)] mt-1">${total} / ${(detail?.criteria ?? []).reduce((sum, c) => sum + Number(c.weight), 0)}</p></div><div class="rounded-xl bg-[var(--bg-2)] p-3"><p class="text-[var(--muted)]">ผลสรุป</p><p class="font-bold text-[var(--ink)] mt-1">${esc(YLA_RESULT_LABEL[result?.final_result] ?? 'รอสรุป')}</p></div></div>${result?.strengths || result?.areas_to_develop ? `<div class="border-t border-[var(--line-soft)] pt-3 text-xs leading-6"><p><strong>จุดเด่น:</strong> ${esc(result?.strengths ?? 'ยังไม่มีข้อมูล')}</p><p><strong>สิ่งที่ควรพัฒนา:</strong> ${esc(result?.areas_to_develop ?? 'ยังไม่มีข้อมูล')}</p></div>` : '<p class="text-xs text-[var(--muted)]">ผลประเมินและข้อเสนอจะแสดงเมื่อผู้ดูแลบันทึกผลแล้ว</p>'}</article>`
+  }).join('')}</div>`
+}
+
+function renderYlaView() {
+  if (ylaEvents === null) { loadYlaEvents(); return '<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลดกิจกรรม YLA...</p>' }
+  if (isYlaManager() && adminApps === null && !ylaAdminAppsLoading) loadYlaAdminApps()
+  const event = ylaEvents.find(row => Number(row.id) === Number(ylaSelectedEventId))
+  if (event && ylaDetail === null && ylaDetailLoadingId === null) { loadYlaDetail(event.id); return '<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลดผู้เข้าร่วมและผลประเมิน...</p>' }
+  const statusBadge = status => status === 'active' ? 'bg-[var(--ok-soft)] text-[var(--ok)]' : status === 'completed' ? 'bg-[var(--primary-soft)] text-[var(--primary)]' : status === 'cancelled' ? 'bg-[var(--bad-soft)] text-[var(--bad)]' : 'bg-[var(--bg-2)] text-[var(--muted)]'
+  const eventCards = ylaEvents.length ? ylaEvents.map(row => `<button type="button" class="yla-event-select text-left rounded-2xl border p-4 space-y-2 ${Number(row.id) === Number(ylaSelectedEventId) ? 'border-[var(--primary)] bg-[var(--primary-soft)]' : 'border-[var(--line-soft)] bg-[var(--surface)]'}" data-event-id="${row.id}"><div class="flex items-start gap-2"><span class="flex-1 text-sm font-bold text-[var(--ink)]">${esc(row.title)}</span><span class="text-[0.6875rem] font-bold rounded-full px-2 py-1 ${statusBadge(row.status)}">${esc(YLA_STATUS_LABEL[row.status] ?? row.status)}</span></div><p class="text-xs text-[var(--muted)]">${esc(ylaDateRange(row))}${row.location ? ` · ${esc(row.location)}` : ''}</p></button>`).join('') : '<div class="rounded-2xl border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">ยังไม่มีกิจกรรม YLA ในปีการศึกษานี้</div>'
+  const eventForm = ylaShowEventForm ? `<form id="yla-event-form" class="rounded-2xl border border-[var(--primary-45)] bg-[var(--primary-soft)] p-4 space-y-3"><div class="flex items-center justify-between"><h2 class="font-bold text-[var(--ink)]">สร้างกิจกรรม YLA</h2><button type="button" id="yla-event-cancel" class="text-xs font-bold text-[var(--muted)]">ยกเลิก</button></div><input name="title" required placeholder="ชื่อกิจกรรม เช่น YLA รุ่นที่ 1" class="w-full border border-[var(--line)] rounded-[10px] px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]"><textarea name="description" rows="2" placeholder="วัตถุประสงค์หรือรายละเอียดกิจกรรม" class="w-full border border-[var(--line)] rounded-[10px] px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]"></textarea><div class="grid grid-cols-2 gap-2"><input type="date" name="start_date" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="date" name="end_date" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div><div class="grid grid-cols-2 gap-2"><input name="location" placeholder="สถานที่" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="number" min="1" name="capacity" placeholder="จำนวนรับ (ไม่บังคับ)" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div><button type="submit" class="w-full py-2.5 rounded-[10px] bg-[var(--primary)] text-white text-sm font-bold">สร้างกิจกรรมและเกณฑ์ประเมินเริ่มต้น</button></form>` : ''
+  const detailBlock = event ? `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 space-y-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold text-[var(--primary)]">🌱 YLA · ปีการศึกษา ${electionYear}</p><h2 class="text-xl font-bold text-[var(--ink)] mt-1">${esc(event.title)}</h2><p class="text-sm text-[var(--muted)] mt-1">${esc(event.description ?? 'กิจกรรมพัฒนาภาวะผู้นำและทักษะการทำงานของนักเรียน')}</p><p class="text-xs text-[var(--muted)] mt-2">${esc(ylaDateRange(event))}${event.location ? ` · ${esc(event.location)}` : ''}</p></div><div class="flex flex-wrap gap-2 items-center"><span class="text-xs font-bold rounded-full px-3 py-1.5 ${statusBadge(event.status)}">${esc(YLA_STATUS_LABEL[event.status] ?? event.status)}</span><button type="button" id="yla-print-event" class="text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)]">🖨️ พิมพ์สรุป</button></div></div>${isYlaManager() ? `<form id="yla-event-status-form" class="flex flex-wrap gap-2 items-center border-t border-[var(--line-soft)] pt-3" data-event-id="${event.id}"><span class="text-xs text-[var(--muted)]">สถานะกิจกรรม</span><select name="status" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">${Object.entries(YLA_STATUS_LABEL).map(([value, label]) => `<option value="${value}" ${event.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button type="submit" class="px-3 py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกสถานะ</button></form>` : ''}${ylaDetailLoadingId === event.id ? '<p class="text-sm text-[var(--muted)] text-center py-8">กำลังโหลด...</p>' : ylaDetail?.error ? '<p class="text-sm text-[var(--bad)] text-center py-8">โหลดข้อมูล YLA ไม่สำเร็จ</p>' : isYlaManager() ? renderYlaParticipantManager({ event, detail: ylaDetail }) : renderYlaStudentProgress({ event, detail: ylaDetail })}</section>` : '<div class="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center text-sm text-[var(--muted)]">เลือกกิจกรรมเพื่อดูรายละเอียดและติดตามผล</div>'
+  return `<div class="space-y-4"><section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold text-[var(--primary)]">🌱 กิจกรรม YLA · Youth Leadership For Azizstan</p><h1 class="text-xl font-bold text-[var(--ink)] mt-1">ติดตามกิจกรรมและพัฒนาการรายบุคคล</h1><p class="text-sm text-[var(--muted)] mt-2 leading-6">นักเรียนดูสถานะ การเข้าร่วม คะแนน และผลสรุปของตนเองได้ ส่วนผู้ดูแลจัดกิจกรรม เพิ่มผู้เข้าร่วม เช็กชื่อ และบันทึกผลได้ในหน้าเดียว</p></div>${isYlaManager() ? '<button type="button" id="yla-event-open" class="px-4 py-2.5 rounded-xl bg-[var(--primary)] text-white text-sm font-bold">＋ สร้างกิจกรรม YLA</button>' : ''}</div><div class="flex flex-wrap gap-2 mt-4 text-xs"><a href="https://docs.google.com/document/d/1lX7v3BkGBID-xRBDB0MFDDqPvT5YAVmaF540MUGY7RI/edit?tab=t.gq6dk28nkqg8" target="_blank" rel="noopener" class="px-3 py-2 rounded-[10px] border border-[var(--line)] font-bold text-[var(--primary)]">🔗 เปิดชุดเอกสาร YLA ต้นฉบับ</a><span class="px-3 py-2 rounded-[10px] bg-[var(--bg-2)] text-[var(--muted)]">เก็บข้อมูลตามกิจกรรม ไม่ปะปนกับสารบัญเอกสาร</span></div></section>${eventForm}<section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">${eventCards}</section>${detailBlock}<details class="mt-2"><summary class="cursor-pointer text-sm font-bold text-[var(--primary)]">📚 ดูสารบัญเอกสาร YLA YLA-00 ถึง YLA-10</summary><div class="mt-4">${renderCouncilResourceCenter({ kind: 'yla', esc })}</div></details></div>`
+}
+
+function wireYlaEvents() {
+  document.querySelectorAll('.yla-event-select').forEach(button => button.addEventListener('click', () => {
+    ylaSelectedEventId = Number(button.dataset.eventId)
+    ylaDetail = null
+    render()
+  }))
+  document.getElementById('yla-event-open')?.addEventListener('click', () => { ylaShowEventForm = true; render() })
+  document.getElementById('yla-event-cancel')?.addEventListener('click', () => { ylaShowEventForm = false; render() })
+  document.getElementById('yla-event-form')?.addEventListener('submit', async event => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const btn = form.querySelector('button[type="submit"]')
+    btn.disabled = true; btn.textContent = 'กำลังสร้าง...'
+    try {
+      const created = await createCouncilYlaEvent({
+        academicYear: electionYear, title: form.title.value.trim(), description: form.description.value.trim(),
+        startDate: form.start_date.value || null, endDate: form.end_date.value || null,
+        location: form.location.value.trim(), capacity: form.capacity.value ? Number(form.capacity.value) : null,
+        createdByTeacherId: ctx.teacher?.id,
+      })
+      showToast('สร้างกิจกรรม YLA และเกณฑ์ประเมินแล้ว ✅', 'success')
+      ylaShowEventForm = false; ylaEvents = null; ylaSelectedEventId = created.id; ylaDetail = null; render()
+    } catch (err) {
+      showToast('สร้างกิจกรรมไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      btn.disabled = false; btn.textContent = 'สร้างกิจกรรมและเกณฑ์ประเมินเริ่มต้น'
+    }
+  })
+  document.getElementById('yla-event-status-form')?.addEventListener('submit', async event => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const btn = form.querySelector('button[type="submit"]')
+    btn.disabled = true
+    try {
+      await updateCouncilYlaEventStatus(Number(form.dataset.eventId), form.status.value)
+      showToast('บันทึกสถานะกิจกรรมแล้ว', 'success')
+      ylaEvents = null; render()
+    } catch (err) { showToast('บันทึกสถานะไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); btn.disabled = false }
+  })
+  document.getElementById('yla-add-participant-form')?.addEventListener('submit', async event => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const btn = form.querySelector('button[type="submit"]')
+    const studentId = Number(form.student_id.value)
+    const candidate = ylaCandidateStudents(ylaDetail).find(row => Number(row.student.id) === studentId)
+    if (!studentId || !candidate) { showToast('กรุณาเลือกรายชื่อผู้เข้าร่วม', 'warning'); return }
+    btn.disabled = true
+    try {
+      await addCouncilYlaParticipant({ eventId: Number(form.dataset.eventId), studentId, applicationId: candidate.applicationId })
+      showToast('เพิ่มผู้เข้าร่วมแล้ว ✅', 'success'); ylaDetail = null; render()
+    } catch (err) { showToast('เพิ่มผู้เข้าร่วมไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); btn.disabled = false }
+  })
+  document.querySelectorAll('.yla-participant-status-btn').forEach(button => button.addEventListener('click', async () => {
+    button.disabled = true
+    try { await updateCouncilYlaParticipantStatus(Number(button.dataset.participantId), button.dataset.status); ylaDetail = null; render() }
+    catch (err) { showToast('เปลี่ยนสถานะไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); button.disabled = false }
+  }))
+  document.querySelectorAll('.yla-attendance-form').forEach(form => form.addEventListener('submit', async event => {
+    event.preventDefault(); const btn = form.querySelector('button[type="submit"]'); btn.disabled = true
+    try {
+      await saveCouncilYlaAttendance({ eventId: Number(form.dataset.eventId), studentId: Number(form.dataset.studentId), sessionLabel: form.session_label.value.trim(), attendanceState: form.attendance_state.value, note: form.note.value.trim(), recordedByTeacherId: ctx.teacher?.id })
+      showToast('บันทึกการเข้าร่วมแล้ว', 'success'); ylaDetail = null; render()
+    } catch (err) { showToast('บันทึกการเข้าร่วมไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); btn.disabled = false }
+  }))
+  document.querySelectorAll('.yla-score-form').forEach(form => {
+    const totalEl = form.querySelector('.yla-score-total')
+    const recalc = () => { if (totalEl) totalEl.textContent = [...form.querySelectorAll('.yla-score-input')].reduce((sum, input) => sum + (Number(input.value) || 0), 0) }
+    form.querySelectorAll('.yla-score-input').forEach(input => input.addEventListener('input', recalc))
+    form.addEventListener('submit', async event => {
+      event.preventDefault(); const btn = form.querySelector('button[type="submit"]'); btn.disabled = true
+      const scores = {}; form.querySelectorAll('.yla-score-input').forEach(input => { scores[input.name.replace('criterion_', '')] = input.value })
+      try { await saveCouncilYlaScores({ eventId: Number(form.dataset.eventId), studentId: Number(form.dataset.studentId), scores, scoredByTeacherId: ctx.teacher?.id }); showToast('บันทึกคะแนนแล้ว', 'success'); ylaDetail = null; render() }
+      catch (err) { showToast('บันทึกคะแนนไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); btn.disabled = false }
+    })
+  })
+  document.querySelectorAll('.yla-result-form').forEach(form => form.addEventListener('submit', async event => {
+    event.preventDefault(); const btn = form.querySelector('button[type="submit"]'); btn.disabled = true
+    try {
+      await saveCouncilYlaResult({ eventId: Number(form.dataset.eventId), studentId: Number(form.dataset.studentId), totalScore: ylaTotalFor(ylaDetail, Number(form.dataset.studentId)), strengths: form.strengths.value.trim(), areasToDevelop: form.areas_to_develop.value.trim(), recommendedPosition: form.recommended_position.value.trim(), recommendedDivision: form.recommended_division.value.trim(), finalResult: form.final_result.value, finalizedByTeacherId: ctx.teacher?.id })
+      showToast('บันทึกผลสรุปแล้ว ✅', 'success'); ylaDetail = null; render()
+    } catch (err) { showToast('บันทึกผลสรุปไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); btn.disabled = false }
+  }))
+  document.getElementById('yla-print-event')?.addEventListener('click', () => {
+    if (!ylaDetail || !eventForPrint()) return
+    const selected = eventForPrint()
+    const rows = (ylaDetail.participants ?? []).map((participant, index) => { const student = participant.students ?? {}; const result = ylaResultFor(ylaDetail, participant.student_id); return `<tr><td>${index + 1}</td><td>${esc(student.full_name ?? '')}</td><td>${esc(student.student_code ?? '')}</td><td>${esc(student.main_room ?? '')}</td><td>${ylaTotalFor(ylaDetail, participant.student_id)}</td><td>${esc(YLA_RESULT_LABEL[result?.final_result] ?? 'รอสรุป')}</td></tr>` }).join('')
+    openHtmlPrintOverlay(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(selected.title)}</title><style>body{font-family:Arial,sans-serif;color:#17202a;padding:30px}h1{font-size:22px}table{width:100%;border-collapse:collapse;margin-top:18px}th,td{border:1px solid #ccc;padding:7px;text-align:left;font-size:12px}th{background:#f3f4f6}</style></head><body><h1>สรุปกิจกรรม YLA: ${esc(selected.title)}</h1><p>ปีการศึกษา ${electionYear} · ${esc(ylaDateRange(selected))}</p><table><thead><tr><th>ลำดับ</th><th>ชื่อ</th><th>รหัส</th><th>ห้อง</th><th>คะแนน</th><th>ผล</th></tr></thead><tbody>${rows}</tbody></table></body></html>`)
+  })
+}
+
+function eventForPrint() {
+  return ylaEvents?.find(row => Number(row.id) === Number(ylaSelectedEventId))
+}
+
 function ivTeacherLabel(id) {
   const t = ivTeachers?.find(x => x.id === id)
   return t ? `${t.full_name} · รหัส ${t.id}` : ''
@@ -1950,7 +2183,7 @@ function renderInterviewView() {
       <p class="text-xs font-semibold text-[var(--muted)]">นัดสัมภาษณ์</p><div class="grid grid-cols-2 gap-2"><input type="datetime-local" name="scheduled_at" required class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="text" name="location" placeholder="สถานที่" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div>
       <input type="text" name="interviewerText" list="council-interview-teacher-datalist" placeholder="พิมพ์ชื่อครูกรรมการ (ไม่บังคับ)" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกนัดสัมภาษณ์</button></form>` : ''
     const scoreBlock = scheduled(a) ? `<div class="pt-2 border-t border-[var(--line-soft)]"><p class="text-xs text-[var(--muted)] mb-2">📅 ${iv?.scheduled_at ? new Date(iv.scheduled_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : 'ยังไม่กำหนดเวลา'} ${iv?.location ? '· ' + esc(iv.location) : ''}</p><form class="score-form space-y-1.5" data-app-id="${a.id}" data-iv-id="${iv?.id ?? ''}" data-max-weight="${maxWeight}" data-pass-threshold="${passThreshold}"><p class="text-xs font-semibold text-[var(--muted)]">ให้คะแนนสัมภาษณ์รายหัวข้อ</p>${interviewCriteria.map(c => `<div class="flex items-center gap-2"><span class="flex-1 text-xs text-[var(--ink-2)]">${esc(c.name)} <span class="text-[var(--muted-2)]">(เต็ม ${c.weight})</span></span><input type="number" min="0" max="${c.weight}" step="0.5" name="c_${c.id}" data-criterion-id="${c.id}" value="${iv?.scores?.[c.id] ?? ''}" class="score-input w-20 border border-[var(--line)] rounded-[10px] px-2 py-1.5 text-xs text-center bg-[var(--surface)] text-[var(--ink)]"></div>`).join('')}<div class="flex items-center justify-between text-xs font-bold pt-1.5 border-t border-[var(--line-soft)]"><span>คะแนนรวม</span><span class="score-total-display text-[var(--primary)]">${iv?.score ?? 0} / ${maxWeight} · ต้อง ≥ ${passThreshold} จึงผ่าน</span></div><textarea name="comment" rows="2" placeholder="ความเห็นกรรมการ" class="w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(iv?.comment ?? '')}</textarea><button type="submit" class="w-full py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกผล</button></form></div>` : ''
-    const resultBlock = completed(a) ? `<div class="pt-2 border-t border-[var(--line-soft)] text-xs ${a.status === 'interviewed' ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}">${a.status === 'interviewed' ? '✅ ผ่านสัมภาษณ์' : '❌ ไม่ผ่านสัมภาษณ์'}${iv?.score != null ? ` · คะแนน ${iv.score}/${maxWeight}` : ''}${iv?.comment ? `<p class="text-[var(--muted)] mt-1">${esc(iv.comment)}</p>` : ''}</div>` : ''
+    const resultBlock = completed(a) ? `<div class="pt-2 border-t border-[var(--line-soft)] text-xs ${a.status === 'interviewed' ? 'text-[var(--ok)]' : 'text-[var(--bad)]'}">${a.status === 'interviewed' ? '✅ ผ่านสัมภาษณ์' : '❌ ไม่ผ่านสัมภาษณ์'}${iv?.score != null ? ` · คะแนน ${iv.score}/${maxWeight}` : ''}${iv?.comment ? `<p class="text-[var(--muted)] mt-1">${esc(iv.comment)}</p>` : ''}${a.status === 'interviewed' ? '<button type="button" class="goto-view mt-2 px-3 py-1.5 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold" data-view="yla">🌱 บันทึก/ติดตาม YLA →</button>' : ''}</div>` : ''
     return `<article class="rounded-xl border border-[var(--line-soft)] bg-[var(--surface)] p-3 space-y-2.5"><div class="flex items-center gap-3">${studentPhoto(a.students)}<div class="min-w-0 flex-1"><p class="text-sm font-bold text-[var(--ink)] truncate">${esc(a.students?.full_name ?? '—')}</p><p class="text-xs text-[var(--muted)]">${esc(a.students?.student_code ?? '')} · ${esc(a.students?.main_room ?? '')} · ${esc(a.council_positions?.position_name ?? '—')}</p></div><span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full ${badge}">${label}</span></div><button type="button" class="btn-view-app-detail w-full text-xs font-bold py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)]" data-id="${a.id}">📄 ดูใบสมัคร</button>${!ready(a) && a.status === 'pending' ? `<p class="text-xs text-[var(--gold-ink)] pt-1 border-t border-[var(--line-soft)]">⏳ ${endorsementStatusNote(a)} ก่อน จึงจะนัดสัมภาษณ์ได้</p>` : ''}${scheduleBlock}${scoreBlock}${resultBlock}</article>`
   }).join('')
   return `<div class="space-y-4"><section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-5"><p class="text-xs font-bold text-[var(--primary)]">🗓️ งานสัมภาษณ์</p><h1 class="text-xl font-bold text-[var(--ink)] mt-1">นัดหมายและประเมินผู้สมัคร</h1><p class="text-xs text-[var(--muted)] mt-2">แสดงเฉพาะข้อมูลใบสมัครของปีการศึกษาปัจจุบัน และใช้เกณฑ์คะแนนที่ตั้งไว้ในระบบ</p></section><div class="flex gap-2">${genderTabs}</div><div class="flex gap-2 overflow-x-auto pb-1">${filterBar}</div><div class="flex gap-2"><input id="interview-search" value="${esc(interviewSearch)}" placeholder="ค้นหาชื่อนักเรียน รหัส ห้อง หรือฝ่าย" class="flex-1 border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]"><button type="button" class="interview-clear-search px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold">ล้าง</button></div><p class="text-xs text-[var(--muted)]">แสดง ${list.length} รายการ จาก ${genderApps.length} รายการ</p>${datalist}${list.length ? `<div class="space-y-3">${cards}</div>` : `<div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-10 text-center text-sm text-[var(--muted)]">ไม่พบรายการในตัวกรองนี้</div>`}${renderAdminAppDetailModal()}</div>`
@@ -4161,7 +4394,7 @@ const VIEW_RENDERERS = {
   overview: renderOverviewView,
   regulation: () => renderCouncilRegulationView(ctx, render),
   forms: () => renderCouncilResourceCenter({ kind: 'forms', esc, canOpenDocs: ctx.isAdmin || ctx.role === 'teacher' || ctx.isChair }),
-  yla: () => renderCouncilResourceCenter({ kind: 'yla', esc }),
+  yla: renderYlaView,
   activityDocs: () => renderCouncilResourceCenter({ kind: 'activityDocs', esc }),
   endorse: renderEndorseView,
   apps: renderApplicationsAdminView,
@@ -4253,6 +4486,7 @@ function wireContentEvents() {
       render()
     },
   })
+  wireYlaEvents()
   document.querySelectorAll('.flow-entry-btn').forEach(btn => {
     btn.addEventListener('click', () => { fullscreenFlow = btn.dataset.flow; flowSubtab = null; render() })
   })
