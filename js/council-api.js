@@ -323,27 +323,28 @@ export async function scheduleCouncilInterview({ applicationId, existingIntervie
 // ให้คะแนนรายหัวข้อ (สเปคข้อ 8.5) — result ตัดสินอัตโนมัติจาก score รวมเทียบครึ่งหนึ่งของ
 // คะแนนเต็ม คำนวณแล้วส่งมาจาก UI (ไม่ตัดสินซ้ำในนี้ เพราะ UI ต้องโชว์ผลสดให้ผู้ใช้เห็นอยู่แล้ว)
 export async function saveCouncilInterviewScore({ interviewId, applicationId, score, scores, result, comment }) {
-  const { error } = await supabase.from('council_interviews')
-    .update({ score, scores, result, comment }).eq('id', interviewId)
+  const { error } = await supabase.rpc('save_council_interview_score_atomic', {
+    p_interview_id: interviewId,
+    p_application_id: applicationId,
+    p_score: score,
+    p_scores: scores ?? {},
+    p_result: result,
+    p_comment: comment || null,
+  })
   if (error) throw error
-  const nextStatus = result === 'pass' ? 'interviewed' : 'rejected'
-  const { error: e2 } = await supabase.from('council_applications').update({ status: nextStatus }).eq('id', applicationId)
-  if (e2) throw e2
 }
 
 // ─── ตั้งเป็นผู้สมัครเลือกตั้ง (ประธานสภา) — เฉพาะตำแหน่งที่ is_elected=true และผ่านสัมภาษณ์ ──
 export async function promoteToCandidate({ applicationId, studentId, electionConfigId, campaignStatement, photoUrl }) {
-  const { data: existing, error: e0 } = await supabase.from('council_candidates')
-    .select('ballot_number').eq('election_config_id', electionConfigId).order('ballot_number', { ascending: false }).limit(1)
-  if (e0) throw e0
-  const nextBallot = (existing?.[0]?.ballot_number ?? 0) + 1
-  const { error } = await supabase.from('council_candidates').insert({
-    election_config_id: electionConfigId, application_id: applicationId, student_id: studentId,
-    ballot_number: nextBallot, campaign_statement: campaignStatement, photo_url: photoUrl,
+  const { data, error } = await supabase.rpc('promote_council_candidate_atomic', {
+    p_application_id: applicationId,
+    p_student_id: studentId,
+    p_election_config_id: electionConfigId,
+    p_campaign_statement: campaignStatement || null,
+    p_photo_url: photoUrl || null,
   })
   if (error) throw error
-  const { error: e2 } = await supabase.from('council_applications').update({ status: 'candidate' }).eq('id', applicationId)
-  if (e2) throw e2
+  return data
 }
 
 // ─── แต่งตั้งตรง (ตำแหน่งที่ไม่ได้มาจากการเลือกตั้ง — ผ่านสัมภาษณ์แล้วแต่งตั้งได้เลย) ────
