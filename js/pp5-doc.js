@@ -1443,6 +1443,7 @@ function _buildPage4(d) {
 
 function _buildScorePage(d, chunk, startNo) {
   const { cls, ms, teacher, deptHeadName, academicYear, semester, scoreColumns, scoreMap, readingEvalMap, roundSettings } = d
+  const forcedGradeColor = roundSettings?.forcedGradeColor === 'black' ? 'black' : 'red'
   const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้าหมวดวิชา'
 
   // แบ่ง between / final / special
@@ -2010,6 +2011,7 @@ function _vsplit(s, max = 8) {
 // "ความสะอาด" ในระบบทักษะชีวิต (ดู moralScores/moralMax ที่ _loadDocData ดึงมาให้แล้ว)
 function _buildScorePageVOC(d, chunk, startNo) {
   const { cls, teacher, deptHeadName, scoreColumns, scoreMap, moralScores, moralMax, moralColName, roundSettings } = d
+  const forcedGradeColor = roundSettings?.forcedGradeColor === 'black' ? 'black' : 'red'
   const _isSpecial  = c => c.assignment_type === 'คะแนนพิเศษ'
   const objCols     = scoreColumns.filter(c => !_isSpecial(c))
   const specialCols = scoreColumns.filter(c => _isSpecial(c))
