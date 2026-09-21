@@ -1,5 +1,5 @@
 import { getClassScoreRounding, saveClassScoreRounding } from './api.js'
-import { isBonus, normalizeRounding } from './score-display.js'
+import { isBonus, normalizeRounding, sortScoreColumns } from './score-display.js'
 import {
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   updateColumnSortOrders,
@@ -308,18 +308,7 @@ export async function renderGradesGrid(teacher, classData) {
       for (let i = 1; i <= 5; i++) await mkCol('final', i)
       allCols = await getScoreColumns(classData.id)
     }
-    if (priorityColumnNames.length) {
-      allCols = [...allCols].sort((a, b) => {
-        const ai = priorityColumnNames.indexOf(a.assignment_name)
-        const bi = priorityColumnNames.indexOf(b.assignment_name)
-        if (ai >= 0 || bi >= 0) {
-          if (ai < 0) return 1
-          if (bi < 0) return -1
-          return ai - bi
-        }
-        return (a.id ?? 0) - (b.id ?? 0)
-      })
-    }
+    allCols = sortScoreColumns(allCols, priorityColumnNames)
     const lockedScoreColumnIds = new Set(
       priorityColumnNames.length
         ? allCols.filter(c => priorityColumnNames.includes(c.assignment_name)).map(c => c.id)

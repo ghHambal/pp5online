@@ -1,5 +1,5 @@
 import { getClassScoreRounding } from './api.js'
-import { isBonus, roundKey, displayScore, effectiveScore } from './score-display.js'
+import { isBonus, roundKey, displayScore, effectiveScore, sortScoreColumns } from './score-display.js'
 import {
   getSystemConfig, getClassStudents, getClassAttendanceAll,
   getScoreColumns, getStudentScores, getCourseDocPage2,
@@ -435,6 +435,12 @@ async function _loadDocData(classId) {
     ? scoreColumns.filter(c => !AUTO_COL_NAMES.has(c.assignment_name))
     : scoreColumns
   ).filter(c => c.column_type !== 'override' && !isBonus(c))
+  const systemPriorityNames = ['AGM', 'AGMVOC'].includes(ms.subject_group)
+    ? ['คะแนนมาเรียน', 'คะแนนละหมาด']
+    : (cls.skill_group ?? '').trim() === 'ชีวิต'
+      ? (await getLifeSkillColumns(academicYear, semester, 'สามัญ').catch(() => [])).slice(0, 3).map(c => c.name)
+      : []
+  const orderedScoreColumns = sortScoreColumns(filteredScoreColumns, systemPriorityNames)
 
   // score map: { studentId: { columnId: score } }
   const scoreMap = {}
@@ -457,7 +463,7 @@ async function _loadDocData(classId) {
   })
   for (const row of Object.values(scoreMap)) {
     const raw = { ...row }
-    for (const col of filteredScoreColumns) {
+    for (const col of orderedScoreColumns) {
       if (col.column_type === 'derived' || (raw[col.id] != null && col.bonus_formula)) row[col.id] = effectiveScore(scoreColumns, col, id => raw[id])
     }
   }
@@ -536,7 +542,7 @@ async function _loadDocData(classId) {
     throw new Error(`โหลดผลประเมินการอ่านไม่สำเร็จ: ${err?.message ?? 'ไม่ทราบสาเหตุ'}`)
   }
 
-  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: filteredScoreColumns, scoreMap, roundSettings, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet, moralScores, moralMax, moralColName, readingEvalMap, docWarnings }
+  return { cls, ms, credit, prefix, cfg, students, attMap, scoreColumns: orderedScoreColumns, scoreMap, roundSettings, teacher, dept, deptNameTH, deptHeadName, courseDoc, thColHeaders, thColsExtra, thRowHeader, sessions, hrSamai, hrReligion, academicYear, semester, holidaySet, moralScores, moralMax, moralColName, readingEvalMap, docWarnings }
 }
 
 // ─── CSS ──────────────────────────────────────────────────────────────────────
