@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.740'
+import { APP_VERSION } from './version.js?v=10.22.741'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.741': [
+    '🛡️ ป้องกันการแต่งตั้งสมาชิกสภาซ้ำด้วย RPC แบบ atomic และดัชนีความปลอดภัย พร้อมจำกัด RPC เฉพาะผู้ใช้ที่ล็อกอิน',
+  ],
   '10.22.740': [
     '📚 แยกกลุ่มเอกสาร/กิจกรรมสำหรับมือถือ รวมระเบียบ แบบฟอร์ม YLA และโครงการกิจกรรมไว้ในปุ่มเดียว',
   ],

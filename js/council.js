@@ -5928,7 +5928,7 @@ function wireApplicationsAdminEvents() {
       if (!confirm(`ยืนยันแต่งตั้ง ${app.students?.full_name ?? ''} เป็น ${app.council_positions?.position_name ?? ''}?`)) return
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        await appointMember({ applicationId: appId, positionId: app.position_id, studentId: app.students.id, academicYear: electionYear })
+        await appointMember({ applicationId: appId, positionId: app.position_id, studentId: app.students.id, academicYear: electionYear, appointedByTeacherId: ctx.teacher?.id })
         showToast('แต่งตั้งสำเร็จ ✅', 'success')
         adminApps = null
         ctx.members = await getCouncilMembers().catch(() => ctx.members)

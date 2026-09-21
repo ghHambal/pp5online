@@ -347,14 +347,15 @@ export async function promoteToCandidate({ applicationId, studentId, electionCon
 }
 
 // ─── แต่งตั้งตรง (ตำแหน่งที่ไม่ได้มาจากการเลือกตั้ง — ผ่านสัมภาษณ์แล้วแต่งตั้งได้เลย) ────
-export async function appointMember({ applicationId, positionId, studentId, academicYear }) {
-  const { error } = await supabase.from('council_members').insert({
-    position_id: positionId, student_id: studentId, academic_year: academicYear,
-    source: 'appointed', status: 'active', term_start_date: new Date().toISOString().slice(0, 10),
+export async function appointMember({ applicationId, positionId, studentId, academicYear, appointedByTeacherId }) {
+  const { error } = await supabase.rpc('appoint_council_member_atomic', {
+    p_application_id: applicationId,
+    p_position_id: positionId,
+    p_student_id: studentId,
+    p_academic_year: academicYear,
+    p_appointed_by_teacher_id: appointedByTeacherId ?? null,
   })
   if (error) throw error
-  const { error: e2 } = await supabase.from('council_applications').update({ status: 'appointed' }).eq('id', applicationId)
-  if (e2) throw e2
 }
 
 // ─── จัดการสภาวาระปัจจุบันโดยตรง (แอดมิน) — เพิ่ม/แก้ไข/ลบ นอกเหนือจากทางแต่งตั้ง/เลือกตั้ง/
