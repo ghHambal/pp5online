@@ -957,6 +957,7 @@ function _buildPage1(d) {
   const totalHrs         = sessions?.length ?? credit * 2 * 20
 
   const _hideScores = !!window._pp5HideScores
+  const forcedGradeColor = roundSettings?.forcedGradeColor === 'black' ? 'black' : 'red'
 
   // compute grade distribution
   const maxTotal = scoreColumns.reduce((s, c) => s + (c.max_score ?? 0), 0)
@@ -1515,7 +1516,7 @@ function _buildScorePage(d, chunk, startNo) {
       <td style="font-weight:700;border-right:2.0px solid #000;">${displayScore(d.roundSettings, 'total', total)}</td>
       <td>${_esc(readingEvalMap?.[st.id] ?? '')}</td>
       <td style="border-right:2.0px solid #000;">${_esc(charLabel)}</td>
-      <td style="font-weight:700;${forcedGrade ? `color:${roundSettings?.forcedGradeColor === 'red' ? '#c00' : '#000'};` : ''}">${grade}</td>
+      <td style="font-weight:700;${forcedGrade ? `color:${forcedGradeColor === 'red' ? '#c00' : '#000'};` : ''}">${grade}</td>
     </tr>`
   })
 
@@ -2042,7 +2043,7 @@ function _buildScorePageVOC(d, chunk, startNo) {
       <td class="voc-center voc-bold">${displayScore(d.roundSettings, 'mid_subtotal', objSum)}</td>
       <td class="voc-center">${moralScore}</td>
       <td class="voc-center voc-bold">${displayScore(d.roundSettings, 'total', total)}</td>
-      <td class="voc-center voc-bold" style="${forcedGrade ? `color:${roundSettings?.forcedGradeColor === 'red' ? '#c00' : '#000'};` : ''}">${grade}</td>
+      <td class="voc-center voc-bold" style="${forcedGrade ? `color:${forcedGradeColor === 'red' ? '#c00' : '#000'};` : ''}">${grade}</td>
       <td></td>
     </tr>`
   })

@@ -18,7 +18,15 @@ export function sortScoreColumns(columns, priorityNames = []) {
     return ao - bo || (a.id ?? 0) - (b.id ?? 0)
   })
 }
-export const normalizeRounding = settings => ({ total: true, ...Object.fromEntries(Object.entries(settings ?? {}).filter(([,v]) => typeof v === 'boolean')) })
+export function normalizeRounding(settings) {
+  const normalized = {
+    total: true,
+    ...Object.fromEntries(Object.entries(settings ?? {}).filter(([, v]) => typeof v === 'boolean')),
+  }
+  const forcedGradeColor = settings && typeof settings === 'object' ? settings.forcedGradeColor : undefined
+  normalized.forcedGradeColor = forcedGradeColor === 'black' ? 'black' : 'red'
+  return normalized
+}
 export function displayScore(settings, key, value, decimals = 1) {
   if (value == null || value === '') return value ?? ''
   const n = Number(value)

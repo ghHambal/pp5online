@@ -387,7 +387,7 @@ export async function renderGradesGrid(teacher, classData) {
     let roundingLoadError = false
     const sharedRounding = await getClassScoreRounding(classData.id).catch(() => { roundingLoadError = true; return null })
     let columnRoundSettings = normalizeRounding(sharedRounding ?? _savedToggles.columnRoundSettings ?? { total: _savedToggles.toggleRound ?? true })
-    let forcedGradeColor = columnRoundSettings.forcedGradeColor === 'red' ? 'red' : 'black'
+    let forcedGradeColor = columnRoundSettings.forcedGradeColor === 'black' ? 'black' : 'red'
     const _isColRounded = key => !!columnRoundSettings[key]
     // สำหรับช่องกรอกคะแนนเอง (mid/final/override/bonus) — ปัดแค่ตอนแสดงผล ไม่แตะค่าที่บันทึกจริง
     const _fmtEntryScore = (colId, v) => {
