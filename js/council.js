@@ -399,11 +399,13 @@ function applyBranding(cfg) {
 }
 
 // ─── Navigation — ไซด์บาร์ (เดสก์ท็อป) + แท็บล่าง (มือถือ) ───────────────────────
-// กลุ่มเมนู 5 กลุ่มตรงตามสเปคส่งมอบ (หัวข้อ 5) — หน้าที่ยังไม่ได้สร้าง (เสนอคณะทำงาน/
+// กลุ่มเมนู 6 กลุ่มตรงตามสเปคส่งมอบ (หัวข้อ 5) — แยกศูนย์เอกสาร/กิจกรรมออกมาให้กดจากมือถือได้ง่าย
+// หน้าที่ยังไม่ได้สร้าง (เสนอคณะทำงาน/
 // มอบหมายงาน/หน้าที่ของฉัน/ตั้งค่า/มอบสิทธิ์) จะยังไม่โผล่ในกลุ่มจนกว่าจะสร้างเสร็จ
 const NAV_GROUPS = {
   main: { label: 'หน้าหลัก', icon: '🏠' },
   council: { label: 'งานสภา', icon: '👥' },
+  resources: { label: 'เอกสาร/กิจกรรม', icon: '📚' },
   election: { label: 'เลือกตั้ง', icon: '🗳️' },
   teacherWork: { label: 'งานครู', icon: '📋' },
   system: { label: 'ระบบ', icon: '⚙️' },
@@ -416,10 +418,6 @@ function getNavItems() {
   const items = [{ id: 'overview', icon: '🏠', label: 'หน้าหลัก', group: 'main' }]
   // งานสภา — สาธารณะ/สมาชิกสภา
   items.push({ id: 'news', icon: '📣', label: 'ประกาศ', group: 'council' })
-  items.push({ id: 'regulation', icon: '📚', label: 'ระเบียบ/ประกาศ', group: 'council' })
-  items.push({ id: 'forms', icon: '🗂️', label: 'เอกสารและแบบฟอร์ม', group: 'council' })
-  items.push({ id: 'yla', icon: '🌱', label: 'กิจกรรม YLA', group: 'council' })
-  items.push({ id: 'activityDocs', icon: '🧩', label: 'โครงการและกิจกรรม', group: 'council' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภาของเรา', group: 'council' })
   items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม/การเข้าร่วม', group: 'council' })
   if (ctx.isChair || ctx.isAdmin || ctx.isCouncilAdvisor) items.push({ id: 'chairteam', icon: '👔', label: 'เสนอคณะทำงาน', group: 'council' })
@@ -431,6 +429,12 @@ function getNavItems() {
   if (ctx.membership.length && ctx.cfg.council_require_peer_endorsement === 'true') {
     items.push({ id: 'peerEndorse', icon: '✋', label: 'รับรองผู้สมัคร (สภา)', group: 'council' })
   }
+  // ศูนย์เอกสาร/กิจกรรม — รวมระเบียบ แบบฟอร์ม YLA และทะเบียนกิจกรรมไว้เป็นกลุ่มเดียว
+  // เพื่อให้ผู้ใช้มือถือกดปุ่มเดียวแล้วเลือกเอกสารที่เกี่ยวข้องได้ทันที
+  items.push({ id: 'regulation', icon: '📚', label: 'ระเบียบ/ประกาศ', group: 'resources' })
+  items.push({ id: 'forms', icon: '🗂️', label: 'เอกสารและแบบฟอร์ม', group: 'resources' })
+  items.push({ id: 'yla', icon: '🌱', label: 'กิจกรรม YLA', group: 'resources' })
+  items.push({ id: 'activityDocs', icon: '🧩', label: 'โครงการและกิจกรรม', group: 'resources' })
   // เลือกตั้ง — สาธารณะ
   items.push({ id: 'candidates', icon: '🗳️', label: 'ว่าที่ประธาน', group: 'election' })
   items.push({ id: 'result', icon: '📊', label: 'ผลเลือกตั้ง', group: 'election' })
@@ -493,17 +497,17 @@ function renderNav(items) {
       </div>`
   }).join('')
 
-  // แถบล่างมือถือ — จัดกลุ่มตาม NAV_GROUPS ไม่เกิน 5 ปุ่ม (สเปคข้อ 5) กลุ่มที่มีหลายหน้า
+  // แถบล่างมือถือ — จัดกลุ่มตาม NAV_GROUPS กลุ่มที่มีหลายหน้า
   // กดแล้วเด้งแคปซูลกระจกฝ้าลอยขึ้นแทนเปลี่ยนหน้าตรงๆ
   const groupsWithItems = groupOrder
     .map(g => ({ id: g, ...NAV_GROUPS[g], items: items.filter(it => it.group === g) }))
     .filter(g => g.items.length)
   const activeGroupId = (groupsWithItems.find(g => g.items.some(it => it.id === activeView)) || groupsWithItems[0])?.id
-  document.getElementById('council-bottom-tabs').innerHTML = `<div class="flex">${groupsWithItems.map(g => {
+  document.getElementById('council-bottom-tabs').innerHTML = `<div class="flex overflow-x-auto">${groupsWithItems.map(g => {
     const on = g.id === activeGroupId
     const badge = g.items.reduce((n, it) => n + (it.badge || 0), 0)
     return `
-    <button type="button" class="council-nav-group-btn relative flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 min-h-[44px] ${on ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}" data-group="${g.id}">
+    <button type="button" class="council-nav-group-btn relative flex-1 min-w-[68px] shrink-0 flex flex-col items-center justify-center py-2.5 gap-0.5 min-h-[44px] ${on ? 'text-[var(--primary)]' : 'text-[var(--muted)]'}" data-group="${g.id}">
       <span class="text-xl">${g.icon}</span>
       <span class="text-[0.625rem] font-medium">${esc(g.label)}</span>
       ${badge ? `<span class="absolute top-1 right-1/4 bg-[var(--gold)] text-white text-[0.5625rem] rounded-full w-4 h-4 flex items-center justify-center font-bold">${badge}</span>` : ''}

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.739'
+import { APP_VERSION } from './version.js?v=10.22.740'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.740': [
+    '📚 แยกกลุ่มเอกสาร/กิจกรรมสำหรับมือถือ รวมระเบียบ แบบฟอร์ม YLA และโครงการกิจกรรมไว้ในปุ่มเดียว',
+  ],
   '10.22.739': [
     '🌱 เพิ่มโมดูลกิจกรรม YLA สำหรับสร้างกิจกรรม เพิ่มผู้เข้าร่วม เช็กชื่อ ประเมินศักยภาพ สรุปผล และติดตามข้อมูลรายบุคคลตามสิทธิ์',
   ],
