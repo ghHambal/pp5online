@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.744'
+import { APP_VERSION } from './version.js?v=10.22.745'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.745': [
+    '📄 แก้ไขการโหลดเอกสาร ปพ.5 ที่เปิดไม่ได้จากข้อผิดพลาดการอ่านค่าปัดเลข',
+  ],
   '10.22.744': [
     '🗓️ ทำการนัดสัมภาษณ์และเปลี่ยนสถานะใบสมัครให้เป็นธุรกรรมเดียว ป้องกันข้อมูลนัดค้างหรือสถานะไม่ตรงกัน',
   ],

@@ -909,7 +909,7 @@ function _getCSS() {
 // ─── Page 1: หน้าปก ───────────────────────────────────────────────────────────
 
 function _buildPage1(d) {
-  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions, readingEvalMap } = d
+  const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, dept, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions, readingEvalMap, roundSettings } = d
 
   const schoolName    = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
   const schoolAddress = _esc(cfg[`${prefix}SchoolAddress`] ?? cfg.samaiSchoolAddress ?? '')
