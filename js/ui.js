@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.748'
+import { APP_VERSION } from './version.js?v=10.22.749'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.749': [
+    '📄 ขยายคอลัมน์ประเมินคุณลักษณะอันพึงประสงค์ในเอกสาร ปพ.5 ให้คำว่า ไม่ผ่าน อยู่บรรทัดเดียวอย่างเป็นระเบียบ',
+  ],
   '10.22.748': [
     '🔐 จำกัดสิทธิ์ workflow สภานักเรียนให้เฉพาะแอดมินและครูที่ปรึกษาสภา พร้อมแก้สิทธิ์การแต่งตั้งให้ใช้งานผ่าน RPC ที่ตรวจสอบแล้ว',
   ],
