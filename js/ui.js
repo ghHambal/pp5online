@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.743'
+import { APP_VERSION } from './version.js?v=10.22.744'
 
 // ─── Toast Notification ───────────────────────────────────────────────────────
 export function showToast(message, type = 'info') {
@@ -1005,6 +1005,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.744': [
+    '🗓️ ทำการนัดสัมภาษณ์และเปลี่ยนสถานะใบสมัครให้เป็นธุรกรรมเดียว ป้องกันข้อมูลนัดค้างหรือสถานะไม่ตรงกัน',
+  ],
   '10.22.743': [
     '🔒 ทำผลสัมภาษณ์และเลื่อนผู้สมัครเลือกตั้งให้เป็นธุรกรรมเดียว ป้องกันสถานะค้างและเลขบัตรซ้ำจากการกดซ้ำหรือคำขอพร้อมกัน',
   ],

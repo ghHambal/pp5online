@@ -308,16 +308,15 @@ export async function getCouncilApplicationsForAdmin(academicYear) {
 }
 
 export async function scheduleCouncilInterview({ applicationId, existingInterviewId, scheduledAt, location, interviewerTeacherId }) {
-  const payload = { application_id: applicationId, scheduled_at: scheduledAt, location, interviewer_teacher_id: interviewerTeacherId }
-  if (existingInterviewId) {
-    const { error } = await supabase.from('council_interviews').update(payload).eq('id', existingInterviewId)
-    if (error) throw error
-  } else {
-    const { error } = await supabase.from('council_interviews').insert(payload)
-    if (error) throw error
-  }
-  const { error: e2 } = await supabase.from('council_applications').update({ status: 'interview_scheduled' }).eq('id', applicationId)
-  if (e2) throw e2
+  const { data, error } = await supabase.rpc('schedule_council_interview_atomic', {
+    p_application_id: applicationId,
+    p_scheduled_at: scheduledAt,
+    p_location: location || null,
+    p_interviewer_teacher_id: interviewerTeacherId ?? null,
+    p_interview_id: existingInterviewId ?? null,
+  })
+  if (error) throw error
+  return data
 }
 
 // ให้คะแนนรายหัวข้อ (สเปคข้อ 8.5) — result ตัดสินอัตโนมัติจาก score รวมเทียบครึ่งหนึ่งของ
