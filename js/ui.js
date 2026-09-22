@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.749'
+import { APP_VERSION } from './version.js?v=10.22.750'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.750': [
+    '🏅 เพิ่มอันดับคะแนนกีฬาสากล+กรีฑา กีฬาพื้นบ้าน/ทักษะ พาเหรด เพจ Facebook อีบาดัต และคะแนนรวม ในระบบกีฬาสีทั้ง 3 หน้า',
+  ],
   '10.22.749': [
     '📄 ขยายคอลัมน์ประเมินคุณลักษณะอันพึงประสงค์ในเอกสาร ปพ.5 ให้คำว่า ไม่ผ่าน อยู่บรรทัดเดียวอย่างเป็นระเบียบ',
   ],

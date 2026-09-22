@@ -2210,9 +2210,9 @@ export async function renderSportsEvaluationWorkspace() {
         const t=totalsByColor.get(c.id)||{}
         return {c,canonicalName,t,grand:Number(t.grand_total)||0}
       }).sort((a,b)=>b.grand-a.grand)
-      return `${sportsDaySummary()}<section class="bg-white border rounded-2xl p-5">
+      return `${sportsDaySummary()}${renderSportsColorRankingPanels((totals||[]).filter(t=>t.gender===summaryGender),null,summaryGender)}<section class="bg-white border rounded-2xl p-5">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-          <div><h2 class="font-bold">🏅 สรุปคะแนนทุกสี</h2><p class="text-xs text-gray-500 mt-1">รวมคะแนนกรรมการ + วิชาการ + กีฬา + เหรียญรางวัล ข้อมูลเดียวกับระบบกีฬาสีหลัก อัปเดตสด</p></div>
+          <div><h2 class="font-bold">🏅 สรุปคะแนนทุกสี</h2><p class="text-xs text-gray-500 mt-1">รวมคะแนนกรรมการ + กีฬา + พื้นบ้าน/ทักษะ + อีบาดัต + เหรียญรางวัล ข้อมูลเดียวกับระบบกีฬาสีหลัก อัปเดตสด</p></div>
           <div class="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
             <button type="button" data-sum-gender="M" class="px-4 py-2 rounded-lg text-xs font-bold transition ${summaryGender==='M'?'bg-emerald-600 text-white':'text-gray-600'}">👦 กลุ่มสีชาย</button>
             <button type="button" data-sum-gender="W" class="px-4 py-2 rounded-lg text-xs font-bold transition ${summaryGender==='W'?'bg-rose-600 text-white':'text-gray-600'}">👧 กลุ่มสีหญิง</button>
@@ -2242,7 +2242,9 @@ export async function renderSportsEvaluationWorkspace() {
                   ${scoreBar('📣 หน้าเว็บเพจ',Number(r.t.page_total)||0,maxPage)}
                   ${scoreBar('🎨 วันเข้าสี/วันกีฬาสีจริง',Number(r.t.color_eval_total)||0,maxColorEval)}
                   ${scoreBar('🧹 วิชาการสะสม',Number(r.t.academic_total)||0,100)}
-                  ${scoreBar('🏃 กีฬาสะสม',Number(r.t.sport_score_total)||0,150)}
+                  ${scoreBar('🏃 กีฬาสากล + กรีฑา',Number(r.t.sports_total)||0,150)}
+                  ${scoreBar('🎯 พื้นบ้าน / ทักษะ',Number(r.t.folk_skill_total)||0,150)}
+                  ${scoreBar('🕋 อีบาดัต',Number(r.t.ibadat_total)||0,100)}
                 </div>
                 <div class="flex flex-wrap gap-2 text-xs font-bold">
                   <span class="px-3 py-1.5 rounded-full bg-yellow-50 text-yellow-700">🥇 ทอง ${Number(r.t.gold_count)||0}</span>
@@ -4648,6 +4650,30 @@ async function downloadGalleryGroupsAsZip(selectedGroups){
   }catch(e){toast('ดาวน์โหลดไม่สำเร็จ: '+e.message,'error')}
 }
 
+const SPORTS_COLOR_RANKING_DEFS=[
+  {key:'sports_total',label:'คะแนนกีฬา (สากล + กรีฑา)',icon:'🏃'},
+  {key:'folk_skill_total',label:'กีฬาพื้นบ้าน / ทักษะ',icon:'🎯'},
+  {key:'parade_total',label:'พาเหรด (สวนสนาม)',icon:'🕌'},
+  {key:'page_total',label:'เพจ Facebook',icon:'📣'},
+  {key:'ibadat_total',label:'คะแนนอีบาดัต',icon:'🕋'},
+  {key:'grand_total',label:'คะแนนรวมทั้งหมด',icon:'🏆'},
+]
+
+const renderSportsColorRankingPanels=(totals,colorName,gender)=>{
+  const rows=(totals||[]).filter(t=>!gender||t.gender===gender)
+  return `<section class="bg-white border rounded-2xl p-5">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+      <div><h2 class="font-bold">📊 อันดับคะแนนแยกหมวด</h2><p class="text-xs text-gray-500 mt-1">เปรียบเทียบเฉพาะสี${gender==='W'?'หญิง':'ชาย'} · คะแนนกีฬา = กีฬาสากลรวมกรีฑา</p></div>
+    </div>
+    <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
+      ${SPORTS_COLOR_RANKING_DEFS.map(def=>{
+        const ranked=[...rows].sort((a,b)=>(Number(b[def.key])||0)-(Number(a[def.key])||0))
+        return `<div class="rounded-xl border bg-gray-50 p-3"><h3 class="text-xs font-bold text-gray-700 mb-2">${def.icon} อันดับ${def.label}</h3><div class="space-y-1.5">${ranked.map((r,i)=>`<div class="flex items-center gap-2 text-xs ${r.color_name===colorName?'font-black text-indigo-700':''}"><span class="w-5 text-center text-gray-400">#${i+1}</span><span class="flex-1 truncate">สี${esc(r.color_name)}</span><b>${Number(r[def.key]||0).toLocaleString('th-TH')}</b></div>`).join('')||'<p class="text-xs text-gray-400">ยังไม่มีคะแนน</p>'}</div></div>`
+      }).join('')}
+    </div>
+  </section>`
+}
+
 // แท็บ "คะแนน/เหรียญ" — คะแนนรวมกับจำนวนเหรียญเป็นคนละส่วนกันจริงๆ (เหรียญมาจากอันดับการแข่งขัน
 // แต่ละรายการ ส่วนคะแนนรวมมาจากหลายหมวดรวมกัน: ขบวนพาเหรด/วิชาการ/กีฬา/หน้าบ้าน-สแตนด์ ฯลฯ)
 // จึงแยกเป็น 2 แท็บใหญ่ "คะแนนรวม" กับ "อันดับเหรียญ" ไม่ปนกันในตารางเดียวแบบเดิม แต่ละแท็บใหญ่
@@ -4678,7 +4704,7 @@ function renderScoreMedalSection(body,{totals,colorName,gender,myTotal,scoreRank
   const SCORE_CATEGORY_ICON={parade:'🕌',page:'📣',color_eval:'🎨'}
   const progressBar=(label,val,max)=>{const pct=Math.min(100,(Number(val||0)/max)*100)
     return `<div class="space-y-1"><div class="flex justify-between text-xs"><span class="muted">${label}</span><span class="font-bold">${Number(val||0).toLocaleString()} / ${max}</span></div><div class="h-1.5 rounded-full team-sub overflow-hidden"><div class="h-full rounded-full bg-gradient-to-r from-pink-500 to-violet-500" style="width:${pct}%"></div></div></div>`}
-  const scoreMineDetail=()=>`<div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4"><div class="team-sub rounded-xl p-3 md:col-span-4"><p class="text-xs muted">คะแนนรวมทุกหมวด</p><b class="text-3xl">${Number(myTotal.grand_total||0).toLocaleString()}</b></div>${[['ขบวนพาเหรด',myTotal.parade_total||0],['วิชาการ',myTotal.academic_total||0],['คะแนนกีฬา',myTotal.sport_score_total||0],['หน้าบ้าน/สแตนด์',myTotal.page_total||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>
+  const scoreMineDetail=()=>`<div class="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4"><div class="team-sub rounded-xl p-3 md:col-span-3"><p class="text-xs muted">คะแนนรวมทุกหมวด</p><b class="text-3xl">${Number(myTotal.grand_total||0).toLocaleString()}</b></div>${[['กีฬา (สากล + กรีฑา)',myTotal.sports_total||0],['พื้นบ้าน / ทักษะ',myTotal.folk_skill_total||0],['พาเหรด (สวนสนาม)',myTotal.parade_total||0],['เพจ Facebook',myTotal.page_total||0],['อีบาดัต',myTotal.ibadat_total||0],['วิชาการสะสม',myTotal.academic_total||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>
     <div class="grid grid-cols-2 gap-4 mb-4">
       ${progressBar('🕌 พาเหรด & เชียร์',myTotal.parade_total,maxParadeScore)}
       ${progressBar('🧹 วิชาการ',myTotal.academic_total,100)}
@@ -4693,7 +4719,7 @@ function renderScoreMedalSection(body,{totals,colorName,gender,myTotal,scoreRank
       ${Number(myTotal.sport_score_total||0)>0?`<div class="team-sub rounded-lg px-3 py-2 flex items-center justify-between gap-2 mt-1.5"><span class="text-xs">🏃 คะแนนการแข่งขันกีฬาสะสม</span><b class="text-sm">${Number(myTotal.sport_score_total).toLocaleString()} คะแนน</b></div>`:''}
     </div>`
 
-  const scoreAllTable=()=>`<div class="text-xs muted mb-2">อันดับคะแนนรวมของสี${esc(colorName)}: <b class="text-slate-200">#${scoreRank}</b></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">คะแนนรวม</th></tr></thead><tbody>${rankedByScore.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${Number(r.grand_total||0).toLocaleString()}</td></tr>`).join('')||'<tr><td colspan="3" class="p-8 text-center muted">ยังไม่มีคะแนน</td></tr>'}</tbody></table></div>`
+  const scoreAllTable=()=>`${renderSportsColorRankingPanels(sameGenderTotals,colorName,gender)}<div class="text-xs muted mb-2">อันดับคะแนนรวมของสี${esc(colorName)}: <b class="text-slate-200">#${scoreRank}</b></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">คะแนนรวม</th></tr></thead><tbody>${rankedByScore.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${Number(r.grand_total||0).toLocaleString()}</td></tr>`).join('')||'<tr><td colspan="3" class="p-8 text-center muted">ยังไม่มีคะแนน</td></tr>'}</tbody></table></div>`
 
   const MEDAL_ICON={gold:'🥇',silver:'🥈',bronze:'🥉'}
   const medalsMineDetail=()=>`<div class="grid grid-cols-3 gap-2 mb-4">${[['🥇 ทอง',myTotal.gold_count||0],['🥈 เงิน',myTotal.silver_count||0],['🥉 ทองแดง',myTotal.bronze_count||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3 text-center"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>
