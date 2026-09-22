@@ -4659,17 +4659,22 @@ const SPORTS_COLOR_RANKING_DEFS=[
   {key:'grand_total',label:'คะแนนรวมทั้งหมด',icon:'🏆'},
 ]
 
-const renderSportsColorRankingPanels=(totals,colorName,gender)=>{
+const renderSportsColorRankingPanels=(totals,colorName,gender,activeIndex=5)=>{
   const rows=(totals||[]).filter(t=>!gender||t.gender===gender)
+  const category=SPORTS_COLOR_RANKING_DEFS[activeIndex]||SPORTS_COLOR_RANKING_DEFS[5]
+  const ranked=[...rows].sort((a,b)=>(Number(b[category.key])||0)-(Number(a[category.key])||0))
   return `<section class="bg-white border rounded-2xl p-5">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
       <div><h2 class="font-bold">📊 อันดับคะแนนแยกหมวด</h2><p class="text-xs text-gray-500 mt-1">เปรียบเทียบเฉพาะสี${gender==='W'?'หญิง':'ชาย'} · คะแนนกีฬา = กีฬาสากลรวมกรีฑา</p></div>
     </div>
-    <div class="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
-      ${SPORTS_COLOR_RANKING_DEFS.map(def=>{
-        const ranked=[...rows].sort((a,b)=>(Number(b[def.key])||0)-(Number(a[def.key])||0))
-        return `<div class="rounded-xl border bg-gray-50 p-3"><h3 class="text-xs font-bold text-gray-700 mb-2">${def.icon} อันดับ${def.label}</h3><div class="space-y-1.5">${ranked.map((r,i)=>`<div class="flex items-center gap-2 text-xs ${r.color_name===colorName?'font-black text-indigo-700':''}"><span class="w-5 text-center text-gray-400">#${i+1}</span><span class="flex-1 truncate">สี${esc(r.color_name)}</span><b>${Number(r[def.key]||0).toLocaleString('th-TH')}</b></div>`).join('')||'<p class="text-xs text-gray-400">ยังไม่มีคะแนน</p>'}</div></div>`
-      }).join('')}
+    <div class="rounded-2xl border bg-gray-50 p-4">
+      <div class="flex items-center justify-between gap-3 mb-3">
+        <button type="button" data-sports-rank-nav="prev" class="w-9 h-9 rounded-xl bg-white border text-gray-700 text-2xl leading-none disabled:opacity-30" ${activeIndex===0?'disabled':''} aria-label="ดูหมวดก่อนหน้า">‹</button>
+        <div class="text-center min-w-0"><div class="text-lg">${category.icon}</div><h3 class="text-sm font-bold text-gray-700">อันดับ${category.label}</h3><p class="text-[10px] text-gray-400">หมวด ${activeIndex+1} / ${SPORTS_COLOR_RANKING_DEFS.length}</p></div>
+        <button type="button" data-sports-rank-nav="next" class="w-9 h-9 rounded-xl bg-white border text-gray-700 text-2xl leading-none disabled:opacity-30" ${activeIndex===SPORTS_COLOR_RANKING_DEFS.length-1?'disabled':''} aria-label="ดูหมวดถัดไป">›</button>
+      </div>
+      <div class="flex justify-center gap-1.5 mb-3">${SPORTS_COLOR_RANKING_DEFS.map((item,index)=>`<button type="button" data-sports-rank-index="${index}" aria-label="ดู${item.label}" class="h-2 rounded-full transition ${index===activeIndex?'w-5 bg-indigo-600':'w-2 bg-gray-300'}"></button>`).join('')}</div>
+      <div class="space-y-1.5">${ranked.map((r,i)=>`<div class="flex items-center gap-2 text-sm rounded-xl bg-white px-3 py-2 ${r.color_name===colorName?'font-black text-indigo-700 ring-1 ring-indigo-200':''}"><span class="w-7 text-center text-gray-400">#${i+1}</span><span class="flex-1 truncate">สี${esc(r.color_name)}</span><b>${Number(r[category.key]||0).toLocaleString('th-TH')}</b></div>`).join('')||'<p class="text-xs text-gray-400">ยังไม่มีคะแนน</p>'}</div>
     </div>
   </section>`
 }
@@ -4684,7 +4689,7 @@ function renderScoreMedalSection(body,{totals,colorName,gender,myTotal,scoreRank
   const rankedByScore=[...sameGenderTotals].sort((a,b)=>(Number(b.grand_total)||0)-(Number(a.grand_total)||0))
   const rankedByMedals=[...sameGenderTotals].sort((a,b)=>(Number(b.gold_count)||0)-(Number(a.gold_count)||0)||(Number(b.silver_count)||0)-(Number(a.silver_count)||0)||(Number(b.bronze_count)||0)-(Number(a.bronze_count)||0))
   const genderLabel=gender==='W'?'หญิง':'ชาย'
-  let mainTab='score', view='all'
+  let mainTab='score', view='all', rankingIndex=5, mineCategoryIndex=5
 
   body.innerHTML=`<section class="${card}">
     <div class="flex flex-wrap justify-between gap-3 mb-4">
@@ -4704,22 +4709,30 @@ function renderScoreMedalSection(body,{totals,colorName,gender,myTotal,scoreRank
   const SCORE_CATEGORY_ICON={parade:'🕌',page:'📣',color_eval:'🎨'}
   const progressBar=(label,val,max)=>{const pct=Math.min(100,(Number(val||0)/max)*100)
     return `<div class="space-y-1"><div class="flex justify-between text-xs"><span class="muted">${label}</span><span class="font-bold">${Number(val||0).toLocaleString()} / ${max}</span></div><div class="h-1.5 rounded-full team-sub overflow-hidden"><div class="h-full rounded-full bg-gradient-to-r from-pink-500 to-violet-500" style="width:${pct}%"></div></div></div>`}
-  const scoreMineDetail=()=>`<div class="grid grid-cols-2 md:grid-cols-3 gap-2 mb-4"><div class="team-sub rounded-xl p-3 md:col-span-3"><p class="text-xs muted">คะแนนรวมทุกหมวด</p><b class="text-3xl">${Number(myTotal.grand_total||0).toLocaleString()}</b></div>${[['กีฬา (สากล + กรีฑา)',myTotal.sports_total||0],['พื้นบ้าน / ทักษะ',myTotal.folk_skill_total||0],['พาเหรด (สวนสนาม)',myTotal.parade_total||0],['เพจ Facebook',myTotal.page_total||0],['อีบาดัต',myTotal.ibadat_total||0],['วิชาการสะสม',myTotal.academic_total||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>
-    <div class="grid grid-cols-2 gap-4 mb-4">
-      ${progressBar('🕌 พาเหรด & เชียร์',myTotal.parade_total,maxParadeScore)}
-      ${progressBar('🧹 วิชาการ',myTotal.academic_total,100)}
-      ${progressBar('🏃 คะแนนกีฬา',myTotal.sport_score_total,150)}
-      ${progressBar('📣 หน้าเว็บเพจ',myTotal.page_total,maxPageScore)}
-      ${progressBar('🎨 ประเมินสีสะสม',0,maxColorEvalScore)}
-    </div>
-    <div class="border-t line pt-3">
-      <p class="text-[10.5px] uppercase tracking-wider font-bold muted mb-2">📋 รายละเอียดคะแนนแยกเกณฑ์ (เฉลี่ยจากกรรมการ)</p>
-      ${(scoreBreakdown&&scoreBreakdown.length) ? `<div class="space-y-1.5">${scoreBreakdown.map(b=>`<div class="team-sub rounded-lg px-3 py-2 flex items-center justify-between gap-2"><span class="text-xs">${SCORE_CATEGORY_ICON[b.category]||'🎯'} ${esc(b.name)} <span class="muted">(เต็ม ${b.maxScore})</span></span><b class="text-sm">${b.avg} คะแนน</b></div>`).join('')}</div>` : `<p class="text-xs muted text-center py-4">ยังไม่มีกรรมการให้คะแนนเกณฑ์นี้</p>`}
-      ${Number(myTotal.academic_total||0)>0?`<div class="team-sub rounded-lg px-3 py-2 flex items-center justify-between gap-2 mt-1.5"><span class="text-xs">🧹 คะแนนการแข่งขันทักษะวิชาการสะสม</span><b class="text-sm">${Number(myTotal.academic_total).toLocaleString()} คะแนน</b></div>`:''}
-      ${Number(myTotal.sport_score_total||0)>0?`<div class="team-sub rounded-lg px-3 py-2 flex items-center justify-between gap-2 mt-1.5"><span class="text-xs">🏃 คะแนนการแข่งขันกีฬาสะสม</span><b class="text-sm">${Number(myTotal.sport_score_total).toLocaleString()} คะแนน</b></div>`:''}
-    </div>`
+  const scoreDetailDefs=[
+    {key:'sports_total',label:'คะแนนกีฬา (สากล + กรีฑา)',icon:'🏃',value:myTotal.sports_total,max:150},
+    {key:'folk_skill_total',label:'กีฬาพื้นบ้าน / ทักษะ',icon:'🎯',value:myTotal.folk_skill_total,max:150},
+    {key:'parade_total',label:'พาเหรด (สวนสนาม)',icon:'🕌',value:myTotal.parade_total,max:maxParadeScore},
+    {key:'page_total',label:'เพจ Facebook',icon:'📣',value:myTotal.page_total,max:maxPageScore},
+    {key:'ibadat_total',label:'คะแนนอีบาดัต',icon:'🕋',value:myTotal.ibadat_total,max:100},
+    {key:'grand_total',label:'คะแนนรวมทั้งหมด',icon:'🏆',value:myTotal.grand_total,max:null},
+  ]
+  const scoreMineDetail=()=>{
+    const detail=scoreDetailDefs[mineCategoryIndex]||scoreDetailDefs[5]
+    const value=Number(detail.value||0)
+    const logs=detail.key==='grand_total'?(scoreBreakdown||[]):[]
+    return `<div class="team-sub rounded-xl p-4 mb-4"><p class="text-xs muted">คะแนนที่เลือกดู</p><div class="flex items-end justify-between gap-3"><div><span class="text-lg">${detail.icon}</span><h3 class="font-bold">${detail.label}</h3></div><b class="text-3xl">${value.toLocaleString()}</b></div>${detail.max?`<div class="mt-3">${progressBar('ความคืบหน้าคะแนน',value,detail.max)}</div>`:'<p class="text-xs muted mt-2">คะแนนรวมคำนวณจากทุกหมวดของระบบ</p>'}</div>
+      <div class="team-sub rounded-2xl p-4 mb-4">
+        <div class="flex items-center justify-between gap-3 mb-3"><button type="button" data-mine-score-nav="prev" class="w-9 h-9 rounded-xl bg-slate-900 text-slate-200 text-2xl leading-none disabled:opacity-30" ${mineCategoryIndex===0?'disabled':''} aria-label="ดูรายละเอียดหมวดก่อนหน้า">‹</button><div class="text-center"><div class="text-lg">${detail.icon}</div><div class="text-sm font-bold">${detail.label}</div><div class="text-[10px] muted">หมวด ${mineCategoryIndex+1} / ${scoreDetailDefs.length}</div></div><button type="button" data-mine-score-nav="next" class="w-9 h-9 rounded-xl bg-slate-900 text-slate-200 text-2xl leading-none disabled:opacity-30" ${mineCategoryIndex===scoreDetailDefs.length-1?'disabled':''} aria-label="ดูรายละเอียดหมวดถัดไป">›</button></div>
+        <div class="flex justify-center gap-1.5">${scoreDetailDefs.map((item,index)=>`<button type="button" data-mine-score-index="${index}" aria-label="ดู${item.label}" class="h-2 rounded-full transition ${index===mineCategoryIndex?'w-5 bg-pink-500':'w-2 bg-slate-700'}"></button>`).join('')}</div>
+      </div>
+      <div class="border-t line pt-3">
+        <p class="text-[10.5px] uppercase tracking-wider font-bold muted mb-2">📋 รายละเอียดของหมวดนี้</p>
+        ${(logs.length) ? `<div class="space-y-1.5">${logs.map(b=>`<div class="team-sub rounded-lg px-3 py-2 flex items-center justify-between gap-2"><span class="text-xs">${SCORE_CATEGORY_ICON[b.category]||'🎯'} ${esc(b.name)} <span class="muted">(เต็ม ${b.maxScore})</span></span><b class="text-sm">${b.avg} คะแนน</b></div>`).join('')}</div>` : `<p class="text-xs muted text-center py-4">เลือกหมวดเพื่อดูคะแนนและรายละเอียดเพิ่มเติม</p>`}
+      </div>`
+  }
 
-  const scoreAllTable=()=>`${renderSportsColorRankingPanels(sameGenderTotals,colorName,gender)}<div class="text-xs muted mb-2">อันดับคะแนนรวมของสี${esc(colorName)}: <b class="text-slate-200">#${scoreRank}</b></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">คะแนนรวม</th></tr></thead><tbody>${rankedByScore.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${Number(r.grand_total||0).toLocaleString()}</td></tr>`).join('')||'<tr><td colspan="3" class="p-8 text-center muted">ยังไม่มีคะแนน</td></tr>'}</tbody></table></div>`
+  const scoreAllTable=()=>`${renderSportsColorRankingPanels(sameGenderTotals,colorName,gender,rankingIndex)}<div class="text-xs muted mb-2">อันดับคะแนนรวมของสี${esc(colorName)}: <b class="text-slate-200">#${scoreRank}</b></div><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="border-b line"><th class="p-2">อันดับ</th><th class="p-2 text-left">สี</th><th class="p-2">คะแนนรวม</th></tr></thead><tbody>${rankedByScore.map((r,i)=>`<tr class="border-b line ${r.color_name===colorName?'bg-pink-500/10':''}"><td class="p-2 text-center font-bold">${i+1}</td><td class="p-2 font-bold">สี${esc(r.color_name)}</td><td class="p-2 text-center">${Number(r.grand_total||0).toLocaleString()}</td></tr>`).join('')||'<tr><td colspan="3" class="p-8 text-center muted">ยังไม่มีคะแนน</td></tr>'}</tbody></table></div>`
 
   const MEDAL_ICON={gold:'🥇',silver:'🥈',bronze:'🥉'}
   const medalsMineDetail=()=>`<div class="grid grid-cols-3 gap-2 mb-4">${[['🥇 ทอง',myTotal.gold_count||0],['🥈 เงิน',myTotal.silver_count||0],['🥉 ทองแดง',myTotal.bronze_count||0]].map(([l,v])=>`<div class="team-sub rounded-xl p-3 text-center"><p class="text-xs muted">${l}</p><b class="text-2xl">${Number(v).toLocaleString()}</b></div>`).join('')}</div>
@@ -4737,6 +4750,10 @@ function renderScoreMedalSection(body,{totals,colorName,gender,myTotal,scoreRank
     body.querySelector('#score-view-body').innerHTML = view==='mine'
       ? (isScore?scoreMineDetail():medalsMineDetail())
       : (isScore?scoreAllTable():medalsAllTable())
+    body.querySelectorAll('[data-sports-rank-nav]').forEach(button=>button.onclick=()=>{rankingIndex=Math.max(0,Math.min(SPORTS_COLOR_RANKING_DEFS.length-1,rankingIndex+(button.dataset.sportsRankNav==='next'?1:-1)));renderView()})
+    body.querySelectorAll('[data-sports-rank-index]').forEach(button=>button.onclick=()=>{rankingIndex=Number(button.dataset.sportsRankIndex)||0;renderView()})
+    body.querySelectorAll('[data-mine-score-nav]').forEach(button=>button.onclick=()=>{mineCategoryIndex=Math.max(0,Math.min(scoreDetailDefs.length-1,mineCategoryIndex+(button.dataset.mineScoreNav==='next'?1:-1)));renderView()})
+    body.querySelectorAll('[data-mine-score-index]').forEach(button=>button.onclick=()=>{mineCategoryIndex=Number(button.dataset.mineScoreIndex)||0;renderView()})
   }
   body.querySelectorAll('[data-score-main]').forEach(b=>b.onclick=()=>{mainTab=b.dataset.scoreMain;renderView()})
   body.querySelectorAll('[data-score-view]').forEach(b=>b.onclick=()=>{view=b.dataset.scoreView;renderView()})
