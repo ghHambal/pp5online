@@ -1822,7 +1822,9 @@ export async function renderSportsCompetitionManager() {
     draw()
   }
 
-  const colorOptions = (colors, selected) => [`<option value="">ยังไม่ระบุ</option>`, ...(colors || []).map(c =>
+  const genderLabel = gender => gender === 'M' ? 'รายการชาย' : gender === 'W' ? 'รายการหญิง' : 'รายการรวม'
+  const colorsForSport = (colors, sport) => (colors || []).filter(c => !sport?.gender || sport.gender === 'Coed' || c.gender === sport.gender || c.gender === 'Coed')
+  const colorOptions = (colors, sport, selected) => [`<option value="">ยังไม่ระบุ</option>`, ...colorsForSport(colors, sport).map(c =>
     `<option value="${esc(c.id)}" ${String(c.id) === String(selected || '') ? 'selected' : ''}>สี${esc(c.name)}</option>`
   )].join('')
   const dateLabel = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00+07:00`).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ยังไม่กำหนด'
@@ -1848,7 +1850,8 @@ export async function renderSportsCompetitionManager() {
     const drafts = draftRows.filter(m => m.sport_id === sport.id)
     const rows = [...matches, ...drafts]
     const registrations = (workspace.registrations || []).filter(r => r.sport_id === sport.id)
-    const teamCounts = colors.map(c => ({ ...c, count: registrations.filter(r => r.team_color_id === c.id).length })).filter(c => c.count > 0)
+    const eligibleColors = colorsForSport(colors, sport)
+    const teamCounts = eligibleColors.map(c => ({ ...c, count: registrations.filter(r => r.team_color_id === c.id).length })).filter(c => c.count > 0)
     const editHint = canEdit
       ? `<span class="text-emerald-700 bg-emerald-50 border border-emerald-200">เปิดแก้ไขถึง ${esc(cutoffText)}</span>`
       : `<span class="text-amber-800 bg-amber-50 border border-amber-200">${workspace.is_admin ? 'โหมดแอดมิน: แก้ไขได้แม้เลยกำหนด' : `ปิดแก้ไขแล้ว (${esc(cutoffText)})`}</span>`
@@ -1862,7 +1865,7 @@ export async function renderSportsCompetitionManager() {
       </div>
       <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm grid md:grid-cols-[minmax(0,1fr)_auto_auto] gap-3 items-end">
         <label class="block"><span class="text-xs font-bold text-gray-500">เลือกรายการแข่งขันที่รับผิดชอบ</span>
-          <select id="competition-sport-select" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm bg-white">${sports.map(s => `<option value="${esc(s.id)}" ${s.id === sport.id ? 'selected' : ''}>${esc(s.code ? `${s.code} · ` : '')}${esc(s.name)}</option>`).join('')}</select></label>
+          <select id="competition-sport-select" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm bg-white">${['M', 'W', 'Coed'].map(g => { const group = sports.filter(s => (s.gender || 'Coed') === g); return group.length ? `<optgroup label="${genderLabel(g)}">${group.map(s => `<option value="${esc(s.id)}" ${s.id === sport.id ? 'selected' : ''}>${esc(s.code ? `${s.code} · ` : '')}${esc(s.name)}</option>`).join('')}</optgroup>` : '' }).join('')}</select></label>
         <div class="rounded-xl bg-indigo-50 px-4 py-2.5 text-sm"><b class="text-indigo-700">${matches.length}</b><span class="text-gray-500 ml-1">คู่แข่งขัน</span></div>
         <div class="rounded-xl bg-emerald-50 px-4 py-2.5 text-sm"><b class="text-emerald-700">${registrations.length}</b><span class="text-gray-500 ml-1">นักกีฬา</span></div>
       </div>
@@ -1870,15 +1873,15 @@ export async function renderSportsCompetitionManager() {
         <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-xl font-extrabold text-gray-900">${esc(sport.name)}</h2>
           <p class="text-sm text-gray-500 mt-1">${esc(sport.code || '')}${sport.gender ? ` · เพศ ${esc(sport.gender)}` : ''}${sport.venue ? ` · สถานที่เดิม ${esc(sport.venue)}` : ''}</p></div>
           ${canEdit ? '<button id="competition-match-add" class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">＋ เพิ่มคู่แข่งขัน</button>' : '<span class="text-xs text-gray-500">ดูข้อมูลได้อย่างเดียว</span>'}</div>
-        <div class="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-2">${teamCounts.map(c => `<div class="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 flex items-center gap-2"><span class="w-3 h-3 rounded-full" style="background:${esc(c.hex_color || '#64748b')}"></span><span class="text-sm">สี${esc(c.name)}</span><b class="ml-auto">${c.count}</b></div>`).join('') || '<p class="text-sm text-gray-400">ยังไม่มีรายชื่อนักกีฬาในรายการนี้</p>'}</div>
+        <div class="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-2">${teamCounts.map(c => `<div class="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 flex items-center gap-2"><span class="w-3 h-3 rounded-full" style="background:${esc(c.hex_color || '#64748b')}"></span><span class="text-sm">สี${esc(c.name)}</span><b class="ml-auto">${c.count}</b></div>`).join('') || `<p class="text-sm text-gray-400">ยังไม่มีรายชื่อนักกีฬาใน${esc(genderLabel(sport.gender))}</p>`}</div>
       </div>
       <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
         <div class="px-5 py-4 border-b border-gray-100"><h2 class="font-extrabold text-gray-900">โปรแกรมและคู่แข่งขัน</h2><p class="text-xs text-gray-500 mt-1">เพิ่มคู่แข่งขันได้แม้รายการยังไม่มีโปรแกรม ระบบจะบันทึกกลับไปยังตาราง <code>matches</code> ชุดเดียวกับระบบหลัก</p></div>
         <div class="overflow-x-auto"><table class="w-full min-w-[1120px] text-sm"><thead class="bg-gray-50 text-gray-500"><tr><th class="p-3 text-left">รอบ</th><th class="p-3 text-left">ทีม A</th><th class="p-3 text-left">ทีม B</th><th class="p-3 text-left">วันที่</th><th class="p-3 text-left">เวลา</th><th class="p-3 text-left">สถานที่</th><th class="p-3 text-left">หมายเหตุ</th><th class="p-3 text-right">สถานะ</th><th class="p-3"></th></tr></thead>
           <tbody>${rows.map((row, index) => { const locked = !canEdit || isLockedMatch(row); const key = row.id || row._draftKey || `draft-${index}`; return `<tr data-match-row="${esc(key)}" data-match-id="${esc(row.id || '')}" class="border-t border-gray-100 align-top ${row._draftKey ? 'bg-indigo-50/40' : ''}">
             <td class="p-2"><input data-field="round_name" value="${esc(row.round_name || 'รอบแรก')}" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}><input data-field="round" type="number" min="1" value="${Number(row.round || 1)}" class="mt-1 w-16 rounded-lg border border-gray-300 px-2 py-1 text-xs" ${locked ? 'disabled' : ''}></td>
-            <td class="p-2"><select data-field="team_a_color_id" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm bg-white" ${locked ? 'disabled' : ''}>${colorOptions(colors, row.team_a_color_id)}</select></td>
-            <td class="p-2"><select data-field="team_b_color_id" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm bg-white" ${locked ? 'disabled' : ''}>${colorOptions(colors, row.team_b_color_id)}</select></td>
+            <td class="p-2"><select data-field="team_a_color_id" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm bg-white" ${locked ? 'disabled' : ''}>${colorOptions(colors, sport, row.team_a_color_id)}</select></td>
+            <td class="p-2"><select data-field="team_b_color_id" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm bg-white" ${locked ? 'disabled' : ''}>${colorOptions(colors, sport, row.team_b_color_id)}</select></td>
             <td class="p-2"><input data-field="scheduled_date" type="date" value="${esc(row.scheduled_date || '')}" class="rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
             <td class="p-2"><input data-field="scheduled_time" type="time" value="${esc(timeValue(row.scheduled_time))}" class="rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
             <td class="p-2"><input data-field="venue" value="${esc(row.venue || sport.venue || '')}" class="w-40 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
