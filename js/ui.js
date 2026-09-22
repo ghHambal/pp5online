@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.753'
+import { APP_VERSION } from './version.js?v=10.22.754'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.754': [
+    '🏟️ ให้บัญชีแอดมิน ปพ.5 เห็นและเข้าหน้ารายการแข่งขันของฉันได้ทันที เพื่อดูรายการและจัดการโปรแกรมการแข่งขันของทุกประเภท',
+  ],
   '10.22.753': [
     '🏟️ เพิ่มหน้ารายการแข่งขันของฉันสำหรับครูผู้รับผิดชอบ ให้ดูและปรับคู่แข่งขัน เวลา และสถานที่ได้ก่อนวันที่ 25 โดยใช้ข้อมูลชุดเดียวกับระบบกีฬาสีหลัก',
   ],

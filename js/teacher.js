@@ -26,7 +26,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsCompetitionManager, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.753'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsCompetitionManager, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.754'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -247,7 +247,7 @@ const ROUTES = {
     // ทางลัด "ระบบกีฬาสี" จากเมนูปกตินี้ ต้องเข้าเป็นแอดมิน AZIZGAMES ทันทีเหมือนกับที่เข้าทาง
     // เมนู Supervisor mode — เดิม path นี้เปิดแบบผู้เข้าชมทั่วไปเสมอไม่ว่าตำแหน่งจะเป็นอะไร
     const teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
-    const isSportsManager = _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
+    const isSportsManager = _hasAdminAccess || _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
     openAzizGamesModal(isSportsManager
       ? { admin: true, teacherName: _teacher?.full_name, teacherCode: _teacher?.teacher_code }
       : {})
@@ -723,7 +723,7 @@ async function _applyRoleMenus() {
   const sportsMemberships = sportsMembershipsRes?.data || []
   toggle('menu-my-team', sportsMemberships.length > 0)
 
-  const isSportsManager = _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
+  const isSportsManager = _hasAdminAccess || _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
   const activeEventId = activeEventRes?.data?.id
   const hasSportsCompetitionAssignment = (sportsCompetitionRes?.data || []).some(row => !activeEventId || row.event_id === activeEventId)
   toggle('menu-sports-competition-manager', !!(isSportsManager || hasSportsCompetitionAssignment))
