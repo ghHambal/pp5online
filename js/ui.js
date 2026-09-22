@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.751'
+import { APP_VERSION } from './version.js?v=10.22.752'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.752': [
+    '✨ ปรับภาพรวมอันดับกีฬาสีให้แสดงเฉพาะคะแนนรวม ลดข้อมูลรบกวน และคลี่รายละเอียดรายหมวดเมื่อกดดูสี',
+  ],
   '10.22.751': [
     '📊 ปรับการแสดงอันดับกีฬาสีให้ดูทีละหมวดด้วยปุ่มเลื่อน เริ่มจากคะแนนรวม และคลิกสีเพื่อดูรายละเอียดแต่ละหมวด',
   ],
