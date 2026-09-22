@@ -1,15 +1,18 @@
-import { APP_VERSION } from './version.js?v=10.22.749'
+import { APP_VERSION } from './version.js?v=10.22.760'
 import { supabase } from './supabase.js'
 
 const AZIZGAMES_PATH = 'azizgames.html'
 
 // เดิม iframe src ไม่มี cache-busting เลย ทำให้ GitHub Pages (cache-control: max-age=600)
 // เสิร์ฟ azizgames.html เวอร์ชันเก่าค้างได้นานถึง 10 นาทีหลัง deploy แม้ asset จริงจะอัปเดตแล้ว
-const getAzizGamesUrl = (tab = '', stdid = '') => {
+const getAzizGamesUrl = (tab = '', stdid = '', simulation = false, matchId = '', sportId = '') => {
   const url = new URL(AZIZGAMES_PATH, window.location.href)
   url.searchParams.set('v', APP_VERSION)
   if (tab) url.searchParams.set('tab', tab)
   if (stdid) url.searchParams.set('stdid', stdid)
+  if (simulation) url.searchParams.set('simulation', '1')
+  if (matchId) url.searchParams.set('match_id', matchId)
+  if (sportId) url.searchParams.set('sport_id', sportId)
   return url.href
 }
 
@@ -36,7 +39,7 @@ const shareAzizGames = async (url, statusEl) => {
   }
 }
 
-export function openAzizGamesModal({ admin = false, manage = false, teacherName = '', teacherCode = '', tab = '', stdid = '' } = {}) {
+export function openAzizGamesModal({ admin = false, manage = false, simulation = false, matchId = '', sportId = '', teacherName = '', teacherCode = '', tab = '', stdid = '' } = {}) {
   document.getElementById('azizgames-modal')?.remove()
 
   if (admin) {
@@ -46,20 +49,26 @@ export function openAzizGamesModal({ admin = false, manage = false, teacherName 
       username: teacherCode || 'admin',
       displayName: teacherName || 'ผู้ดูแลระบบ',
     }))
+  } else if (simulation) {
+    // จำลองด้วยตัวแก้ไขผลจริง แต่ AppContext จะตัดการเขียนผล/เหรียญ/อีเวนต์ออกจากคิว
+    // เหลือเฉพาะค่าตั้งกติกาครั้งแรกที่ผู้ใช้ยืนยันให้จำในฐานข้อมูลจริง
+    localStorage.setItem('aziz_is_logged_in', 'true')
+    localStorage.setItem('aziz_sports_admin_allowed', 'true')
+    localStorage.setItem('aziz_current_user', JSON.stringify({ username: 'simulation', displayName: 'โหมดจำลองผลการแข่งขัน' }))
   } else {
     localStorage.removeItem('aziz_is_logged_in')
     if (manage) localStorage.setItem('aziz_sports_admin_allowed', 'true')
     else localStorage.removeItem('aziz_sports_admin_allowed')
   }
 
-  const url = getAzizGamesUrl(tab, stdid)
+  const url = getAzizGamesUrl(tab, stdid, simulation, matchId, sportId)
   const previousOverflow = document.body.style.overflow
   document.body.style.overflow = 'hidden'
 
   const modal = document.createElement('div')
   modal.id = 'azizgames-modal'
   modal.className = 'fixed inset-0 z-[400] bg-slate-950 flex flex-col'
-  const canManageSports = admin || manage
+  const canManageSports = admin || manage || simulation
   modal.innerHTML = `
     <div class="h-12 flex items-center gap-2 px-3 sm:px-4 border-b border-slate-800 bg-slate-950 text-slate-100 shadow-lg">
       <div class="min-w-0 flex-1">
@@ -107,6 +116,10 @@ export function openAzizGamesModal({ admin = false, manage = false, teacherName 
   const onMessage = async (event) => {
     if (event.origin !== window.location.origin || event.source !== iframe?.contentWindow) return
     const message = event.data
+    if (message?.type === 'azizgames:simulation-saved') {
+      window.dispatchEvent(new CustomEvent('pp5:azizgames-simulation-saved', { detail: message.payload || {} }))
+      return
+    }
     if (message?.type !== 'azizgames:save-athlete-schedule' || !message.requestId) return
     const payload = message.payload || {}
     const isoOrNull = value => value ? new Date(value).toISOString() : null

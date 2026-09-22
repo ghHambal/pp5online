@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.758'
+import { APP_VERSION } from './version.js?v=10.22.760'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.760': [
+    'ระบบจำลองผลการแข่งขันเปิดใช้ตัวแก้ไขผลจริงของแต่ละชนิดกีฬา โดยผลจำลองไม่เขียนทับคะแนน เหรียญ หรือสายแข่งขันจริง',
+    'บันทึกค่ากติกาเริ่มต้นของนัดจริงครั้งแรกเพื่อใช้ซ้ำในรอบถัดไป และเพิ่มช่องบันทึกนักกีฬายอดเยี่ยม/ดีเด่นให้ครบทุกเส้นทางการแข่งขัน',
+  ],
   '10.22.759': [
     '🎨 เพิ่มโลโก้และพื้นหลังประจำสีในตัวเลือกคู่แข่งขัน พร้อมโหมดจำลองผลการแข่งขันที่ไม่กระทบข้อมูลจริง',
   ],
