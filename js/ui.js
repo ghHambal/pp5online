@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.757'
+import { APP_VERSION } from './version.js?v=10.22.758'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.758': [
+    '🗓️ อัปเดตโปรแกรมการแข่งขันกีฬาสี 2569 ชุดล่าสุด พร้อมคู่แข่งขัน วัน เวลา และสถานที่/ห้องแข่งขัน',
+  ],
   '10.22.757': [
     '🏟️ เติมผู้รับผิดชอบหลักให้รายการกีฬาที่เดิมยังไม่มี โดยผูกกับบัญชีครูในระบบ ปพ.5 ครบทั้ง 102 รายการ',
   ],
