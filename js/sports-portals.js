@@ -75,6 +75,17 @@ const _galleryTypeDateLabel = value => {
 const _galleryTypeOptionLabel = row => `${row.name}${row.event_date?` (${_galleryTypeDateLabel(row.event_date)})`:''}`
 const SHIRT_COLOR_HEX = {'แดง':'#dc2626','น้ำเงิน':'#2563eb','เขียว':'#16a34a','น้ำตาล':'#92400e','ส้ม':'#f97316','ฟ้า':'#0ea5e9','ม่วง':'#9333ea','เทา':'#6b7280'}
 export const _colorSwatchHex = name => SHIRT_COLOR_HEX[name] || '#94a3b8'
+const SPORTS_COMPETITION_SIM_KEY = 'pp5_sports_competition_simulations_v1'
+const _validHexColor = value => /^#[0-9a-f]{6}$/i.test(String(value || '')) ? String(value) : '#64748b'
+const _readCompetitionSimulations = eventId => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(`${SPORTS_COMPETITION_SIM_KEY}:${eventId}`) || '{}')
+    return raw && typeof raw === 'object' ? raw : {}
+  } catch { return {} }
+}
+const _writeCompetitionSimulations = (eventId, value) => {
+  try { localStorage.setItem(`${SPORTS_COMPETITION_SIM_KEY}:${eventId}`, JSON.stringify(value || {})) } catch {}
+}
 
 // ไอคอนกีฬาชุดเดียวกับที่ AZIZGAMES ใช้ (43 ไฟล์ที่ pp5-online/public/azizgames/sport-icons/ —
 // โฮสต์รวมกันอยู่แล้วในไซต์เดียวกัน) จับคู่จากชื่อกีฬา+เพศแบบเดียวกับ src/utils/sportIcons.js
@@ -1810,10 +1821,12 @@ export async function renderSportsCompetitionManager() {
   let draftRows = []
   let workspace = null
   let event = null
+  let simulationResults = {}
 
   const reload = async () => {
     const ctx = await context()
     event = ctx.event
+    simulationResults = _readCompetitionSimulations(event.id)
     const { data, error } = await supabase.rpc('get_sports_competition_manager_workspace', { p_event: event.id })
     if (error) throw error
     workspace = data || {}
@@ -1836,12 +1849,83 @@ export async function renderSportsCompetitionManager() {
   const genderLabel = gender => gender === 'M' ? 'รายการชาย' : gender === 'W' ? 'รายการหญิง' : 'รายการรวม'
   const genderShortLabel = gender => gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : 'รวม'
   const colorsForSport = (colors, sport) => (colors || []).filter(c => !sport?.gender || sport.gender === 'Coed' || c.gender === sport.gender || c.gender === 'Coed')
-  const colorOptions = (colors, sport, selected) => [`<option value="">ยังไม่ระบุ</option>`, ...colorsForSport(colors, sport).map(c =>
-    `<option value="${esc(c.id)}" ${String(c.id) === String(selected || '') ? 'selected' : ''}>สี${esc(c.name)}</option>`
-  )].join('')
+  const colorById = (colors, id) => (colors || []).find(c => String(c.id) === String(id)) || null
+  const colorIdentity = (color, compact = false) => {
+    if (!color) return `<span class="inline-flex items-center justify-center ${compact ? 'w-7 h-7' : 'w-9 h-9'} rounded-full bg-slate-100 text-slate-400 font-extrabold border border-slate-200">?</span>`
+    const hex = _validHexColor(color.hex_color)
+    return color.logo_url
+      ? `<img src="${esc(color.logo_url)}" alt="" loading="lazy" class="${compact ? 'w-7 h-7' : 'w-9 h-9'} rounded-full object-cover border-2 border-white shadow-sm" style="background:${hex}">`
+      : `<span class="inline-flex items-center justify-center ${compact ? 'w-7 h-7' : 'w-9 h-9'} rounded-full text-white font-extrabold border-2 border-white shadow-sm" style="background:${hex}">${esc(String(color.name || '?').slice(0, 1))}</span>`
+  }
+  const colorIdentityLabel = color => color ? `<span class="inline-flex items-center gap-2 min-w-0">${colorIdentity(color, true)}<span class="truncate">สี${esc(color.name)}</span></span>` : '<span class="text-slate-400">ยังไม่ระบุ</span>'
+  const colorOptions = (colors, sport, selected, field, disabled = false) => {
+    const eligible = colorsForSport(colors, sport)
+    const chosen = colorById(eligible, selected)
+    const chosenHex = _validHexColor(chosen?.hex_color)
+    return `<input type="hidden" data-field="${esc(field)}" value="${esc(selected || '')}">
+      <div class="relative min-w-[176px]" data-color-picker="${esc(field)}">
+        <button type="button" data-color-trigger class="w-full min-h-[42px] flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-sm text-left hover:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-200 ${disabled ? 'cursor-not-allowed opacity-60' : ''}" style="border-color:${chosen ? `${chosenHex}66` : '#d1d5db'};background:${chosen ? `${chosenHex}12` : '#ffffff'}" ${disabled ? 'disabled' : ''}>
+          ${colorIdentityLabel(chosen)}<span class="text-xs text-slate-400">⌄</span>
+        </button>
+        <div data-color-menu class="hidden absolute left-0 right-0 top-[calc(100%+4px)] z-40 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+          <button type="button" data-color-option="" class="w-full rounded-lg px-2 py-2 text-left text-sm hover:bg-slate-50">ยังไม่ระบุ</button>
+          ${eligible.map(c => { const hex = _validHexColor(c.hex_color); return `<button type="button" data-color-option="${esc(c.id)}" class="w-full rounded-lg px-2 py-2 text-left text-sm hover:brightness-95 ${String(c.id) === String(selected || '') ? 'ring-2 ring-inset ring-indigo-300' : ''}" style="background:${hex}12">${colorIdentityLabel(c)}</button>` }).join('')}
+        </div>
+      </div>`
+  }
   const dateLabel = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00+07:00`).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ยังไม่กำหนด'
   const timeValue = value => value ? String(value).slice(0, 5) : ''
   const isLockedMatch = row => ['live', 'done'].includes(row.status) || row.score_a != null || row.score_b != null || row.winner_team_color_id
+  const simulationFor = row => row?.id ? simulationResults[String(row.id)] || null : null
+  const simulationStatusLabel = value => ({ live: 'กำลังแข่ง', done: 'เสร็จสิ้น', pending: 'รอแข่ง' }[value] || value || 'รอแข่ง')
+  const openSimulation = (row, sport) => {
+    const colors = workspace?.colors || []
+    const teamA = colorById(colors, row.team_a_color_id)
+    const teamB = colorById(colors, row.team_b_color_id)
+    const previous = simulationFor(row) || {}
+    const overlay = document.createElement('div')
+    overlay.className = 'fixed inset-0 z-[120] grid place-items-center bg-slate-950/60 p-4'
+    overlay.innerHTML = `<section class="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl">
+      <div class="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4"><div><p class="text-xs font-bold text-violet-600">🧪 โหมดจำลองผลการแข่งขัน</p><h2 class="mt-1 text-xl font-extrabold text-slate-900">${esc(sport?.name || 'การแข่งขัน')}</h2><p class="mt-1 text-xs text-slate-500">รอบ ${esc(row.round_name || 'รอบแรก')} · ${esc(row.scheduled_date ? dateLabel(row.scheduled_date) : 'ยังไม่กำหนดวัน')}</p></div><button type="button" data-sim-close class="rounded-xl border border-slate-200 px-3 py-2 text-slate-500 hover:bg-slate-50">✕</button></div>
+      <form data-sim-form class="space-y-4 p-5">
+        <div class="grid grid-cols-2 gap-3">
+          <div class="rounded-2xl border px-3 py-3 text-center" style="border-color:${_validHexColor(teamA?.hex_color)}55;background:${_validHexColor(teamA?.hex_color)}12"><div class="flex justify-center">${colorIdentity(teamA)}</div><p class="mt-2 text-sm font-extrabold text-slate-900">${teamA ? `สี${esc(teamA.name)}` : 'ทีม A ยังไม่ระบุ'}</p><input name="score_a" type="text" inputmode="decimal" value="${esc(previous.score_a ?? '')}" placeholder="คะแนน A" class="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-lg font-extrabold text-slate-900"></div>
+          <div class="rounded-2xl border px-3 py-3 text-center" style="border-color:${_validHexColor(teamB?.hex_color)}55;background:${_validHexColor(teamB?.hex_color)}12"><div class="flex justify-center">${colorIdentity(teamB)}</div><p class="mt-2 text-sm font-extrabold text-slate-900">${teamB ? `สี${esc(teamB.name)}` : 'ทีม B ยังไม่ระบุ'}</p><input name="score_b" type="text" inputmode="decimal" value="${esc(previous.score_b ?? '')}" placeholder="คะแนน B" class="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-lg font-extrabold text-slate-900"></div>
+        </div>
+        <label class="block"><span class="text-xs font-bold text-slate-600">สถานะจำลอง</span><select name="status" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="pending" ${previous.status === 'pending' || !previous.status ? 'selected' : ''}>รอแข่ง</option><option value="live" ${previous.status === 'live' ? 'selected' : ''}>กำลังแข่ง</option><option value="done" ${previous.status === 'done' ? 'selected' : ''}>เสร็จสิ้น</option></select></label>
+        <label class="block"><span class="text-xs font-bold text-slate-600">หมายเหตุจำลอง</span><textarea name="note" rows="3" placeholder="ข้อมูลเพิ่มเติมสำหรับการทดลอง" class="mt-1 w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm">${esc(previous.note ?? '')}</textarea></label>
+        <div class="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-800">ข้อมูลนี้เป็นเพียงตัวอย่างในเครื่องนี้เท่านั้น จะไม่เปลี่ยนผลจริง เหรียญ อันดับ หรือคู่แข่งขันในฐานข้อมูล</div>
+        <div class="flex flex-wrap justify-end gap-2"><button type="button" data-sim-reset class="rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50">ล้างผลจำลอง</button><button type="button" data-sim-close class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">ยกเลิก</button><button type="submit" class="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700">บันทึกผลจำลอง</button></div>
+      </form>
+    </section>`
+    document.body.appendChild(overlay)
+    const close = () => overlay.remove()
+    overlay.querySelectorAll('[data-sim-close]').forEach(button => button.addEventListener('click', close))
+    overlay.addEventListener('click', e => { if (e.target === overlay) close() })
+    overlay.querySelector('[data-sim-reset]')?.addEventListener('click', () => {
+      delete simulationResults[String(row.id)]
+      _writeCompetitionSimulations(event.id, simulationResults)
+      close(); draw(); toast('ล้างผลจำลองแล้ว')
+    })
+    overlay.querySelector('[data-sim-form]')?.addEventListener('submit', e => {
+      e.preventDefault()
+      const form = e.currentTarget
+      const scoreA = form.elements.score_a.value.trim()
+      const scoreB = form.elements.score_b.value.trim()
+      const numericA = Number(scoreA)
+      const numericB = Number(scoreB)
+      let status = form.elements.status.value
+      let winner = ''
+      if (scoreA !== '' && scoreB !== '' && Number.isFinite(numericA) && Number.isFinite(numericB)) {
+        if (numericA === numericB) { toast('ผลจำลองต้องมีผู้ชนะ ห้ามเสมอสำหรับรายการนี้', 'error'); return }
+        status = 'done'
+        winner = numericA > numericB ? 'A' : 'B'
+      }
+      simulationResults[String(row.id)] = { score_a: scoreA, score_b: scoreB, status, winner, note: form.elements.note.value.trim(), updated_at: new Date().toISOString() }
+      _writeCompetitionSimulations(event.id, simulationResults)
+      close(); draw(); toast('บันทึกผลจำลองไว้ในเครื่องแล้ว')
+    })
+  }
 
   const draw = () => {
     const sports = workspace?.sports || []
@@ -1886,25 +1970,65 @@ export async function renderSportsCompetitionManager() {
         <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-xl font-extrabold text-gray-900">${esc(sport.name)}</h2>
           <p class="text-sm text-gray-500 mt-1">${esc(sport.code || '')}${sport.gender ? ` · เพศ ${esc(sport.gender)}` : ''}${sport.venue ? ` · สถานที่เดิม ${esc(sport.venue)}` : ''}</p></div>
           ${canEdit ? '<button id="competition-match-add" class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">＋ เพิ่มคู่แข่งขัน</button>' : '<span class="text-xs text-gray-500">ดูข้อมูลได้อย่างเดียว</span>'}</div>
-        <div class="mt-4 flex flex-wrap gap-2">${eligibleColors.map(c => `<span class="inline-flex items-center gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 text-sm"><span class="w-3 h-3 rounded-full" style="background:${esc(c.hex_color || '#64748b')}"></span>สี${esc(c.name)}</span>`).join('') || `<p class="text-sm text-gray-400">ยังไม่มีสีที่กำหนดสำหรับ${esc(genderLabel(sport.gender))}</p>`}</div>
+        <div class="mt-4 flex flex-wrap gap-2">${eligibleColors.map(c => `<span class="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style="border-color:${_validHexColor(c.hex_color)}55;background:${_validHexColor(c.hex_color)}12"><span class="flex-shrink-0">${colorIdentity(c, true)}</span><span class="font-bold" style="color:${_validHexColor(c.hex_color)}">สี${esc(c.name)}</span></span>`).join('') || `<p class="text-sm text-gray-400">ยังไม่มีสีที่กำหนดสำหรับ${esc(genderLabel(sport.gender))}</p>`}</div>
       </div>
       <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-100"><h2 class="font-extrabold text-gray-900">โปรแกรมและคู่แข่งขัน</h2><p class="text-xs text-gray-500 mt-1">เพิ่มคู่แข่งขันได้แม้รายการยังไม่มีโปรแกรม ระบบจะบันทึกกลับไปยังตาราง <code>matches</code> ชุดเดียวกับระบบหลัก</p></div>
+        <div class="px-5 py-4 border-b border-gray-100"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-extrabold text-gray-900">โปรแกรมและคู่แข่งขัน</h2><p class="text-xs text-gray-500 mt-1">เพิ่มคู่แข่งขันได้แม้รายการยังไม่มีโปรแกรม ระบบจะบันทึกกลับไปยังตาราง <code>matches</code> ชุดเดียวกับระบบหลัก</p></div>${Object.keys(simulationResults).length ? `<button type="button" data-clear-all-simulations class="px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-bold">ล้างผลจำลองทั้งหมด (${Object.keys(simulationResults).length})</button>` : ''}</div><div class="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800">🧪 <b>โหมดจำลองผลการแข่งขัน</b> ทดลองกรอกผลได้เหมือนแบบฟอร์มผลการแข่งขัน ข้อมูลจะเก็บเฉพาะในเครื่องนี้ ไม่ส่งเข้าฐานข้อมูลและไม่กระทบอันดับจริง</div></div>
         <div class="overflow-x-auto"><table class="w-full min-w-[1120px] text-sm"><thead class="bg-gray-50 text-gray-500"><tr><th class="p-3 text-left">รอบ</th><th class="p-3 text-left">ทีม A</th><th class="p-3 text-left">ทีม B</th><th class="p-3 text-left">วันที่</th><th class="p-3 text-left">เวลา</th><th class="p-3 text-left">สถานที่</th><th class="p-3 text-left">หมายเหตุ</th><th class="p-3 text-right">สถานะ</th><th class="p-3"></th></tr></thead>
-          <tbody>${rows.map((row, index) => { const locked = !canEdit || isLockedMatch(row); const key = row.id || row._draftKey || `draft-${index}`; return `<tr data-match-row="${esc(key)}" data-match-id="${esc(row.id || '')}" class="border-t border-gray-100 align-top ${row._draftKey ? 'bg-indigo-50/40' : ''}">
+          <tbody>${rows.map((row, index) => { const locked = !canEdit || isLockedMatch(row); const key = row.id || row._draftKey || `draft-${index}`; const sim = simulationFor(row); return `<tr data-match-row="${esc(key)}" data-match-id="${esc(row.id || '')}" class="border-t border-gray-100 align-top ${row._draftKey ? 'bg-indigo-50/40' : ''}">
             <td class="p-2"><input data-field="round_name" value="${esc(row.round_name || 'รอบแรก')}" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}><input data-field="round" type="number" min="1" value="${Number(row.round || 1)}" class="mt-1 w-16 rounded-lg border border-gray-300 px-2 py-1 text-xs" ${locked ? 'disabled' : ''}></td>
-            <td class="p-2"><select data-field="team_a_color_id" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm bg-white" ${locked ? 'disabled' : ''}>${colorOptions(colors, sport, row.team_a_color_id)}</select></td>
-            <td class="p-2"><select data-field="team_b_color_id" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm bg-white" ${locked ? 'disabled' : ''}>${colorOptions(colors, sport, row.team_b_color_id)}</select></td>
+            <td class="p-2">${colorOptions(colors, sport, row.team_a_color_id, 'team_a_color_id', locked)}</td>
+            <td class="p-2">${colorOptions(colors, sport, row.team_b_color_id, 'team_b_color_id', locked)}</td>
             <td class="p-2"><input data-field="scheduled_date" type="date" value="${esc(row.scheduled_date || '')}" class="rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
             <td class="p-2"><input data-field="scheduled_time" type="time" value="${esc(timeValue(row.scheduled_time))}" class="rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
             <td class="p-2"><input data-field="venue" value="${esc(row.venue || sport.venue || '')}" class="w-40 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
             <td class="p-2"><input data-field="note" value="${esc(row.note || '')}" placeholder="ข้อมูลเพิ่มเติม" class="w-44 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
-            <td class="p-2 text-right whitespace-nowrap"><span class="inline-flex px-2 py-1 rounded-full text-xs font-bold ${row.status === 'done' ? 'bg-emerald-50 text-emerald-700' : row.status === 'live' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}">${esc(row.status || 'pending')}</span>${row.score_a != null || row.score_b != null ? `<div class="text-xs text-gray-500 mt-1">ผล ${esc(row.score_a ?? '-')} : ${esc(row.score_b ?? '-')}</div>` : ''}</td>
-            <td class="p-2 text-right">${locked ? '<span class="text-xs text-gray-400">ล็อก</span>' : '<button data-save-match class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700">บันทึก</button>'}</td>
+            <td class="p-2 text-right whitespace-nowrap"><span class="inline-flex px-2 py-1 rounded-full text-xs font-bold ${row.status === 'done' ? 'bg-emerald-50 text-emerald-700' : row.status === 'live' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}">${esc(row.status || 'pending')}</span>${row.score_a != null || row.score_b != null ? `<div class="text-xs text-gray-500 mt-1">ผล ${esc(row.score_a ?? '-')} : ${esc(row.score_b ?? '-')}</div>` : ''}${sim ? `<div class="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-700">🧪 ${esc(simulationStatusLabel(sim.status))} ${esc(sim.score_a ?? '')}:${esc(sim.score_b ?? '')}</div>` : ''}</td>
+            <td class="p-2 text-right"><div class="flex flex-col items-end gap-1.5">${locked ? '<span class="text-xs text-gray-400">ล็อก</span>' : '<button data-save-match class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700">บันทึก</button>'}${row.id ? `<button type="button" data-simulate-match class="px-3 py-2 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-xs font-bold hover:bg-violet-100">🧪 ${sim ? 'แก้ผลจำลอง' : 'จำลองผล'}</button>${sim ? '<button type="button" data-clear-simulation class="text-[11px] text-rose-600 hover:underline">ล้างจำลอง</button>' : ''}` : ''}</div></td>
           </tr>`}).join('') || `<tr><td colspan="9" class="p-10 text-center text-gray-400">ยังไม่มีโปรแกรมการแข่งขัน — กด “เพิ่มคู่แข่งขัน” เพื่อระบุคู่แข่งขันและเวลา</td></tr>`}</tbody></table></div>
       </div>
     </section>`
 
+    el.querySelectorAll('[data-color-picker]').forEach(picker => {
+      const trigger = picker.querySelector('[data-color-trigger]')
+      const menu = picker.querySelector('[data-color-menu]')
+      trigger?.addEventListener('click', e => {
+        e.stopPropagation()
+        el.querySelectorAll('[data-color-menu]').forEach(other => { if (other !== menu) other.classList.add('hidden') })
+        menu?.classList.toggle('hidden')
+      })
+      picker.querySelectorAll('[data-color-option]').forEach(option => option.addEventListener('click', e => {
+        e.stopPropagation()
+        const selected = option.dataset.colorOption || ''
+        const hidden = picker.parentElement?.querySelector(`input[data-field="${picker.dataset.colorPicker}"]`)
+        if (hidden) hidden.value = selected
+        const color = colorById(colors, selected)
+        if (trigger) {
+          const hex = _validHexColor(color?.hex_color)
+          trigger.innerHTML = `${colorIdentityLabel(color)}<span class="text-xs text-slate-400">⌄</span>`
+          trigger.style.borderColor = color ? `${hex}66` : '#d1d5db'
+          trigger.style.background = color ? `${hex}12` : '#ffffff'
+        }
+        menu?.classList.add('hidden')
+      }))
+    })
+    el.querySelectorAll('[data-simulate-match]').forEach(button => button.addEventListener('click', () => {
+      const row = rows.find(item => String(item.id) === String(button.closest('[data-match-row]')?.dataset.matchId))
+      if (row) openSimulation(row, sport)
+    }))
+    el.querySelectorAll('[data-clear-simulation]').forEach(button => button.addEventListener('click', () => {
+      const id = button.closest('[data-match-row]')?.dataset.matchId
+      if (!id) return
+      delete simulationResults[String(id)]
+      _writeCompetitionSimulations(event.id, simulationResults)
+      draw(); toast('ล้างผลจำลองแล้ว')
+    }))
+    el.querySelector('[data-clear-all-simulations]')?.addEventListener('click', () => {
+      if (!window.confirm('ต้องการล้างผลจำลองของกิจกรรมนี้ทั้งหมดหรือไม่?')) return
+      simulationResults = {}
+      _writeCompetitionSimulations(event.id, simulationResults)
+      draw(); toast('ล้างผลจำลองทั้งหมดแล้ว')
+    })
     el.querySelectorAll('[data-competition-gender]').forEach(button => button.addEventListener('click', () => {
       selectedGender = button.dataset.competitionGender
       selectedSportId = sports.find(s => normalizeGender(s.gender) === selectedGender)?.id || null
