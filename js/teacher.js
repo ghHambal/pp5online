@@ -26,7 +26,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.683'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsCompetitionManager, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.753'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -256,6 +256,7 @@ const ROUTES = {
   'shirt-summary': () => renderShirtSummary(),
   'sports-fund-admin': () => renderSportsFundAdmin(),
   'sports-overview-admin': () => renderSportsOverviewAdmin(),
+  'sports-competition-manager': () => renderSportsCompetitionManager(),
   'sports-evaluation': () => renderSportsEvaluationWorkspace(),
   'shirt-vote-settings': () => renderShirtVoteSettings(),
   'shirt-vote-dashboard': () => renderShirtVoteDashboard(),
@@ -652,6 +653,7 @@ async function _applyRoleMenus() {
     campAccessRes,
     sportsMembershipsRes,
     activeEventRes,
+    sportsCompetitionRes,
     qrManagerRes,
     regradeCfg,
     regradePendingRes,
@@ -663,6 +665,7 @@ async function _applyRoleMenus() {
     safe(supabase.rpc('get_terangganu_access'), { data: null }),
     safe(supabase.from('sports_team_memberships').select('id,role,permissions').eq('profile_id', _teacher?.profile_id).eq('is_active', true), { data: [] }),
     safe(supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle(), { data: null }),
+    safe(supabase.from('sports').select('id,event_id').eq('responsible_teacher_id', _teacher?.profile_id).eq('is_active', true), { data: [] }),
     safe(supabase.from('qr_reissue_managers').select('profile_id').eq('profile_id', _teacher?.profile_id).maybeSingle(), { data: null }),
     safe(getRegradeConfig(), {}),
     _teacher ? safe(supabase.from('regrade_subjects').select('id', { count: 'exact', head: true }).eq('teacher_id', _teacher.id).eq('status', 'จำนงแล้ว'), { count: 0 }) : Promise.resolve({ count: 0 }),
@@ -721,6 +724,9 @@ async function _applyRoleMenus() {
   toggle('menu-my-team', sportsMemberships.length > 0)
 
   const isSportsManager = _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
+  const activeEventId = activeEventRes?.data?.id
+  const hasSportsCompetitionAssignment = (sportsCompetitionRes?.data || []).some(row => !activeEventId || row.event_id === activeEventId)
+  toggle('menu-sports-competition-manager', !!(isSportsManager || hasSportsCompetitionAssignment))
   const canViewSportsShirtSummary = isSportsManager || sportsMemberships.some(m => m.role === 'lead_teacher' || m.permissions?.shirt_summary === true)
   toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
   toggle('menu-sports-fund-admin', !!isSportsManager)
@@ -756,6 +762,7 @@ async function _applyRoleMenus() {
     { key: 'shirt-summary',      show: !!canViewSportsShirtSummary,           emoji: '📦', label: 'สรุปยอด<br>เสื้อกีฬาสี',     nav: 'shirt-summary' },
     { key: 'sports-fund',        show: !!isSportsManager,                     emoji: '💰', label: 'บัญชีเงิน<br>กีฬาสี',        nav: 'sports-fund-admin' },
     { key: 'sports-overview',    show: !!isSportsManager,                     emoji: '📊', label: 'ภาพรวม<br>กีฬาสี',          nav: 'sports-overview-admin' },
+    { key: 'sports-competition-manager', show: !!(isSportsManager || hasSportsCompetitionAssignment), emoji: '🏟️', label: 'รายการแข่งขัน<br>ของฉัน', nav: 'sports-competition-manager' },
     { key: 'sports-evaluation',  show: !!isSportsEvaluator,                   emoji: '🧑‍⚖️', label: 'ประเมิน<br>กีฬาสี',         nav: 'sports-evaluation' },
     { key: 'shirt-vote',         show: !!(isSportsManager || isShirtVoteManager), emoji: '🗳️', label: 'ผลโหวต<br>แบบเสื้อ',    nav: 'shirt-vote-dashboard' },
     { key: 'qr-print',           show: _isQrReissueManager,                   emoji: '🎫', label: 'พิมพ์/คำขอ<br>QR',         nav: 'student-qr-print' },

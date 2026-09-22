@@ -638,7 +638,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     regrade: ['#E5E1DA', '#B3A990'], sports: ['#FDD9B5', '#E8865C'],
     certificates: ['#FCE7A8', '#DDAE3F'], 'advisor-students': ['#B9EAF0', '#5CB8C4'],
     'my-team': ['#FBD0D6', '#E0616F'], 'shirt-summary': ['#E4E4E7', '#9C9CA3'],
-    'sports-fund': ['#C8ECC9', '#67B96A'], 'sports-overview': ['#C6E6FA', '#4F9BD6'], 'sports-evaluation': ['#FBE1C6', '#D68A3F'], 'shirt-vote': ['#E2D3F5', '#9663D1'],
+    'sports-fund': ['#C8ECC9', '#67B96A'], 'sports-overview': ['#C6E6FA', '#4F9BD6'], 'sports-competition-manager': ['#D9E7F8', '#4C86C6'], 'sports-evaluation': ['#FBE1C6', '#D68A3F'], 'shirt-vote': ['#E2D3F5', '#9663D1'],
     'qr-print': ['#C6E6FA', '#4F9BD6'], 'prayer-score': ['#B7ECDB', '#3F9C7E'],
   }
   const sidebarTiles = (window._teacherOverviewSystems || [])

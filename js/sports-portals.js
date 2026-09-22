@@ -1800,6 +1800,123 @@ export async function renderSportsFundAdmin() {
   } catch(e) { console.error(e); el.innerHTML=missing() }
 }
 
+// หน้าจัดการโปรแกรมการแข่งขันสำหรับครูผู้รับผิดชอบรายการ — อ่าน/เขียนข้อมูลชุดเดียวกับ AZIZGAMES
+// โดยการเขียนคู่แข่งขันทั้งหมดผ่าน RPC ที่ตรวจ responsible_teacher_id และวันปิดแก้ไขในฐานข้อมูล
+export async function renderSportsCompetitionManager() {
+  const el = main()
+  el.innerHTML = '<div class="py-16 text-center text-gray-400">กำลังโหลดรายการแข่งขันที่รับผิดชอบ...</div>'
+  let selectedSportId = null
+  let draftRows = []
+  let workspace = null
+  let event = null
+
+  const reload = async () => {
+    const ctx = await context()
+    event = ctx.event
+    const { data, error } = await supabase.rpc('get_sports_competition_manager_workspace', { p_event: event.id })
+    if (error) throw error
+    workspace = data || {}
+    const sports = workspace.sports || []
+    if (!selectedSportId || !sports.some(s => s.id === selectedSportId)) selectedSportId = sports[0]?.id || null
+    draftRows = draftRows.filter(row => row.sport_id === selectedSportId)
+    draw()
+  }
+
+  const colorOptions = (colors, selected) => [`<option value="">ยังไม่ระบุ</option>`, ...(colors || []).map(c =>
+    `<option value="${esc(c.id)}" ${String(c.id) === String(selected || '') ? 'selected' : ''}>สี${esc(c.name)}</option>`
+  )].join('')
+  const dateLabel = value => value ? new Date(`${String(value).slice(0, 10)}T00:00:00+07:00`).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ยังไม่กำหนด'
+  const timeValue = value => value ? String(value).slice(0, 5) : ''
+  const isLockedMatch = row => ['live', 'done'].includes(row.status) || row.score_a != null || row.score_b != null || row.winner_team_color_id
+
+  const draw = () => {
+    const sports = workspace?.sports || []
+    const colors = workspace?.colors || []
+    const sport = sports.find(s => s.id === selectedSportId)
+    const canEdit = workspace?.can_edit === true
+    const cutoffText = workspace?.cutoff_at
+      ? new Date(workspace.cutoff_at).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
+      : 'ยังไม่ได้ตั้งวันปิดแก้ไข'
+    if (!sports.length) {
+      el.innerHTML = `<section class="max-w-5xl mx-auto bg-white rounded-3xl border border-gray-200 p-8 text-center shadow-sm">
+        <div class="text-5xl mb-3">🏟️</div><h1 class="text-2xl font-extrabold text-gray-800">รายการแข่งขันของฉัน</h1>
+        <p class="text-gray-500 mt-2">ยังไม่มีรายการแข่งขันที่กำหนดให้บัญชีครูนี้รับผิดชอบ</p>
+        <p class="text-xs text-gray-400 mt-3">การมอบหมายใช้ช่องครูผู้รับผิดชอบในรายการแข่งขันของระบบกีฬาสีหลัก</p></section>`
+      return
+    }
+    const matches = (workspace.matches || []).filter(m => m.sport_id === sport.id)
+    const drafts = draftRows.filter(m => m.sport_id === sport.id)
+    const rows = [...matches, ...drafts]
+    const registrations = (workspace.registrations || []).filter(r => r.sport_id === sport.id)
+    const teamCounts = colors.map(c => ({ ...c, count: registrations.filter(r => r.team_color_id === c.id).length })).filter(c => c.count > 0)
+    const editHint = canEdit
+      ? `<span class="text-emerald-700 bg-emerald-50 border border-emerald-200">เปิดแก้ไขถึง ${esc(cutoffText)}</span>`
+      : `<span class="text-amber-800 bg-amber-50 border border-amber-200">${workspace.is_admin ? 'โหมดแอดมิน: แก้ไขได้แม้เลยกำหนด' : `ปิดแก้ไขแล้ว (${esc(cutoffText)})`}</span>`
+
+    el.innerHTML = `<section class="max-w-7xl mx-auto space-y-5">
+      <div class="flex flex-wrap items-start justify-between gap-4">
+        <div><p class="text-sm text-indigo-600 font-bold">🏟️ ${esc(workspace.event?.name || event?.name || 'กีฬาสี')}</p>
+          <h1 class="text-2xl md:text-3xl font-extrabold text-gray-900 mt-1">รายการแข่งขันของฉัน</h1>
+          <p class="text-sm text-gray-500 mt-1">ตรวจสอบและปรับโปรแกรม คู่แข่งขัน เวลา และสถานที่ จากฐานข้อมูลกีฬาสีหลัก</p></div>
+        <div class="flex flex-wrap gap-2 text-xs font-bold">${editHint}</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm grid md:grid-cols-[minmax(0,1fr)_auto_auto] gap-3 items-end">
+        <label class="block"><span class="text-xs font-bold text-gray-500">เลือกรายการแข่งขันที่รับผิดชอบ</span>
+          <select id="competition-sport-select" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm bg-white">${sports.map(s => `<option value="${esc(s.id)}" ${s.id === sport.id ? 'selected' : ''}>${esc(s.code ? `${s.code} · ` : '')}${esc(s.name)}</option>`).join('')}</select></label>
+        <div class="rounded-xl bg-indigo-50 px-4 py-2.5 text-sm"><b class="text-indigo-700">${matches.length}</b><span class="text-gray-500 ml-1">คู่แข่งขัน</span></div>
+        <div class="rounded-xl bg-emerald-50 px-4 py-2.5 text-sm"><b class="text-emerald-700">${registrations.length}</b><span class="text-gray-500 ml-1">นักกีฬา</span></div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+        <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-xl font-extrabold text-gray-900">${esc(sport.name)}</h2>
+          <p class="text-sm text-gray-500 mt-1">${esc(sport.code || '')}${sport.gender ? ` · เพศ ${esc(sport.gender)}` : ''}${sport.venue ? ` · สถานที่เดิม ${esc(sport.venue)}` : ''}</p></div>
+          ${canEdit ? '<button id="competition-match-add" class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">＋ เพิ่มคู่แข่งขัน</button>' : '<span class="text-xs text-gray-500">ดูข้อมูลได้อย่างเดียว</span>'}</div>
+        <div class="mt-4 grid sm:grid-cols-2 lg:grid-cols-4 gap-2">${teamCounts.map(c => `<div class="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2 flex items-center gap-2"><span class="w-3 h-3 rounded-full" style="background:${esc(c.hex_color || '#64748b')}"></span><span class="text-sm">สี${esc(c.name)}</span><b class="ml-auto">${c.count}</b></div>`).join('') || '<p class="text-sm text-gray-400">ยังไม่มีรายชื่อนักกีฬาในรายการนี้</p>'}</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <div class="px-5 py-4 border-b border-gray-100"><h2 class="font-extrabold text-gray-900">โปรแกรมและคู่แข่งขัน</h2><p class="text-xs text-gray-500 mt-1">เพิ่มคู่แข่งขันได้แม้รายการยังไม่มีโปรแกรม ระบบจะบันทึกกลับไปยังตาราง <code>matches</code> ชุดเดียวกับระบบหลัก</p></div>
+        <div class="overflow-x-auto"><table class="w-full min-w-[1120px] text-sm"><thead class="bg-gray-50 text-gray-500"><tr><th class="p-3 text-left">รอบ</th><th class="p-3 text-left">ทีม A</th><th class="p-3 text-left">ทีม B</th><th class="p-3 text-left">วันที่</th><th class="p-3 text-left">เวลา</th><th class="p-3 text-left">สถานที่</th><th class="p-3 text-left">หมายเหตุ</th><th class="p-3 text-right">สถานะ</th><th class="p-3"></th></tr></thead>
+          <tbody>${rows.map((row, index) => { const locked = !canEdit || isLockedMatch(row); const key = row.id || row._draftKey || `draft-${index}`; return `<tr data-match-row="${esc(key)}" data-match-id="${esc(row.id || '')}" class="border-t border-gray-100 align-top ${row._draftKey ? 'bg-indigo-50/40' : ''}">
+            <td class="p-2"><input data-field="round_name" value="${esc(row.round_name || 'รอบแรก')}" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}><input data-field="round" type="number" min="1" value="${Number(row.round || 1)}" class="mt-1 w-16 rounded-lg border border-gray-300 px-2 py-1 text-xs" ${locked ? 'disabled' : ''}></td>
+            <td class="p-2"><select data-field="team_a_color_id" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm bg-white" ${locked ? 'disabled' : ''}>${colorOptions(colors, row.team_a_color_id)}</select></td>
+            <td class="p-2"><select data-field="team_b_color_id" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm bg-white" ${locked ? 'disabled' : ''}>${colorOptions(colors, row.team_b_color_id)}</select></td>
+            <td class="p-2"><input data-field="scheduled_date" type="date" value="${esc(row.scheduled_date || '')}" class="rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
+            <td class="p-2"><input data-field="scheduled_time" type="time" value="${esc(timeValue(row.scheduled_time))}" class="rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
+            <td class="p-2"><input data-field="venue" value="${esc(row.venue || sport.venue || '')}" class="w-40 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
+            <td class="p-2"><input data-field="note" value="${esc(row.note || '')}" placeholder="ข้อมูลเพิ่มเติม" class="w-44 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
+            <td class="p-2 text-right whitespace-nowrap"><span class="inline-flex px-2 py-1 rounded-full text-xs font-bold ${row.status === 'done' ? 'bg-emerald-50 text-emerald-700' : row.status === 'live' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}">${esc(row.status || 'pending')}</span>${row.score_a != null || row.score_b != null ? `<div class="text-xs text-gray-500 mt-1">ผล ${esc(row.score_a ?? '-')} : ${esc(row.score_b ?? '-')}</div>` : ''}</td>
+            <td class="p-2 text-right">${locked ? '<span class="text-xs text-gray-400">ล็อก</span>' : '<button data-save-match class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700">บันทึก</button>'}</td>
+          </tr>`}).join('') || `<tr><td colspan="9" class="p-10 text-center text-gray-400">ยังไม่มีโปรแกรมการแข่งขัน — กด “เพิ่มคู่แข่งขัน” เพื่อระบุคู่แข่งขันและเวลา</td></tr>`}</tbody></table></div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden"><div class="px-5 py-4 border-b border-gray-100"><h2 class="font-extrabold text-gray-900">รายชื่อนักกีฬาในรายการ</h2></div>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead class="bg-gray-50 text-gray-500"><tr><th class="p-3 text-left">รหัส</th><th class="p-3 text-left">ชื่อ</th><th class="p-3 text-left">สี</th><th class="p-3 text-left">เบอร์</th></tr></thead><tbody>${registrations.slice(0, 100).map(r => `<tr class="border-t border-gray-100"><td class="p-3 font-mono">${esc(r.student_code || '-')}</td><td class="p-3">${esc(r.student_name || '-')}</td><td class="p-3">สี${esc(r.team_color_name || '-')}</td><td class="p-3">${esc(r.jersey_number || '-')}</td></tr>`).join('') || '<tr><td colspan="4" class="p-8 text-center text-gray-400">ยังไม่มีรายชื่อนักกีฬา</td></tr>'}</tbody></table></div>${registrations.length > 100 ? `<p class="px-5 py-3 text-xs text-gray-400">แสดง 100 รายการแรกจาก ${registrations.length} รายการ</p>` : ''}</div>
+    </section>`
+
+    el.querySelector('#competition-sport-select')?.addEventListener('change', e => { selectedSportId = e.target.value; draftRows = []; draw() })
+    el.querySelector('#competition-match-add')?.addEventListener('click', () => { draftRows.push({ _draftKey: `draft-${Date.now()}-${draftRows.length}`, sport_id: sport.id, round: 1, round_name: 'รอบแรก', venue: sport.venue || '', status: 'pending' }); draw() })
+    el.querySelectorAll('[data-save-match]').forEach(button => button.addEventListener('click', async () => {
+      const rowEl = button.closest('[data-match-row]')
+      const payload = field => rowEl.querySelector(`[data-field="${field}"]`)?.value || null
+      button.disabled = true; button.textContent = 'กำลังบันทึก...'
+      const { error } = await supabase.rpc('upsert_sports_competition_match', {
+        p_event: event.id, p_sport: sport.id, p_match_id: rowEl.dataset.matchId || null,
+        p_round: Number(payload('round')) || 1, p_round_name: payload('round_name'),
+        p_team_a_color_id: payload('team_a_color_id'), p_team_b_color_id: payload('team_b_color_id'),
+        p_scheduled_date: payload('scheduled_date'), p_scheduled_time: payload('scheduled_time'),
+        p_venue: payload('venue'), p_note: payload('note'),
+      })
+      if (error) { toast(error.message || 'บันทึกโปรแกรมไม่สำเร็จ', 'error'); button.disabled = false; button.textContent = 'บันทึก'; return }
+      toast('บันทึกโปรแกรมการแข่งขันแล้ว')
+      draftRows = draftRows.filter(d => d._draftKey !== rowEl.dataset.matchRow)
+      await reload()
+    }))
+  }
+
+  try { await reload() } catch (error) {
+    console.error(error)
+    el.innerHTML = `<div class="max-w-3xl mx-auto py-16 text-center"><div class="text-4xl mb-3">⚠️</div><h2 class="text-xl font-bold text-gray-800">เปิดหน้าจัดการรายการแข่งขันไม่สำเร็จ</h2><p class="text-sm text-gray-500 mt-2">${esc(error?.message || 'ไม่พบสิทธิ์หรือข้อมูลกีฬาสี')}</p></div>`
+  }
+}
+
 // หน้า "ภาพรวมกีฬาสี" (แอดมิน) — สรุปเช็คชื่อรายวัน/ค่าบำรุง/บัญชีของทุกสีพร้อมกันในหน้าเดียว ไม่ต้อง
 // ไล่เปิดทีละสีเหมือนเดิม อ่านข้อมูลจาก RPC เดียว (get_sports_admin_overview, patch_sports_admin_overview.sql)
 // ที่รวมทุกตารางไว้แล้ว เพราะ RLS ของ sports_attendance/sports_team_dues กันไว้ตามทีมเป็นค่าเริ่มต้น
