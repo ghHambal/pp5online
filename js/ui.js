@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.755'
+import { APP_VERSION } from './version.js?v=10.22.756'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.756': [
+    '⚡ ปรับหน้ารายการแข่งขันให้ไม่โหลดรายชื่อนักกีฬาในครั้งแรก เพื่อลดจำนวนและภาระคิวรี่ของหน้าโปรแกรมการแข่งขัน',
+  ],
   '10.22.755': [
     '🏃 แยกรายการแข่งขันชาย/หญิง/รวม และกรองสีคู่แข่งขันให้ตรงกับเพศของรายการ พร้อมตรวจซ้ำที่ฐานข้อมูล',
   ],
