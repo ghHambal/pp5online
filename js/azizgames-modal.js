@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.760'
+import { APP_VERSION } from './version.js?v=10.22.761'
 import { supabase } from './supabase.js'
 
 const AZIZGAMES_PATH = 'azizgames.html'
@@ -50,7 +50,7 @@ export function openAzizGamesModal({ admin = false, manage = false, simulation =
       displayName: teacherName || 'ผู้ดูแลระบบ',
     }))
   } else if (simulation) {
-    // จำลองด้วยตัวแก้ไขผลจริง แต่ AppContext จะตัดการเขียนผล/เหรียญ/อีเวนต์ออกจากคิว
+    // จำลองด้วยตัวแก้ไขผลจริง แต่ AppContext จะตัดการเขียนผล/เหรียญ/อีเวนต์/รางวัลดีเด่นออกจากฐานข้อมูล
     // เหลือเฉพาะค่าตั้งกติกาครั้งแรกที่ผู้ใช้ยืนยันให้จำในฐานข้อมูลจริง
     localStorage.setItem('aziz_is_logged_in', 'true')
     localStorage.setItem('aziz_sports_admin_allowed', 'true')
