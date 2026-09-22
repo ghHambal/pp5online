@@ -463,27 +463,12 @@ export async function getVoteTally(electionConfigId) {
 }
 
 // เลือกผู้ชนะ (คะแนนสูงสุด) → ประกาศผล → แต่งตั้งเข้าตำแหน่งประธานสภา (council_members) อัตโนมัติ
-export async function publishElectionResults({ electionConfigId, gender, academicYear }) {
-  const candidates = await getCandidatesForElection(electionConfigId)
-  if (!candidates.length) throw new Error('ยังไม่มีผู้สมัครในการเลือกตั้งนี้')
-  const tally = await getVoteTally(electionConfigId)
-  const winner = candidates.reduce((best, c) => (tally[c.id] ?? 0) > (tally[best?.id] ?? -1) ? c : best, null)
-  if (!winner) throw new Error('ยังไม่มีผู้ลงคะแนนเลย')
-
-  const positions = await getCouncilPositions()
-  const electedPosition = positions.find(p => p.gender === gender && p.is_elected)
-  if (!electedPosition) throw new Error('ไม่พบตำแหน่งที่กำหนดให้มาจากการเลือกตั้งของสภา' + (gender === 'M' ? 'ชาย' : 'หญิง'))
-
-  const { error } = await supabase.from('council_election_config')
-    .update({ results_published_at: new Date().toISOString() }).eq('id', electionConfigId)
-  if (error) throw error
-
-  const { error: e2 } = await supabase.from('council_members').insert({
-    position_id: electedPosition.id, student_id: winner.student_id, academic_year: academicYear,
-    source: 'elected', status: 'active', term_start_date: new Date().toISOString().slice(0, 10),
+export async function publishElectionResults({ electionConfigId }) {
+  const { data, error } = await supabase.rpc('publish_council_election_results_atomic', {
+    p_election_config_id: electionConfigId,
   })
-  if (e2) throw e2
-  return winner
+  if (error) throw error
+  return data
 }
 
 // ─── เสนอคณะทำงาน (ประธาน) → แต่งตั้ง (ครูที่ปรึกษาสภา) — สเปคข้อ 8.6 ───────────────────────
