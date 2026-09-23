@@ -802,7 +802,7 @@ export async function getMyHomeroomRooms(teacherId) {
   if (!teacherId) return []
   const { data, error } = await supabase
     .from('homeroom_teachers')
-    .select('id, main_room, category')
+    .select('id, main_room, category, academic_year, semester')
     .eq('teacher_id', teacherId)
   if (error) throw error
   return data ?? []
@@ -1403,9 +1403,37 @@ export async function getSchoolHolidaysFull(academicYear, semester) {
 }
 
 export async function upsertHomeroomTeacher(payload) {
-  // A room/category/year/semester has one current advisor. Replacing the
-  // assignment prevents a teacher profile save from accumulating old rows.
-  return assignHomeroomTeacher(payload)
+  // Profile saves may add/remove the signed-in teacher's own rooms, but must
+  // never replace another teacher's current assignment. The admin page uses
+  // assignHomeroomTeacher() below when an intentional replacement is needed.
+  const { teacher_id, main_room, category, academic_year, semester } = payload
+  const { data: existing, error: lookupError } = await supabase
+    .from('homeroom_teachers')
+    .select('id, teacher_id, main_room, category, academic_year, semester')
+    .eq('main_room', main_room)
+    .eq('category', category)
+    .eq('academic_year', academic_year)
+    .eq('semester', semester)
+    .limit(1)
+  if (lookupError) throw lookupError
+
+  const current = existing?.[0]
+  if (current) {
+    if (Number(current.teacher_id) !== Number(teacher_id)) {
+      const error = new Error('ห้องนี้มีครูที่ปรึกษาอยู่แล้ว กรุณาให้แอดมินเป็นผู้เปลี่ยน')
+      error.code = 'HOMEROOM_ALREADY_ASSIGNED'
+      throw error
+    }
+    return current
+  }
+
+  const { data, error } = await supabase
+    .from('homeroom_teachers')
+    .insert({ teacher_id, main_room, category, academic_year, semester })
+    .select('id, teacher_id, main_room, category, academic_year, semester')
+    .single()
+  if (error) throw error
+  return data
 }
 
 export async function assignHomeroomTeacher(payload) {

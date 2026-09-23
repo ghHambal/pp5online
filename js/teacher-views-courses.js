@@ -4,7 +4,7 @@ import {
   getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
   getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
   getTeacherPackageAccess, getSystemConfig, getRoomsByGrade,
-  getUniqueRooms, getUniqueReligionRooms, getSubjectCoTeachers,
+  getUniqueRooms, getUniqueReligionRooms, getHomeroomTeachers, getSubjectCoTeachers,
   getCourseSyllabus, getLessonPlans,
 } from './api.js'
 import { supabase } from './supabase.js'
@@ -17,6 +17,73 @@ import {
   setContent, setTitle, setActiveNav, _htmlEsc, formatPhone,
   SELECT_CLS, INPUT_CLS, GRADE_OPTS, CREDIT_OPTS,
 } from './teacher-views-utils.js'
+
+function _renderAdvisorRoomChooser({ prefix, samaiRooms, religionRooms, homeroomRooms, assignments, teacherId, academicYear, semester }) {
+  const renderGroup = (category, rooms, name, label, icon) => {
+    const groupId = `${prefix}-advisor-rooms-${name}`
+    const inputName = `${prefix}-room-${name}`
+    const currentRooms = (homeroomRooms ?? []).filter(room =>
+      room.category === category &&
+      Number(room.academic_year) === Number(academicYear) &&
+      Number(room.semester) === Number(semester)
+    )
+    const assignmentByRoom = new Map(
+      (assignments ?? [])
+        .filter(row => row.category === category)
+        .map(row => [row.main_room, row])
+    )
+    return `<div id="${prefix}-room-${name}-wrap" class="space-y-2">
+      <button type="button" data-advisor-room-toggle="${groupId}" aria-expanded="false"
+        class="w-full flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 hover:bg-emerald-50 hover:border-emerald-200 px-4 py-3 text-left transition">
+        <span class="font-semibold text-sm text-gray-700">${icon} ครูที่ปรึกษา${label}</span>
+        <span class="flex items-center gap-2 text-xs text-gray-400">
+          <span data-advisor-room-count="${inputName}">0 ห้อง</span><span data-advisor-room-chevron="${groupId}">▾</span>
+        </span>
+      </button>
+      <div id="${groupId}" class="hidden border border-gray-200 rounded-xl p-3 space-y-1.5 max-h-52 overflow-y-auto">
+        <p class="text-[11px] text-gray-400 mb-2">เลือกได้มากกว่า 1 ห้อง · ห้องที่มีครูคนอื่นรับผิดชอบอยู่จะเลือกไม่ได้</p>
+        ${rooms.length ? rooms.map(room => {
+          const assignment = assignmentByRoom.get(room)
+          const isMine = assignment && Number(assignment.teacher_id) === Number(teacherId)
+          const occupied = !!assignment && !isMine
+          const owner = assignment?.teachers?.full_name || 'มีครูที่ปรึกษาแล้ว'
+          const checked = currentRooms.some(row => row.main_room === room)
+          return `<label class="flex items-start gap-2 text-sm rounded-lg px-2 py-1.5 ${occupied ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'cursor-pointer hover:bg-emerald-50 hover:text-emerald-700'}">
+            <input type="checkbox" name="${inputName}" value="${_htmlEsc(room)}" data-advisor-room="${inputName}" ${checked ? 'checked' : ''} ${occupied ? 'disabled' : ''} class="text-emerald-600 rounded mt-0.5" />
+            <span class="min-w-0 flex-1"><span class="block">${_htmlEsc(room)}</span>${occupied ? `<span class="block text-[11px] text-gray-400">🔒 ${_htmlEsc(owner)}</span>` : ''}</span>
+          </label>`
+        }).join('') : `<p class="text-xs text-gray-400">ยังไม่มีห้อง${label}</p>`}
+      </div>
+    </div>`
+  }
+
+  return `<div class="border-t border-gray-100 pt-4 space-y-3">
+    <label class="block text-sm font-semibold text-gray-700">🏠 ห้องที่ปรึกษา</label>
+    ${renderGroup('สามัญ', samaiRooms, 'samai', 'สามัญ', '🏫')}
+    ${renderGroup('ศาสนา', religionRooms, 'religion', 'ศาสนา', '🕌')}
+  </div>`
+}
+
+function _bindAdvisorRoomChooser(root = document) {
+  const refreshCounts = () => root.querySelectorAll('[data-advisor-room-count]').forEach(count => {
+    const inputName = count.dataset.advisorRoomCount
+    const selected = root.querySelectorAll(`input[data-advisor-room="${inputName}"]:checked`).length
+    count.textContent = `${selected} ห้อง`
+  })
+  root.querySelectorAll('[data-advisor-room-toggle]').forEach(button => {
+    button.addEventListener('click', () => {
+      const target = root.querySelector(`#${button.dataset.advisorRoomToggle}`)
+      if (!target) return
+      const willOpen = target.classList.contains('hidden')
+      target.classList.toggle('hidden', !willOpen)
+      button.setAttribute('aria-expanded', String(willOpen))
+      const chevron = root.querySelector(`[data-advisor-room-chevron="${button.dataset.advisorRoomToggle}"]`)
+      if (chevron) chevron.textContent = willOpen ? '▴' : '▾'
+    })
+  })
+  root.querySelectorAll('input[data-advisor-room]').forEach(input => input.addEventListener('change', refreshCounts))
+  refreshCounts()
+}
 
 export async function renderMyCourses(teacher) {
   setActiveNav('my-courses')
@@ -1913,11 +1980,12 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
       list.map(d=>`<option value="${d.dept_code}" ${d.dept_code===selectedCode?'selected':''}>${d.dept_name}</option>`).join('')
   }
 
-  // ห้องสามัญ = main_room ที่ขึ้นต้นด้วย ม.
-  const samaiRooms   = allRooms.filter(r => /^ม\./.test(r))
+  // ห้องสามัญใช้ main_room ทั้งหมด รวมถึงห้อง ปวช.
+  const samaiRooms   = allRooms
 
   // ห้องศาสนา = religion_room column ของนักเรียน
   const sadsanaRooms = religionRooms
+  const currentAssignments = await getHomeroomTeachers(curYear, curSem).catch(() => [])
   setContent(`<div class="max-w-lg mx-auto animate-fade">
     <!-- Header -->
     <div class="text-center mb-8">
@@ -1983,34 +2051,7 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
             </label>`).join('')}
           </div>
         </div>
-        <!-- ห้องที่ปรึกษาสามัญ -->
-        <div id="setup-room-samai-wrap">
-          <label class="block text-sm font-semibold text-gray-700 mb-1">
-            ห้องที่ปรึกษา <span class="font-normal text-gray-400">(สามัญ)</span>
-            <span class="text-xs text-gray-400 ml-1">— เลือกได้มากกว่า 1 ห้อง</span>
-          </label>
-          <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 max-h-36 overflow-y-auto">
-            ${samaiRooms.length ? samaiRooms.map(r=>`
-            <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700">
-              <input type="checkbox" name="setup-room-samai" value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='สามัญ')?'checked':''} class="text-emerald-600 rounded" />
-              <span>${r}</span>
-            </label>`).join('') : `<p class="text-xs text-gray-400">ยังไม่มีห้องสามัญ</p>`}
-          </div>
-        </div>
-        <!-- ห้องที่ปรึกษาศาสนา -->
-        <div id="setup-room-sadsana-wrap">
-          <label class="block text-sm font-semibold text-gray-700 mb-1">
-            ห้องที่ปรึกษา <span class="font-normal text-gray-400">(ศาสนา)</span>
-            <span class="text-xs text-gray-400 ml-1">— เลือกได้มากกว่า 1 ห้อง</span>
-          </label>
-          <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 max-h-36 overflow-y-auto">
-            ${sadsanaRooms.length ? sadsanaRooms.map(r=>`
-            <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700">
-              <input type="checkbox" name="setup-room-sadsana" value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='ศาสนา')?'checked':''} class="text-emerald-600 rounded" />
-              <span>${r}</span>
-            </label>`).join('') : `<p class="text-xs text-gray-400">ยังไม่มีห้องศาสนา</p>`}
-          </div>
-        </div>
+        ${_renderAdvisorRoomChooser({ prefix: 'setup', samaiRooms, religionRooms: sadsanaRooms, homeroomRooms, assignments: currentAssignments, teacherId: teacher?.id, academicYear: curYear, semester: curSem })}
         <button id="setup-save" type="submit"
           class="btn-primary w-full py-3 rounded-xl text-white text-sm font-semibold">
           บันทึกและเริ่มใช้งาน →
@@ -2024,23 +2065,20 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
   const _updateRoomVisibility = () => {
     const cat      = document.querySelector('input[name="setup-category"]:checked')?.value
     const wrapSamai   = document.getElementById('setup-room-samai-wrap')
-    const wrapSadsana = document.getElementById('setup-room-sadsana-wrap')
-    const selSamai    = document.getElementById('setup-room-samai')
-    const selSadsana  = document.getElementById('setup-room-sadsana')
+    const wrapSadsana = document.getElementById('setup-room-religion-wrap')
     if (cat === 'สามัญ') {
       wrapSamai?.classList.remove('hidden')
       wrapSadsana?.classList.add('hidden')
-      if (selSadsana) selSadsana.value = ''
     } else if (cat === 'ศาสนา') {
       wrapSadsana?.classList.remove('hidden')
       wrapSamai?.classList.add('hidden')
-      if (selSamai) selSamai.value = ''
     } else {
       wrapSamai?.classList.remove('hidden')
       wrapSadsana?.classList.remove('hidden')
     }
   }
   _updateRoomVisibility()  // set initial state
+  _bindAdvisorRoomChooser()
   document.querySelectorAll('input[name="setup-category"]').forEach(r =>
     r.addEventListener('change', () => {
       _updateRoomVisibility()
@@ -2067,7 +2105,7 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
       const cat     = document.querySelector('input[name="setup-category"]:checked')?.value || null
       const phone   = document.getElementById('setup-phone').value.trim() || null
       const roomsSamai   = [...document.querySelectorAll('input[name="setup-room-samai"]:checked')].map(el=>el.value)
-      const roomsSadsana = [...document.querySelectorAll('input[name="setup-room-sadsana"]:checked')].map(el=>el.value)
+      const roomsSadsana = [...document.querySelectorAll('input[name="setup-room-religion"]:checked')].map(el=>el.value)
 
       // อัปเดต teachers
       await updateMyProfile(teacher.id, { dept, subject_group: subg, category: cat, phone })
@@ -2075,7 +2113,7 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
       // sync ห้องที่ปรึกษา (delete ที่ไม่เลือก + upsert ที่เลือก)
       const { upsertHomeroomTeacher, deleteHomeroomTeacher } = await import('./api.js')
       const _syncRooms = async (category, selectedRooms) => {
-        const existing = homeroomRooms.filter(h => h.category === category)
+        const existing = homeroomRooms.filter(h => h.category === category && Number(h.academic_year) === curYear && Number(h.semester) === curSem)
         await Promise.all(existing.filter(h => !selectedRooms.includes(h.main_room)).map(h => deleteHomeroomTeacher(h.id).catch(()=>{})))
         await Promise.all(selectedRooms.map(room => upsertHomeroomTeacher({ teacher_id: teacher.id, main_room: room, category, academic_year: curYear, semester: curSem })))
       }
@@ -2103,6 +2141,10 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
     getUniqueRooms().catch(()=>[]),
     getUniqueReligionRooms().catch(()=>[]),
   ])
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const curYear = parseInt(cfg.academicYear ?? new Date().getFullYear() + 543)
+  const curSem = parseInt(cfg.semester ?? 1)
+  const currentAssignments = await getHomeroomTeachers(curYear, curSem).catch(() => [])
 
   // filter ก่อน dedup — เพื่อกัน SOC ของศาสนาไม่ให้ทับ SOC ของสามัญ (dept_code ซ้ำกัน)
   const teacherCat = teacher?.category
@@ -2194,32 +2236,7 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
             <option value="AGMVOC"  ${teacher?.subject_group==='AGMVOC' ?'selected':''}>ศาสนาปวช (AGMVOC)</option>
           </select>
         </div>
-        <!-- ห้องที่ปรึกษา -->
-        <div class="border-t border-gray-100 pt-4">
-          <label class="block text-sm font-semibold text-gray-700 mb-3">🏠 ห้องที่ปรึกษา</label>
-          <div class="space-y-3">
-            <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">ห้องสามัญ — เลือกได้มากกว่า 1 ห้อง</label>
-              <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 max-h-36 overflow-y-auto">
-                ${allSamaiRooms.length ? allSamaiRooms.map(r=>`
-                <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700">
-                  <input type="checkbox" name="prof-room-samai" value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='สามัญ')?'checked':''} class="text-emerald-600 rounded" />
-                  <span>${r}</span>
-                </label>`).join('') : `<p class="text-xs text-gray-400">ยังไม่มีห้องสามัญ</p>`}
-              </div>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">ห้องศาสนา — เลือกได้มากกว่า 1 ห้อง</label>
-              <div class="border border-gray-200 rounded-xl p-3 space-y-1.5 max-h-36 overflow-y-auto">
-                ${allReligionRooms.length ? allReligionRooms.map(r=>`
-                <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700">
-                  <input type="checkbox" name="prof-room-religion" value="${r}" ${homeroomRooms.find(h=>h.main_room===r&&h.category==='ศาสนา')?'checked':''} class="text-emerald-600 rounded" />
-                  <span>${r}</span>
-                </label>`).join('') : `<p class="text-xs text-gray-400">ยังไม่มีห้องศาสนา</p>`}
-              </div>
-            </div>
-          </div>
-        </div>
+        ${_renderAdvisorRoomChooser({ prefix: 'prof', samaiRooms: allSamaiRooms, religionRooms: allReligionRooms, homeroomRooms, assignments: currentAssignments, teacherId: teacher?.id, academicYear: curYear, semester: curSem })}
 
         <div class="flex gap-3 pt-2">
           <button type="button" onclick="window._navTo('overview')"
@@ -2254,6 +2271,7 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
     </div>
   </div>`)
   if (!teacher) return
+  _bindAdvisorRoomChooser()
 
   // phone format
   document.getElementById('prof-phone').addEventListener('input', e => {
@@ -2302,14 +2320,14 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
       // sync ห้องที่ปรึกษา (delete ที่ไม่เลือก + upsert ที่เลือก)
       const { upsertHomeroomTeacher, deleteHomeroomTeacher, getSystemConfig: _cfg } = await import('./api.js')
       const cfg = await _cfg().catch(()=>({}))
-      const curYear = parseInt(cfg.academicYear ?? new Date().getFullYear() + 543)
-      const curSem  = parseInt(cfg.semester ?? 1)
+      const saveYear = parseInt(cfg.academicYear ?? new Date().getFullYear() + 543)
+      const saveSem  = parseInt(cfg.semester ?? 1)
       const roomsSamai    = [...document.querySelectorAll('input[name="prof-room-samai"]:checked')].map(el=>el.value)
       const roomsReligion = [...document.querySelectorAll('input[name="prof-room-religion"]:checked')].map(el=>el.value)
       const _syncRooms = async (category, selectedRooms) => {
-        const existing = homeroomRooms.filter(h => h.category === category)
+        const existing = homeroomRooms.filter(h => h.category === category && Number(h.academic_year) === saveYear && Number(h.semester) === saveSem)
         await Promise.all(existing.filter(h => !selectedRooms.includes(h.main_room)).map(h => deleteHomeroomTeacher(h.id).catch(()=>{})))
-        await Promise.all(selectedRooms.map(room => upsertHomeroomTeacher({ teacher_id: teacher.id, main_room: room, category, academic_year: curYear, semester: curSem })))
+        await Promise.all(selectedRooms.map(room => upsertHomeroomTeacher({ teacher_id: teacher.id, main_room: room, category, academic_year: saveYear, semester: saveSem })))
       }
       await Promise.all([_syncRooms('สามัญ', roomsSamai), _syncRooms('ศาสนา', roomsReligion)])
 
