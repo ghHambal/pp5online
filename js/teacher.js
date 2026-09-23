@@ -726,7 +726,10 @@ async function _applyRoleMenus() {
   const isSportsManager = _hasAdminAccess || _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
   const activeEventId = activeEventRes?.data?.id
   const hasSportsCompetitionAssignment = (sportsCompetitionRes?.data || []).some(row => !activeEventId || row.event_id === activeEventId)
-  toggle('menu-sports-competition-manager', !!(isSportsManager || hasSportsCompetitionAssignment))
+  // ครูทุกคนที่มีบัญชี ปพ.5 ต้องเห็นหน้านี้เพื่อยื่นคำขอรับผิดชอบได้เอง
+  // ส่วนการดู/แก้ไขโปรแกรมจริงยังคุมที่ RPC ตามรายการที่แอดมินอนุมัติแล้ว
+  const canRegisterSportsCompetition = _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false && !!activeEventId
+  toggle('menu-sports-competition-manager', !!(isSportsManager || hasSportsCompetitionAssignment || canRegisterSportsCompetition))
   const canViewSportsShirtSummary = isSportsManager || sportsMemberships.some(m => m.role === 'lead_teacher' || m.permissions?.shirt_summary === true)
   toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
   toggle('menu-sports-fund-admin', !!isSportsManager)
@@ -762,7 +765,7 @@ async function _applyRoleMenus() {
     { key: 'shirt-summary',      show: !!canViewSportsShirtSummary,           emoji: '📦', label: 'สรุปยอด<br>เสื้อกีฬาสี',     nav: 'shirt-summary' },
     { key: 'sports-fund',        show: !!isSportsManager,                     emoji: '💰', label: 'บัญชีเงิน<br>กีฬาสี',        nav: 'sports-fund-admin' },
     { key: 'sports-overview',    show: !!isSportsManager,                     emoji: '📊', label: 'ภาพรวม<br>กีฬาสี',          nav: 'sports-overview-admin' },
-    { key: 'sports-competition-manager', show: !!(isSportsManager || hasSportsCompetitionAssignment), emoji: '🏟️', label: 'รายการแข่งขัน<br>ของฉัน', nav: 'sports-competition-manager' },
+    { key: 'sports-competition-manager', show: !!(isSportsManager || hasSportsCompetitionAssignment || canRegisterSportsCompetition), emoji: '🏟️', label: 'รายการแข่งขัน<br>ของฉัน', nav: 'sports-competition-manager' },
     { key: 'sports-evaluation',  show: !!isSportsEvaluator,                   emoji: '🧑‍⚖️', label: 'ประเมิน<br>กีฬาสี',         nav: 'sports-evaluation' },
     { key: 'shirt-vote',         show: !!(isSportsManager || isShirtVoteManager), emoji: '🗳️', label: 'ผลโหวต<br>แบบเสื้อ',    nav: 'shirt-vote-dashboard' },
     { key: 'qr-print',           show: _isQrReissueManager,                   emoji: '🎫', label: 'พิมพ์/คำขอ<br>QR',         nav: 'student-qr-print' },

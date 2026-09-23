@@ -1818,8 +1818,13 @@ export async function renderSportsCompetitionManager() {
   el.innerHTML = '<div class="py-16 text-center text-gray-400">กำลังโหลดรายการแข่งขันที่รับผิดชอบ...</div>'
   let selectedSportId = null
   let selectedGender = null
+  let registrationGender = null
+  let registrationSearch = ''
+  let registrationNote = ''
+  const registrationSelectedIds = new Set()
   let draftRows = []
   let workspace = null
+  let registrationWorkspace = null
   let event = null
   let simulationResults = {}
   const onSimulationSaved = e => {
@@ -1835,9 +1840,14 @@ export async function renderSportsCompetitionManager() {
     const ctx = await context()
     event = ctx.event
     simulationResults = _readCompetitionSimulations(event.id)
-    const { data, error } = await supabase.rpc('get_sports_competition_manager_workspace', { p_event: event.id })
+    const [{ data, error }, registrationResult] = await Promise.all([
+      supabase.rpc('get_sports_competition_manager_workspace', { p_event: event.id }),
+      supabase.rpc('get_sports_competition_registration_workspace', { p_event: event.id }),
+    ])
     if (error) throw error
     workspace = data || {}
+    registrationWorkspace = registrationResult?.error ? null : (registrationResult?.data || {})
+    if (registrationResult?.error) console.warn('โหลดคำขอลงทะเบียนรายการแข่งขันไม่สำเร็จ', registrationResult.error)
     const sports = workspace.sports || []
     const normalizeGender = s => s === 'M' || s === 'W' ? s : 'Coed'
     if (!sports.length) {
@@ -1857,6 +1867,89 @@ export async function renderSportsCompetitionManager() {
   const genderLabel = gender => gender === 'M' ? 'รายการชาย' : gender === 'W' ? 'รายการหญิง' : 'รายการรวม'
   const genderShortLabel = gender => gender === 'M' ? 'ชาย' : gender === 'W' ? 'หญิง' : 'รวม'
   const colorsForSport = (colors, sport) => (colors || []).filter(c => !sport?.gender || sport.gender === 'Coed' || c.gender === sport.gender || c.gender === 'Coed')
+  const registrationOptions = () => registrationWorkspace?.sports || []
+  const registrationStatus = option => {
+    const currentId = registrationWorkspace?.teacher_profile_id
+    if (option.responsible_teacher_id && String(option.responsible_teacher_id) === String(currentId)) return { label: 'รับผิดชอบอยู่แล้ว', className: 'text-emerald-700 bg-emerald-50', disabled: true }
+    if (option.responsible_teacher_id) return { label: `มีผู้รับผิดชอบแล้ว${option.responsible_teacher_name ? `: ${option.responsible_teacher_name}` : ''}`, className: 'text-slate-500 bg-slate-100', disabled: true }
+    if (option.request_status === 'pending') return { label: 'รอแอดมินอนุมัติ', className: 'text-amber-700 bg-amber-50', disabled: true }
+    if (option.request_status === 'rejected') return { label: 'ถูกปฏิเสธ — ขอใหม่ได้', className: 'text-rose-700 bg-rose-50', disabled: false }
+    return { label: 'ยังว่าง', className: 'text-indigo-700 bg-indigo-50', disabled: false }
+  }
+  const registrationSection = () => {
+    if (!registrationWorkspace || registrationWorkspace.is_admin) return ''
+    const options = registrationOptions()
+    if (!options.length) return ''
+    const genders = ['M', 'W', 'Coed'].filter(g => options.some(option => (option.gender === 'M' || option.gender === 'W' ? option.gender : 'Coed') === g))
+    if (!registrationGender || !genders.includes(registrationGender)) registrationGender = genders[0]
+    const visible = options.filter(option => {
+      const gender = option.gender === 'M' || option.gender === 'W' ? option.gender : 'Coed'
+      const haystack = `${option.code || ''} ${option.name || ''} ${option.category || ''}`.toLocaleLowerCase()
+      return gender === registrationGender && (!registrationSearch || haystack.includes(registrationSearch.toLocaleLowerCase()))
+    })
+    return `<section id="sports-competition-registration" class="bg-white border border-indigo-200 rounded-2xl p-5 shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">📝 ลงทะเบียนผู้รับผิดชอบรายการแข่งขัน</h2><p class="text-sm text-gray-500 mt-1">เลือกได้มากกว่า 1 รายการในคำขอเดียว ระบบจะใช้บัญชีครู ปพ.5 นี้ และรอแอดมินอนุมัติก่อนเปิดสิทธิ์</p></div><span id="registration-selected-count" class="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700">เลือกแล้ว ${registrationSelectedIds.size} รายการ</span></div>
+      <div class="mt-4 flex flex-wrap gap-2">${genders.map(g => `<button type="button" data-registration-gender="${g}" class="rounded-xl border px-4 py-2 text-sm font-bold ${registrationGender === g ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-200 bg-white text-gray-500 hover:border-indigo-300'}">${g === 'M' ? '👦 ' : g === 'W' ? '👧 ' : '👥 '}${genderShortLabel(g)} (${options.filter(option => (option.gender === 'M' || option.gender === 'W' ? option.gender : 'Coed') === g).length})</button>`).join('')}</div>
+      <label class="block mt-3"><span class="text-xs font-bold text-gray-500">ค้นหารายการแข่งขัน</span><input id="sports-registration-search" value="${esc(registrationSearch)}" placeholder="รหัสหรือชื่อรายการ" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm"></label>
+      <div class="mt-3 grid md:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">${visible.map(option => { const status = registrationStatus(option); const selected = registrationSelectedIds.has(String(option.id)); return `<label class="flex items-start gap-3 rounded-xl border p-3 ${status.disabled ? 'cursor-not-allowed opacity-70 bg-gray-50' : 'cursor-pointer hover:border-indigo-300'}"><input type="checkbox" data-registration-sport="${esc(option.id)}" class="mt-1 h-4 w-4 accent-indigo-600" ${selected ? 'checked' : ''} ${status.disabled ? 'disabled' : ''}><span class="min-w-0 flex-1"><span class="block font-bold text-sm text-gray-800">${esc(option.code ? `${option.code} · ` : '')}${esc(option.name)}</span><span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${status.className}">${esc(status.label)}</span></span></label>` }).join('') || '<p class="col-span-full py-6 text-center text-sm text-gray-400">ไม่พบรายการในกลุ่มนี้</p>'}</div>
+      <textarea id="sports-registration-note" rows="2" placeholder="หมายเหตุถึงแอดมิน (ถ้ามี)" class="mt-3 w-full resize-none rounded-xl border border-gray-300 px-3 py-2.5 text-sm">${esc(registrationNote)}</textarea>
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-3"><p class="text-xs text-gray-500">รายการที่มีผู้รับผิดชอบแล้วหรือรออนุมัติจะเลือกซ้ำไม่ได้</p><button type="button" id="sports-registration-submit" class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700">ส่งคำขอรายการที่เลือก</button></div>
+    </section>`
+  }
+  const pendingRegistrationSection = () => {
+    if (!registrationWorkspace?.is_admin) return ''
+    const requests = registrationWorkspace.pending_requests || []
+    return `<section class="bg-white border border-amber-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🔔 คำขอลงทะเบียนผู้รับผิดชอบ</h2><p class="text-sm text-gray-500 mt-1">อนุมัติทีละรายการได้ตามคำขอ ระบบจะผูกครูกับรายการและให้สิทธิ์จัดการโปรแกรมทันที</p></div><span class="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">รออนุมัติ ${requests.length} รายการ</span></div><div class="mt-4 space-y-2">${requests.map(request => `<div class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3"><div class="min-w-0 flex-1"><b class="block text-sm text-gray-900">${esc(request.sport_code ? `${request.sport_code} · ` : '')}${esc(request.sport_name || '—')}</b><p class="mt-1 text-xs text-gray-500">ครู ${esc(request.teacher_name || '—')}${request.teacher_code ? ` (${esc(request.teacher_code)})` : ''}</p>${request.teacher_note ? `<p class="mt-1 text-xs text-gray-500">หมายเหตุ: ${esc(request.teacher_note)}</p>` : ''}</div><div class="flex gap-2"><button type="button" data-review-registration="${esc(request.id)}" data-decision="approved" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">อนุมัติ</button><button type="button" data-review-registration="${esc(request.id)}" data-decision="rejected" class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">ปฏิเสธ</button></div></div>`).join('') || '<p class="py-6 text-center text-sm text-gray-400">ยังไม่มีคำขอรออนุมัติ</p>'}</div></section>`
+  }
+  const bindRegistrationControls = () => {
+    el.querySelectorAll('[data-registration-gender]').forEach(button => button.addEventListener('click', () => {
+      registrationGender = button.dataset.registrationGender || registrationGender
+      draw()
+    }))
+    el.querySelector('#sports-registration-search')?.addEventListener('input', event => {
+      registrationSearch = event.target.value || ''
+      draw()
+    })
+    el.querySelector('#sports-registration-note')?.addEventListener('input', event => { registrationNote = event.target.value || '' })
+    el.querySelectorAll('[data-registration-sport]').forEach(input => input.addEventListener('change', event => {
+      const id = String(event.target.dataset.registrationSport || '')
+      if (!id) return
+      if (event.target.checked) registrationSelectedIds.add(id)
+      else registrationSelectedIds.delete(id)
+      const count = el.querySelector('#registration-selected-count')
+      if (count) count.textContent = `เลือกแล้ว ${registrationSelectedIds.size} รายการ`
+    }))
+    el.querySelector('#sports-registration-submit')?.addEventListener('click', async buttonEvent => {
+      const button = buttonEvent.currentTarget
+      if (!registrationSelectedIds.size) { toast('กรุณาเลือกรายการแข่งขันอย่างน้อย 1 รายการ', 'error'); return }
+      registrationNote = el.querySelector('#sports-registration-note')?.value || ''
+      button.disabled = true; button.textContent = 'กำลังส่งคำขอ...'
+      const { error } = await supabase.rpc('submit_sports_competition_responsibility_request', {
+        p_event: event.id,
+        p_sport_ids: [...registrationSelectedIds],
+        p_teacher_note: registrationNote || null,
+      })
+      if (error) { toast(error.message || 'ส่งคำขอไม่สำเร็จ', 'error'); button.disabled = false; button.textContent = 'ส่งคำขอรายการที่เลือก'; return }
+      registrationSelectedIds.clear()
+      registrationNote = ''
+      toast('ส่งคำขอลงทะเบียนแล้ว รอแอดมินอนุมัติ')
+      await reload()
+    })
+    el.querySelectorAll('[data-review-registration]').forEach(button => button.addEventListener('click', async () => {
+      const decision = button.dataset.decision
+      const label = decision === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ'
+      if (!window.confirm(`ยืนยัน${label}คำขอนี้หรือไม่?`)) return
+      button.disabled = true
+      const { error } = await supabase.rpc('review_sports_competition_responsibility_request', {
+        p_request_id: button.dataset.reviewRegistration,
+        p_decision: decision,
+        p_reviewer_note: null,
+      })
+      if (error) { toast(error.message || `${label}คำขอไม่สำเร็จ`, 'error'); button.disabled = false; return }
+      toast(`${label}คำขอแล้ว`)
+      await reload()
+    }))
+  }
   const colorById = (colors, id) => (colors || []).find(c => String(c.id) === String(id)) || null
   const colorIdentity = (color, compact = false) => {
     if (!color) return `<span class="inline-flex items-center justify-center ${compact ? 'w-7 h-7' : 'w-9 h-9'} rounded-full bg-slate-100 text-slate-400 font-extrabold border border-slate-200">?</span>`
@@ -1948,11 +2041,14 @@ export async function renderSportsCompetitionManager() {
     const cutoffText = workspace?.cutoff_at
       ? new Date(workspace.cutoff_at).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
       : 'ยังไม่ได้ตั้งวันปิดแก้ไข'
+    const registrationMarkup = registrationSection()
+    const pendingRequestsMarkup = pendingRegistrationSection()
     if (!sports.length) {
-      el.innerHTML = `<section class="max-w-5xl mx-auto bg-white rounded-3xl border border-gray-200 p-8 text-center shadow-sm">
+      el.innerHTML = `<section class="max-w-7xl mx-auto space-y-5"><div class="bg-white rounded-3xl border border-gray-200 p-8 text-center shadow-sm">
         <div class="text-5xl mb-3">🏟️</div><h1 class="text-2xl font-extrabold text-gray-800">รายการแข่งขันของฉัน</h1>
-        <p class="text-gray-500 mt-2">ยังไม่มีรายการแข่งขันที่กำหนดให้บัญชีครูนี้รับผิดชอบ</p>
-        <p class="text-xs text-gray-400 mt-3">การมอบหมายใช้ช่องครูผู้รับผิดชอบในรายการแข่งขันของระบบกีฬาสีหลัก</p></section>`
+        <p class="text-gray-500 mt-2">ยังไม่มีรายการแข่งขันที่แอดมินอนุมัติให้บัญชีครูนี้รับผิดชอบ</p>
+        <p class="text-xs text-gray-400 mt-3">เลือกหลายรายการจากแบบฟอร์มด้านล่างเพื่อส่งคำขอให้แอดมินตรวจสอบ</p></div>${pendingRequestsMarkup}${registrationMarkup}</section>`
+      bindRegistrationControls()
       return
     }
     const matches = (workspace.matches || []).filter(m => m.sport_id === sport.id)
@@ -1970,6 +2066,8 @@ export async function renderSportsCompetitionManager() {
           <p class="text-sm text-gray-500 mt-1">ตรวจสอบและปรับโปรแกรม คู่แข่งขัน เวลา และสถานที่ จากฐานข้อมูลกีฬาสีหลัก</p></div>
         <div class="flex flex-wrap gap-2 text-xs font-bold">${editHint}</div>
       </div>
+      ${pendingRequestsMarkup}
+      ${registrationMarkup}
       <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div class="flex flex-wrap gap-2" role="tablist" aria-label="กรองเพศรายการแข่งขัน">${['M', 'W', 'Coed'].filter(g => sports.some(s => normalizeGender(s.gender) === g)).map(g => `<button type="button" data-competition-gender="${g}" class="px-4 py-2 rounded-xl text-sm font-bold border transition ${selectedGender === g ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'}">${g === 'M' ? '👦 ' : g === 'W' ? '👧 ' : '👥 '}${genderShortLabel(g)} <span class="text-xs opacity-75">(${sports.filter(s => normalizeGender(s.gender) === g).length})</span></button>`).join('')}</div>
         <label class="block"><span class="text-xs font-bold text-gray-500">เลือกรายการแข่งขันในกลุ่ม${esc(genderLabel(selectedGender))}</span>
