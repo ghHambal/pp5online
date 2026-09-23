@@ -10,6 +10,7 @@ const RANKING_CATEGORY_DEFS = [
   { key: 'parade_total', label: 'พาเหรด (สวนสนาม)', icon: '🕌' },
   { key: 'page_total', label: 'เพจ Facebook', icon: '📣' },
   { key: 'ibadat_total', label: 'คะแนนอีบาดัต', icon: '🕋' },
+  { key: 'medals', label: 'อันดับเหรียญ', icon: '🏅' },
   { key: 'grand_total', label: 'คะแนนรวมทั้งหมด', icon: '🏆' },
 ]
 
@@ -28,7 +29,7 @@ const state = {
   channel: null,
   refreshQueued: false,
   domReady: false,
-  rankingCategoryIndex: RANKING_CATEGORY_DEFS.length - 1,
+  rankingCategoryIndex: RANKING_CATEGORY_DEFS.findIndex(item => item.key === 'grand_total'),
   rankingSlideTimer: null,
 }
 
@@ -91,15 +92,6 @@ function sportById(id) {
   return state.sports.find(sport => sport.id === id) || null
 }
 
-function eventName() {
-  const rawName = String(state.event?.name || 'กีฬาสี').replace(/^\s*AZIZGAMES\s*/i, '')
-  const cleanName = rawName.replace(/\s*ออนไลน์\s*/g, ' ').replace(/\s{2,}/g, ' ').trim()
-  if (!cleanName) return `กีฬาสี ${state.event?.academic_year || 2569}`
-  return /(?:20|25)\d{2}/.test(cleanName) || !state.event?.academic_year
-    ? cleanName
-    : `${cleanName} ${state.event.academic_year}`
-}
-
 function eventDateLabel() {
   const start = formatThaiDate(state.event?.start_date)
   const end = formatThaiDate(state.event?.end_date)
@@ -109,10 +101,52 @@ function eventDateLabel() {
 
 function rankingRowsForGender(gender, categoryKey) {
   const source = state.colors.filter(color => color.gender === gender)
-  return source.map(color => {
+  const rows = source.map(color => {
     const total = state.totals.find(row => row.team_color_id === color.id)
     return { ...color, ...(total || {}), grand_total: Number(total?.grand_total || 0) }
-  }).sort((a, b) => Number(b[categoryKey] || 0) - Number(a[categoryKey] || 0) || Number(a.display_order) - Number(b.display_order))
+  })
+  return rows.sort((a, b) => categoryKey === 'medals'
+    ? Number(b.gold_count || 0) - Number(a.gold_count || 0)
+      || Number(b.silver_count || 0) - Number(a.silver_count || 0)
+      || Number(b.bronze_count || 0) - Number(a.bronze_count || 0)
+      || Number(b.medal_points || 0) - Number(a.medal_points || 0)
+      || Number(a.display_order) - Number(b.display_order)
+    : Number(b[categoryKey] || 0) - Number(a[categoryKey] || 0) || Number(a.display_order) - Number(b.display_order))
+}
+
+function medalSummary(row) {
+  return `🥇${Number(row.gold_count || 0)} · 🥈${Number(row.silver_count || 0)} · 🥉${Number(row.bronze_count || 0)}`
+}
+
+function recentCompletedMatch(gender) {
+  return state.matches
+    .filter(match => match.status === 'done')
+    .filter(match => {
+      const sport = sportById(match.sport_id)
+      return sport && (sport.gender === gender || sport.gender === 'Coed' || !sport.gender)
+    })
+    .sort((a, b) => `${b.scheduled_date || ''} ${b.scheduled_time || ''}`.localeCompare(`${a.scheduled_date || ''} ${a.scheduled_time || ''}`))[0] || null
+}
+
+function renderRecentResult(gender) {
+  const match = recentCompletedMatch(gender)
+  if (!match) return '<div class="recent-result recent-result-empty">ยังไม่มีรายการที่แข่งเสร็จ</div>'
+  const sport = sportById(match.sport_id) || {}
+  const teamA = teamById(match.team_a_color_id)
+  const teamB = teamById(match.team_b_color_id)
+  const score = `${match.score_a ?? '—'} : ${match.score_b ?? '—'}`
+  const date = match.scheduled_date ? `วันที่ ${formatThaiDate(match.scheduled_date)}` : 'วันที่ไม่ระบุ'
+  const time = match.scheduled_time ? `เวลา ${formatTime(match.scheduled_time)}` : ''
+  return `<div class="recent-result">
+    <div class="recent-result-heading"><span>✅ ผลการแข่งขันล่าสุด</span><small>${esc(genderLabel(gender))}</small></div>
+    <div class="recent-result-sport">${esc(sport.name || 'รายการแข่งขัน')}</div>
+    <div class="recent-result-teams">
+      <span class="recent-team">${teamLogo(teamA, 'recent-logo')}<b>สี${esc(teamA?.name || '—')}</b></span>
+      <strong class="recent-score">${esc(score)}</strong>
+      <span class="recent-team">${teamLogo(teamB, 'recent-logo')}<b>สี${esc(teamB?.name || '—')}</b></span>
+    </div>
+    <div class="recent-result-date">${date}${time ? ` · ${time}` : ''}</div>
+  </div>`
 }
 
 function matchesForGender(gender) {
@@ -144,23 +178,25 @@ function renderRanking(gender) {
   const category = RANKING_CATEGORY_DEFS[state.rankingCategoryIndex] || RANKING_CATEGORY_DEFS.at(-1)
   const rows = rankingRowsForGender(gender, category.key)
   const title = `อันดับ${genderLabel(gender)} · ${category.label}`
+  const isMedals = category.key === 'medals'
   const tone = gender === 'M' ? 'male' : 'female'
   return `<section class="panel ranking-panel ${tone}" data-ranking-gender="${gender}" aria-label="${title} ${category.label}">
     <div class="panel-heading">
       <span class="heading-icon" aria-hidden="true">${category.icon}</span>
       <h2>${title}</h2>
     </div>
-    <div class="ranking-head"><span>อันดับ</span><span>สี</span><span>ทีม</span><span>คะแนน</span></div>
+    <div class="ranking-head"><span>อันดับ</span><span>สี</span><span>ทีม</span><span>${isMedals ? 'เหรียญ' : 'คะแนน'}</span></div>
     <div class="ranking-list">
       ${rows.length ? rows.map((row, index) => `<div class="ranking-row">
         <strong class="rank-number">${index + 1}</strong>
         <span class="rank-color" style="--team-color:${esc(row.hex_color || '#64748b')}">${teamLogo(row, 'rank-logo')}</span>
         <span class="team-name">สี${esc(row.name)}</span>
-        <strong class="rank-points">${number(row[category.key])}</strong>
+        <strong class="rank-points ${isMedals ? 'medal-points' : ''}">${isMedals ? medalSummary(row) : number(row[category.key])}</strong>
       </div>`).join('') : '<div class="empty-state">ยังไม่มีคะแนน</div>'}
     </div>
     <div class="ranking-dots" aria-label="หมวดคะแนน">${RANKING_CATEGORY_DEFS.map((item, index) => `<i class="${index === state.rankingCategoryIndex ? 'active' : ''}" title="${esc(item.label)}"></i>`).join('')}</div>
     <div class="ranking-foot">อันดับตามหมวดคะแนนที่กำลังแสดง</div>
+    ${renderRecentResult(gender)}
   </section>`
 }
 
@@ -206,14 +242,14 @@ function renderHeader() {
     ? logo(state.eventLogo, 'โลโก้ประจำงาน AZIZGAMES', 'event-logo')
     : '<span class="event-logo event-logo-fallback" aria-label="โลโก้ประจำงาน">🏆</span>'
   return `<header class="live-header">
-    <div class="brand-lockup">${eventLogo}<div><div class="brand-title">AZIZGAMES <em>LIVE</em></div><div class="route-label">/azizgames-live</div></div></div>
-    <div class="event-title"><h1>${esc(eventName())}</h1><p class="event-date">วันที่ ${esc(eventDateLabel())}</p></div>
+    <div class="brand-lockup">${eventLogo}<div><div class="brand-title">AZIZGAMES <em>2026</em> <span class="live-word">LIVE</span></div><div class="route-label">/azizgames-live</div></div></div>
+    <div class="event-title"><h1 class="event-date-title">วันที่ ${esc(eventDateLabel())}</h1><p>การแข่งขันกีฬาสี</p></div>
     <div class="header-actions"><span class="connection ${liveClass}"><i></i>${esc(state.connection)}</span><a href="${asset('azizgames.html')}" target="_blank" rel="noopener">ระบบกีฬาสีหลัก ↗</a><a href="${asset('azizgames.html?tab=gallery')}" target="_blank" rel="noopener" class="gallery-link">📸 แกลเลอรี ↗</a></div>
   </header>`
 }
 
 function renderFooter() {
-  return `<footer class="live-footer"><span><i class="footer-dot"></i>กำลังแสดงข้อมูลล่าสุด</span><span>อัปเดต ${formatUpdated(state.lastUpdated)} น. · ${esc(state.connection)}</span><span>${esc(eventName())}</span></footer>`
+  return `<footer class="live-footer"><span><i class="footer-dot"></i>กำลังแสดงข้อมูลล่าสุด</span><span>อัปเดต ${formatUpdated(state.lastUpdated)} น. · ${esc(state.connection)}</span><span>AZIZGAMES 2026</span></footer>`
 }
 
 function renderLiveShell() {
