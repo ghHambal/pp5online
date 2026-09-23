@@ -23,6 +23,10 @@ button { font: inherit; }
 .live-header { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(260px, 1fr) minmax(360px, 1fr); align-items: center; gap: 18px; padding: 10px 12px 18px; }
 .brand-lockup { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .event-logo { width: 58px; height: 58px; object-fit: contain; border-radius: 16px; background: rgba(255,255,255,.95); padding: 5px; }
+.color-logo-strip { display: flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.header-team-logo { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 999px; overflow: hidden; border: 2px solid var(--team-color); background: var(--team-color); box-shadow: 0 0 0 2px rgba(255,255,255,.1); }
+.header-logo { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.logo-fallback { display: grid; place-items: center; color: #fff; background: var(--team-color, #475569); font-weight: 800; }
 .brand-title { font-size: clamp(22px, 2.4vw, 44px); font-weight: 800; letter-spacing: .02em; line-height: 1; white-space: nowrap; }
 .brand-title em { color: var(--gold); font-style: normal; }
 .route-label { color: var(--cyan); font-size: clamp(10px, .9vw, 16px); margin-top: 7px; }
@@ -46,6 +50,9 @@ button { font: inherit; }
 .female .panel-heading { color: #f9a8d4; background: linear-gradient(90deg, rgba(244,114,182,.18), transparent); }
 .panel-heading h2 { margin: 0; font-size: clamp(16px, 1.35vw, 26px); line-height: 1.15; }
 .heading-icon { font-size: clamp(22px, 2vw, 34px); }
+.ranking-category { display: flex; align-items: center; gap: 5px; margin: 5px 0 0; color: #bae6fd; font-size: clamp(9px, .7vw, 13px); font-weight: 700; }
+.female .ranking-category { color: #fbcfe8; }
+.ranking-category small { color: var(--muted); font-size: .85em; font-weight: 500; }
 
 .ranking-head, .ranking-row { display: grid; grid-template-columns: 42px 36px 1fr auto; align-items: center; gap: 7px; }
 .ranking-head { padding: 12px 12px 8px; color: var(--muted); font-size: clamp(9px, .7vw, 13px); font-weight: 700; }
@@ -56,6 +63,12 @@ button { font: inherit; }
 .team-name { font-size: clamp(11px, .9vw, 17px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rank-points { color: #fde68a; font-size: clamp(15px, 1.2vw, 23px); }
 .female .rank-points { color: #fbcfe8; }
+.ranking-dots { display: flex; justify-content: center; gap: 5px; padding: 8px 12px 0; }
+.ranking-dots i { width: 5px; height: 5px; border-radius: 999px; background: rgba(148,163,184,.4); }
+.ranking-dots i.active { width: 17px; background: var(--cyan); }
+.female .ranking-dots i.active { background: var(--pink); }
+.ranking-panel.category-slide .ranking-list { animation: ranking-slide-in .5s ease both; }
+@keyframes ranking-slide-in { from { opacity: .15; transform: translateX(18px); } to { opacity: 1; transform: translateX(0); } }
 .ranking-foot { margin: auto 12px 12px; padding-top: 12px; border-top: 1px dashed rgba(148,163,184,.28); color: var(--muted); font-size: clamp(9px, .65vw, 12px); text-align: center; }
 
 .competition-list { display: grid; gap: 10px; padding: 10px; }

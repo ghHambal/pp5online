@@ -1,9 +1,17 @@
 import { supabase } from './supabase.js'
 
 const APP_BASE = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/'
-const DEFAULT_LOGO = `${APP_BASE}pp5-form-logo.png`
 const EVENT_ID = new URLSearchParams(location.search).get('event')
 const POLL_MS = 20000
+const RANKING_SLIDE_MS = 8000
+const RANKING_CATEGORY_DEFS = [
+  { key: 'sports_total', label: 'คะแนนกีฬา (สากล + กรีฑา)', icon: '🏃' },
+  { key: 'folk_skill_total', label: 'กีฬาพื้นบ้าน / ทักษะ', icon: '🎯' },
+  { key: 'parade_total', label: 'พาเหรด (สวนสนาม)', icon: '🕌' },
+  { key: 'page_total', label: 'เพจ Facebook', icon: '📣' },
+  { key: 'ibadat_total', label: 'คะแนนอีบาดัต', icon: '🕋' },
+  { key: 'grand_total', label: 'คะแนนรวมทั้งหมด', icon: '🏆' },
+]
 
 const state = {
   event: null,
@@ -18,6 +26,9 @@ const state = {
   refreshTimer: null,
   channel: null,
   refreshQueued: false,
+  domReady: false,
+  rankingCategoryIndex: RANKING_CATEGORY_DEFS.length - 1,
+  rankingSlideTimer: null,
 }
 
 const root = document.getElementById('azizgames-live')
@@ -59,6 +70,12 @@ function logo(url, alt, className = 'team-logo') {
   return `<img class="${className}" src="${esc(url)}" alt="${esc(alt)}" loading="lazy" onerror="this.remove()">`
 }
 
+function teamLogo(team, className = 'team-logo') {
+  if (!team) return ''
+  if (team?.logo_url) return logo(team.logo_url, `โลโก้สี${team.name || ''}`, className)
+  return `<span class="${className} logo-fallback">${esc(String(team?.name || 'สี').slice(0, 1))}</span>`
+}
+
 function teamById(id) {
   return state.colors.find(color => color.id === id) || null
 }
@@ -71,12 +88,12 @@ function eventName() {
   return state.event?.name || 'กีฬาสี 2569'
 }
 
-function totalsForGender(gender) {
+function rankingRowsForGender(gender, categoryKey) {
   const source = state.colors.filter(color => color.gender === gender)
   return source.map(color => {
     const total = state.totals.find(row => row.team_color_id === color.id)
     return { ...color, ...(total || {}), grand_total: Number(total?.grand_total || 0) }
-  }).sort((a, b) => Number(b.grand_total) - Number(a.grand_total) || Number(a.display_order) - Number(b.display_order))
+  }).sort((a, b) => Number(b[categoryKey] || 0) - Number(a[categoryKey] || 0) || Number(a.display_order) - Number(b.display_order))
 }
 
 function matchesForGender(gender) {
@@ -105,24 +122,26 @@ function statusMeta(status) {
 }
 
 function renderRanking(gender) {
-  const rows = totalsForGender(gender)
+  const category = RANKING_CATEGORY_DEFS[state.rankingCategoryIndex] || RANKING_CATEGORY_DEFS.at(-1)
+  const rows = rankingRowsForGender(gender, category.key)
   const title = `ตารางอันดับ${genderLabel(gender)}`
   const tone = gender === 'M' ? 'male' : 'female'
-  return `<section class="panel ranking-panel ${tone}" aria-label="${title}">
+  return `<section class="panel ranking-panel ${tone}" data-ranking-gender="${gender}" aria-label="${title} ${category.label}">
     <div class="panel-heading">
       <span class="heading-icon" aria-hidden="true">🏆</span>
-      <h2>${title}</h2>
+      <div><h2>${title}</h2><p class="ranking-category"><span>${category.icon}</span>${esc(category.label)} <small>หมวด ${state.rankingCategoryIndex + 1}/${RANKING_CATEGORY_DEFS.length}</small></p></div>
     </div>
-    <div class="ranking-head"><span>อันดับ</span><span>สี</span><span>ทีม</span><span>คะแนนรวม</span></div>
+    <div class="ranking-head"><span>อันดับ</span><span>สี</span><span>ทีม</span><span>คะแนน</span></div>
     <div class="ranking-list">
       ${rows.length ? rows.map((row, index) => `<div class="ranking-row">
         <strong class="rank-number">${index + 1}</strong>
-        <span class="rank-color" style="--team-color:${esc(row.hex_color || '#64748b')}">${logo(row.logo_url, `โลโก้สี${row.name}`, 'rank-logo')}</span>
+        <span class="rank-color" style="--team-color:${esc(row.hex_color || '#64748b')}">${teamLogo(row, 'rank-logo')}</span>
         <span class="team-name">สี${esc(row.name)}</span>
-        <strong class="rank-points">${number(row.grand_total)}</strong>
+        <strong class="rank-points">${number(row[category.key])}</strong>
       </div>`).join('') : '<div class="empty-state">ยังไม่มีคะแนน</div>'}
     </div>
-    <div class="ranking-foot">คะแนนรวมจากผลการแข่งขันและคะแนนกิจกรรม</div>
+    <div class="ranking-dots" aria-label="หมวดคะแนน">${RANKING_CATEGORY_DEFS.map((item, index) => `<i class="${index === state.rankingCategoryIndex ? 'active' : ''}" title="${esc(item.label)}"></i>`).join('')}</div>
+    <div class="ranking-foot">อันดับตามหมวดคะแนนที่กำลังแสดง</div>
   </section>`
 }
 
@@ -138,9 +157,9 @@ function renderMatchCard(match, gender) {
     : ''
   const teams = teamA || teamB
     ? `<div class="match-teams">
-        <span class="team-chip" style="--team-color:${esc(teamA?.hex_color || '#475569')}">${logo(teamA?.logo_url, `โลโก้สี${teamA?.name || ''}`, 'match-logo')}<b>สี${esc(teamA?.name || '—')}</b></span>
+        <span class="team-chip" style="--team-color:${esc(teamA?.hex_color || '#475569')}">${teamLogo(teamA, 'match-logo')}<b>สี${esc(teamA?.name || '—')}</b></span>
         ${score || '<span class="versus">VS</span>'}
-        <span class="team-chip" style="--team-color:${esc(teamB?.hex_color || '#475569')}">${logo(teamB?.logo_url, `โลโก้สี${teamB?.name || ''}`, 'match-logo')}<b>สี${esc(teamB?.name || '—')}</b></span>
+        <span class="team-chip" style="--team-color:${esc(teamB?.hex_color || '#475569')}">${teamLogo(teamB, 'match-logo')}<b>สี${esc(teamB?.name || '—')}</b></span>
       </div>`
     : '<div class="no-team">รอประกาศคู่แข่งขัน</div>'
   return `<article class="match-card ${meta.className}">
@@ -156,17 +175,16 @@ function renderCompetition(gender) {
   const tone = gender === 'M' ? 'male' : 'female'
   const matches = matchesForGender(gender)
   const cards = matches.length ? matches.slice(0, 3) : sportsWithoutMatches(gender)
-  return `<section class="panel competition-panel ${tone}" aria-label="${title}">
+  return `<section class="panel competition-panel ${tone}" data-competition-gender="${gender}" aria-label="${title}">
     <div class="panel-heading"><span class="heading-icon" aria-hidden="true">🏃</span><h2>${title}</h2></div>
     <div class="competition-list">${cards.length ? cards.map(match => renderMatchCard(match, gender)).join('') : '<div class="empty-state">ยังไม่มีรายการแข่งขัน</div>'}</div>
   </section>`
 }
 
 function renderHeader() {
-  const logoUrl = state.event?.cover_image_url || DEFAULT_LOGO
   const liveClass = state.connection === 'SUBSCRIBED' || state.connection === 'เชื่อมต่อแล้ว' ? 'connected' : ''
   return `<header class="live-header">
-    <div class="brand-lockup">${logo(logoUrl, 'โลโก้กีฬาสี', 'event-logo')}<div><div class="brand-title">AZIZGAMES <em>LIVE</em></div><div class="route-label">/azizgames-live</div></div></div>
+    <div class="brand-lockup"><div class="color-logo-strip" aria-label="โลโก้ทีมสีกีฬาสี">${state.colors.slice(0, 8).map(color => `<span class="header-team-logo" style="--team-color:${esc(color.hex_color || '#64748b')}">${teamLogo(color, 'header-logo')}</span>`).join('')}</div><div><div class="brand-title">AZIZGAMES <em>LIVE</em></div><div class="route-label">/azizgames-live</div></div></div>
     <div class="event-title"><h1>${esc(eventName())}</h1><p>กีฬาสีออนไลน์ · หน้าจอถ่ายทอดสด</p></div>
     <div class="header-actions"><span class="connection ${liveClass}"><i></i>${esc(state.connection)}</span><a href="${asset('azizgames.html')}" target="_blank" rel="noopener">ระบบกีฬาสีหลัก ↗</a><a href="${asset('azizgames.html?tab=gallery')}" target="_blank" rel="noopener" class="gallery-link">📸 แกลเลอรี ↗</a></div>
   </header>`
@@ -176,18 +194,59 @@ function renderFooter() {
   return `<footer class="live-footer"><span><i class="footer-dot"></i>กำลังแสดงข้อมูลล่าสุด</span><span>อัปเดต ${formatUpdated(state.lastUpdated)} น. · ${esc(state.connection)}</span><span>${esc(eventName())}</span></footer>`
 }
 
+function renderLiveShell() {
+  root.innerHTML = `${renderHeader()}<div class="live-grid" data-live-grid>${renderRanking('M')}${renderCompetition('M')}${renderCompetition('W')}${renderRanking('W')}</div>${renderFooter()}`
+  state.domReady = true
+}
+
+function fragmentFrom(html) {
+  const wrapper = document.createElement('div')
+  wrapper.innerHTML = html
+  return wrapper.firstElementChild
+}
+
+function updateLiveDom({ animateRanking = false } = {}) {
+  if (!root || !state.domReady) return
+  const nextHeader = fragmentFrom(renderHeader())
+  const currentHeader = root.querySelector('.live-header')
+  if (nextHeader && currentHeader) currentHeader.innerHTML = nextHeader.innerHTML
+
+  for (const gender of ['M', 'W']) {
+    const currentRanking = root.querySelector(`[data-ranking-gender="${gender}"]`)
+    const nextRanking = fragmentFrom(renderRanking(gender))
+    if (currentRanking && nextRanking) {
+      currentRanking.innerHTML = nextRanking.innerHTML
+      currentRanking.classList.toggle('category-slide', animateRanking)
+      if (animateRanking) window.setTimeout(() => currentRanking.classList.remove('category-slide'), 550)
+    }
+
+    const currentCompetition = root.querySelector(`[data-competition-gender="${gender}"]`)
+    const nextCompetition = fragmentFrom(renderCompetition(gender))
+    if (currentCompetition && nextCompetition) {
+      const nextList = nextCompetition.querySelector('.competition-list')
+      const currentList = currentCompetition.querySelector('.competition-list')
+      if (nextList && currentList) currentList.innerHTML = nextList.innerHTML
+    }
+  }
+
+  const nextFooter = fragmentFrom(renderFooter())
+  const currentFooter = root.querySelector('.live-footer')
+  if (nextFooter && currentFooter) currentFooter.innerHTML = nextFooter.innerHTML
+}
+
 function render() {
   if (!root) return
-  if (state.loading) {
+  if (state.loading && !state.domReady) {
     root.innerHTML = '<div class="loading-screen"><div class="loading-spinner"></div><p>กำลังเชื่อมต่อข้อมูลกีฬาสี...</p></div>'
     return
   }
-  if (state.error) {
+  if (state.error && !state.domReady) {
     root.innerHTML = `<div class="error-screen"><div class="error-card"><h1>AZIZGAMES LIVE</h1><p>${esc(state.error)}</p><button type="button" id="retry-load">ลองเชื่อมต่อใหม่</button></div></div>`
     root.querySelector('#retry-load')?.addEventListener('click', loadData)
     return
   }
-  root.innerHTML = `${renderHeader()}<div class="live-grid">${renderRanking('M')}${renderCompetition('M')}${renderCompetition('W')}${renderRanking('W')}</div>${renderFooter()}`
+  if (!state.domReady) renderLiveShell()
+  else updateLiveDom()
 }
 
 async function queryData() {
@@ -213,16 +272,20 @@ async function queryData() {
 }
 
 async function loadData() {
-  state.loading = true
-  state.error = ''
-  render()
+  const firstLoad = !state.domReady && !state.event
+  if (firstLoad) {
+    state.loading = true
+    state.error = ''
+    render()
+  }
   try {
     await queryData()
+    state.error = ''
   } catch (error) {
     console.error('AZIZGAMES LIVE load failed:', error)
-    state.error = 'โหลดข้อมูลกีฬาสีไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่'
+    if (firstLoad) state.error = 'โหลดข้อมูลกีฬาสีไม่สำเร็จ กรุณาตรวจสอบการเชื่อมต่อแล้วลองใหม่'
   } finally {
-    state.loading = false
+    if (firstLoad) state.loading = false
     render()
   }
 }
@@ -259,16 +322,27 @@ function startPolling() {
   }, POLL_MS)
 }
 
+function startRankingSlideshow() {
+  window.clearInterval(state.rankingSlideTimer)
+  state.rankingSlideTimer = window.setInterval(() => {
+    if (document.hidden || !state.domReady) return
+    state.rankingCategoryIndex = (state.rankingCategoryIndex + 1) % RANKING_CATEGORY_DEFS.length
+    updateLiveDom({ animateRanking: true })
+  }, RANKING_SLIDE_MS)
+}
+
 async function init() {
   await loadData()
   if (!state.error) {
     subscribeRealtime()
     startPolling()
+    startRankingSlideshow()
   }
 }
 
 window.addEventListener('beforeunload', () => {
   window.clearInterval(state.refreshTimer)
+  window.clearInterval(state.rankingSlideTimer)
   if (state.channel) supabase.removeChannel(state.channel)
 })
 
