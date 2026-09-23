@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.764'
+import { APP_VERSION } from './version.js?v=10.22.767'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.767': [
+    '⚙️ เพิ่มตัวควบคุมช่วงเวลาการทำงานของ workload และ guardrail ป้องกันการลดขนาดระบบอัตโนมัติเร็วเกินไป',
+  ],
   '10.22.764': [
     '🔢 ปรับการปัดคะแนนรวมให้ใช้ค่าที่ปัดแล้วคำนวณเกรดจริง เช่น 69.5 ปัดเป็น 70 และได้เกรด 3.0',
   ],

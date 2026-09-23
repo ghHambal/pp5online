@@ -1,8 +1,23 @@
 import { supabase } from './supabase.js'
+import { watchWorkload } from './workload-scheduler.js'
 
 // ─── State Management ────────────────────────────────────────────────────────
 let studentCache = new Map() // student_id -> student object
 let recentRecords = []       // array of recent record objects today
+let monitorChannel = null
+let monitorPollingTimer = null
+let monitorGeneration = 0
+let monitorFetchInFlight = null
+const monitorTimeouts = new Set()
+
+function scheduleMonitorTimeout(callback, delay) {
+  const timer = setTimeout(() => {
+    monitorTimeouts.delete(timer)
+    callback()
+  }, delay)
+  monitorTimeouts.add(timer)
+  return timer
+}
 
 function getLocalDateString(d = new Date()) {
   const y = d.getFullYear()
@@ -84,14 +99,13 @@ async function init() {
     console.log(`Loaded ${studentCache.size} students into cache.`);
     setConnectionState('connected', 'เชื่อมต่อระบบแล้ว');
     
-    // 2. Fetch recent check-ins for today to populate table
-    await fetchTodayRecords()
-    
-    // 3. Subscribe to Realtime inserts on prayer_records
-    setupRealtimeSubscription()
-
-    // 4. Start backup polling loop (runs every 4 seconds)
-    startPollingLoop()
+    await watchWorkload('prayer_monitor', {
+      start: startPrayerWorkload,
+      stop: stopPrayerWorkload,
+      onStateChange: state => {
+        if (!state.active) setConnectionState('connecting', state.status === 'UNKNOWN' ? 'หยุดชั่วคราว: อ่านตารางเวลาไม่ได้' : 'อยู่นอกช่วงใช้งาน Monitor')
+      },
+    })
 
   } catch (err) {
     console.error('Initialization failed:', err)
@@ -121,7 +135,8 @@ function setConnectionState(state, text) {
 
 // ─── Realtime Engine ──────────────────────────────────────────────────────────
 function setupRealtimeSubscription() {
-  const channel = supabase.channel('prayer-realtime-monitor')
+  stopRealtimeSubscription()
+  monitorChannel = supabase.channel('prayer-realtime-monitor')
     .on('postgres_changes', {
       event: '*',
       schema: 'public',
@@ -139,7 +154,7 @@ function setupRealtimeSubscription() {
       }
     })
 
-  channel.subscribe((status) => {
+  monitorChannel.subscribe((status) => {
     if (status === 'SUBSCRIBED') {
       setConnectionState('connected', 'เชื่อมต่อระบบ Real-time แล้ว');
     } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
@@ -148,11 +163,38 @@ function setupRealtimeSubscription() {
   })
 }
 
+function stopRealtimeSubscription() {
+  if (!monitorChannel) return
+  supabase.removeChannel(monitorChannel)
+  monitorChannel = null
+}
+
+async function startPrayerWorkload() {
+  monitorGeneration += 1
+  await fetchTodayRecords()
+  setupRealtimeSubscription()
+  startPollingLoop()
+}
+
+async function stopPrayerWorkload() {
+  monitorGeneration += 1
+  if (monitorPollingTimer) {
+    clearInterval(monitorPollingTimer)
+    monitorPollingTimer = null
+  }
+  monitorTimeouts.forEach(timer => clearTimeout(timer))
+  monitorTimeouts.clear()
+  stopRealtimeSubscription()
+  monitorFetchInFlight = null
+  setConnectionState('connecting', 'อยู่นอกช่วงใช้งาน Monitor')
+}
+
 // ─── Backup Polling Engine ───────────────────────────────────────────────────
 function startPollingLoop() {
-  setInterval(async () => {
+  if (monitorPollingTimer) return
+  monitorPollingTimer = setInterval(async () => {
     try {
-      await fetchTodayRecords(true) // silent update check
+      if (!monitorFetchInFlight) await fetchTodayRecords(true) // silent update check
     } catch (err) {
       console.warn('Silent polling failed:', err)
     }
@@ -161,7 +203,10 @@ function startPollingLoop() {
 
 // ─── Fetch and Sync Records ──────────────────────────────────────────────────
 async function fetchTodayRecords(isSilent = false) {
-  try {
+  if (monitorFetchInFlight) return monitorFetchInFlight
+  const generation = monitorGeneration
+  monitorFetchInFlight = (async () => {
+   try {
     const { data, error } = await supabase
       .from('prayer_records')
       .select('id, student_id, main_room, status, check_date, location, input_method, same_room_flag, created_at')
@@ -171,6 +216,7 @@ async function fetchTodayRecords(isSilent = false) {
       .limit(50)
 
     if (error) throw error
+    if (generation !== monitorGeneration) return
 
     if (!data || data.length === 0) {
       recentRecords = []
@@ -185,13 +231,13 @@ async function fetchTodayRecords(isSilent = false) {
     if (newRecords.length > 0) {
       // Process new records sequentially with visual/sound feedback
       newRecords.forEach((r, index) => {
-        setTimeout(() => {
+        scheduleMonitorTimeout(() => {
           handleNewCheckIn(r, true)
         }, index * 600)
       })
       
       // Final full sync to guarantee state matches database exactly
-      setTimeout(() => {
+      scheduleMonitorTimeout(() => {
         recentRecords = data
         renderRecentList()
       }, newRecords.length * 600)
@@ -200,9 +246,11 @@ async function fetchTodayRecords(isSilent = false) {
       recentRecords = data
       renderRecentList()
     }
-  } catch (err) {
+   } catch (err) {
     if (!isSilent) throw err
-  }
+   }
+  })().finally(() => { monitorFetchInFlight = null })
+  return monitorFetchInFlight
 }
 
 // ─── Location Checking Helper ────────────────────────────────────────────────

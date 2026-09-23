@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { stripTypeScriptTypes } from 'node:module';
 import { emptySchedule, validateSchedule, scheduledTier } from '../supabase/functions/autoscale-tick/schedule.js';
+import { DEFAULT_GUARDRAIL, evaluateDownscaleGuardrail, holdAfterMediumConfirmation, normalizeGuardrail } from '../supabase/functions/autoscale-tick/guardrail.js';
 
 const raw = fs.readFileSync(new URL('../supabase/functions/autoscale-tick/index.ts', import.meta.url), 'utf8');
 const code = stripTypeScriptTypes(raw.replace(/^import .*\n/gm, '').replace('async function notify(title: string, message: string) {', 'async function notify(title: string, message: string) { return;'));
@@ -11,8 +12,8 @@ async function scenario({ config = active, state = {}, tier = 'ci_micro', health
   let patches = 0;
   let reads = 0;
   const store = { ...state };
-  const admin = { from: () => ({ select() { return this; }, eq(_key, value) { this.key = value; return this; }, async maybeSingle() { return { data: { value: JSON.stringify(this.key === 'autoscaleState' ? store : config) }, error: dbError ? new Error('db failed') : null }; }, async upsert(row) { Object.assign(store, JSON.parse(row.value)); return { error: null }; } }) };
-  const sandbox = vm.createContext({ console: { log() {}, error() {}, warn() {} }, Date, JSON, setTimeout, AbortSignal, emptySchedule, validateSchedule, scheduledTier, createClient: () => admin, Deno: { env: { get: key => key === 'SUPABASE_URL' ? 'https://test.supabase.co' : 'fake' }, serve() {} }, fetch: async (url, options = {}) => {
+  const admin = { from: () => ({ select(...args) { return args.length ? this : Promise.resolve({ data: [{ key: 'autoscaleLock' }], error: null }); }, eq(_key, value) { this.key = value; return this; }, lt() { return this; }, update() { return this; }, async maybeSingle() { return { data: { value: JSON.stringify(this.key === 'autoscaleState' ? store : config) }, error: dbError ? new Error('db failed') : null }; }, async upsert(row) { Object.assign(store, JSON.parse(row.value)); return { error: null }; } }) };
+  const sandbox = vm.createContext({ console: { log() {}, error() {}, warn() {} }, Date, JSON, setTimeout, AbortSignal, emptySchedule, validateSchedule, scheduledTier, DEFAULT_GUARDRAIL, evaluateDownscaleGuardrail, holdAfterMediumConfirmation, normalizeGuardrail, createClient: () => admin, Deno: { env: { get: key => key === 'SUPABASE_URL' ? 'https://test.supabase.co' : 'fake' }, serve() {} }, fetch: async (url, options = {}) => {
     if (options.method === 'PATCH') { patches++; return { ok: !failure, status: failure ? 429 : 200, text: async () => failure || '{}' }; }
     reads++;
     if (url.includes('/health')) return { ok: true, text: async () => JSON.stringify([{ status: healthy ? 'ACTIVE_HEALTHY' : 'UNHEALTHY' }]) };
@@ -41,5 +42,10 @@ result = await scenario({ tier: 'ci_large' });
 assert.equal(result.store.status, 'needs_attention'); assert.equal(result.patches(), 0);
 result = await scenario({ state: { pendingTier: 'ci_medium', lastRequestedAt: '2020-01-01T00:00:00Z' } });
 assert.equal(result.store.status, 'needs_attention'); assert.equal(result.patches(), 0);
+const downscaleConfig = { schemaVersion: 1, enabled: true, periods: [{ startDate: '2020-01-01', endDate: '2020-01-02', days: Array.from({ length: 7 }, () => ({ enabled: true, start: '00:00', end: '23:59' })) }] };
+result = await scenario({ config: downscaleConfig, tier: 'ci_medium', state: { lastHealthStatus: 'unknown', consecutiveHealthyChecks: 0 } });
+assert.equal(result.store.status, 'downgrade_deferred'); assert.equal(result.patches(), 0);
+result = await scenario({ config: downscaleConfig, tier: 'ci_medium', state: { lastHealthStatus: 'healthy', consecutiveHealthyChecks: 3 } });
+assert.equal(result.store.status, 'processing'); assert.equal(result.store.pendingTier, 'ci_micro'); assert.equal(result.patches(), 1);
 await scenario({ dbError: true });
-console.log('autoscale runtime: disabled, target, duplicate trigger, confirmation, 429, unknown tier, pending timeout and database failure passed');
+console.log('autoscale runtime: disabled, target, duplicate trigger, confirmation, guardrail defer/allow, 429, unknown tier, pending timeout and database failure passed');

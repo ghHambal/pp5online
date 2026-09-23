@@ -1,12 +1,16 @@
 import { supabase } from './supabase.js';
 import { showToast } from './ui.js';
 import { emptySchedule, validateSchedule, scheduledTier } from '../supabase/functions/autoscale-tick/schedule.js';
+import { normalizeGuardrail } from '../supabase/functions/autoscale-tick/guardrail.js';
 import { estimateComputeCost } from './autoscale-cost.js';
+import { WORKLOAD_FEATURES, saveWorkloadConfig } from './workload-scheduler.js';
+import { defaultWorkloadConfig, normalizeWorkloadConfig, workloadState } from './workload-schedule.js';
 
 const days = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 const dayButtonClass = enabled => `border rounded-xl px-4 py-2 min-w-[180px] text-left shadow-sm transition ${enabled ? 'bg-green-700 border-green-700 text-white hover:bg-green-800' : 'bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200'}`;
 const dayButtonContent = enabled => `<span class="block font-semibold">${enabled ? '🟢 เปิดใช้งาน' : '⚪ ปิดใช้งาน'}</span><span class="block text-xs mt-1">${enabled ? 'กดเพื่อปิดวันนี้' : 'กดเพื่อเปิดวันนี้'}</span>`;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
+const workloadDays = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 
 export async function renderAutoscaleSettings() {
   document.querySelectorAll('[data-nav]').forEach(el => {
@@ -18,15 +22,18 @@ export async function renderAutoscaleSettings() {
   const content = document.getElementById('main-content');
   content.innerHTML = '<p class="p-6">กำลังโหลดตารางเวลา...</p>';
   let config;
+  let workloadConfig;
   let state = {};
   let estimateDate = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
   try {
-    const { data, error } = await supabase.from('system_config').select('key,value,updated_at').in('key', ['autoscaleSchedule', 'autoscaleState']);
+    const { data, error } = await supabase.from('system_config').select('key,value,updated_at').in('key', ['autoscaleSchedule', 'autoscaleState', 'workloadSchedule']);
     if (error) throw error;
     const row = data.find(r => r.key === 'autoscaleSchedule');
-    config = row ? validateSchedule(JSON.parse(row.value)) : emptySchedule();
+    config = row ? { ...validateSchedule(JSON.parse(row.value)), guardrail: normalizeGuardrail(JSON.parse(row.value).guardrail) } : { ...emptySchedule(), guardrail: normalizeGuardrail() };
     const status = data.find(r => r.key === 'autoscaleState');
     state = status ? { ...JSON.parse(status.value), updatedAt: status.updated_at } : {};
+    const workloadRow = data.find(r => r.key === 'workloadSchedule');
+    workloadConfig = normalizeWorkloadConfig(workloadRow?.value ? JSON.parse(workloadRow.value) : defaultWorkloadConfig());
   } catch (error) {
     content.innerHTML = `<p class="p-6 text-red-600">โหลดไม่สำเร็จ: ${esc(error.message)}</p>`;
     return;
@@ -44,6 +51,7 @@ export async function renderAutoscaleSettings() {
         <p class="text-xs text-gray-500 mt-2">ระดับที่ระบบตรวจพบล่าสุด: ${esc(state.currentTier || 'ยังไม่มีข้อมูลใหม่')} · ตรวจล่าสุด: ${state.updatedAt ? esc(new Date(state.updatedAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })) : '—'}</p>
         <p class="text-xs text-gray-500 mt-1">${esc(state.lastAction || 'ยังไม่มีการปรับ')} ${state.lastError ? '· ' + esc(state.lastError) : ''}</p>
         <p class="text-xs text-gray-500 mt-1">สถานะงาน: ${esc(state.status || '—')} · คำสั่งที่รอยืนยัน: ${esc(state.pendingTier || 'ไม่มี')} · เว้นคำสั่งถึง: ${state.nextResizeAllowedAt ? esc(new Date(state.nextResizeAllowedAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })) : '—'}</p>
+        <p class="text-xs text-gray-500 mt-1">Guardrail: hold ${config.guardrail.minimumMediumHoldMinutes} นาที · healthy streak ${config.guardrail.healthyStreakRequired} รอบ · recovery lock ${config.guardrail.recoveryLockMinutes} นาที</p>
         <div class="flex flex-wrap gap-3 mt-4"><button id="as-enable" class="border rounded-xl px-4 py-2 ${config.enabled ? 'bg-green-700 border-green-700 text-white shadow-sm' : 'bg-white border-green-700 text-green-800'}">เปิดใช้งาน${config.enabled ? ' ✓' : ''}</button><button id="as-disable" class="border rounded-xl px-4 py-2 ${!config.enabled ? 'bg-gray-700 border-gray-700 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-700'}">ปิดใช้งาน${!config.enabled ? ' ✓' : ''}</button><button id="as-refresh" class="border rounded-xl px-4 py-2">รีเฟรชสถานะ</button></div>
       </div>
       <div class="bg-white border rounded-2xl p-5 shadow-sm">
@@ -54,6 +62,7 @@ export async function renderAutoscaleSettings() {
         <p class="text-xs text-gray-500 mt-2">Micro $0.01344/ชั่วโมง · Medium $0.0822/ชั่วโมง (USD ตรวจราคา 13 ก.ย. 2026) ก่อนหักเครดิต ไม่รวมแพ็กเกจ ภาษี ดิสก์ และค่าใช้งานอื่น เป็นประมาณตามตาราง ไม่ใช่ยอดบิลจริง และไม่รวมความคลาดเคลื่อนจากรอบตรวจ/ระยะปรับเครื่อง <a class="underline" href="https://supabase.com/docs/guides/platform/compute-and-disk" target="_blank" rel="noopener noreferrer">ราคาจาก Supabase</a></p>
       </div>
       <form id="as-form" class="space-y-4">
+        <section class="border rounded-2xl p-4 bg-amber-50"><h3 class="font-bold">🛡️ Downscale Guardrail</h3><p class="text-xs text-gray-600 mt-1">Schedule เป็นเพียง candidate; ระบบจะคง Medium หาก hold, health streak, recovery หรือ health state ยังไม่ปลอดภัย</p><div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3"><label class="text-sm">Minimum Medium Hold (นาที)<input name="minimumMediumHoldMinutes" type="number" min="0" max="1440" value="${config.guardrail.minimumMediumHoldMinutes}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">Healthy streak (รอบ)<input name="healthyStreakRequired" type="number" min="1" max="12" value="${config.guardrail.healthyStreakRequired}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">Recovery lock (นาที)<input name="recoveryLockMinutes" type="number" min="0" max="1440" value="${config.guardrail.recoveryLockMinutes}" class="block border rounded-lg p-2 w-full mt-1"></label></div></section>
         <div id="as-periods" class="space-y-4">${config.periods.map((period, index) => `<section class="bg-white border rounded-2xl p-5 shadow-sm" data-period="${index}">
           <div class="flex flex-wrap gap-3 items-end"><label>วันที่เริ่ม<input required type="date" name="startDate" value="${esc(period.startDate)}" class="block border rounded-lg p-2"></label><label>วันที่สิ้นสุด<input required type="date" name="endDate" value="${esc(period.endDate)}" class="block border rounded-lg p-2"></label><button type="button" data-remove="${index}" class="text-red-600 border rounded-lg p-2">ลบช่วงนี้</button></div>
           <div class="mt-4 space-y-2">${period.days.map((day, d) => `<div class="flex flex-wrap gap-3 items-center" data-day="${d}" data-enabled="${day.enabled}"><span class="w-20 font-medium">${days[d]}</span><button type="button" data-day-action class="${dayButtonClass(day.enabled)}">${dayButtonContent(day.enabled)}</button><input aria-label="เวลาเริ่ม${days[d]}" type="time" required name="start" value="${esc(day.start)}" class="border rounded-lg p-2"><span>ถึง</span><input aria-label="เวลาสิ้นสุด${days[d]}" type="time" required name="end" value="${esc(day.end)}" class="border rounded-lg p-2"></div>`).join('')}</div>
@@ -62,8 +71,28 @@ export async function renderAutoscaleSettings() {
         <div class="flex gap-3"><button type="button" id="as-add" class="border bg-white rounded-xl px-4 py-2">＋ เพิ่มช่วงวันที่</button><button type="submit" class="bg-indigo-700 text-white rounded-xl px-4 py-2">บันทึกตารางเวลา</button></div>
         <p class="text-xs text-gray-500">การตั้งค่าจะมีผลในรอบตรวจถัดไป (ปกติทุก 5 นาที) ไม่สั่งปรับเครื่องจากหน้านี้โดยตรง</p>
       </form>
+      <section class="bg-white border rounded-2xl p-5 shadow-sm">
+        <h2 class="font-bold text-lg">🎛️ Workload Control</h2>
+        <p class="text-sm text-gray-600 mt-2">ควบคุมเฉพาะ polling / live monitor ที่ไม่ใช่ business write. AUTO ใช้ตาราง, ON บังคับเปิด, OFF บังคับปิด. ระบบโหลดค่าครั้งแรกและ refresh แบบ cache ไม่ถามฐานข้อมูลทุกไม่กี่วินาที</p>
+        <div id="workload-controls" class="space-y-4 mt-4">${Object.entries(WORKLOAD_FEATURES).map(([key, meta]) => {
+          const feature = workloadConfig.features[key];
+          const state = workloadState(key, new Date(), workloadConfig);
+          const next = state.nextTransitionAt ? new Date(state.nextTransitionAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) : '—';
+          return `<section class="border rounded-2xl p-4" data-workload-feature="${key}">
+            <div class="flex flex-wrap justify-between gap-3"><div><h3 class="font-bold">${meta.label}</h3><p class="text-xs text-gray-500">${meta.description}</p></div><div class="text-right text-xs"><div class="font-bold">${state.status}</div><div class="text-gray-500">เปลี่ยนถัดไป: ${esc(next)}</div></div></div>
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3"><label class="text-sm">Mode<select name="mode" class="block border rounded-lg p-2 w-full mt-1"><option ${feature.mode === 'AUTO' ? 'selected' : ''}>AUTO</option><option ${feature.mode === 'ON' ? 'selected' : ''}>ON</option><option ${feature.mode === 'OFF' ? 'selected' : ''}>OFF</option></select></label>
+              ${meta.dateRange ? `<label class="text-sm">วันที่เริ่ม<input name="dateFrom" type="date" value="${esc(feature.dateFrom || '')}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">วันที่สิ้นสุด<input name="dateTo" type="date" value="${esc(feature.dateTo || '')}" class="block border rounded-lg p-2 w-full mt-1"></label>` : '<span></span><span></span>'}
+              <div class="grid grid-cols-2 gap-2"><label class="text-sm">เริ่ม<input name="start" type="time" value="${esc(feature.start)}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">สิ้นสุด<input name="end" type="time" value="${esc(feature.end)}" class="block border rounded-lg p-2 w-full mt-1"></label></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3 mt-3"><label class="text-sm">Buffer ก่อน (นาที)<input name="bufferBefore" type="number" min="0" max="1440" value="${feature.bufferBefore}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">Buffer หลัง (นาที)<input name="bufferAfter" type="number" min="0" max="1440" value="${feature.bufferAfter}" class="block border rounded-lg p-2 w-full mt-1"></label></div>
+            <div class="flex flex-wrap gap-2 mt-3">${feature.days.map((enabled, day) => `<label class="inline-flex items-center gap-1 text-xs border rounded-lg px-2 py-1"><input type="checkbox" name="day-${day}" ${enabled ? 'checked' : ''}>${workloadDays[day]}</label>`).join('')}</div>
+          </section>`;
+        }).join('')}</div>
+        <div class="flex gap-3 mt-4"><button type="button" id="workload-save" class="bg-indigo-700 text-white rounded-xl px-4 py-2">บันทึก Workload Control</button><button type="button" id="workload-refresh" class="border rounded-xl px-4 py-2">รีเฟรช Workload</button></div>
+      </section>
     </div>`;
-    const collect = () => ({ schemaVersion: 1, enabled: config.enabled, periods: [...content.querySelectorAll('[data-period]')].map(section => ({ startDate: section.querySelector('[name=startDate]').value, endDate: section.querySelector('[name=endDate]').value, days: [...section.querySelectorAll('[data-day]')].map(row => ({ enabled: row.dataset.enabled === 'true', start: row.querySelector('[name=start]').value, end: row.querySelector('[name=end]').value })) })) });
+    const collect = () => ({ schemaVersion: 1, enabled: config.enabled, guardrail: { minimumMediumHoldMinutes: Number(content.querySelector('[name=minimumMediumHoldMinutes]')?.value || config.guardrail.minimumMediumHoldMinutes), healthyStreakRequired: Number(content.querySelector('[name=healthyStreakRequired]')?.value || config.guardrail.healthyStreakRequired), recoveryLockMinutes: Number(content.querySelector('[name=recoveryLockMinutes]')?.value || config.guardrail.recoveryLockMinutes) }, periods: [...content.querySelectorAll('[data-period]')].map(section => ({ startDate: section.querySelector('[name=startDate]').value, endDate: section.querySelector('[name=endDate]').value, days: [...section.querySelectorAll('[data-day]')].map(row => ({ enabled: row.dataset.enabled === 'true', start: row.querySelector('[name=start]').value, end: row.querySelector('[name=end]').value })) })) });
+    const collectWorkload = () => ({ schemaVersion: 1, timezone: 'Asia/Bangkok', features: Object.fromEntries([...content.querySelectorAll('[data-workload-feature]')].map(section => [section.dataset.workloadFeature, { mode: section.querySelector('[name=mode]').value, dateFrom: section.querySelector('[name=dateFrom]')?.value || null, dateTo: section.querySelector('[name=dateTo]')?.value || null, start: section.querySelector('[name=start]').value, end: section.querySelector('[name=end]').value, bufferBefore: Number(section.querySelector('[name=bufferBefore]').value || 0), bufferAfter: Number(section.querySelector('[name=bufferAfter]').value || 0), days: [...section.querySelectorAll('input[type=checkbox][name^=day-]')].map(input => input.checked) }])) });
     const updateCosts = () => {
       try {
         const costs = estimateComputeCost(collect(), estimateDate);
@@ -79,7 +108,7 @@ export async function renderAutoscaleSettings() {
         if (enabled === false) {
           const { data, error } = await supabase.from('system_config').select('value').eq('key', 'autoscaleSchedule').maybeSingle();
           if (error) throw error;
-          next = data ? validateSchedule(JSON.parse(data.value)) : emptySchedule();
+          next = data ? { ...validateSchedule(JSON.parse(data.value)), guardrail: normalizeGuardrail(JSON.parse(data.value).guardrail) } : { ...emptySchedule(), guardrail: normalizeGuardrail() };
         }
         if (enabled !== undefined) next.enabled = enabled;
         if (next.enabled && state.mode !== 'schedule') throw new Error('กรุณาติดตั้ง SQL และ Edge Function รุ่นใหม่ก่อนเปิดใช้งาน');
@@ -105,6 +134,19 @@ export async function renderAutoscaleSettings() {
     };
     content.querySelectorAll('[data-remove]').forEach(button => button.onclick = () => { config = collect(); config.periods.splice(Number(button.dataset.remove), 1); draw(); });
     content.querySelectorAll('[data-day-action]').forEach(button => button.onclick = () => { const row = button.closest('[data-day]'); row.dataset.enabled = row.dataset.enabled === 'true' ? 'false' : 'true'; const enabled = row.dataset.enabled === 'true'; button.className = dayButtonClass(enabled); button.innerHTML = dayButtonContent(enabled); updateCosts(); });
+    content.querySelector('#workload-save').onclick = async () => {
+      try {
+        content.querySelectorAll('button').forEach(button => { button.disabled = true });
+        workloadConfig = normalizeWorkloadConfig(collectWorkload());
+        await saveWorkloadConfig(workloadConfig);
+        showToast('บันทึก Workload Control แล้ว', 'success');
+        draw();
+      } catch (error) {
+        showToast(esc(error.message), 'error');
+        content.querySelectorAll('button').forEach(button => { button.disabled = false });
+      }
+    };
+    content.querySelector('#workload-refresh').onclick = () => { if (confirm('รีเฟรชจะทิ้งการแก้ไขที่ยังไม่บันทึก ต้องการดำเนินการหรือไม่?')) renderAutoscaleSettings(); };
   };
   draw();
 }

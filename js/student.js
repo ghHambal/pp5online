@@ -30,6 +30,8 @@ let _activeSubjectTab = 'todo'
 let _activeScoreTab = 'life'
 let _activeSportsTab = 'overview'
 let _futsalRegistered = false
+let _studentPollingTimer = null
+let _studentPollingVisibilityHandler = null
 
 async function _loadFutsalVisibility() {
   if (!_student?.id) return
@@ -93,6 +95,7 @@ async function _loadAnnouncementBanners() {
   try {
     const items = (await getActiveAnnouncements('student', _student?.id ?? null))
       .filter(a => a.audience !== 'futsal_player' || _futsalRegistered)
+      .filter(a => a.requires_ack || (Number(a.priority) >= 5 && a.ann_type !== 'system'))
     showAnnouncementPopups(items, `pp5_ann_dismissed_stu_${_student?.id ?? ''}`)
   } catch { /* ไม่ block */ }
 }
@@ -552,13 +555,23 @@ async function _pollStudentRegrade() {
 }
 
 function _startStudentPolling() {
+  if (_studentPollingTimer) return
   const INTERVAL = 30000
-  setInterval(() => {
+  _studentPollingTimer = setInterval(() => {
     if (document.visibilityState === 'visible') { _pollStudentRequests(); _pollStudentRegrade() }
   }, INTERVAL)
-  document.addEventListener('visibilitychange', () => {
+  _studentPollingVisibilityHandler = () => {
     if (document.visibilityState === 'visible') { _pollStudentRequests(); _pollStudentRegrade() }
-  })
+  }
+  document.addEventListener('visibilitychange', _studentPollingVisibilityHandler)
+  window._cleanupStudentPolling = _stopStudentPolling
+}
+
+function _stopStudentPolling() {
+  if (_studentPollingTimer) clearInterval(_studentPollingTimer)
+  _studentPollingTimer = null
+  if (_studentPollingVisibilityHandler) document.removeEventListener('visibilitychange', _studentPollingVisibilityHandler)
+  _studentPollingVisibilityHandler = null
 }
 
 // ─── Start ────────────────────────────────────────────────────────────────────

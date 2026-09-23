@@ -5,6 +5,45 @@ import { uploadAzfutsalPlayerPhoto, compressImage } from './storage.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
 import { openFutsalCertificatePrint, buildFutsalCertificateFragment } from './azfutsal-certificate.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
+import { getWorkloadState, watchWorkload } from './workload-scheduler.js'
+
+let azfutsalLiveAllowed = false
+let azfutsalWorkloadWatcher = null
+const azfutsalLiveTimers = new Set()
+
+function clearAzLiveInterval(timer) {
+  if (!timer) return
+  clearInterval(timer)
+  azfutsalLiveTimers.delete(timer)
+}
+
+function trackAzLiveTimer(timer) {
+  if (timer) azfutsalLiveTimers.add(timer)
+  return timer
+}
+
+function stopAzfutsalLiveWorkload() {
+  azfutsalLiveAllowed = false
+  azfutsalLiveTimers.forEach(timer => clearInterval(timer))
+  azfutsalLiveTimers.clear()
+  stopLiveDrawShake()
+  stopRollingSound()
+  ;['az-live-display-overlay', 'az-evbig-overlay', 'az-evpend-overlay', 'az-schedbig-overlay', 'az-matchbig-overlay', 'az-standbig-overlay'].forEach(id => document.getElementById(id)?.remove())
+}
+
+function startAzLiveInterval(callback, intervalMs, overlay) {
+  if (!azfutsalLiveAllowed) return null
+  const timer = setInterval(async () => {
+    if (!azfutsalLiveAllowed || (overlay && !document.body.contains(overlay))) {
+      clearAzLiveInterval(timer)
+      if (!azfutsalLiveAllowed) overlay?.remove()
+      return
+    }
+    await callback()
+  }, intervalMs)
+  azfutsalLiveTimers.add(timer)
+  return timer
+}
 
 // ข้อความรางวัลเกียรติบัตรแยกตามประเภท แก้ไขได้จากหน้าตั้งค่า (คีย์ CERT_TEXT_<type>) — นี่คือค่าเริ่มต้น
 // {event} จะถูกแทนที่ด้วยชื่อกิจกรรม (EVENT_NAME) อัตโนมัติ
@@ -954,6 +993,13 @@ function applyAzTheme() {
 export async function renderAzfutsal(root, supabaseClient) {
   ROOT = root
   SB = supabaseClient
+  const initialWorkload = await getWorkloadState('azfutsal')
+  azfutsalLiveAllowed = initialWorkload.active
+  azfutsalWorkloadWatcher?.stop()
+  azfutsalWorkloadWatcher = watchWorkload('azfutsal', {
+    start: () => { azfutsalLiveAllowed = true },
+    stop: stopAzfutsalLiveWorkload,
+  })
   S.knownStudentCode = (typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('studentCode') : null) || null
   applyAzTheme()
   root.innerHTML = `<div style="position:fixed;inset:0;background:#111827;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:13px">กำลังโหลด...</div>`
@@ -1343,8 +1389,8 @@ function openCheckinLiveDisplay(level, code) {
   document.body.appendChild(overlay)
   const renderBody = () => { const el = document.getElementById('az-live-display-body'); if (el) el.innerHTML = renderCheckinLiveBody(level, code) }
   renderBody()
-  const intervalId = setInterval(async () => { await refresh(); renderBody() }, 4000)
-  overlay.querySelector('#az-live-display-close').onclick = () => { clearInterval(intervalId); overlay.remove() }
+  const intervalId = startAzLiveInterval(async () => { await refresh(); renderBody() }, 4000, overlay)
+  overlay.querySelector('#az-live-display-close').onclick = () => { clearAzLiveInterval(intervalId); overlay.remove() }
 }
 
 // ---------------- แบบฟอร์มพิมพ์สำรอง (ออฟไลน์) ----------------
@@ -2261,7 +2307,7 @@ async function openEventCheckinBigScreen(day) {
     }).join('') || `<div style="text-align:center;padding:60px 0;color:#9ca3af"><div style="font-size:40px;margin-bottom:8px">🙋</div><div style="font-size:13px;font-weight:700">ยังไม่มีใครเช็คอิน</div><div style="font-size:12px;margin-top:2px">รอนักกีฬาคนแรกมาสแกน QR</div></div>`
   }
   renderBody()
-  const intervalId = setInterval(async () => { await refresh(); renderBody() }, 4000)
+  const intervalId = startAzLiveInterval(async () => { await refresh(); renderBody() }, 4000, overlay)
 
   let countdownIntervalId = null
   if (deadline) {
@@ -2295,12 +2341,12 @@ async function openEventCheckinBigScreen(day) {
       }
     }
     tick()
-    countdownIntervalId = setInterval(tick, 1000)
+    countdownIntervalId = azfutsalLiveAllowed ? trackAzLiveTimer(setInterval(tick, 1000)) : null
   }
 
   overlay.querySelector('#az-evbig-close').addEventListener('click', () => {
-    clearInterval(intervalId)
-    if (countdownIntervalId) clearInterval(countdownIntervalId)
+    clearAzLiveInterval(intervalId)
+    if (countdownIntervalId) clearAzLiveInterval(countdownIntervalId)
     overlay.remove()
   })
   overlay.querySelector('#az-evbig-feed').addEventListener('click', async (e) => {
@@ -2397,8 +2443,8 @@ function openEventCheckinPendingReview(day) {
     }
   })
 
-  const intervalId = setInterval(async () => { await refresh(); renderList() }, 4000)
-  overlay.querySelector('#az-evpend-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+  const intervalId = startAzLiveInterval(async () => { await refresh(); renderList() }, 4000, overlay)
+  overlay.querySelector('#az-evpend-close').addEventListener('click', () => { clearAzLiveInterval(intervalId); overlay.remove() })
 }
 
 // ---------------- แสดง QR Code ของนักกีฬาแต่ละคน (เผื่อไม่ได้พก QR ของตัวเองมา จะได้เปิดจากเครื่องแอดมิน/สตาฟให้สแกนแทน) ----------------
@@ -3136,8 +3182,8 @@ function openScheduleBigScreen() {
     if (bigBtn) { openMatchBigScreen(bigBtn.dataset.level, bigBtn.dataset.code); return }
   })
 
-  const intervalId = setInterval(async () => { await refresh(); renderBody() }, 4000)
-  overlay.querySelector('#az-schedbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+  const intervalId = startAzLiveInterval(async () => { await refresh(); renderBody() }, 4000, overlay)
+  overlay.querySelector('#az-schedbig-close').addEventListener('click', () => { clearAzLiveInterval(intervalId); overlay.remove() })
   overlay.querySelector('#az-schedbig-standings').addEventListener('click', () => { openStandingsBigScreen() })
 }
 
@@ -3247,8 +3293,8 @@ function openMatchBigScreen(level, code) {
   }
 
   renderBody()
-  const intervalId = setInterval(async () => { await refresh(); renderBody() }, 3000)
-  overlay.querySelector('#az-matchbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+  const intervalId = startAzLiveInterval(async () => { await refresh(); renderBody() }, 3000, overlay)
+  overlay.querySelector('#az-matchbig-close').addEventListener('click', () => { clearAzLiveInterval(intervalId); overlay.remove() })
   overlay.querySelector('#az-matchbig-prev').addEventListener('click', () => {
     const target = adjacentMatchCode(curLevel, curCode, -1)
     if (!target) return
@@ -3368,8 +3414,8 @@ function openStandingsBigScreen() {
     if (levelBtn) { level = levelBtn.dataset.v; renderTabs(); renderBody(); return }
   })
 
-  const intervalId = setInterval(async () => { await refresh(); renderBody() }, 5000)
-  overlay.querySelector('#az-standbig-close').addEventListener('click', () => { clearInterval(intervalId); overlay.remove() })
+  const intervalId = startAzLiveInterval(async () => { await refresh(); renderBody() }, 5000, overlay)
+  overlay.querySelector('#az-standbig-close').addEventListener('click', () => { clearAzLiveInterval(intervalId); overlay.remove() })
 }
 
 function scheduleTimelineMarkup(rows, pinnedLiveRow = null) {

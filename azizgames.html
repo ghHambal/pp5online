@@ -6,15 +6,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AZIZGAMES กีฬาสีออนไลน์</title>
     <script>
-      (() => {
+      (async () => {
         const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/';
-        const version = '10.22.764';
+        const version = '10.22.767';
         const stylesheet = document.createElement('link');
         stylesheet.rel = 'stylesheet';
         stylesheet.crossOrigin = 'anonymous';
         stylesheet.href = `${base}azizgames/assets/index-D2sanXUZ.css?v=${version}`;
         document.head.appendChild(stylesheet);
 
+        let active = false;
+        try {
+          const { getWorkloadState } = await import(`${base}js/workload-scheduler.js?v=${version}`);
+          active = (await getWorkloadState('azizgames')).active;
+        } catch (error) {
+          console.warn('AZIZGAMES workload schedule unavailable; live workload is paused', error);
+        }
+        window.__pp5Workload = { isActive: key => key === 'azizgames' ? active : true };
+        window.addEventListener('storage', event => {
+          if (event.key === 'pp5:workloadSchedule') window.location.reload();
+        });
         ['azizgames/assets/index-C3zfhzC4.js', 'azizgames-public-controls.js'].forEach((src) => {
           const script = document.createElement('script');
           script.type = 'module';

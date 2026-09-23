@@ -10,6 +10,11 @@ export function validateSchedule(config) {
       if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(day.start) || !/^([01]\d|2[0-3]):[0-5]\d$/.test(day.end) || day.start >= day.end) throw new Error('เวลาเริ่มต้องก่อนเวลาสิ้นสุดภายในวันเดียวกัน');
     }
   }
+  if (config.guardrail !== undefined) {
+    if (!config.guardrail || typeof config.guardrail !== 'object') throw new Error('รูปแบบ downscale guardrail ไม่ถูกต้อง');
+    const numeric = ['minimumMediumHoldMinutes', 'healthyStreakRequired', 'recoveryLockMinutes'];
+    for (const key of numeric) if (config.guardrail[key] !== undefined && !Number.isFinite(Number(config.guardrail[key]))) throw new Error(`ค่า guardrail ${key} ไม่ถูกต้อง`);
+  }
   if (config.enabled && !config.periods.some(p => p.days.some(d => d.enabled))) throw new Error('กรุณากำหนดอย่างน้อยหนึ่งวันก่อนเปิดใช้งาน');
   return config;
 }

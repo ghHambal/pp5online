@@ -10,6 +10,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import { emptySchedule, validateSchedule, scheduledTier } from './schedule.js'
+import { DEFAULT_GUARDRAIL, evaluateDownscaleGuardrail, holdAfterMediumConfirmation, normalizeGuardrail } from './guardrail.js'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -193,11 +194,11 @@ async function runAutoscale() {
   const { data, error } = await admin.from('system_config').select('value').eq('key', 'autoscaleSchedule').maybeSingle()
   if (error) throw error
   const config = data ? validateSchedule(JSON.parse(data.value)) : emptySchedule()
+  const guardrail = normalizeGuardrail(config.guardrail || DEFAULT_GUARDRAIL)
   const target = scheduledTier(config)
   state.mode = 'schedule'
   state.targetTier = target
   state.lastCheckedAt = new Date().toISOString()
-  state.consecutiveHealthyChecks = 0 // ไม่ใช้ตัวนับเดิมในการตัดสินใจอีก
   if (!target) {
     state.status = 'disabled'
     await saveState(state)
@@ -210,14 +211,46 @@ async function runAutoscale() {
     await saveState(state)
     return state
   }
+  const previousTier = state.currentTier
   state.currentTier = currentTier
+  if (previousTier === NORMAL_TIER && currentTier === CEILING_TIER && !state.pendingTier) {
+    Object.assign(state, holdAfterMediumConfirmation(state, new Date(), guardrail))
+    state.lastAction = `manual scale-up hold -> ${currentTier} @ ${state.lastScaleUpConfirmedAt}`
+    state.lastDecisionReason = 'manual_scale_up_minimum_hold'
+  }
+  const healthBefore = state.lastHealthStatus
+  const health = await checkHealthy().then(value => ({ known: true, healthy: value })).catch(error => {
+    state.lastHealthStatus = 'unknown'
+    state.lastHealthError = String(error)
+    return { known: false, healthy: false }
+  })
+  if (health.known && health.healthy) {
+    state.lastHealthStatus = 'healthy'
+    state.lastHealthError = null
+    state.consecutiveHealthyChecks = healthBefore === 'healthy'
+      ? Math.min(Number(state.consecutiveHealthyChecks || 0) + 1, 99)
+      : 1
+    if (healthBefore === 'unhealthy' || healthBefore === 'unknown') {
+      state.recoveryLockUntil = new Date(Date.now() + guardrail.recoveryLockMinutes * 60000).toISOString()
+      state.lastRecoveredAt = new Date().toISOString()
+    }
+  } else if (health.known) {
+    state.lastHealthStatus = 'unhealthy'
+    state.lastHealthError = null
+    state.consecutiveHealthyChecks = 0
+    state.lastFailedHealthAt = new Date().toISOString()
+    state.recoveryLockUntil = new Date(Date.now() + guardrail.recoveryLockMinutes * 60000).toISOString()
+  } else {
+    state.consecutiveHealthyChecks = 0
+  }
   // billing addon อาจเปลี่ยนก่อน restart เสร็จ ตรวจ health ยืนยันในรอบถัดไป
-  if (state.pendingTier && currentTier === state.pendingTier && await checkHealthy().catch(() => false)) {
+  if (state.pendingTier && currentTier === state.pendingTier && health.known && health.healthy) {
     const confirmed = state.pendingTier
     state.pendingTier = null
     state.lastConfirmedAt = new Date().toISOString()
     state.lastAction = `confirmed -> ${confirmed} @ ${state.lastConfirmedAt}`
     state.lastError = null
+    if (confirmed === CEILING_TIER) Object.assign(state, holdAfterMediumConfirmation(state, new Date(), guardrail))
     await saveState(state)
     await notify(confirmed === CEILING_TIER ? '⚠️ ระบบ PP5 Online ปรับ compute ตามตารางเวลา' : '✅ ระบบ PP5 Online ลด compute ตามตารางเวลา', `ตรวจยืนยันระดับ ${confirmed === CEILING_TIER ? 'Medium' : 'Micro'} และสุขภาพระบบปกติแล้ว (ตารางเวลาไทย)`)
   }
@@ -236,6 +269,23 @@ async function runAutoscale() {
     state.status = 'needs_attention'
     state.lastError = 'พบระดับเครื่องที่ตั้งเองนอก Micro/Medium ระบบจะไม่เปลี่ยนทับ'
   } else {
+    const isDownscale = currentTier === CEILING_TIER && target === NORMAL_TIER
+    if (isDownscale) {
+      const decision = evaluateDownscaleGuardrail({ state, currentTier, targetTier: target, healthKnown: health.known, healthy: health.healthy, guardrail })
+      state.lastDecision = decision.decision
+      state.lastDecisionReason = decision.reason
+      console.log('[autoscale-decision]', JSON.stringify({
+        requestedAt: new Date().toISOString(), previousTier: currentTier, requestedTier: target,
+        triggerSource: 'schedule', decision: decision.decision, reason: decision.reason,
+        holdUntil: state.holdUntil || null, healthyChecks: state.consecutiveHealthyChecks,
+      }))
+      if (!decision.allow) {
+        state.status = 'downgrade_deferred'
+        state.lastAction = `downgrade blocked: ${decision.reason}`
+        await saveState(state)
+        return state
+      }
+    }
     // บันทึกก่อน PATCH: หาก response ขาดตอน จะไม่ยิงซ้ำรอบถัดไป
     state.pendingTier = target
     state.lastRequestedAt = new Date().toISOString()

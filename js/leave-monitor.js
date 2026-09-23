@@ -573,7 +573,9 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
           container._leaveMonitorRefreshTimer = null
           return
         }
-        renderLeaveMonitorWidget(container, { ...options, date: selectedDate, initialFilter: filter, initialView: viewMode, analyticsDays })
+        if (container._leaveMonitorRefreshInFlight) return
+        container._leaveMonitorRefreshInFlight = renderLeaveMonitorWidget(container, { ...options, date: selectedDate, initialFilter: filter, initialView: viewMode, analyticsDays })
+          .finally(() => { container._leaveMonitorRefreshInFlight = null })
       }, refreshMs)
     }
     container._leaveMonitorTimer = setInterval(() => {
@@ -595,4 +597,17 @@ export async function renderLeaveMonitorWidget(container, options = {}) {
       </div>
     `
   }
+}
+
+export function destroyLeaveMonitorWidget(container) {
+  if (!container) return
+  if (container._leaveMonitorTimer) {
+    clearInterval(container._leaveMonitorTimer)
+    container._leaveMonitorTimer = null
+  }
+  if (container._leaveMonitorRefreshTimer) {
+    clearInterval(container._leaveMonitorRefreshTimer)
+    container._leaveMonitorRefreshTimer = null
+  }
+  container._leaveMonitorRefreshInFlight = null
 }
