@@ -1467,7 +1467,7 @@ export async function renderSmartClassroom(teacher, classId) {
     const allMax = midMax + finalMax + derivedMax
     const allRaw = midRaw + finalRaw + derivedRaw
     const total = Math.round(allRaw)
-    const pct = allMax > 0 ? allRaw / allMax * 100 : 0
+    const pct = allMax > 0 ? total / allMax * 100 : 0
     const grade = _pctToGrade(pct)
     const khuna = _gradeToKhuna(grade)
     const scoreRow = (col, tone) => {

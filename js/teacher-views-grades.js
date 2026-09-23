@@ -1,5 +1,5 @@
 import { getClassScoreRounding, saveClassScoreRounding } from './api.js'
-import { isBonus, normalizeRounding, sortScoreColumns } from './score-display.js'
+import { isBonus, normalizeRounding, scoreForGrade, sortScoreColumns } from './score-display.js'
 import {
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   updateColumnSortOrders,
@@ -426,9 +426,10 @@ export async function renderGradesGrid(teacher, classData) {
       const drvRaw = derivedCols.reduce((s,c) => s + (_calcDerived(c, sid) || 0), 0)
       const allMax = midMax + finMax + drvMax
       const allRaw = midRaw + finRaw + drvRaw
-      // รวมตรงๆ — total คือคะแนนดิบรวม, grade คิดจาก allRaw/allMax×100
+      // คะแนนรวมที่เปิดการปัดต้องใช้ค่าที่ปัดแล้วคำนวณเกรดด้วย
       const total = _fmtAgg('total', allRaw, 1)
-      const pct   = allMax > 0 ? allRaw / allMax * 100 : 0
+      const gradeTotal = scoreForGrade(columnRoundSettings, allRaw)
+      const pct   = allMax > 0 ? gradeTotal / allMax * 100 : 0
       const grade = _pctToGrade(pct)
       const khuna = _gradeToKhuna(grade)
       return { midRaw, finRaw, pct, total, grade, khuna }
@@ -766,7 +767,7 @@ export async function renderGradesGrid(teacher, classData) {
         <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[85vh] flex flex-col overflow-hidden">
           <div class="px-4 py-3 border-b border-gray-100 flex-shrink-0">
             <h3 class="font-bold text-gray-800 text-sm">🔢 ตั้งค่าการปัดเลขคะแนน</h3>
-            <p class="text-[11px] text-gray-500 mt-0.5">ปัดเฉพาะการแสดงผล ไม่แก้คะแนนต้นฉบับหรือเกรด กดบันทึกใช้ร่วมกันเพื่อใช้ในหน้าครู นักเรียน และ ปพ.5</p>
+            <p class="text-[11px] text-gray-500 mt-0.5">คะแนนรายช่องยังเก็บตามจริง ส่วนคะแนนรวมที่เลือกปัดจะใช้คำนวณเกรดด้วย กดบันทึกใช้ร่วมกันเพื่อใช้ในหน้าครู นักเรียน และ ปพ.5</p>
             ${roundingLoadError ? '<p class="text-xs text-red-600 mt-1">ยังโหลดค่าร่วมไม่ได้ กรุณาตรวจการติดตั้ง SQL และการเชื่อมต่อ</p>' : ''}
           </div>
           <div class="overflow-y-auto flex-1 px-4 py-2">

@@ -1,5 +1,5 @@
 import { getClassScoreRounding } from './api.js'
-import { isBonus, isFinal, roundKey, displayScore, effectiveScore } from './score-display.js'
+import { isBonus, isFinal, roundKey, displayScore, scoreForGrade, effectiveScore } from './score-display.js'
 import {
   getMyEnrolledClasses, getMyScores, getMyAttendance,
   getMyExamRequests, submitExamRequest, cancelExamRequest,
@@ -23,7 +23,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.763'
+import { APP_VERSION } from './version.js?v=10.22.764'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -1887,8 +1887,9 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   const derivedScore = derivedCols.reduce((s,c) => s + _getVal(c), 0)
   const derivedMax = derivedCols.reduce((s,c) => s + Number(c.max_score || 0), 0)
   const total    = midScore + finScore + derivedScore
+  const gradeTotal = scoreForGrade(roundSettings, total)
   const totalMax = midMax + finMax + derivedMax
-  const pct      = totalMax > 0 ? total / totalMax * 100 : 0
+  const pct      = totalMax > 0 ? gradeTotal / totalMax * 100 : 0
   // เกณฑ์เกรดมาตรฐาน ปพ.5: คำนวณเกรดเมื่อคะแนนทุกหัวข้อที่นำไปคิดเกรดครบแล้วเท่านั้น
   const gradeCols = columns.filter(c => !isBonus(c))
   const scoredGradeCols = gradeCols.filter(c => {

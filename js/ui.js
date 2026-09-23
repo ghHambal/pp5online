@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.763'
+import { APP_VERSION } from './version.js?v=10.22.764'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.764': [
+    '🔢 ปรับการปัดคะแนนรวมให้ใช้ค่าที่ปัดแล้วคำนวณเกรดจริง เช่น 69.5 ปัดเป็น 70 และได้เกรด 3.0',
+  ],
   '10.22.763': [
     '🏠 ปรับหน้าแก้ไขโปรไฟล์ให้เลือกห้องที่ปรึกษาผ่านปุ่มแยกสามัญ/ศาสนา และป้องกันการทับครูที่ปรึกษาเดิม',
     '🔄 คืนการมอบหมายครูเดิมให้ห้องศาสนา 5 ห้องที่ถูกเลือกทับก่อนหน้านี้',

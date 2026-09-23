@@ -1,5 +1,5 @@
 import { getClassScoreRounding } from './api.js'
-import { isBonus, roundKey, displayScore, effectiveScore, sortScoreColumns } from './score-display.js'
+import { isBonus, roundKey, displayScore, scoreForGrade, effectiveScore, sortScoreColumns } from './score-display.js'
 import {
   getSystemConfig, getClassStudents, getClassAttendanceAll,
   getScoreColumns, getStudentScores, getCourseDocPage2,
@@ -970,6 +970,7 @@ function _buildPage1(d) {
   if (!_hideScores) for (const st of students) {
     const stScores = scoreMap[st.id] ?? {}
     const total = scoreColumns.reduce((s, c) => s + (stScores[c.id] ?? 0), 0)
+    const gradeTotal = scoreForGrade(roundSettings, total)
     const forcedGrade = scoreMap[st.id]?.__force
     const hasForcedGrade = forcedGrade != null && String(forcedGrade).trim() !== ''
     const forcedNumber = hasForcedGrade ? Number(forcedGrade) : NaN
@@ -981,7 +982,7 @@ function _buildPage1(d) {
     }
     let grade = hasForcedGrade ? forcedNumber : 0
     if (!hasForcedGrade && maxTotal > 0) {
-      const pct = (total / maxTotal) * 100
+      const pct = (gradeTotal / maxTotal) * 100
       grade = _calcGrade(pct)
     }
     const key = String(grade)
@@ -1504,7 +1505,8 @@ function _buildScorePage(d, chunk, startNo) {
     const bPct  = betweenMax > 0 ? bSum / betweenMax * 100 : 0
     const fPct  = finalMax   > 0 ? fSum / finalMax   * 100 : 0
     const forcedGrade = Boolean(sc.__force)
-    const grade = sc.__force || _calcGrade(betweenMax + finalMax > 0 ? total / (betweenMax + finalMax) * 100 : 0)
+    const gradeTotal = scoreForGrade(d.roundSettings, total)
+    const grade = sc.__force || _calcGrade(betweenMax + finalMax > 0 ? gradeTotal / (betweenMax + finalMax) * 100 : 0)
     const charLabel = _gradeToKhunaLabel(grade)
 
     return `<tr>
@@ -2035,9 +2037,10 @@ function _buildScorePageVOC(d, chunk, startNo) {
     const total = objSum + (Number(moralScore) || 0)
     const specialResult = _normalizeVocSpecialResult(st.special_result)
     const forcedGrade = Boolean(specialResult && VOC_SPECIAL_KEYS.includes(specialResult))
+    const gradeTotal = scoreForGrade(d.roundSettings, total)
     const grade = forcedGrade
       ? specialResult
-      : _calcGrade(denom ? (total / denom) * 100 : 0)
+      : _calcGrade(denom ? (gradeTotal / denom) * 100 : 0)
     return `<tr>
       <td class="voc-center">${startNo+idx}</td>
       <td class="voc-c-id voc-center">${_esc(st.student_code??'')}</td>

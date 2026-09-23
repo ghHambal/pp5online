@@ -27,6 +27,15 @@ export function normalizeRounding(settings) {
   normalized.forcedGradeColor = forcedGradeColor === 'black' ? 'black' : 'red'
   return normalized
 }
+
+// คะแนนรวมที่ใช้ตัดสินเกรดต้องเป็นค่าเดียวกับที่แสดงในช่อง "คะแนนรวมทั้งหมด"
+// เมื่อเปิดการปัดคะแนนรวม ให้ปัดค่าที่นำไปคำนวณจริงด้วย ไม่ใช่ปัดเฉพาะหน้าจอ
+export function scoreForGrade(settings, value) {
+  const n = Number(value)
+  if (!Number.isFinite(n)) return 0
+  return normalizeRounding(settings).total ? Math.round(n) : n
+}
+
 export function displayScore(settings, key, value, decimals = 1) {
   if (value == null || value === '') return value ?? ''
   const n = Number(value)
