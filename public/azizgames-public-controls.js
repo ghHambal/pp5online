@@ -720,6 +720,48 @@ const canManageSports = () =>
   localStorage.getItem('aziz_is_logged_in') === 'true' ||
   (localStorage.getItem('aziz_sports_admin_allowed') === 'true' && Boolean(getAccessToken()));
 
+const injectLiveDisplayLink = () => {
+  if (document.querySelector('[data-aziz-live-link]')) return;
+  if (!document.body) return;
+  const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/';
+  const link = document.createElement('a');
+  link.dataset.azizLiveLink = 'true';
+  link.href = `${base}azizgames-live/`;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  link.textContent = '📺 เปิดจอ AZIZGAMES LIVE';
+  link.setAttribute('aria-label', 'เปิดจอ AZIZGAMES LIVE');
+  link.innerHTML = '<span aria-hidden="true">📺</span><span>เปิดจอ AZIZGAMES LIVE</span><b aria-hidden="true">↗</b>';
+  const style = document.createElement('style');
+  style.dataset.azizLiveLinkStyle = 'true';
+  style.textContent = `
+    [data-aziz-live-link] {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 120;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 15px;
+      border: 1px solid rgba(56,189,248,.55);
+      border-radius: 14px;
+      color: #e0f2fe;
+      background: linear-gradient(135deg, #075985, #164e63);
+      box-shadow: 0 12px 28px rgba(2,6,23,.28);
+      font: 800 13px/1.2 Prompt, system-ui, sans-serif;
+      text-decoration: none;
+    }
+    [data-aziz-live-link]:hover { background: linear-gradient(135deg, #0369a1, #0e7490); }
+    [data-aziz-live-link] b { color: #facc15; font-size: 16px; }
+    @media (max-width: 640px) {
+      [data-aziz-live-link] { right: 10px; bottom: 10px; padding: 10px 12px; font-size: 11px; }
+    }
+  `;
+  document.head.appendChild(style);
+  document.body.appendChild(link);
+};
+
 const injectPanel = () => {
   if (localStorage.getItem('aziz_is_logged_in') !== 'true') return;
   if (document.querySelector('[data-aziz-public-controls]')) return;
@@ -1033,9 +1075,11 @@ const injectSportsCsvControls = () => {
 
 loadPublicButtons().finally(() => {
   installSportsSync();
+  injectLiveDisplayLink();
   injectPanel();
   injectSportsCsvControls();
   new MutationObserver(() => {
+    injectLiveDisplayLink();
     injectPanel();
     injectSportsCsvControls();
   }).observe(document.documentElement, {

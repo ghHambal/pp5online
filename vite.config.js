@@ -18,6 +18,7 @@ export default defineConfig({
         sports:        resolve(__dirname, 'sports.html'),
         quizExam:      resolve(__dirname, 'quiz-exam.html'),
         azizgames:     resolve(__dirname, 'azizgames.html'),
+        azizgamesLive: resolve(__dirname, 'azizgames-live/index.html'),
         azfutsal:      resolve(__dirname, 'azfutsal.html'),
         shirtVotePublic: resolve(__dirname, 'shirt-vote-public.html'),
         sportsAttendanceMonitor: resolve(__dirname, 'sports-attendance-monitor.html'),
