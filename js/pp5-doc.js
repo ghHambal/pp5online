@@ -978,6 +978,11 @@ function _buildPage1(d) {
       const normalizedSpecial = String(forcedGrade).trim().replace(/\s+/g, '').replace(/\./g, '')
       if (normalizedSpecial === 'ร') specialGradeCounts['ร']++
       if (normalizedSpecial === 'มส') specialGradeCounts['มส']++
+      // ผลพิเศษที่ไม่ใช่เกรดตัวเลขยังต้องถูกนับในสรุปผลประเมิน:
+      // "ร"/"มส"/"มผ" ไม่ผ่านการตัดสินเป็นเกรดปกติ จึงจัดอยู่ในกลุ่มไม่ผ่าน
+      const readLbl = readingEvalMap?.[st.id]
+      if (readLbl && readLbl in evalReadCount) evalReadCount[readLbl]++
+      evalCharCount['ไม่ผ่าน']++
       continue
     }
     let grade = hasForcedGrade ? forcedNumber : 0
