@@ -11,6 +11,27 @@ const dayButtonClass = enabled => `border rounded-xl px-4 py-2 min-w-[180px] tex
 const dayButtonContent = enabled => `<span class="block font-semibold">${enabled ? '🟢 เปิดใช้งาน' : '⚪ ปิดใช้งาน'}</span><span class="block text-xs mt-1">${enabled ? 'กดเพื่อปิดวันนี้' : 'กดเพื่อเปิดวันนี้'}</span>`;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
 const workloadDays = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+const workloadTabs = [
+  { key: 'prayer', label: '🙏 ละหมาด', description: 'ควบคุมช่วง polling และจอแสดงผลการเช็คชื่อละหมาด', features: ['prayer_monitor'] },
+  { key: 'leave', label: '🚪 ออกนอกห้องเรียน', description: 'ควบคุมจอติดตามนักเรียนออกนอกห้องเรียน', features: ['leave_monitor'] },
+  { key: 'sports', label: '🏅 กีฬาสี', description: 'ควบคุมจอสด scoreboard และคิว live ของกีฬาสี', features: ['azizgames', 'azfutsal'] },
+];
+
+const renderWorkloadFeature = (key, workloadConfig) => {
+  const meta = WORKLOAD_FEATURES[key];
+  const feature = workloadConfig.features[key];
+  const currentState = workloadState(key, new Date(), workloadConfig);
+  const next = currentState.nextTransitionAt ? new Date(currentState.nextTransitionAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) : '—';
+  return `<section class="border rounded-2xl p-4" data-workload-feature="${key}">
+    <div class="flex flex-wrap justify-between gap-3"><div><h3 class="font-bold">${meta.label}</h3><p class="text-xs text-gray-500">${meta.description}</p></div><div class="text-right text-xs"><div class="font-bold">${currentState.status}</div><div class="text-gray-500">เปลี่ยนถัดไป: ${esc(next)}</div></div></div>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3"><label class="text-sm">Mode<select name="mode" class="block border rounded-lg p-2 w-full mt-1"><option ${feature.mode === 'AUTO' ? 'selected' : ''}>AUTO</option><option ${feature.mode === 'ON' ? 'selected' : ''}>ON</option><option ${feature.mode === 'OFF' ? 'selected' : ''}>OFF</option></select></label>
+      ${meta.dateRange ? `<label class="text-sm">วันที่เริ่ม<input name="dateFrom" type="date" value="${esc(feature.dateFrom || '')}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">วันที่สิ้นสุด<input name="dateTo" type="date" value="${esc(feature.dateTo || '')}" class="block border rounded-lg p-2 w-full mt-1"></label>` : '<span></span><span></span>'}
+      <div class="grid grid-cols-2 gap-2"><label class="text-sm">เริ่ม<input name="start" type="time" value="${esc(feature.start)}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">สิ้นสุด<input name="end" type="time" value="${esc(feature.end)}" class="block border rounded-lg p-2 w-full mt-1"></label></div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 mt-3"><label class="text-sm">Buffer ก่อน (นาที)<input name="bufferBefore" type="number" min="0" max="1440" value="${feature.bufferBefore}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">Buffer หลัง (นาที)<input name="bufferAfter" type="number" min="0" max="1440" value="${feature.bufferAfter}" class="block border rounded-lg p-2 w-full mt-1"></label></div>
+    <div class="flex flex-wrap gap-2 mt-3">${feature.days.map((enabled, day) => `<label class="inline-flex items-center gap-1 text-xs border rounded-lg px-2 py-1"><input type="checkbox" name="day-${day}" ${enabled ? 'checked' : ''}>${workloadDays[day]}</label>`).join('')}</div>
+  </section>`;
+};
 
 export async function renderAutoscaleSettings() {
   document.querySelectorAll('[data-nav]').forEach(el => {
@@ -25,6 +46,7 @@ export async function renderAutoscaleSettings() {
   let workloadConfig;
   let state = {};
   let estimateDate = new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+  let activeTab = 'overview';
   try {
     const { data, error } = await supabase.from('system_config').select('key,value,updated_at').in('key', ['autoscaleSchedule', 'autoscaleState', 'workloadSchedule']);
     if (error) throw error;
@@ -42,6 +64,12 @@ export async function renderAutoscaleSettings() {
     let targetLabel = 'ยังไม่บันทึก / กรุณาตรวจตารางเวลา';
     try { targetLabel = !config.enabled ? 'คงระดับเดิม' : scheduledTier(config) === 'ci_medium' ? 'Medium' : 'Micro'; } catch {}
     content.innerHTML = `<div class="space-y-5 animate-fade">
+      <div role="tablist" aria-label="กลุ่มการตั้งค่ากำลังเครื่อง" class="bg-white border rounded-2xl p-2 shadow-sm flex flex-wrap gap-2">
+        <button type="button" role="tab" data-autoscale-tab="overview" aria-controls="autoscale-panel-overview" class="flex-1 min-w-[145px] rounded-xl px-4 py-3 text-sm font-bold transition">📊 ภาพรวม</button>
+        <button type="button" role="tab" data-autoscale-tab="schedule" aria-controls="as-form" class="flex-1 min-w-[190px] rounded-xl px-4 py-3 text-sm font-bold transition">🗓️ ตารางปรับกำลังเครื่อง</button>
+        ${workloadTabs.map(tab => `<button type="button" role="tab" data-autoscale-tab="${tab.key}" aria-controls="autoscale-panel-${tab.key}" class="flex-1 min-w-[145px] rounded-xl px-4 py-3 text-sm font-bold transition">${tab.label}</button>`).join('')}
+      </div>
+      <div id="autoscale-panel-overview" data-autoscale-panel="overview" role="tabpanel" class="space-y-5">
       <div class="bg-white border rounded-2xl p-5 shadow-sm">
         <h2 class="font-bold text-lg">🗓️ ตารางปรับกำลังเครื่อง (เวลาไทย)</h2>
         ${state.mode !== 'schedule' ? '<p class="mt-3 text-red-700">ยังไม่พบ backend ตารางเวลารุ่นใหม่ ต้องรัน patch_autoscale_schedule.sql และ deploy autoscale-tick ก่อนเปิดใช้งาน (push หน้าเว็บอย่างเดียวไม่เปลี่ยนระบบเดิม)</p>' : ''}
@@ -61,7 +89,8 @@ export async function renderAutoscaleSettings() {
         <p class="text-xs text-gray-500 mt-3">รายวัน = วันที่เลือก · รายสัปดาห์ = จันทร์–อาทิตย์ของวันที่เลือก · รายเดือน = เดือนปฏิทินของวันที่เลือก คำนวณช่วงซ้อนกันครั้งเดียว</p>
         <p class="text-xs text-gray-500 mt-2">Micro $0.01344/ชั่วโมง · Medium $0.0822/ชั่วโมง (USD ตรวจราคา 13 ก.ย. 2026) ก่อนหักเครดิต ไม่รวมแพ็กเกจ ภาษี ดิสก์ และค่าใช้งานอื่น เป็นประมาณตามตาราง ไม่ใช่ยอดบิลจริง และไม่รวมความคลาดเคลื่อนจากรอบตรวจ/ระยะปรับเครื่อง <a class="underline" href="https://supabase.com/docs/guides/platform/compute-and-disk" target="_blank" rel="noopener noreferrer">ราคาจาก Supabase</a></p>
       </div>
-      <form id="as-form" class="space-y-4">
+      </div>
+      <form id="as-form" data-autoscale-panel="schedule" role="tabpanel" aria-labelledby="autoscale-tab-schedule" class="space-y-4">
         <section class="border rounded-2xl p-4 bg-amber-50"><h3 class="font-bold">🛡️ Downscale Guardrail</h3><p class="text-xs text-gray-600 mt-1">Schedule เป็นเพียง candidate; ระบบจะคง Medium หาก hold, health streak, recovery หรือ health state ยังไม่ปลอดภัย</p><div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3"><label class="text-sm">Minimum Medium Hold (นาที)<input name="minimumMediumHoldMinutes" type="number" min="0" max="1440" value="${config.guardrail.minimumMediumHoldMinutes}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">Healthy streak (รอบ)<input name="healthyStreakRequired" type="number" min="1" max="12" value="${config.guardrail.healthyStreakRequired}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">Recovery lock (นาที)<input name="recoveryLockMinutes" type="number" min="0" max="1440" value="${config.guardrail.recoveryLockMinutes}" class="block border rounded-lg p-2 w-full mt-1"></label></div></section>
         <div id="as-periods" class="space-y-4">${config.periods.map((period, index) => `<section class="bg-white border rounded-2xl p-5 shadow-sm" data-period="${index}">
           <div class="flex flex-wrap gap-3 items-end"><label>วันที่เริ่ม<input required type="date" name="startDate" value="${esc(period.startDate)}" class="block border rounded-lg p-2"></label><label>วันที่สิ้นสุด<input required type="date" name="endDate" value="${esc(period.endDate)}" class="block border rounded-lg p-2"></label><button type="button" data-remove="${index}" class="text-red-600 border rounded-lg p-2">ลบช่วงนี้</button></div>
@@ -71,26 +100,41 @@ export async function renderAutoscaleSettings() {
         <div class="flex gap-3"><button type="button" id="as-add" class="border bg-white rounded-xl px-4 py-2">＋ เพิ่มช่วงวันที่</button><button type="submit" class="bg-indigo-700 text-white rounded-xl px-4 py-2">บันทึกตารางเวลา</button></div>
         <p class="text-xs text-gray-500">การตั้งค่าจะมีผลในรอบตรวจถัดไป (ปกติทุก 5 นาที) ไม่สั่งปรับเครื่องจากหน้านี้โดยตรง</p>
       </form>
-      <section class="bg-white border rounded-2xl p-5 shadow-sm">
-        <h2 class="font-bold text-lg">🎛️ Workload Control</h2>
-        <p class="text-sm text-gray-600 mt-2">ควบคุมเฉพาะ polling / live monitor ที่ไม่ใช่ business write. AUTO ใช้ตาราง, ON บังคับเปิด, OFF บังคับปิด. ระบบโหลดค่าครั้งแรกและ refresh แบบ cache ไม่ถามฐานข้อมูลทุกไม่กี่วินาที</p>
-        <div id="workload-controls" class="space-y-4 mt-4">${Object.entries(WORKLOAD_FEATURES).map(([key, meta]) => {
-          const feature = workloadConfig.features[key];
-          const state = workloadState(key, new Date(), workloadConfig);
-          const next = state.nextTransitionAt ? new Date(state.nextTransitionAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' }) : '—';
-          return `<section class="border rounded-2xl p-4" data-workload-feature="${key}">
-            <div class="flex flex-wrap justify-between gap-3"><div><h3 class="font-bold">${meta.label}</h3><p class="text-xs text-gray-500">${meta.description}</p></div><div class="text-right text-xs"><div class="font-bold">${state.status}</div><div class="text-gray-500">เปลี่ยนถัดไป: ${esc(next)}</div></div></div>
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3"><label class="text-sm">Mode<select name="mode" class="block border rounded-lg p-2 w-full mt-1"><option ${feature.mode === 'AUTO' ? 'selected' : ''}>AUTO</option><option ${feature.mode === 'ON' ? 'selected' : ''}>ON</option><option ${feature.mode === 'OFF' ? 'selected' : ''}>OFF</option></select></label>
-              ${meta.dateRange ? `<label class="text-sm">วันที่เริ่ม<input name="dateFrom" type="date" value="${esc(feature.dateFrom || '')}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">วันที่สิ้นสุด<input name="dateTo" type="date" value="${esc(feature.dateTo || '')}" class="block border rounded-lg p-2 w-full mt-1"></label>` : '<span></span><span></span>'}
-              <div class="grid grid-cols-2 gap-2"><label class="text-sm">เริ่ม<input name="start" type="time" value="${esc(feature.start)}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">สิ้นสุด<input name="end" type="time" value="${esc(feature.end)}" class="block border rounded-lg p-2 w-full mt-1"></label></div>
-            </div>
-            <div class="grid grid-cols-2 gap-3 mt-3"><label class="text-sm">Buffer ก่อน (นาที)<input name="bufferBefore" type="number" min="0" max="1440" value="${feature.bufferBefore}" class="block border rounded-lg p-2 w-full mt-1"></label><label class="text-sm">Buffer หลัง (นาที)<input name="bufferAfter" type="number" min="0" max="1440" value="${feature.bufferAfter}" class="block border rounded-lg p-2 w-full mt-1"></label></div>
-            <div class="flex flex-wrap gap-2 mt-3">${feature.days.map((enabled, day) => `<label class="inline-flex items-center gap-1 text-xs border rounded-lg px-2 py-1"><input type="checkbox" name="day-${day}" ${enabled ? 'checked' : ''}>${workloadDays[day]}</label>`).join('')}</div>
-          </section>`;
-        }).join('')}</div>
-        <div class="flex gap-3 mt-4"><button type="button" id="workload-save" class="bg-indigo-700 text-white rounded-xl px-4 py-2">บันทึก Workload Control</button><button type="button" id="workload-refresh" class="border rounded-xl px-4 py-2">รีเฟรช Workload</button></div>
-      </section>
+      ${workloadTabs.map(tab => `<section id="autoscale-panel-${tab.key}" data-autoscale-panel="${tab.key}" role="tabpanel" aria-labelledby="autoscale-tab-${tab.key}" class="bg-white border rounded-2xl p-5 shadow-sm">
+        <h2 class="font-bold text-lg">${tab.label}</h2>
+        <p class="text-sm text-gray-600 mt-2">${tab.description} · AUTO ใช้ตาราง, ON บังคับเปิด, OFF บังคับปิด</p>
+        <div class="space-y-4 mt-4">${tab.features.map(key => renderWorkloadFeature(key, workloadConfig)).join('')}</div>
+      </section>`).join('')}
+      <div data-autoscale-workload-actions class="hidden flex gap-3 bg-white border rounded-2xl p-4 shadow-sm">
+        <button type="button" id="workload-save" class="bg-indigo-700 text-white rounded-xl px-4 py-2">บันทึกการตั้งค่า Workload ทั้งหมด</button>
+        <button type="button" id="workload-refresh" class="border rounded-xl px-4 py-2">รีเฟรช Workload</button>
+        <p class="self-center text-xs text-gray-500">บันทึกครั้งเดียว ครอบคลุมการตั้งค่า Workload ทุกแท็บ</p>
+      </div>
     </div>`;
+    const setActiveTab = tab => {
+      activeTab = tab;
+      content.querySelectorAll('[data-autoscale-tab]').forEach(button => {
+        const active = button.dataset.autoscaleTab === activeTab;
+        button.setAttribute('aria-selected', String(active));
+        button.classList.toggle('bg-indigo-700', active);
+        button.classList.toggle('text-white', active);
+        button.classList.toggle('shadow-sm', active);
+        button.classList.toggle('bg-gray-100', !active);
+        button.classList.toggle('text-gray-700', !active);
+      });
+      content.querySelectorAll('[data-autoscale-panel]').forEach(panel => {
+        panel.classList.toggle('hidden', panel.dataset.autoscalePanel !== activeTab);
+      });
+      const isWorkloadTab = workloadTabs.some(tab => tab.key === activeTab);
+      content.querySelectorAll('[data-autoscale-workload-actions]').forEach(actions => {
+        actions.classList.toggle('hidden', !isWorkloadTab);
+      });
+    };
+    content.querySelectorAll('[data-autoscale-tab]').forEach(button => {
+      button.id = `autoscale-tab-${button.dataset.autoscaleTab}`;
+      button.onclick = () => setActiveTab(button.dataset.autoscaleTab);
+    });
+    setActiveTab(activeTab);
     const collect = () => ({ schemaVersion: 1, enabled: config.enabled, guardrail: { minimumMediumHoldMinutes: Number(content.querySelector('[name=minimumMediumHoldMinutes]')?.value || config.guardrail.minimumMediumHoldMinutes), healthyStreakRequired: Number(content.querySelector('[name=healthyStreakRequired]')?.value || config.guardrail.healthyStreakRequired), recoveryLockMinutes: Number(content.querySelector('[name=recoveryLockMinutes]')?.value || config.guardrail.recoveryLockMinutes) }, periods: [...content.querySelectorAll('[data-period]')].map(section => ({ startDate: section.querySelector('[name=startDate]').value, endDate: section.querySelector('[name=endDate]').value, days: [...section.querySelectorAll('[data-day]')].map(row => ({ enabled: row.dataset.enabled === 'true', start: row.querySelector('[name=start]').value, end: row.querySelector('[name=end]').value })) })) });
     const collectWorkload = () => ({ schemaVersion: 1, timezone: 'Asia/Bangkok', features: Object.fromEntries([...content.querySelectorAll('[data-workload-feature]')].map(section => [section.dataset.workloadFeature, { mode: section.querySelector('[name=mode]').value, dateFrom: section.querySelector('[name=dateFrom]')?.value || null, dateTo: section.querySelector('[name=dateTo]')?.value || null, start: section.querySelector('[name=start]').value, end: section.querySelector('[name=end]').value, bufferBefore: Number(section.querySelector('[name=bufferBefore]').value || 0), bufferAfter: Number(section.querySelector('[name=bufferAfter]').value || 0), days: [...section.querySelectorAll('input[type=checkbox][name^=day-]')].map(input => input.checked) }])) });
     const updateCosts = () => {

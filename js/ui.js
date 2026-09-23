@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.767'
+import { APP_VERSION } from './version.js?v=10.22.768'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.768': [
+    '🗂️ จัดการตั้งค่ากำลังเครื่องเป็นแท็บแยกตามงาน: ภาพรวม ตารางเครื่อง ละหมาด ออกนอกห้องเรียน และกีฬาสี',
+  ],
   '10.22.767': [
     '⚙️ เพิ่มตัวควบคุมช่วงเวลาการทำงานของ workload และ guardrail ป้องกันการลดขนาดระบบอัตโนมัติเร็วเกินไป',
   ],
