@@ -19,6 +19,7 @@ const state = {
   sports: [],
   matches: [],
   totals: [],
+  eventLogo: '',
   loading: true,
   error: '',
   connection: 'กำลังเชื่อมต่อ',
@@ -183,8 +184,11 @@ function renderCompetition(gender) {
 
 function renderHeader() {
   const liveClass = state.connection === 'SUBSCRIBED' || state.connection === 'เชื่อมต่อแล้ว' ? 'connected' : ''
+  const eventLogo = state.eventLogo
+    ? logo(state.eventLogo, 'โลโก้ประจำงาน AZIZGAMES', 'event-logo')
+    : '<span class="event-logo event-logo-fallback" aria-label="โลโก้ประจำงาน">🏆</span>'
   return `<header class="live-header">
-    <div class="brand-lockup"><div class="color-logo-strip" aria-label="โลโก้ทีมสีกีฬาสี">${state.colors.slice(0, 8).map(color => `<span class="header-team-logo" style="--team-color:${esc(color.hex_color || '#64748b')}">${teamLogo(color, 'header-logo')}</span>`).join('')}</div><div><div class="brand-title">AZIZGAMES <em>LIVE</em></div><div class="route-label">/azizgames-live</div></div></div>
+    <div class="brand-lockup">${eventLogo}<div><div class="brand-title">AZIZGAMES <em>LIVE</em></div><div class="route-label">/azizgames-live</div></div></div>
     <div class="event-title"><h1>${esc(eventName())}</h1><p>กีฬาสีออนไลน์ · หน้าจอถ่ายทอดสด</p></div>
     <div class="header-actions"><span class="connection ${liveClass}"><i></i>${esc(state.connection)}</span><a href="${asset('azizgames.html')}" target="_blank" rel="noopener">ระบบกีฬาสีหลัก ↗</a><a href="${asset('azizgames.html?tab=gallery')}" target="_blank" rel="noopener" class="gallery-link">📸 แกลเลอรี ↗</a></div>
   </header>`
@@ -250,24 +254,26 @@ function render() {
 }
 
 async function queryData() {
-  let eventQuery = supabase.from('events').select('id,name,academic_year,start_date,end_date,status,cover_image_url,description,updated_at').order('academic_year', { ascending: false }).order('created_at', { ascending: false }).limit(1)
-  if (EVENT_ID) eventQuery = supabase.from('events').select('id,name,academic_year,start_date,end_date,status,cover_image_url,description,updated_at').eq('id', EVENT_ID).limit(1)
+  let eventQuery = supabase.from('events').select('id,name,academic_year,start_date,end_date,status,description,updated_at').order('academic_year', { ascending: false }).order('created_at', { ascending: false }).limit(1)
+  if (EVENT_ID) eventQuery = supabase.from('events').select('id,name,academic_year,start_date,end_date,status,description,updated_at').eq('id', EVENT_ID).limit(1)
   const { data: events, error: eventError } = await eventQuery
   if (eventError) throw eventError
   const event = events?.[0]
   if (!event) throw new Error('ยังไม่พบกิจกรรมกีฬาสีที่เปิดใช้งาน')
-  const [colors, sports, matches, totals] = await Promise.all([
+  const [colors, sports, matches, totals, assets] = await Promise.all([
     supabase.from('team_colors').select('id,event_id,name,gender,hex_color,text_color,logo_url,display_order').eq('event_id', event.id).order('display_order'),
     supabase.from('sports').select('id,event_id,code,name,category,gender,venue,is_active,display_order').eq('event_id', event.id).order('display_order').order('name'),
     supabase.from('matches').select('id,event_id,sport_id,round,round_name,team_a_color_id,team_b_color_id,score_a,score_b,winner_team_color_id,scheduled_date,scheduled_time,venue,note,status,updated_at').eq('event_id', event.id).order('scheduled_date').order('scheduled_time'),
     supabase.from('color_totals').select('*').eq('event_id', event.id),
+    supabase.from('settings').select('value').eq('key', 'azizgames_system_assets').maybeSingle(),
   ])
-  for (const result of [colors, sports, matches, totals]) if (result.error) throw result.error
+  for (const result of [colors, sports, matches, totals, assets]) if (result.error) throw result.error
   state.event = event
   state.colors = colors.data || []
   state.sports = sports.data || []
   state.matches = matches.data || []
   state.totals = totals.data || []
+  state.eventLogo = assets.data?.value?.logos?.main || ''
   state.lastUpdated = new Date().toISOString()
 }
 
@@ -303,9 +309,13 @@ function subscribeRealtime() {
   if (!state.event?.id) return
   const eventId = state.event.id
   const channel = supabase.channel(`azizgames-live-${eventId}`)
-  const tables = ['events', 'team_colors', 'sports', 'matches', 'color_scores', 'medal_awards']
+  const tables = ['events', 'team_colors', 'sports', 'matches', 'color_scores', 'medal_awards', 'settings']
   tables.forEach(table => {
-    const filter = table === 'events' ? `id=eq.${eventId}` : `event_id=eq.${eventId}`
+    const filter = table === 'events'
+      ? `id=eq.${eventId}`
+      : table === 'settings'
+        ? 'key=eq.azizgames_system_assets'
+        : `event_id=eq.${eventId}`
     channel.on('postgres_changes', { event: '*', schema: 'public', table, filter }, queueRealtimeRefresh)
   })
   state.channel = channel
