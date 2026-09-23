@@ -66,6 +66,12 @@ function formatUpdated(value) {
   return new Date(value).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
 }
 
+function formatThaiDate(value) {
+  if (!value) return ''
+  const source = /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? `${value}T00:00:00` : value
+  return new Date(source).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
 function logo(url, alt, className = 'team-logo') {
   if (!url) return ''
   return `<img class="${className}" src="${esc(url)}" alt="${esc(alt)}" loading="lazy" onerror="this.remove()">`
@@ -86,7 +92,19 @@ function sportById(id) {
 }
 
 function eventName() {
-  return state.event?.name || 'กีฬาสี 2569'
+  const rawName = String(state.event?.name || 'กีฬาสี').replace(/^\s*AZIZGAMES\s*/i, '')
+  const cleanName = rawName.replace(/\s*ออนไลน์\s*/g, ' ').replace(/\s{2,}/g, ' ').trim()
+  if (!cleanName) return `กีฬาสี ${state.event?.academic_year || 2569}`
+  return /(?:20|25)\d{2}/.test(cleanName) || !state.event?.academic_year
+    ? cleanName
+    : `${cleanName} ${state.event.academic_year}`
+}
+
+function eventDateLabel() {
+  const start = formatThaiDate(state.event?.start_date)
+  const end = formatThaiDate(state.event?.end_date)
+  if (start && end && start !== end) return `${start} – ${end}`
+  return start || end || formatThaiDate(new Date())
 }
 
 function rankingRowsForGender(gender, categoryKey) {
@@ -125,12 +143,12 @@ function statusMeta(status) {
 function renderRanking(gender) {
   const category = RANKING_CATEGORY_DEFS[state.rankingCategoryIndex] || RANKING_CATEGORY_DEFS.at(-1)
   const rows = rankingRowsForGender(gender, category.key)
-  const title = `ตารางอันดับ${genderLabel(gender)}`
+  const title = `อันดับ${genderLabel(gender)} · ${category.label}`
   const tone = gender === 'M' ? 'male' : 'female'
   return `<section class="panel ranking-panel ${tone}" data-ranking-gender="${gender}" aria-label="${title} ${category.label}">
     <div class="panel-heading">
-      <span class="heading-icon" aria-hidden="true">🏆</span>
-      <div><h2>${title}</h2><p class="ranking-category"><span>${category.icon}</span>${esc(category.label)} <small>หมวด ${state.rankingCategoryIndex + 1}/${RANKING_CATEGORY_DEFS.length}</small></p></div>
+      <span class="heading-icon" aria-hidden="true">${category.icon}</span>
+      <h2>${title}</h2>
     </div>
     <div class="ranking-head"><span>อันดับ</span><span>สี</span><span>ทีม</span><span>คะแนน</span></div>
     <div class="ranking-list">
@@ -189,7 +207,7 @@ function renderHeader() {
     : '<span class="event-logo event-logo-fallback" aria-label="โลโก้ประจำงาน">🏆</span>'
   return `<header class="live-header">
     <div class="brand-lockup">${eventLogo}<div><div class="brand-title">AZIZGAMES <em>LIVE</em></div><div class="route-label">/azizgames-live</div></div></div>
-    <div class="event-title"><h1>${esc(eventName())}</h1><p>กีฬาสีออนไลน์ · หน้าจอถ่ายทอดสด</p></div>
+    <div class="event-title"><h1>${esc(eventName())}</h1><p class="event-date">วันที่ ${esc(eventDateLabel())}</p></div>
     <div class="header-actions"><span class="connection ${liveClass}"><i></i>${esc(state.connection)}</span><a href="${asset('azizgames.html')}" target="_blank" rel="noopener">ระบบกีฬาสีหลัก ↗</a><a href="${asset('azizgames.html?tab=gallery')}" target="_blank" rel="noopener" class="gallery-link">📸 แกลเลอรี ↗</a></div>
   </header>`
 }

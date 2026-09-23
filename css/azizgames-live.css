@@ -48,9 +48,7 @@ button { font: inherit; }
 .female .panel-heading { color: #f9a8d4; background: linear-gradient(90deg, rgba(244,114,182,.18), transparent); }
 .panel-heading h2 { margin: 0; font-size: clamp(16px, 1.35vw, 26px); line-height: 1.15; }
 .heading-icon { font-size: clamp(22px, 2vw, 34px); }
-.ranking-category { display: flex; align-items: center; gap: 5px; margin: 5px 0 0; color: #bae6fd; font-size: clamp(9px, .7vw, 13px); font-weight: 700; }
-.female .ranking-category { color: #fbcfe8; }
-.ranking-category small { color: var(--muted); font-size: .85em; font-weight: 500; }
+.event-date { color: #fde68a !important; font-size: clamp(11px, .9vw, 16px) !important; font-weight: 800; letter-spacing: .02em; }
 
 .ranking-head, .ranking-row { display: grid; grid-template-columns: 42px 36px 1fr auto; align-items: center; gap: 7px; }
 .ranking-head { padding: 12px 12px 8px; color: var(--muted); font-size: clamp(9px, .7vw, 13px); font-weight: 700; }
