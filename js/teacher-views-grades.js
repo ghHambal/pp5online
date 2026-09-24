@@ -1,5 +1,5 @@
 import { getClassScoreRounding, saveClassScoreRounding } from './api.js'
-import { isBonus, normalizeRounding, scoreForGrade, sortScoreColumns } from './score-display.js'
+import { isBonus, isGradeColumn, normalizeRounding, scoreForGrade, sortScoreColumns } from './score-display.js'
 import {
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   updateColumnSortOrders,
@@ -18,6 +18,7 @@ import { supabase } from './supabase.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
 import { openScoreScanner } from './score-qr-scanner.js'
 import { publishGradebookUpdate, subscribeGradebookUpdates } from './gradebook-sync.js'
+import { downloadGradeOnlineXlsx } from './gradeonline-xlsx.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _readingGrade, applyReadingGradesFromConfig,
 } from './teacher-views-utils.js'
@@ -327,6 +328,7 @@ export async function renderGradesGrid(teacher, classData) {
     const bonusCols    = allCols.filter(isBonus)
     const derivedCols  = allCols.filter(c => c.column_type === 'derived')
     const overrideCols = allCols.filter(c => c.column_type === 'override')
+    const gradeCols    = allCols.filter(isGradeColumn)
     const regularCols  = allCols.filter(c => (c.column_type ?? 'regular') === 'regular' && !isBonus(c))
     const colById = Object.fromEntries(allCols.map(c => [c.id, c]))
     // midCols/finalCols เฉพาะ regular (ไม่นับ bonus/derived ซ้ำ)
@@ -359,6 +361,12 @@ export async function renderGradesGrid(teacher, classData) {
       scoreMap[s.id]['__force'] = s.special_result
     }
     const _getScore = (sid, colId) => scoreMap[sid]?.[colId]?.final ?? scoreMap[sid]?.[colId]?.orig ?? null
+    const _hasStoredGradeScore = (sid, col) => {
+      if (col.column_type === 'derived') return true
+      const value = _getScore(sid, col.id)
+      return value !== null && value !== '' && Number.isFinite(Number(value))
+    }
+    const _isGradeComplete = sid => gradeCols.length > 0 && gradeCols.every(col => _hasStoredGradeScore(sid, col))
     const _hasHistory = (sid, colId) => (scoreMap[sid]?.[colId]?.history?.length ?? 0) > 1
     const _groupTotal = (sid, cols) => cols.reduce((s,c) => s + (parseFloat(_getScore(sid,c.id)) || 0), 0)
     const _groupMax   = (cols) => cols.reduce((s,c) => s + (parseFloat(c.max_score)||0), 0)
@@ -433,6 +441,30 @@ export async function renderGradesGrid(teacher, classData) {
       const grade = _pctToGrade(pct)
       const khuna = _gradeToKhuna(grade)
       return { midRaw, finRaw, pct, total, grade, khuna }
+    }
+
+    const _buildGradeOnlineRecords = () => {
+      const incomplete = []
+      const records = students.map(s => {
+        const { pct, grade } = _calcGradeRow(s.id)
+        const forced = scoreMap[s.id]?.['__force'] || ''
+        const forcedText = String(forced).trim()
+        const forcedIsNumeric = forcedText !== '' && Number.isFinite(Number(forcedText))
+        // GradeOnline requires a numeric grade to have a real total score.
+        // Do not export incomplete rows as 0/0 because its validator treats
+        // that pair as a numeric grade without an accompanying score.
+        if (!_isGradeComplete(s.id) && (!forcedText || forcedIsNumeric)) {
+          incomplete.push(s)
+          return null
+        }
+        return {
+          studentCode: s.student_code, studentName: s.full_name,
+          // GradeOnline allows special results such as ร/มส without a score.
+          total: forcedText && !forcedIsNumeric ? '' : Math.round(pct * 10) / 10,
+          grade: forced || (grade > 0 ? String(grade) : '0'),
+        }
+      }).filter(Boolean)
+      return { records, incomplete }
     }
 
     const stickyL = 'sticky left-0 z-20 bg-white border border-gray-200'
@@ -666,6 +698,11 @@ export async function renderGradesGrid(teacher, classData) {
           ${_tBtn('forceGrade','บังคับเกรด',toggleForceGrade,'bg-rose-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-gray-200')}
           ${_tBtn('bonus','⭐ คะแนนเก็บ/พิเศษ',showBonusCols,'bg-amber-500 text-white shadow-sm','bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100')}
           ${showBonusCols && bonusCols.length ? _tBtn('formula-link','🔗 เชื่อมสูตร',showFormulaLink,'bg-violet-500 text-white shadow-sm','bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100') : ''}
+          <div class="w-px h-5 bg-gray-200 mx-1 self-center"></div>
+          <button id="btn-export-gradeonline-excel" type="button"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-600 text-white shadow-sm hover:bg-teal-700 transition">
+            📥 ดาวน์โหลด Excel GradeOnline
+          </button>
           ${showRegradeSubmitBtn ? `
           <div class="w-px h-5 bg-gray-200 mx-1 self-center"></div>
           <button id="btn-submit-regrade" type="button"
@@ -699,6 +736,26 @@ export async function renderGradesGrid(teacher, classData) {
           btn.disabled = false; btn.textContent = '📤 ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า'
         }
       })
+      document.getElementById('btn-export-gradeonline-excel')?.addEventListener('click', () => {
+        const btn = document.getElementById('btn-export-gradeonline-excel')
+        const { records, incomplete } = _buildGradeOnlineRecords()
+        if (incomplete.length) {
+          const examples = incomplete.slice(0, 3).map(s => s.full_name).join(', ')
+          showToast(`ยังมีนักเรียนกรอกคะแนนไม่ครบ ${incomplete.length} คน${examples ? ` เช่น ${examples}` : ''} — กรุณากรอกให้ครบก่อนส่งออก`, 'error')
+          return
+        }
+        if (!records.length) {
+          showToast('ยังไม่มีข้อมูลคะแนนที่พร้อมส่งออก', 'error')
+          return
+        }
+        btn.disabled = true
+        try {
+          downloadGradeOnlineXlsx({ subjectName: ms?.subject_name, className: classData.class_name, records })
+          showToast(`ดาวน์โหลดไฟล์ Excel แล้ว ${records.length} คน — นำเข้าใน GradeOnline ได้เลย`, 'success')
+        } finally {
+          btn.disabled = false
+        }
+      })
       // ปุ่มเดียวกัน ส่งคะแนนรวม(เต็ม 100)+เกรดของทั้งห้องเข้า GradeOnline พร้อมกันไปเลย —
       // กันด้วยโควต้าเดียวกับฝั่งเช็คชื่อ (ฟรี 1 ห้อง/ครู, สนับสนุนระดับ 2+ ไม่จำกัด) ไม่บล็อกการส่งเข้า
       // ระบบแก้ค้างเก่าด้านบนถ้าไม่ผ่านโควต้า (อันนั้นเป็นงานส่วนกลางของโรงเรียน ส่งได้ทุกคน)
@@ -707,15 +764,16 @@ export async function renderGradesGrid(teacher, classData) {
         const isSupported = (window._pp5DonorTierIndex ?? 0) >= 2
         const access = _checkGradeOnlineRoomAccess(teacher?.id, classData.class_name, isSupported)
         if (!access.allowed) { _openGradeOnlineRoomPaywall(access.claimedRoom, classData.class_name); return }
-        const records = students.map(s => {
-          const { pct, grade } = _calcGradeRow(s.id)
-          const forced = scoreMap[s.id]?.['__force'] || ''
-          return {
-            studentCode: s.student_code, studentName: s.full_name,
-            total: Math.round(pct * 10) / 10,
-            grade: forced || (grade > 0 ? String(grade) : '0'),
-          }
-        })
+        const { records, incomplete } = _buildGradeOnlineRecords()
+        if (incomplete.length) {
+          const examples = incomplete.slice(0, 3).map(s => s.full_name).join(', ')
+          showToast(`ยังมีนักเรียนกรอกคะแนนไม่ครบ ${incomplete.length} คน${examples ? ` เช่น ${examples}` : ''} — กรุณากรอกให้ครบก่อนส่งเข้า GradeOnline`, 'error')
+          return
+        }
+        if (!records.length) {
+          showToast('ยังไม่มีข้อมูลคะแนนที่พร้อมส่งเข้า GradeOnline', 'error')
+          return
+        }
         if (!confirm(`เตรียมส่งคะแนนรวม(เต็ม 100)+เกรดของนักเรียน ${records.length} คนในห้องนี้ไปรอที่ GradeOnline ยืนยันไหม?`)) return
         gBtn.disabled = true; gBtn.textContent = 'กำลังเตรียมข้อมูล...'
         try {

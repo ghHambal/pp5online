@@ -141,14 +141,30 @@
   }
   function isGradeMatch(current, expected) { return normalizeGrade(current) === normalizeGrade(expected) }
 
+  function hasNumericValue(value) {
+    if (value == null || String(value).trim() === '') return false
+    return Number.isFinite(Number(value))
+  }
+
+  function isNumericGrade(value) {
+    return hasNumericValue(value)
+  }
+
   async function safeSetInputValue(inp, value) {
     inp.focus()
-    inp.value = value
+    // Use the native setter so controlled inputs on the external page update
+    // their internal form state, not only the visible DOM value.
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+    if (setter) setter.call(inp, String(value))
+    else inp.value = value
     inp.dispatchEvent(new Event('input', { bubbles: true }))
     await sleep(SAFE_MODE.EVENT_GAP_MS)
     inp.dispatchEvent(new Event('change', { bubbles: true }))
     await sleep(SAFE_MODE.VERIFY_WAIT_MS)
-    return String(inp.value).trim() === String(value).trim()
+    inp.dispatchEvent(new Event('blur', { bubbles: true }))
+    const actual = String(inp.value).trim()
+    const expected = String(value).trim()
+    return actual === expected || (hasNumericValue(actual) && hasNumericValue(expected) && Number(actual) === Number(expected))
   }
 
   async function safeSetSelectValue(sel, wantText) {
@@ -221,6 +237,14 @@
         panel.querySelector('#pp5gol-run').disabled = true
         return
       }
+      const invalidRows = rows.filter(r => isNumericGrade(r.grade) && !hasNumericValue(r.total))
+      if (invalidRows.length) {
+        setStatus('')
+        toast(`ข้อมูลจาก pp5-online ไม่ครบ: พบ ${invalidRows.length} คนที่มีเกรดตัวเลขแต่ไม่มีคะแนนรวม`, 'error')
+        pendingRows = []
+        panel.querySelector('#pp5gol-run').disabled = true
+        return
+      }
       pendingRows = rows
       panel.querySelector('#pp5gol-run').disabled = false
       setStatus(`พร้อมกรอก ${rows.length} คน — ตรวจสอบว่าอยู่หน้าวิชา/ห้องที่ถูกต้องแล้วกด "เติมคะแนน+เกรด"`)
@@ -255,18 +279,35 @@
       if (!tr) { miss++; missing.push(info); continue }
 
       let rowFailed = false
+      const expectedGrade = String(r.grade || '').trim()
+      const scoreRequired = isNumericGrade(expectedGrade)
       const inp = pickScoreInput(meta, tr)
-      if (inp && r.total !== '' && r.total != null) {
+      let scoreOk = false
+      if (!inp) {
+        if (scoreRequired) {
+          rowFailed = true
+          failScore.push({ ...info, total: r.total, reason: 'ไม่พบช่องคะแนนรวม' })
+        } else {
+          // GradeOnline accepts special results such as ร/มส without a score.
+          scoreOk = true
+        }
+      } else if (!hasNumericValue(r.total)) {
+        if (scoreRequired) {
+          rowFailed = true
+          failScore.push({ ...info, total: r.total, reason: 'คะแนนรวมว่างหรือไม่ใช่ตัวเลข' })
+        } else {
+          scoreOk = true
+        }
+      } else {
         const ok = await safeSetInputValue(inp, r.total)
-        if (ok) okScore++
+        if (ok) { okScore++; scoreOk = true }
         else { rowFailed = true; failScore.push({ ...info, total: r.total }) }
       }
 
       if (shouldAbortNow()) { aborted = true; break }
       await sleep(SAFE_MODE.AFTER_SCORE_WAIT_MS)
 
-      const expectedGrade = String(r.grade || '').trim()
-      if (expectedGrade) {
+      if (expectedGrade && (scoreOk || !scoreRequired)) {
         const currentGrade = getCurrentGradeText(meta, tr)
         if (isGradeMatch(currentGrade, expectedGrade)) {
           gradeAlready++
