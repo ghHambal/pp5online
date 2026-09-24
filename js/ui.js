@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.776'
+import { APP_VERSION } from './version.js?v=10.22.777'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.777': [
+    '🛠️ แก้ข้อผิดพลาดหน้าเกรดเฉลี่ยจากความสัมพันธ์รายวิชา/ครูที่ปรึกษาซ้ำในฐานข้อมูล',
+  ],
   '10.22.776': [
     '🎓 แก้หน้าเกรดเฉลี่ยให้แสดงวิชาที่สรุปเกรดแล้ว และไม่นับคะแนนพิเศษหรือคอลัมน์ปรับคะแนน',
     '🔢 ให้การคำนวณเกรดเฉลี่ยใช้การปัดคะแนนรวมจริงแบบเดียวกับหน้าคะแนนรายวิชา',

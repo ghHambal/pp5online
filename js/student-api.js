@@ -461,7 +461,7 @@ export async function getStudentGPA(studentId) {
       class_id,
       classes(id, subject_group_override, master_subjects(
         subject_name, subject_code, credit, subject_group,
-        teachers(full_name, category)
+        teachers!master_subjects_teacher_id_fkey(full_name, category)
       ))
     `)
     .eq('student_id', studentId), 'id')
