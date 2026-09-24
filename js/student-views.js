@@ -23,7 +23,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.775'
+import { APP_VERSION } from './version.js?v=10.22.776'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -409,7 +409,10 @@ export async function renderStudentOverview(student) {
     getMyExamRequests(student.id).catch(()=>[]),
     getStudentDailySchedule(student.id).catch(()=>({ linked:[], unlinked:[] })),
     getStudentAllAnnouncements(student.id).catch(()=>[]),
-    getStudentGPA(student.id).catch(()=>({ samai:[], sasana:[] })),
+    getStudentGPA(student.id).catch(error => {
+      console.error('[student GPA] โหลดเกรดเฉลี่ยไม่สำเร็จ', error)
+      return { samai: [], sasana: [], error: getFriendlyErrorMessage(error) }
+    }),
     getSystemConfig().catch(()=>({})),
     getStudentClassroomRole(student.main_room).catch(()=>null),
     getMyAllAssignments(student.id).catch(()=>[]),
@@ -893,8 +896,11 @@ export async function renderStudentOverview(student) {
     const _gradeLabel = g => g>=3.5?'ดีเยี่ยม':g>=3?'ดี':g>=2?'พอใช้':g>=1?'ผ่าน':'ไม่ผ่าน'
     // วิชาที่ครูยังกรอกคะแนนไม่ครบทุกช่อง — grade เป็น null โดยตั้งใจ (ยังไม่นับเข้า GPA)
     // โชว์ "ให้คะแนนแล้ว x/y ช่อง" แทนขีด — เพื่อไม่ให้ดูเหมือนสอบตก/ไม่มีข้อมูล
-    const _incompleteChip = r => r.grade == null && r.totalCols > 0
-      ? `<span class="text-[10px] font-semibold text-amber-500 whitespace-nowrap" title="ครูให้คะแนนแล้ว ${r.scoredCount}/${r.totalCols} ช่อง — วิชานี้ยังไม่ถูกนับเข้าเกรดเฉลี่ยจนกว่าจะครบ">⏳ ${r.scoredCount}/${r.totalCols} · ยังไม่นับเข้า GPA</span>` : null
+    const _incompleteChip = r => {
+      if (r.loadError) return '<span class="text-[10px] font-semibold text-red-500 whitespace-nowrap">⚠️ โหลดข้อมูลไม่ครบ</span>'
+      return r.grade == null && r.totalCols > 0
+        ? `<span class="text-[10px] font-semibold text-amber-500 whitespace-nowrap" title="ครูให้คะแนนแล้ว ${r.scoredCount}/${r.totalCols} ช่อง — วิชานี้ยังไม่ถูกนับเข้าเกรดเฉลี่ยจนกว่าจะครบ">⏳ ${r.scoredCount}/${r.totalCols} · ยังไม่นับเข้า GPA</span>` : null
+    }
 
     const _gpaTable = (rows, gpa, tabId) => {
       const graded       = rows.filter(r => r.grade != null)
@@ -993,7 +999,15 @@ export async function renderStudentOverview(student) {
       return viewMode === 'card' ? _gpaCards(rows, gpa, tabId) : _gpaTable(rows, gpa, tabId)
     }
 
+    const gpaErrorNotice = gpaData.error ? `
+      <div class="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+        <p class="font-bold">⚠️ โหลดข้อมูลเกรดเฉลี่ยได้ไม่ครบ</p>
+        <p class="mt-1">${_esc(gpaData.error)}</p>
+        <p class="mt-1 text-amber-600">วิชาที่โหลดได้จะแสดงตามปกติ ส่วนวิชาที่มีปัญหาจะไม่ถูกนำไปคำนวณ GPA</p>
+      </div>` : ''
+
     const gpaBody = `
+      ${gpaErrorNotice}
       <div class="flex items-center justify-between gap-2 mb-4">
         <div id="gpa-pop-tabs" class="flex gap-2 flex-1">
           <button data-tab="samai" class="gpa-pop-tab flex-1 py-2 rounded-xl text-sm font-semibold bg-purple-600 text-white">สามัญ</button>

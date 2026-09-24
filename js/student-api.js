@@ -2,6 +2,7 @@ import { supabase } from './supabase.js'
 import { isMissingFunction } from './supabase-errors.js'
 import { _generateSessions, _dateInputValue } from './teacher-views-utils.js'
 import { getClassSessionDOWs } from './api.js'
+import { isGradeColumn, effectiveScore, scoreForGrade } from './score-display.js'
 
 // ─── Student Profile ──────────────────────────────────────────────────────────
 export async function getMyStudentProfile() {
@@ -434,15 +435,22 @@ async function _fetchGpaPages(buildQuery, cursorColumn) {
   }
 }
 
-async function _fetchGpaBatches(ids, buildQuery, cursorColumn) {
+// GPA should remain useful when one bounded batch is temporarily unavailable.
+// The affected classes/columns are marked below so the UI can show them as
+// unavailable without hiding all other subjects.
+async function _fetchGpaBatchesSafe(ids, buildQuery, cursorColumn) {
   const rows = []
-  // Bound URL length and concurrency; do not fan out one request per subject.
+  const errors = []
   for (let offset = 0; offset < ids.length; offset += GPA_ID_BATCH_SIZE) {
     const batch = ids.slice(offset, offset + GPA_ID_BATCH_SIZE)
-    const batchRows = await _fetchGpaPages(() => buildQuery(batch), cursorColumn)
-    for (const row of batchRows) rows.push(row)
+    try {
+      rows.push(...await _fetchGpaPages(() => buildQuery(batch), cursorColumn))
+    } catch (error) {
+      errors.push({ ids: batch, error })
+      console.warn('[student GPA] โหลด batch ไม่สำเร็จ', { cursorColumn, ids: batch, error })
+    }
   }
-  return rows
+  return { rows, errors }
 }
 
 export async function getStudentGPA(studentId) {
@@ -462,36 +470,53 @@ export async function getStudentGPA(studentId) {
   // Preserve legacy GPA scope: use the enrolled class, not source_class_id.
   // Following source classes would change GPA behavior and is not part of H1.
   const classIds = [...new Set(enrollment.filter(e => e.classes?.master_subjects).map(e => e.class_id))]
-  const columns = await _fetchGpaBatches(classIds, ids => supabase
+  const columnResult = await _fetchGpaBatchesSafe(classIds, ids => supabase
     .from('class_score_columns')
-    .select('id, class_id, assignment_type, max_score')
-    .in('class_id', ids)
-    .not('assignment_type', 'eq', 'คะแนนพิเศษ'), 'id')
+    .select('id, class_id, assignment_type, max_score, column_type, formula, formula_refs, bonus_formula')
+    .in('class_id', ids), 'id')
+  const columns = columnResult.rows
+  const failedClassIds = new Set(columnResult.errors.flatMap(batch => batch.ids))
   const columnsByClass = new Map()
   for (const column of columns) {
     if (!columnsByClass.has(column.class_id)) columnsByClass.set(column.class_id, [])
     columnsByClass.get(column.class_id).push(column)
   }
-  const scoreRows = await _fetchGpaBatches(columns.map(c => c.id), ids => supabase
+
+  // Rounding is optional configuration. If it cannot be read, scoreForGrade()
+  // falls back to the same default used by the subject-detail page.
+  const { data: roundingRows, error: roundingError } = await supabase
+    .from('class_score_display_settings')
+    .select('class_id, rounding')
+    .in('class_id', classIds)
+  if (roundingError) console.warn('[student GPA] โหลดค่าปัดคะแนนไม่สำเร็จ ใช้ค่าเริ่มต้นแทน', roundingError)
+  const roundingByClass = new Map((roundingRows ?? []).map(row => [row.class_id, row.rounding]))
+
+  const scoreResult = await _fetchGpaBatchesSafe(columns.map(c => c.id), ids => supabase
     .from('student_scores')
     .select('assignment_id, original_score, retake_score, final_score')
     .eq('student_id', studentId)
     .in('assignment_id', ids), 'assignment_id')
+  const scoreRows = scoreResult.rows
+  const failedScoreColumnIds = new Set(scoreResult.errors.flatMap(batch => batch.ids))
   const scoresByColumn = new Map(scoreRows.map(row => [row.assignment_id, row]))
 
   const results = enrollment.map(e => {
     const cls = e.classes
     const ms  = cls?.master_subjects
     if (!ms) return null
-    const cols = columnsByClass.get(e.class_id) ?? []
-    if (!cols?.length) return {
+    const allCols = columnsByClass.get(e.class_id) ?? []
+    const cols = allCols.filter(isGradeColumn)
+    const classLoadError = failedClassIds.has(e.class_id)
+    if (!cols.length) return {
       classId: cls.id, subjectName: ms.subject_name, subjectCode: ms.subject_code,
       credit: ms.credit ?? 1, grade: null, score: null, maxScore: null, scoredCount: 0, totalCols: 0,
       hasRetake: false, group: ms.subject_group, teacherCategory: ms.teachers?.category ?? '',
       groupOverride: cls.subject_group_override ?? null,
-      teacherName: ms.teachers?.full_name ?? '—'
+      teacherName: ms.teachers?.full_name ?? '—', loadError: classLoadError
     }
-    const scores = cols.map(c => scoresByColumn.get(c.id)).filter(Boolean)
+    // Keep bonus scores available for effectiveScore(); they are not counted
+    // as grade columns, but may be referenced by a grade-column formula.
+    const scores = allCols.map(c => scoresByColumn.get(c.id)).filter(Boolean)
     const scoreMap = Object.fromEntries((scores ?? []).map(s => [s.assignment_id, s]))
     // ยังคิดเกรดไม่ได้จนกว่าครูจะกรอกคะแนนครบทุกช่อง — ถ้านับช่องที่ยังไม่กรอกเป็น 0 ไปก่อน
     // นักเรียนจะเห็นเกรดเฉลี่ยต่ำผิดปกติ/ไม่ผ่าน ทั้งที่ครูแค่ยังตรวจไม่เสร็จ (เจอบั๊กจริง 2026-09-08)
@@ -499,26 +524,32 @@ export async function getStudentGPA(studentId) {
       const sc = scoreMap[c.id]
       return sc && (sc.final_score != null || sc.original_score != null)
     }).length
-    const isComplete = scoredCount === cols.length
+    const scoreLoadError = cols.some(c => failedScoreColumnIds.has(c.id))
+    const loadError = classLoadError || scoreLoadError
+    const isComplete = !loadError && scoredCount === cols.length
     const maxTotal = cols.reduce((s, c) => s + (c.max_score || 0), 0)
     const total = cols.reduce((s, c) => {
       const sc = scoreMap[c.id]
-      return s + (parseFloat(sc?.final_score ?? sc?.original_score ?? 0) || 0)
+      const value = sc && (sc.final_score != null || sc.original_score != null)
+        ? effectiveScore(allCols, c, id => scoreMap[id]?.final_score ?? scoreMap[id]?.original_score)
+        : 0
+      return s + (parseFloat(value) || 0)
     }, 0)
-    const hasRetake = (scores ?? []).some(s => s.retake_score != null)
-    const pct   = (isComplete && maxTotal > 0) ? total / maxTotal * 100 : null
+    const hasRetake = cols.some(c => scoresByColumn.get(c.id)?.retake_score != null)
+    const gradeTotal = scoreForGrade(roundingByClass.get(e.class_id), total)
+    const pct   = (isComplete && maxTotal > 0) ? gradeTotal / maxTotal * 100 : null
     const grade = pct != null
       ? (pct >= 80 ? 4 : pct >= 75 ? 3.5 : pct >= 70 ? 3 : pct >= 65 ? 2.5
         : pct >= 60 ? 2 : pct >= 55 ? 1.5 : pct >= 50 ? 1 : 0)
       : null
     return {
       classId: cls.id, subjectName: ms.subject_name, subjectCode: ms.subject_code,
-      credit: ms.credit ?? 1, grade, score: pct != null ? Math.round(total) : null,
+      credit: ms.credit ?? 1, grade, score: pct != null ? gradeTotal : null,
       maxScore: maxTotal, hasRetake, pct: pct != null ? Math.round(pct) : null,
       scoredCount, totalCols: cols.length,
       group: ms.subject_group, teacherCategory: ms.teachers?.category ?? '',
       groupOverride: cls.subject_group_override ?? null,
-      teacherName: ms.teachers?.full_name ?? '—'
+      teacherName: ms.teachers?.full_name ?? '—', loadError
     }
   })
 
@@ -528,7 +559,12 @@ export async function getStudentGPA(studentId) {
     : (r.teacherCategory === 'ศาสนา' || ['AGM','AGMVOC'].includes(r.group))
   const samai  = valid.filter(r => !_isSasana(r))
   const sasana = valid.filter(r =>  _isSasana(r))
-  return { samai, sasana }
+  const hasBatchErrors = columnResult.errors.length > 0 || scoreResult.errors.length > 0
+  return {
+    samai,
+    sasana,
+    error: hasBatchErrors ? 'บางรายวิชาโหลดข้อมูลคะแนนไม่ครบ ระบบจะแสดงเฉพาะวิชาที่โหลดสำเร็จ' : null,
+  }
 }
 
 // ─── ขอย้ายวิชาข้ามกลุ่มสามัญ/ศาสนา (ต้องผ่านแอดมินอนุมัติก่อนมีผลจริง) ─────────
