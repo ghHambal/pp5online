@@ -183,7 +183,7 @@ function renderRanking(gender) {
   return `<section class="panel ranking-panel ${tone}" data-ranking-gender="${gender}" aria-label="${title} ${category.label}">
     <div class="panel-heading">
       <span class="heading-icon" aria-hidden="true">${category.icon}</span>
-      <h2>${title}</h2>
+      <div class="panel-heading-copy"><h2>${title}</h2><span class="panel-en">${gender === 'M' ? "MEN'S" : "WOMEN'S"} · ${isMedals ? 'MEDALS' : 'STANDINGS'}</span></div>
     </div>
     <div class="ranking-head"><span>อันดับ</span><span>สี</span><span>ทีม</span><span>${isMedals ? 'เหรียญ' : 'คะแนน'}</span></div>
     <div class="ranking-list">
@@ -231,7 +231,7 @@ function renderCompetition(gender) {
   const matches = matchesForGender(gender)
   const cards = matches.length ? matches.slice(0, 3) : sportsWithoutMatches(gender)
   return `<section class="panel competition-panel ${tone}" data-competition-gender="${gender}" aria-label="${title}">
-    <div class="panel-heading"><span class="heading-icon" aria-hidden="true">🏃</span><h2>${title}</h2></div>
+    <div class="panel-heading"><span class="heading-icon" aria-hidden="true">🏃</span><div class="panel-heading-copy"><h2>${title}</h2><span class="panel-en">${gender === 'M' ? "MEN'S EVENTS" : "WOMEN'S EVENTS"}</span></div></div>
     <div class="competition-list">${cards.length ? cards.map(match => renderMatchCard(match, gender)).join('') : '<div class="empty-state">ยังไม่มีรายการแข่งขัน</div>'}</div>
   </section>`
 }
