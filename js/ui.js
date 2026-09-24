@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.768'
+import { APP_VERSION } from './version.js?v=10.22.775'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.775': [
+    '✅ ปรับการตรวจคะแนนครบให้ไม่นับคอลัมน์คะแนนพิเศษและคอลัมน์ปรับคะแนนที่ไม่ใช้คำนวณเกรด',
+  ],
   '10.22.768': [
     '🗂️ จัดการตั้งค่ากำลังเครื่องเป็นแท็บแยกตามงาน: ภาพรวม ตารางเครื่อง ละหมาด ออกนอกห้องเรียน และกีฬาสี',
   ],

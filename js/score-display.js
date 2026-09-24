@@ -1,6 +1,7 @@
 import { evalFormula, assignBonusVars } from './score-formula.js'
 
-export const isBonus = c => c.column_type === 'bonus' || (!c.column_type && c.assignment_type === 'คะแนนพิเศษ')
+export const isBonus = c => c.column_type === 'bonus' || c.assignment_type === 'คะแนนพิเศษ'
+export const isGradeColumn = c => !isBonus(c) && c.column_type !== 'override'
 export const isFinal = c => ['final', 'ปลายภาค'].includes(c.assignment_type)
 export const roundKey = c => c.column_type === 'derived' ? `derived_${c.id}` : String(c.id)
 export function sortScoreColumns(columns, priorityNames = []) {

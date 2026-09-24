@@ -1,5 +1,5 @@
 import { getClassScoreRounding } from './api.js'
-import { isBonus, isFinal, roundKey, displayScore, scoreForGrade, effectiveScore } from './score-display.js'
+import { isBonus, isFinal, isGradeColumn, roundKey, displayScore, scoreForGrade, effectiveScore } from './score-display.js'
 import {
   getMyEnrolledClasses, getMyScores, getMyAttendance,
   getMyExamRequests, submitExamRequest, cancelExamRequest,
@@ -23,7 +23,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.774'
+import { APP_VERSION } from './version.js?v=10.22.775'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -1891,7 +1891,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
   const totalMax = midMax + finMax + derivedMax
   const pct      = totalMax > 0 ? gradeTotal / totalMax * 100 : 0
   // เกณฑ์เกรดมาตรฐาน ปพ.5: คำนวณเกรดเมื่อคะแนนทุกหัวข้อที่นำไปคิดเกรดครบแล้วเท่านั้น
-  const gradeCols = columns.filter(c => !isBonus(c))
+  const gradeCols = columns.filter(isGradeColumn)
   const scoredGradeCols = gradeCols.filter(c => {
     const sc = scoreMap[c.id]
     return c.column_type === 'derived' || (sc && (sc.final_score != null || sc.original_score != null))
