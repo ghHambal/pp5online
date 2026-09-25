@@ -132,11 +132,14 @@ function renderApp(data, { fromCache = false } = {}) {
   let checkInDate = todayLocal()
   let lastLocalDate = checkInDate
   let autoFollowToday = true
+  let activeTab = 'matches'
+  let selectedMatchId = null
   let search = '', colorFilter = '', sportFilter = '', genderFilter = ''
   let showScanner = false
   let html5Qrcode = null, scanning = false
   let refreshing = false
   let syncingOfflineQueue = false
+  let realtimeChannel = null
   let offlineQueue = readOfflineQueue()
   let usingCachedData = fromCache
   let feedback = { text: 'ยกกล้องส่อง QR ของนักกีฬาเพื่อรายงานตัว', tone: 'muted' }
@@ -180,23 +183,34 @@ function renderApp(data, { fromCache = false } = {}) {
         <div class="mt-1">เจ้าหน้าที่แต่ละจุดสามารถสแกนหรือกดรายงานตัวแทนได้ ระบบจะกันการรายงานซ้ำ และกดรีเฟรชเพื่อดูสถานะล่าสุดจากจุดอื่นได้</div>
         <div class="mt-1 font-semibold">กรณีวัน 4 ให้เลือกวันที่ 4 ได้ตั้งแต่ช่วงเย็นวัน 3 เพื่อรับรายงานตัวล่วงหน้า</div>
       </div>
-      <section id="ci-day-schedule" class="bg-white rounded-xl border border-slate-200 p-4"></section>
-      <div id="ci-offline-status" class="hidden"></div>
-
-      <div id="ci-scanner-wrap"></div>
-
-      <div class="flex flex-wrap gap-2">
-        <input id="ci-search" placeholder="🔍 ค้นหาชื่อ/รหัส/ห้อง..." class="flex-1 min-w-[180px] border border-slate-300 rounded-xl px-3 py-2 text-sm">
-        <div id="ci-gender-filter" class="flex items-center rounded-xl border border-slate-300 bg-white p-1 gap-1" aria-label="กรองตามเพศ">
-          <button type="button" data-gender-filter="" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-pink-600 text-white shadow-sm">ทุกเพศ</button>
-          <button type="button" data-gender-filter="ชาย" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">ชาย</button>
-          <button type="button" data-gender-filter="หญิง" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">หญิง</button>
+      <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-2">
+        <div class="flex gap-1" role="tablist" aria-label="มุมมองหน้ารับรายงานตัว">
+          <button type="button" data-ci-tab="matches" class="px-4 py-2 rounded-lg text-xs font-bold">🗓️ รายการแข่งขัน</button>
+          <button type="button" data-ci-tab="athletes" class="px-4 py-2 rounded-lg text-xs font-bold">👥 รายชื่อนักกีฬา</button>
         </div>
-        <select id="ci-color-filter" class="border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="">ทุกสี</option>${colors.map(c => `<option value="${esc(c.id)}">สี${esc(c.name)}</option>`).join('')}</select>
-        <select id="ci-sport-filter" class="border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="">ทุกกีฬา</option></select>
+        <div id="ci-realtime-status" class="text-[11px] font-bold text-emerald-600">🟢 กำลังติดตามสถานะสด</div>
       </div>
 
-      <div id="ci-list" class="bg-white rounded-xl border border-slate-200 overflow-hidden"></div>
+      <section id="ci-matches-panel" class="space-y-3">
+        <div id="ci-day-schedule" class="bg-white rounded-xl border border-slate-200 p-4"></div>
+        <div id="ci-match-list" class="space-y-2"></div>
+      </section>
+
+      <section id="ci-athletes-panel" class="hidden space-y-3">
+        <div id="ci-offline-status" class="hidden"></div>
+        <div id="ci-scanner-wrap"></div>
+        <div class="flex flex-wrap gap-2">
+          <input id="ci-search" placeholder="🔍 ค้นหาชื่อ/รหัส/ห้อง..." class="flex-1 min-w-[180px] border border-slate-300 rounded-xl px-3 py-2 text-sm">
+          <div id="ci-gender-filter" class="flex items-center rounded-xl border border-slate-300 bg-white p-1 gap-1" aria-label="กรองตามเพศ">
+            <button type="button" data-gender-filter="" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-pink-600 text-white shadow-sm">ทุกเพศ</button>
+            <button type="button" data-gender-filter="ชาย" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">ชาย</button>
+            <button type="button" data-gender-filter="หญิง" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">หญิง</button>
+          </div>
+          <select id="ci-color-filter" class="border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="">ทุกสี</option>${colors.map(c => `<option value="${esc(c.id)}">สี${esc(c.name)}</option>`).join('')}</select>
+          <select id="ci-sport-filter" class="border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="">ทุกกีฬา</option></select>
+        </div>
+        <div id="ci-list" class="bg-white rounded-xl border border-slate-200 overflow-hidden"></div>
+      </section>
     </div>`
 
   // สำคัญ: modal กล้องถูกสร้างครั้งเดียวต่อการเปิดรับรายงานตัว และอัปเดตเฉพาะสถานะด้านล่าง
@@ -259,7 +273,7 @@ function renderApp(data, { fromCache = false } = {}) {
   const openScanner = () => {
     const wrap = root.querySelector('#ci-scanner-wrap')
     wrap.innerHTML = `
-      <div id="ci-scanner-modal" class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-950/75 backdrop-blur-sm p-2 sm:p-6">
+      <div id="ci-scanner-modal" class="fixed inset-0 z-[300] flex items-end sm:items-center justify-center bg-slate-950/75 backdrop-blur-sm p-2 sm:p-6">
         <style>
           @keyframes ci-success-popup-glow {
             0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0), 0 0 0 rgba(16, 185, 129, 0); }
@@ -462,6 +476,86 @@ function renderApp(data, { fromCache = false } = {}) {
     }
   }
 
+  const matchRoster = match => {
+    const seen = new Set()
+    return registrations
+      .filter(row => row.sport_id === match?.sport_id && !seen.has(row.student_id) && seen.add(row.student_id))
+      .map(row => ({ student: studentById.get(row.student_id), teamColorId: row.team_color_id }))
+      .filter(row => row.student)
+      .sort((a, b) => (a.student.full_name || '').localeCompare(b.student.full_name || '', 'th'))
+  }
+
+  const renderMatchModal = () => {
+    const modal = root.querySelector('#ci-match-modal')
+    const match = matches.find(row => row.id === selectedMatchId)
+    if (!modal || !match) return
+    const sport = sportById.get(match.sport_id)
+    const roster = matchRoster(match)
+    const checked = checkedIdsToday()
+    const came = roster.filter(row => checked.has(row.student.id)).length
+    const dateLabel = checkInDate === todayLocal() ? 'วันนี้' : checkInDate
+    modal.innerHTML = `
+      <div class="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-sm p-2 sm:p-5 flex items-center justify-center">
+        <div class="w-full max-w-5xl h-full max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2.5rem)] overflow-hidden rounded-3xl bg-slate-50 shadow-2xl flex flex-col">
+          <header class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 bg-indigo-700 text-white">
+            <div class="min-w-0"><div class="text-xs text-indigo-200">${esc(dateLabel)} · ${esc(match.venue || 'ยังไม่ระบุจุดแข่งขัน')}</div><h2 class="text-lg sm:text-2xl font-extrabold truncate">${esc(sport?.name || 'รายการแข่งขัน')}</h2><div class="text-xs text-indigo-100 mt-0.5">${match.scheduled_time ? `เวลา ${esc(String(match.scheduled_time).slice(0, 5))}` : 'ไม่ระบุเวลา'} · ${came}/${roster.length} คนรายงานตัวแล้ว</div></div>
+            <div class="flex items-center gap-2 flex-shrink-0"><button id="ci-match-scan" type="button" class="px-3 py-2 rounded-xl bg-white text-indigo-700 text-xs font-extrabold hover:bg-indigo-50">📷 รับรายงานตัว</button><button id="ci-match-close" type="button" class="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 text-2xl" aria-label="ปิด">×</button></div>
+          </header>
+          <div class="px-4 py-3 sm:px-6 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-2"><div class="text-xs text-slate-500">เปิดหน้านี้บนจอใหญ่เพื่อติดตามสถานะแบบ Real-time และใช้มือถืออีกเครื่องสแกน QR ได้</div><div class="text-xs font-bold ${came === roster.length && roster.length ? 'text-emerald-600' : 'text-amber-600'}">${came === roster.length && roster.length ? '✅ ครบทุกคนแล้ว' : `⏳ เหลือ ${roster.length - came} คน`}</div></div>
+          <div class="flex-1 overflow-y-auto p-3 sm:p-5"><div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">${roster.length ? roster.map(row => {
+            const student = row.student
+            const isChecked = checked.has(student.id)
+            const checkin = dailyCheckins.find(item => item.student_id === student.id && item.check_in_date === checkInDate)
+            const pending = offlineQueue.find(item => item.studentId === student.id && item.checkInDate === checkInDate)
+            const colorName = colorById.get(row.teamColorId)?.name || ''
+            return `<div class="rounded-2xl border ${isChecked ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'} p-3 flex items-center gap-3"><img src="${esc(photoOf(student))}" alt="รูป ${esc(student.full_name)}" class="w-12 h-14 rounded-xl object-cover border border-slate-200 flex-shrink-0"><div class="min-w-0 flex-1"><b class="block truncate text-sm text-slate-800">${esc(student.full_name)}</b><div class="text-[11px] text-slate-500 truncate">${esc(student.student_code)} · ${esc(student.main_room || '')} · สี${esc(colorName)}</div>${isChecked ? `<div class="text-[11px] text-emerald-700 font-bold mt-1">✅ รายงานตัวแล้ว${checkin?.checked_in_at ? ` · ${new Date(checkin.checked_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : pending ? ' · รอส่งข้อมูล' : ''}</div>` : '<div class="text-[11px] text-slate-400 mt-1">ยังไม่รายงานตัว</div>'}</div>${isChecked ? `<button type="button" data-match-cancel="${esc(pending ? `pending:${pending.id}` : (checkin?.id || ''))}" class="px-2 py-1.5 rounded-lg border border-red-200 text-red-600 text-[10px] font-bold hover:bg-red-50 flex-shrink-0">ยกเลิก</button>` : `<button type="button" data-match-report="${esc(student.id)}" class="px-2 py-1.5 rounded-lg bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 flex-shrink-0">รายงานตัว</button>`}</div>`
+          }).join('') : '<div class="sm:col-span-2 lg:col-span-3 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800">ยังไม่มีรายชื่อนักกีฬาในรายการนี้</div>'}</div></div>
+        </div>
+      </div>`
+    modal.querySelector('#ci-match-close').onclick = closeMatchModal
+    modal.querySelector('#ci-match-scan').onclick = () => { if (!showScanner) openScanner() }
+    modal.querySelectorAll('[data-match-report]').forEach(button => {
+      button.onclick = async () => {
+        button.disabled = true
+        await doCheckin(Number(button.dataset.matchReport))
+        renderMatchModal()
+      }
+    })
+    modal.querySelectorAll('[data-match-cancel]').forEach(button => {
+      button.onclick = async () => {
+        if (!button.dataset.matchCancel || !confirm('ยืนยันยกเลิกการรายงานตัวของนักกีฬาคนนี้หรือไม่?')) return
+        button.disabled = true
+        await undoCheckin(button.dataset.matchCancel)
+        renderMatchModal()
+      }
+    })
+  }
+
+  const closeMatchModal = () => {
+    selectedMatchId = null
+    root.querySelector('#ci-match-modal')?.remove()
+  }
+
+  const openMatchModal = matchId => {
+    selectedMatchId = matchId
+    if (!root.querySelector('#ci-match-modal')) {
+      const modal = document.createElement('div')
+      modal.id = 'ci-match-modal'
+      root.appendChild(modal)
+    }
+    renderMatchModal()
+  }
+
+  const setActiveTab = tab => {
+    activeTab = tab
+    root.querySelectorAll('[data-ci-tab]').forEach(button => {
+      const active = button.dataset.ciTab === tab
+      button.className = active ? 'px-4 py-2 rounded-lg text-xs font-bold bg-pink-600 text-white shadow-sm' : 'px-4 py-2 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100'
+    })
+    root.querySelector('#ci-matches-panel')?.classList.toggle('hidden', tab !== 'matches')
+    root.querySelector('#ci-athletes-panel')?.classList.toggle('hidden', tab !== 'athletes')
+  }
+
   const renderList = () => {
     const roster = rosterForDate()
     const checked = checkedIdsToday()
@@ -516,6 +610,15 @@ function renderApp(data, { fromCache = false } = {}) {
         }).join('')}</div>` : '<div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">ยังไม่มีการตั้งตารางแข่งขันในวันที่เลือก จึงยังไม่มีรายชื่อนักกีฬาสำหรับรับรายงานตัว</div>'}
       `
     }
+    const matchListEl = root.querySelector('#ci-match-list')
+    if (matchListEl) {
+      matchListEl.innerHTML = dayMatches.length ? dayMatches.map(match => {
+        const sport = sportById.get(match.sport_id)
+        const participants = matchRoster(match).length
+        return `<button type="button" data-open-match="${esc(match.id)}" class="w-full text-left bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition p-4 flex flex-wrap items-center gap-3"><span class="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-700 grid place-items-center text-xl flex-shrink-0">🏃</span><span class="min-w-0 flex-1"><b class="block text-sm sm:text-base text-slate-800 truncate">${esc(sport?.name || 'รายการแข่งขัน')}</b><span class="block text-[11px] text-slate-500 mt-1">${match.scheduled_time ? `เวลา ${esc(String(match.scheduled_time).slice(0, 5))}` : 'ไม่ระบุเวลา'} · ${esc(match.venue || 'ยังไม่ระบุจุดแข่งขัน')} · นักกีฬา ${participants} คน</span></span><span class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[11px] font-bold flex-shrink-0">เปิดรายการ →</span></button>`
+      }).join('') : '<div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-center text-xs text-amber-800">ยังไม่มีรายการแข่งขันในวันที่เลือก</div>'
+      matchListEl.querySelectorAll('[data-open-match]').forEach(button => { button.onclick = () => openMatchModal(button.dataset.openMatch) })
+    }
     const selectedDateNote = checkInDate > todayLocal()
       ? `<div class="px-4 py-2 text-[11px] text-amber-800 bg-amber-50 border-b border-amber-100">กำลังเตรียมรายงานตัวล่วงหน้าสำหรับวันที่ ${esc(checkInDate)} — ระบบจะใช้รายชื่อนักกีฬาจากตารางแข่งขันของวันที่เลือก</div>`
       : ''
@@ -552,7 +655,8 @@ function renderApp(data, { fromCache = false } = {}) {
     })
   }
 
-  root.querySelector('#ci-date').onchange = e => { checkInDate = e.target.value || todayLocal(); autoFollowToday = checkInDate === todayLocal(); renderList() }
+  root.querySelectorAll('[data-ci-tab]').forEach(button => { button.onclick = () => setActiveTab(button.dataset.ciTab) })
+  root.querySelector('#ci-date').onchange = e => { checkInDate = e.target.value || todayLocal(); autoFollowToday = checkInDate === todayLocal(); closeMatchModal(); renderList() }
   root.querySelector('#ci-refresh').onclick = () => { void refreshDailyCheckins(); void flushOfflineQueue() }
   root.querySelector('#ci-search').oninput = e => { search = e.target.value; renderList() }
   root.querySelectorAll('[data-gender-filter]').forEach(btn => btn.onclick = () => {
@@ -570,7 +674,32 @@ function renderApp(data, { fromCache = false } = {}) {
     }
   }
 
+  setActiveTab(activeTab)
   renderList()
+  realtimeChannel = supabase.channel(`sports-checkin-live-${DEFAULT_EVENT}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_checkins', filter: `event_id=eq.${DEFAULT_EVENT}` }, payload => {
+      const row = payload.eventType === 'DELETE' ? payload.old : payload.new
+      if (payload.eventType !== 'DELETE' && row?.event_id !== DEFAULT_EVENT) return
+      if (payload.eventType === 'DELETE') {
+        dailyCheckins = dailyCheckins.filter(item => item.id !== row?.id)
+      } else if (row?.id) {
+        dailyCheckins = [...dailyCheckins.filter(item => item.id !== row.id), row]
+      }
+      renderList()
+      if (selectedMatchId) renderMatchModal()
+    })
+    .subscribe(status => {
+      const statusEl = root.querySelector('#ci-realtime-status')
+      if (!statusEl) return
+      if (status === 'SUBSCRIBED') {
+        statusEl.className = 'text-[11px] font-bold text-emerald-600'
+        statusEl.textContent = '🟢 Real-time พร้อมใช้งาน'
+      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        statusEl.className = 'text-[11px] font-bold text-amber-600'
+        statusEl.textContent = '🟡 กำลังเชื่อมต่อ Real-time ใหม่'
+      }
+    })
+  window.addEventListener('beforeunload', () => { if (realtimeChannel) supabase.removeChannel(realtimeChannel) }, { once: true })
   updateOfflineStatus()
   window.addEventListener('online', () => { updateOfflineStatus(); void flushOfflineQueue() })
   window.addEventListener('offline', updateOfflineStatus)

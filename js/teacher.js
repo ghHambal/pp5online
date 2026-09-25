@@ -730,6 +730,7 @@ async function _applyRoleMenus() {
   // ส่วนการดู/แก้ไขโปรแกรมจริงยังคุมที่ RPC ตามรายการที่แอดมินอนุมัติแล้ว
   const canRegisterSportsCompetition = _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false && !!activeEventId
   toggle('menu-sports-competition-manager', !!(isSportsManager || hasSportsCompetitionAssignment || canRegisterSportsCompetition))
+  toggle('menu-sports-checkin', _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false)
   const canViewSportsShirtSummary = isSportsManager || sportsMemberships.some(m => m.role === 'lead_teacher' || m.permissions?.shirt_summary === true)
   toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
   toggle('menu-sports-fund-admin', !!isSportsManager)
