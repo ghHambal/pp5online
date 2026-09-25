@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.777'
+import { APP_VERSION } from './version.js?v=10.22.797'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.797': [
+    '🎽 เพิ่มการลงทะเบียนกรรมการภาคสนามแบบสร้างบัญชีทันที พร้อมแสดง Username/PIN และเพิ่มตารางแอดมินในหน้ารายการแข่งขันของฉัน กรองตามเพศ รายการแข่งขัน และค้นหาได้ทุกช่อง',
+  ],
   '10.22.796': [
     '🌱 รองรับกลุ่มทักษะชีวิตทั้งคำว่า "ชีวิต" และ "ทักษะชีวิต" ให้เชื่อมคะแนนทักษะชีวิตกับห้องเรียนได้ถูกต้อง พร้อมรองรับข้อมูลเดิม',
   ],

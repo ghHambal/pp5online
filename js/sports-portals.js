@@ -1827,6 +1827,10 @@ export async function renderSportsCompetitionManager() {
   let workspace = null
   let registrationWorkspace = null
   let responsibleCredentialRows = []
+  let fieldOfficialRows = []
+  let fieldOfficialGender = 'all'
+  let fieldOfficialSportId = 'all'
+  let fieldOfficialSearch = ''
   let event = null
   let rosterPrintLoading = false
   let credentialProvisionLoading = false
@@ -1854,9 +1858,20 @@ export async function renderSportsCompetitionManager() {
     if (registrationResult?.error) console.warn('โหลดคำขอลงทะเบียนรายการแข่งขันไม่สำเร็จ', registrationResult.error)
     responsibleCredentialRows = []
     if (registrationWorkspace?.is_admin) {
-      const credentialResult = await supabase.rpc('get_sports_competition_responsible_credentials', { p_event: event.id })
+      const [credentialResult, officialResult] = await Promise.all([
+        supabase.rpc('get_sports_competition_responsible_credentials', { p_event: event.id }),
+        supabase.rpc('get_sports_official_credentials', { p_event_id: event.id }),
+      ])
       if (credentialResult?.error) console.warn('โหลดข้อมูลเข้าสู่ระบบผู้รับผิดชอบไม่สำเร็จ', credentialResult.error)
       else responsibleCredentialRows = Array.isArray(credentialResult?.data) ? credentialResult.data : []
+      if (officialResult?.error) {
+        console.warn('โหลดข้อมูลบัญชีกรรมการภาคสนามไม่สำเร็จ', officialResult.error)
+        fieldOfficialRows = []
+      } else {
+        try { fieldOfficialRows = Array.isArray(officialResult?.data) ? officialResult.data : JSON.parse(officialResult?.data || '[]') } catch { fieldOfficialRows = [] }
+      }
+    } else {
+      fieldOfficialRows = []
     }
     const sports = workspace.sports || []
     const normalizeGender = s => s === 'M' || s === 'W' ? s : 'Coed'
@@ -1931,6 +1946,32 @@ export async function renderSportsCompetitionManager() {
         ? '<span class="inline-flex rounded-full bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-700">สร้างบัญชีไม่สำเร็จ</span>'
         : '<span class="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">รอสร้างบัญชีกีฬาสี</span>'
     return `<section class="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🔐 ข้อมูลเข้าสู่ระบบผู้รับผิดชอบทุกรายการ</h2><p class="text-sm text-gray-500 mt-1">แสดงครูทุกคนที่มีชื่อเป็นผู้รับผิดชอบรายการแข่งขันที่ใช้งานอยู่ ครูหนึ่งคนใช้ Username และรหัสผ่านชุดเดียว รวมรายการแข่งขันไว้ในแถวเดียว</p></div><div class="flex flex-wrap items-center gap-2"><span class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">พบ ${rows.length} จาก ${responsibleCredentialRows.length} คน</span><button type="button" id="provision-all-sports-credentials" class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">🔑 สร้าง/ซิงก์บัญชีกีฬาสีทั้งหมด</button></div></div><div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">หลังบันทึกหรือแก้ไข Username/รหัสผ่าน ให้กดปุ่มซิงก์บัญชี ครูจึงจะใช้บัญชีนั้นเข้าสู่ระบบกีฬาสีหลักได้ บัญชีนี้แยกจากรหัสผ่าน ปพ.5 เดิม</div><label class="mt-4 block"><span class="text-xs font-bold text-gray-600">ค้นหาผู้รับผิดชอบ</span><input id="sports-responsible-credential-search" value="${esc(credentialSearch)}" placeholder="ค้นหาได้ทุกช่อง: ยศ ชื่อ รหัส Username รหัสผ่าน หรือรายการแข่งขัน" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm"></label><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[1250px] text-sm"><thead class="bg-emerald-50 text-emerald-900"><tr><th class="p-3 text-left">ยศ/ประเภท</th><th class="p-3 text-left">ชื่อผู้รับผิดชอบ</th><th class="p-3 text-left">Username</th><th class="p-3 text-left">รหัสผ่าน</th><th class="p-3 text-left">รายการแข่งขันที่รับผิดชอบ</th><th class="p-3 text-left">สถานะ</th><th class="p-3 text-left">จัดการ</th></tr></thead><tbody>${rows.map(person => `<tr class="border-t border-gray-100 align-top"><td class="p-3"><b>${esc(person.teacher_title || 'ครู')}</b><div class="text-xs text-gray-500 mt-1">${esc(person.teacher_staff_type || 'ครู')}</div></td><td class="p-3 font-bold">${esc(displayName(person.teacher_name))}<div class="mt-1 text-xs font-mono text-gray-500">${esc(person.teacher_code || 'ไม่มีเลขครู 4 หลัก')}</div></td><td class="p-3"><input data-credential-username="${esc(person.teacher_profile_id)}" value="${esc(person.username || person.teacher_code || '')}" inputmode="numeric" maxlength="4" class="${inputClass}"></td><td class="p-3"><input data-credential-password="${esc(person.teacher_profile_id)}" value="${esc(person.password || 'azgames')}" class="${inputClass}"></td><td class="p-3"><div class="max-w-[360px] space-y-1">${(person.sports || []).map(sport => `<div><b>${esc(sport.sport_code ? `${sport.sport_code} · ` : '')}${esc(sport.sport_name || '—')}</b>${sport.sport_gender ? `<span class="ml-1 text-xs text-gray-500">(เพศ${esc(sport.sport_gender)})</span>` : ''}</div>`).join('')}</div></td><td class="p-3">${authStatus(person)}</td><td class="p-3"><div class="flex flex-wrap gap-2"><button type="button" data-save-credential="${esc(person.teacher_profile_id)}" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700">บันทึก</button>${person.credential_id ? `<button type="button" data-delete-credential="${esc(person.credential_id)}" class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">ลบ</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="7" class="p-8 text-center text-sm text-gray-400">ยังไม่มีผู้รับผิดชอบรายการแข่งขัน หรือไม่พบผลการค้นหา</td></tr>'}</tbody></table></div></section>`
+  }
+  const fieldOfficialSection = () => {
+    if (!registrationWorkspace?.is_admin) return ''
+    const genderOf = sport => sport?.gender === 'M' || sport?.gender === 'W' ? sport.gender : 'Coed'
+    const allSports = [...new Map(fieldOfficialRows.flatMap(person => person.sports || []).map(sport => [String(sport.id), sport])).values()]
+      .sort((a, b) => `${a.gender || ''}${a.code || a.name || ''}`.localeCompare(`${b.gender || ''}${b.code || b.name || ''}`, 'th'))
+    const query = fieldOfficialSearch.trim().toLocaleLowerCase()
+    const rows = fieldOfficialRows.filter(person => {
+      const sports = person.sports || []
+      if (fieldOfficialGender !== 'all' && !sports.some(sport => genderOf(sport) === fieldOfficialGender)) return false
+      if (fieldOfficialSportId !== 'all' && !sports.some(sport => String(sport.id) === String(fieldOfficialSportId))) return false
+      if (!query) return true
+      const sportsText = sports.map(sport => `${sport.code || ''} ${sport.name || ''} ${sport.gender || ''}`).join(' ')
+      const haystack = `${person.full_name || ''} ${person.contact || ''} ${person.username || ''} ${person.pin || ''} ${person.status || ''} ${sportsText}`.toLocaleLowerCase()
+      return haystack.includes(query)
+    })
+    const statusLabel = status => status === 'approved'
+      ? '<span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">พร้อมใช้งาน</span>'
+      : status === 'rejected'
+        ? '<span class="inline-flex rounded-full bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-700">ยกเลิก</span>'
+        : '<span class="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">รอตรวจสอบ</span>'
+    return `<section class="bg-white border border-pink-200 rounded-2xl p-5 shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🎽 บัญชีกรรมการภาคสนาม</h2><p class="text-sm text-gray-500 mt-1">นักศึกษาที่ลงทะเบียนรับผิดชอบการบันทึกผล ระบบสร้างบัญชีทันทีและจำกัดสิทธิ์ตามรายการที่เลือก</p></div><span class="rounded-full bg-pink-50 px-3 py-1.5 text-xs font-bold text-pink-700">พบ ${rows.length} จาก ${fieldOfficialRows.length} คน</span></div>
+      <div class="mt-4 grid gap-3 md:grid-cols-[180px_1fr_1fr]"><label><span class="text-xs font-bold text-gray-600">กรองเพศ</span><select id="field-official-gender-filter" class="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm"><option value="all" ${fieldOfficialGender === 'all' ? 'selected' : ''}>ทุกเพศ</option><option value="M" ${fieldOfficialGender === 'M' ? 'selected' : ''}>ชาย</option><option value="W" ${fieldOfficialGender === 'W' ? 'selected' : ''}>หญิง</option><option value="Coed" ${fieldOfficialGender === 'Coed' ? 'selected' : ''}>รายการรวม</option></select></label><label><span class="text-xs font-bold text-gray-600">กรองรายการแข่งขัน</span><select id="field-official-sport-filter" class="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm"><option value="all">ทุกรายการ</option>${allSports.map(sport => `<option value="${esc(sport.id)}" ${String(fieldOfficialSportId) === String(sport.id) ? 'selected' : ''}>${esc(sport.code ? `${sport.code} · ` : '')}${esc(sport.name || '—')}</option>`).join('')}</select></label><label><span class="text-xs font-bold text-gray-600">ค้นหาทุกช่อง</span><input id="field-official-search" value="${esc(fieldOfficialSearch)}" placeholder="ชื่อ เบอร์ Username รหัสผ่าน รายการ หรือสถานะ" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm"></label></div>
+      <div class="mt-4 overflow-x-auto"><table class="w-full min-w-[1120px] text-sm"><thead class="bg-pink-50 text-pink-900"><tr><th class="p-3 text-left">ชื่อกรรมการ</th><th class="p-3 text-left">ติดต่อ</th><th class="p-3 text-left">Username</th><th class="p-3 text-left">รหัสผ่าน/PIN</th><th class="p-3 text-left">รายการที่รับผิดชอบ</th><th class="p-3 text-left">สถานะ</th><th class="p-3 text-left">ลงทะเบียนเมื่อ</th></tr></thead><tbody>${rows.map(person => `<tr class="border-t border-gray-100 align-top"><td class="p-3 font-bold">${esc(person.full_name || '—')}</td><td class="p-3">${esc(person.contact || '—')}</td><td class="p-3 font-mono font-bold text-indigo-700">${esc(person.username || '—')}</td><td class="p-3 font-mono font-bold text-emerald-700">${esc(person.pin || 'สร้างแล้วแต่ไม่พบรหัส')}</td><td class="p-3"><div class="max-w-[420px] space-y-1">${(person.sports || []).map(sport => `<div><b>${esc(sport.code ? `${sport.code} · ` : '')}${esc(sport.name || '—')}</b><span class="ml-1 text-xs text-gray-500">(${esc(sport.gender === 'M' ? 'ชาย' : sport.gender === 'W' ? 'หญิง' : 'รวม')})</span></div>`).join('') || '<span class="text-gray-400">ยังไม่มีรายการ</span>'}</div></td><td class="p-3">${statusLabel(person.status)}</td><td class="p-3 whitespace-nowrap text-xs text-gray-500">${person.created_at ? new Date(person.created_at).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '—'}</td></tr>`).join('') || '<tr><td colspan="7" class="p-8 text-center text-sm text-gray-400">ยังไม่มีกรรมการภาคสนาม หรือไม่พบข้อมูลที่ตรงกับตัวกรอง</td></tr>'}</tbody></table></div>
+    </section>`
   }
   const competitionDeadlineSection = () => {
     if (!workspace?.is_admin) return ''
@@ -2059,6 +2100,20 @@ export async function renderSportsCompetitionManager() {
       toast('ลบข้อมูลเข้าสู่ระบบแล้ว')
       await reload()
     }))
+  }
+  const bindFieldOfficialControls = () => {
+    el.querySelector('#field-official-gender-filter')?.addEventListener('change', event => {
+      fieldOfficialGender = event.target.value || 'all'
+      draw()
+    })
+    el.querySelector('#field-official-sport-filter')?.addEventListener('change', event => {
+      fieldOfficialSportId = event.target.value || 'all'
+      draw()
+    })
+    el.querySelector('#field-official-search')?.addEventListener('input', event => {
+      fieldOfficialSearch = event.target.value || ''
+      draw()
+    })
   }
   const bindRegistrationControls = () => {
     el.querySelectorAll('[data-registration-gender]').forEach(button => button.addEventListener('click', () => {
@@ -2215,12 +2270,14 @@ export async function renderSportsCompetitionManager() {
     const registrationMarkup = registrationSection()
     const pendingRequestsMarkup = pendingRegistrationSection()
     const approvedRegistrationMarkup = approvedRegistrationSection()
+    const fieldOfficialMarkup = fieldOfficialSection()
     if (!sports.length) {
       el.innerHTML = `<section class="max-w-7xl mx-auto space-y-5"><div class="bg-white rounded-3xl border border-gray-200 p-8 text-center shadow-sm">
         <div class="text-5xl mb-3">🏟️</div><h1 class="text-2xl font-extrabold text-gray-800">รายการแข่งขันของฉัน</h1>
         <p class="text-gray-500 mt-2">ยังไม่มีรายการแข่งขันที่แอดมินอนุมัติให้บัญชีครูนี้รับผิดชอบ</p>
-        <p class="text-xs text-gray-400 mt-3">เลือกหลายรายการจากแบบฟอร์มด้านล่างเพื่อส่งคำขอให้แอดมินตรวจสอบ</p></div>${competitionDeadlineMarkup}${pendingRequestsMarkup}${approvedRegistrationMarkup}${registrationMarkup}</section>`
+        <p class="text-xs text-gray-400 mt-3">เลือกหลายรายการจากแบบฟอร์มด้านล่างเพื่อส่งคำขอให้แอดมินตรวจสอบ</p></div>${competitionDeadlineMarkup}${pendingRequestsMarkup}${approvedRegistrationMarkup}${fieldOfficialMarkup}${registrationMarkup}</section>`
       bindResponsibleCredentialControls()
+      bindFieldOfficialControls()
       bindRegistrationControls()
       bindCompetitionDeadlineControl()
       return
@@ -2243,6 +2300,7 @@ export async function renderSportsCompetitionManager() {
       ${competitionDeadlineMarkup}
       ${pendingRequestsMarkup}
       ${approvedRegistrationMarkup}
+      ${fieldOfficialMarkup}
       ${registrationMarkup}
       <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div class="flex flex-wrap gap-2" role="tablist" aria-label="กรองเพศรายการแข่งขัน">${['M', 'W', 'Coed'].filter(g => sports.some(s => normalizeGender(s.gender) === g)).map(g => `<button type="button" data-competition-gender="${g}" class="px-4 py-2 rounded-xl text-sm font-bold border transition ${selectedGender === g ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'}">${g === 'M' ? '👦 ' : g === 'W' ? '👧 ' : '👥 '}${genderShortLabel(g)} <span class="text-xs opacity-75">(${sports.filter(s => normalizeGender(s.gender) === g).length})</span></button>`).join('')}</div>
@@ -2277,6 +2335,7 @@ export async function renderSportsCompetitionManager() {
     bindCompetitionDeadlineControl()
     bindCompetitionRosterPrint()
     bindResponsibleCredentialControls()
+    bindFieldOfficialControls()
     bindRegistrationControls()
     el.querySelectorAll('[data-color-picker]').forEach(picker => {
       const trigger = picker.querySelector('[data-color-trigger]')
