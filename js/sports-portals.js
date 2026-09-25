@@ -1820,12 +1820,13 @@ export async function renderSportsCompetitionManager() {
   let selectedGender = null
   let registrationGender = null
   let registrationSearch = ''
+  let credentialSearch = ''
   let registrationNote = ''
   const registrationSelectedIds = new Set()
   let draftRows = []
   let workspace = null
   let registrationWorkspace = null
-  let approvedResponsibleRows = []
+  let responsibleCredentialRows = []
   let event = null
   let rosterPrintLoading = false
   let simulationResults = {}
@@ -1850,11 +1851,11 @@ export async function renderSportsCompetitionManager() {
     workspace = data || {}
     registrationWorkspace = registrationResult?.error ? null : (registrationResult?.data || {})
     if (registrationResult?.error) console.warn('โหลดคำขอลงทะเบียนรายการแข่งขันไม่สำเร็จ', registrationResult.error)
-    approvedResponsibleRows = []
+    responsibleCredentialRows = []
     if (registrationWorkspace?.is_admin) {
-      const approvedResult = await supabase.rpc('get_sports_competition_approved_responsible_people', { p_event: event.id })
-      if (approvedResult?.error) console.warn('โหลดรายชื่อผู้รับผิดชอบที่อนุมัติแล้วไม่สำเร็จ', approvedResult.error)
-      else approvedResponsibleRows = Array.isArray(approvedResult?.data) ? approvedResult.data : []
+      const credentialResult = await supabase.rpc('get_sports_competition_responsible_credentials', { p_event: event.id })
+      if (credentialResult?.error) console.warn('โหลดข้อมูลเข้าสู่ระบบผู้รับผิดชอบไม่สำเร็จ', credentialResult.error)
+      else responsibleCredentialRows = Array.isArray(credentialResult?.data) ? credentialResult.data : []
     }
     const sports = workspace.sports || []
     const normalizeGender = s => s === 'M' || s === 'W' ? s : 'Coed'
@@ -1914,20 +1915,15 @@ export async function renderSportsCompetitionManager() {
   }
   const approvedRegistrationSection = () => {
     if (!registrationWorkspace?.is_admin) return ''
-    const people = []
-    const peopleById = new Map()
-    approvedResponsibleRows.forEach(row => {
-      const key = String(row.teacher_profile_id || row.teacher_code || row.teacher_name || '')
-      let person = peopleById.get(key)
-      if (!person) {
-        person = { ...row, sports: [] }
-        peopleById.set(key, person)
-        people.push(person)
-      }
-      person.sports.push(row)
+    const rows = responsibleCredentialRows.filter(person => {
+      if (!credentialSearch.trim()) return true
+      const sportsText = (person.sports || []).map(sport => `${sport.sport_code || ''} ${sport.sport_name || ''} ${sport.sport_gender || ''}`).join(' ')
+      const haystack = `${person.teacher_title || ''} ${person.teacher_staff_type || ''} ${person.teacher_name || ''} ${person.teacher_code || ''} ${person.username || ''} ${person.password || ''} ${person.credential_status || ''} ${sportsText}`.toLocaleLowerCase()
+      return haystack.includes(credentialSearch.trim().toLocaleLowerCase())
     })
     const displayName = name => String(name || '—').replace(/^(นาย|นางสาว|นาง|ดร\.)\s*/, '') || '—'
-    return `<section class="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">✅ รายชื่อผู้รับผิดชอบที่อนุมัติแล้ว</h2><p class="text-sm text-gray-500 mt-1">แสดงเฉพาะครูที่ส่งคำขอและแอดมินกดอนุมัติแล้ว รวมรายการแข่งขันที่ครูคนนั้นรับผิดชอบไว้ในแถวเดียว รหัสผ่านใช้บัญชีครู ปพ.5 เดิมและไม่แสดงในตาราง</p></div><span class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">${people.length} คน</span></div><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[900px] text-sm"><thead class="bg-emerald-50 text-emerald-900"><tr><th class="p-3 text-left">ยศ/ประเภท</th><th class="p-3 text-left">ชื่อผู้รับผิดชอบ</th><th class="p-3 text-left">Username</th><th class="p-3 text-left">รายการแข่งขันที่รับผิดชอบ</th><th class="p-3 text-left">สถานะ</th></tr></thead><tbody>${people.map(person => `<tr class="border-t border-gray-100 align-top"><td class="p-3"><b>${esc(person.teacher_title || 'ครู')}</b><div class="text-xs text-gray-500 mt-1">${esc(person.teacher_staff_type || 'ครู')}</div></td><td class="p-3 font-bold">${esc(displayName(person.teacher_name))}</td><td class="p-3 font-mono font-bold text-indigo-700">${esc(person.teacher_code || 'ใช้บัญชีครู ปพ.5')}</td><td class="p-3"><div class="space-y-1">${person.sports.map(sport => `<div><b>${esc(sport.sport_code ? `${sport.sport_code} · ` : '')}${esc(sport.sport_name || '—')}</b>${sport.sport_gender ? `<span class="ml-1 text-xs text-gray-500">(เพศ${esc(sport.sport_gender)})</span>` : ''}</div>`).join('')}</div></td><td class="p-3"><span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">อนุมัติแล้ว</span></td></tr>`).join('') || '<tr><td colspan="5" class="p-8 text-center text-sm text-gray-400">ยังไม่มีคำขอที่แอดมินอนุมัติ</td></tr>'}</tbody></table></div></section>`
+    const inputClass = 'w-full min-w-[120px] rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm'
+    return `<section class="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🔐 ข้อมูลเข้าสู่ระบบผู้รับผิดชอบที่อนุมัติแล้ว</h2><p class="text-sm text-gray-500 mt-1">แสดงเฉพาะครูที่ส่งคำขอและแอดมินอนุมัติแล้ว ครูหนึ่งคนใช้ Username และรหัสผ่านชุดเดียว รวมรายการแข่งขันไว้ในแถวเดียว</p></div><span class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">พบ ${rows.length} จาก ${responsibleCredentialRows.length} คน</span></div><label class="mt-4 block"><span class="text-xs font-bold text-gray-600">ค้นหาผู้รับผิดชอบ</span><input id="sports-responsible-credential-search" value="${esc(credentialSearch)}" placeholder="ค้นหาได้ทุกช่อง: ยศ ชื่อ รหัส Username รหัสผ่าน หรือรายการแข่งขัน" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm"></label><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[1250px] text-sm"><thead class="bg-emerald-50 text-emerald-900"><tr><th class="p-3 text-left">ยศ/ประเภท</th><th class="p-3 text-left">ชื่อผู้รับผิดชอบ</th><th class="p-3 text-left">Username</th><th class="p-3 text-left">รหัสผ่าน</th><th class="p-3 text-left">รายการแข่งขันที่รับผิดชอบ</th><th class="p-3 text-left">สถานะ</th><th class="p-3 text-left">จัดการ</th></tr></thead><tbody>${rows.map(person => `<tr class="border-t border-gray-100 align-top"><td class="p-3"><b>${esc(person.teacher_title || 'ครู')}</b><div class="text-xs text-gray-500 mt-1">${esc(person.teacher_staff_type || 'ครู')}</div></td><td class="p-3 font-bold">${esc(displayName(person.teacher_name))}<div class="mt-1 text-xs font-mono text-gray-500">${esc(person.teacher_code || 'ไม่มีเลขครู 4 หลัก')}</div></td><td class="p-3"><input data-credential-username="${esc(person.teacher_profile_id)}" value="${esc(person.username || person.teacher_code || '')}" inputmode="numeric" maxlength="4" class="${inputClass}"></td><td class="p-3"><input data-credential-password="${esc(person.teacher_profile_id)}" value="${esc(person.password || 'azgames')}" class="${inputClass}"></td><td class="p-3"><div class="max-w-[360px] space-y-1">${(person.sports || []).map(sport => `<div><b>${esc(sport.sport_code ? `${sport.sport_code} · ` : '')}${esc(sport.sport_name || '—')}</b>${sport.sport_gender ? `<span class="ml-1 text-xs text-gray-500">(เพศ${esc(sport.sport_gender)})</span>` : ''}</div>`).join('')}</div></td><td class="p-3">${person.credential_status === 'ready' ? '<span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">พร้อมใช้งาน</span>' : '<span class="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">ยังไม่ได้สร้าง</span>'}</td><td class="p-3"><div class="flex flex-wrap gap-2"><button type="button" data-save-credential="${esc(person.teacher_profile_id)}" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700">บันทึก</button>${person.credential_id ? `<button type="button" data-delete-credential="${esc(person.credential_id)}" class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">ลบ</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="7" class="p-8 text-center text-sm text-gray-400">ยังไม่มีครูที่แอดมินอนุมัติ หรือไม่พบผลการค้นหา</td></tr>'}</tbody></table></div></section>`
   }
   const competitionDeadlineSection = () => {
     if (!workspace?.is_admin) return ''
@@ -1986,6 +1982,47 @@ export async function renderSportsCompetitionManager() {
         button.textContent = '🖨️ พิมพ์ใบรายชื่อนักกีฬา'
       }
     })
+  }
+  const bindResponsibleCredentialControls = () => {
+    el.querySelector('#sports-responsible-credential-search')?.addEventListener('input', event => {
+      credentialSearch = event.target.value || ''
+      draw()
+    })
+    el.querySelectorAll('[data-save-credential]').forEach(button => button.addEventListener('click', async () => {
+      const teacherProfileId = button.dataset.saveCredential
+      const username = el.querySelector(`[data-credential-username="${teacherProfileId}"]`)?.value?.trim() || ''
+      const password = el.querySelector(`[data-credential-password="${teacherProfileId}"]`)?.value?.trim() || ''
+      button.disabled = true
+      button.textContent = 'กำลังบันทึก...'
+      const { error } = await supabase.rpc('upsert_sports_competition_responsible_credential', {
+        p_event: event.id,
+        p_teacher_profile_id: teacherProfileId,
+        p_username: username,
+        p_password: password,
+      })
+      if (error) {
+        toast(error.message || 'บันทึกข้อมูลเข้าสู่ระบบไม่สำเร็จ', 'error')
+        button.disabled = false
+        button.textContent = 'บันทึก'
+        return
+      }
+      toast('บันทึกข้อมูล Username และรหัสผ่านแล้ว')
+      await reload()
+    }))
+    el.querySelectorAll('[data-delete-credential]').forEach(button => button.addEventListener('click', async () => {
+      if (!window.confirm('ยืนยันลบข้อมูลเข้าสู่ระบบของครูคนนี้หรือไม่?')) return
+      button.disabled = true
+      const { error } = await supabase.rpc('delete_sports_competition_responsible_credential', {
+        p_id: button.dataset.deleteCredential,
+      })
+      if (error) {
+        toast(error.message || 'ลบข้อมูลเข้าสู่ระบบไม่สำเร็จ', 'error')
+        button.disabled = false
+        return
+      }
+      toast('ลบข้อมูลเข้าสู่ระบบแล้ว')
+      await reload()
+    }))
   }
   const bindRegistrationControls = () => {
     el.querySelectorAll('[data-registration-gender]').forEach(button => button.addEventListener('click', () => {
@@ -2196,6 +2233,7 @@ export async function renderSportsCompetitionManager() {
         <div class="text-5xl mb-3">🏟️</div><h1 class="text-2xl font-extrabold text-gray-800">รายการแข่งขันของฉัน</h1>
         <p class="text-gray-500 mt-2">ยังไม่มีรายการแข่งขันที่แอดมินอนุมัติให้บัญชีครูนี้รับผิดชอบ</p>
         <p class="text-xs text-gray-400 mt-3">เลือกหลายรายการจากแบบฟอร์มด้านล่างเพื่อส่งคำขอให้แอดมินตรวจสอบ</p></div>${competitionDeadlineMarkup}${pendingRequestsMarkup}${approvedRegistrationMarkup}${registrationMarkup}</section>`
+      bindResponsibleCredentialControls()
       bindRegistrationControls()
       bindCompetitionDeadlineControl()
       return
@@ -2251,6 +2289,7 @@ export async function renderSportsCompetitionManager() {
 
     bindCompetitionDeadlineControl()
     bindCompetitionRosterPrint()
+    bindResponsibleCredentialControls()
     bindRegistrationControls()
     el.querySelectorAll('[data-color-picker]').forEach(picker => {
       const trigger = picker.querySelector('[data-color-trigger]')
