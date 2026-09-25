@@ -1,7 +1,8 @@
 import { supabase } from './supabase.js'
 import { getFriendlyErrorMessage } from './ui.js'
 
-const SESSION_KEY = 'sports_checkin_official_session'
+const PW = 'azreg26'
+const PW_KEY = 'sports_checkin_pw'
 const DEFAULT_EVENT = '00000000-0000-0000-0000-000000000001'
 const root = document.getElementById('checkin-root')
 
@@ -28,34 +29,27 @@ function renderGate(onSuccess) {
     <div class="max-w-sm mx-auto mt-10 bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-4">
       <div class="text-center">
         <span class="text-3xl">🔒</span>
-        <h2 class="font-bold text-slate-800 mt-2">เข้าสู่ระบบกรรมการ</h2>
-        <p class="text-xs text-slate-500 mt-1">ใช้ Username และ PIN ที่ได้รับหลังการอนุมัติ</p>
+        <h2 class="font-bold text-slate-800 mt-2">กรุณาใส่รหัสผ่าน</h2>
+        <p class="text-xs text-slate-500 mt-1">สำหรับทีมงานรับรายงานตัวนักกีฬาหน้างานเท่านั้น</p>
       </div>
-      <input id="gate-username" autocomplete="username" placeholder="Username" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-center" autofocus>
-      <input id="gate-password" type="password" inputmode="numeric" autocomplete="current-password" placeholder="PIN 6 หลัก" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-center tracking-widest">
+      <input id="gate-password" type="password" autocomplete="current-password" placeholder="รหัสผ่าน" class="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-sm text-center tracking-widest" autofocus>
       <button id="gate-submit" class="w-full py-2.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold">เข้าสู่ระบบ</button>
-      <p id="gate-error" class="text-xs text-red-500 text-center hidden"></p>
+      <p id="gate-error" class="text-xs text-red-500 text-center hidden">รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่</p>
     </div>`
-  const usernameInput = root.querySelector('#gate-username')
-  const pinInput = root.querySelector('#gate-password')
+  const input = root.querySelector('#gate-password')
   const errEl = root.querySelector('#gate-error')
-  const submit = async () => {
-    const username = usernameInput.value.trim(), pin = pinInput.value.trim()
-    if (!username || !pin) return
-    errEl.classList.add('hidden')
-    try {
-      const { data, error } = await supabase.rpc('login_sports_official', { p_username: username, p_pin: pin })
-      if (error) throw error
-      if (!data) throw new Error('Username หรือ PIN ไม่ถูกต้อง')
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(data))
-      onSuccess(data)
-    } catch (e) {
-      errEl.textContent = getFriendlyErrorMessage(e)
+  const submit = () => {
+    const pw = input.value.trim()
+    if (!pw) return
+    if (pw === PW) {
+      sessionStorage.setItem(PW_KEY, pw)
+      onSuccess()
+    } else {
       errEl.classList.remove('hidden')
     }
   }
   root.querySelector('#gate-submit').onclick = submit
-  pinInput.addEventListener('keydown', e => { if (e.key === 'Enter') submit() })
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') submit() })
 }
 
 async function _loadHtml5Qrcode() {
@@ -99,7 +93,7 @@ async function loadData() {
   return { colors: colors || [], sports: sports || [], matches: matches || [], registrations, students, dailyCheckins }
 }
 
-function renderApp(data, official) {
+function renderApp(data) {
   let { colors, sports, matches, registrations, students, dailyCheckins } = data
   let checkInDate = todayLocal()
   let lastLocalDate = checkInDate
@@ -132,10 +126,6 @@ function renderApp(data, official) {
   root.innerHTML = `
     <div class="space-y-4">
       <div class="bg-white rounded-xl border border-slate-200 p-4 flex flex-wrap items-center gap-3">
-        <div class="w-full flex items-center justify-between text-xs">
-          <span class="font-bold text-slate-700">👤 ${esc(official.displayName)}</span>
-          <button id="ci-logout" class="text-red-600 font-bold">ออกจากระบบ</button>
-        </div>
         <div>
           <label class="block text-[10px] text-slate-500 font-bold mb-1">วันที่รายงานตัว</label>
           <input id="ci-date" type="date" value="${checkInDate}" class="border border-slate-300 rounded-xl px-3 py-2 text-sm">
@@ -286,11 +276,12 @@ function renderApp(data, official) {
   }
 
   const doCheckin = async (studentId) => {
-    const { data, error } = await supabase.rpc('sports_official_write', {
-      p_session_token: official.sessionToken,
-      p_action: 'dailyCheckinUpsert',
-      p_payload: { event_id: DEFAULT_EVENT, student_id: studentId, check_in_date: checkInDate, checked_in_at: new Date().toISOString() },
-    })
+    const { data, error } = await supabase.from('daily_checkins').upsert({
+      event_id: DEFAULT_EVENT,
+      student_id: studentId,
+      check_in_date: checkInDate,
+      checked_in_at: new Date().toISOString(),
+    }, { onConflict: 'event_id,student_id,check_in_date' }).select().single()
     if (error) { alert(error.message); return false }
     dailyCheckins = [...dailyCheckins.filter(c => !(c.student_id === studentId && c.check_in_date === checkInDate)), data]
     renderList()
@@ -298,9 +289,7 @@ function renderApp(data, official) {
   }
 
   const undoCheckin = async (id) => {
-    const { error } = await supabase.rpc('sports_official_write', {
-      p_session_token: official.sessionToken, p_action: 'dailyCheckinDelete', p_payload: { id },
-    })
+    const { error } = await supabase.from('daily_checkins').delete().eq('id', id)
     if (error) { alert(error.message); return false }
     dailyCheckins = dailyCheckins.filter(c => c.id !== id)
     renderList()
@@ -391,11 +380,6 @@ function renderApp(data, official) {
 
   root.querySelector('#ci-date').onchange = e => { checkInDate = e.target.value || todayLocal(); autoFollowToday = checkInDate === todayLocal(); renderList() }
   root.querySelector('#ci-refresh').onclick = () => refreshDailyCheckins()
-  root.querySelector('#ci-logout').onclick = async () => {
-    await supabase.rpc('logout_sports_official', { p_session_token: official.sessionToken })
-    sessionStorage.removeItem(SESSION_KEY)
-    window.location.reload()
-  }
   root.querySelector('#ci-search').oninput = e => { search = e.target.value; renderList() }
   root.querySelectorAll('[data-gender-filter]').forEach(btn => btn.onclick = () => {
     genderFilter = btn.dataset.genderFilter || ''
@@ -435,26 +419,18 @@ function renderApp(data, official) {
 
 async function init() {
   root.innerHTML = '<div class="py-16 text-center text-slate-400">กำลังโหลด...</div>'
-  const cachedSession = sessionStorage.getItem(SESSION_KEY)
-  const boot = async official => {
+  const cachedPw = sessionStorage.getItem(PW_KEY)
+  const boot = async () => {
     try {
       const data = await loadData()
-      const allowed = new Set(official.assignedSportIds || [])
-      data.sports = data.sports.filter(s => allowed.has(s.id))
-      data.matches = data.matches.filter(m => allowed.has(m.sport_id))
-      data.registrations = data.registrations.filter(r => allowed.has(r.sport_id))
-      renderApp(data, official)
+      renderApp(data)
     } catch (e) {
       root.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${esc(getFriendlyErrorMessage(e))}</div>`
     }
   }
-  if (cachedSession) {
-    try {
-      const saved = JSON.parse(cachedSession)
-      const { data, error } = await supabase.rpc('validate_sports_official_session', { p_session_token: saved.sessionToken })
-      if (!error && data) { await boot(data); return }
-    } catch (e) {}
-    sessionStorage.removeItem(SESSION_KEY)
+  if (cachedPw === PW) {
+    await boot()
+    return
   }
   renderGate(boot)
 }
