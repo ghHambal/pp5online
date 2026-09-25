@@ -112,6 +112,17 @@ async function resolveLoginEmail(identifier) {
   const raw = identifier.trim()
   if (raw.includes('@')) return raw
 
+  // เข้าจากระบบกีฬาสีหลักให้ลองบัญชีผู้รับผิดชอบ AZIZGAMES ก่อนบัญชี ปพ.5
+  // บัญชีนี้เป็น Supabase Auth แยก จึงใช้รหัสผ่าน azgames ได้โดยไม่เปลี่ยนรหัสผ่าน ปพ.5 เดิม
+  const nextUrl = getSafeNextUrl()
+  if (nextUrl === 'azfutsal.html' || nextUrl === 'azizgames.html') {
+    const { data: sportsEmail, error: sportsError } = await supabase.rpc('resolve_sports_competition_login_email', {
+      p_identifier: raw,
+    })
+    if (sportsError) throw sportsError
+    if (sportsEmail) return sportsEmail
+  }
+
   // ลองหาในตาราง teachers ก่อน (username / รหัสครู)
   const { data: teacherEmail, error: tErr } = await supabase.rpc('resolve_teacher_login_email', {
     p_identifier: raw,

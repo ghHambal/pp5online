@@ -440,7 +440,9 @@ async function loadAll() {
       const { data: st } = await SB.from('students').select('id, student_code, full_name, class_name, main_room').eq('profile_id', profile.id).maybeSingle()
       student = st || null
       const { data: tc } = await SB.from('teachers').select('id, full_name, teacher_code').eq('profile_id', profile.id).maybeSingle()
-      teacher = tc || null
+      teacher = tc || (session.user.user_metadata?.account_type === 'azgames_competition_responsible'
+        ? { full_name: session.user.user_metadata?.full_name || 'ครูผู้รับผิดชอบ', teacher_code: session.user.user_metadata?.teacher_code || profile.user_code }
+        : null)
     }
   }
   S.identity = { session, profile, isAdmin, scopes, student, teacher }
@@ -4394,15 +4396,16 @@ function adminLoginModal() {
   <div style="position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:20px">
     <div style="background:#fff;width:100%;max-width:340px;border-radius:16px;padding:18px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <h3 style="margin:0;font-size:15px;font-weight:800">เข้าสู่ระบบแอดมิน</h3>
+        <h3 style="margin:0;font-size:15px;font-weight:800">เข้าสู่ระบบกีฬาสีหลัก</h3>
         <button data-act="closeAdminLogin" style="border:none;background:none;color:#9ca3af;font-size:16px;cursor:pointer">✕</button>
       </div>
+      <div style="font-size:11.5px;color:#6b7280;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:9px 10px;margin-bottom:10px;line-height:1.5">ครูผู้รับผิดชอบใช้ Username เลขประจำตัวครู 4 หลัก และรหัสผ่านที่แอดมินแจ้ง เพื่อบันทึกผลการแข่งขันในระบบนี้เท่านั้น</div>
       <div style="display:flex;flex-direction:column;gap:8px">
-        <input id="admin-login-username" value="${esc(S.adminLoginUsername)}" placeholder="ยูสเซอร์เนม" autocomplete="username" style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;font-size:13.5px"/>
+        <input id="admin-login-username" value="${esc(S.adminLoginUsername)}" placeholder="Username เลขครู 4 หลัก" autocomplete="username" inputmode="numeric" style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;font-size:13.5px"/>
         <input id="admin-login-password" type="password" placeholder="รหัสผ่าน" autocomplete="current-password" style="border:1px solid #e5e7eb;border-radius:10px;padding:10px 12px;font-size:13.5px"/>
         ${S.adminLoginError ? `<div style="font-size:12px;color:#dc2626">${esc(S.adminLoginError)}</div>` : ''}
         <button data-act="submitAdminLogin" style="margin-top:4px;padding:11px;border:none;border-radius:10px;background:#db2777;color:#fff;font-weight:700;font-size:14px;cursor:pointer">ลงชื่อเข้าใช้</button>
-        <button data-act="goToPp5Login" style="padding:9px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:600;font-size:12.5px;cursor:pointer">หรือเข้าสู่ระบบด้วยบัญชี ปพ.5</button>
+        <button data-act="goToPp5Login" style="padding:9px;border:1px solid #e5e7eb;border-radius:10px;background:#fff;color:#374151;font-weight:600;font-size:12.5px;cursor:pointer">เปิดหน้าเข้าสู่ระบบเต็มรูปแบบ</button>
       </div>
     </div>
   </div>`
@@ -5657,8 +5660,16 @@ async function handleAdminLogin() {
   const username = gid('admin-login-username').value.trim()
   const password = gid('admin-login-password').value
   if (!username || !password) { S.adminLoginError = 'กรอกยูสเซอร์เนมและรหัสผ่าน'; draw(); return }
-  if (username !== cfg('ADMIN_LOGIN_USERNAME', 'aaaaaa')) { S.adminLoginError = 'ยูสเซอร์เนมหรือรหัสผ่านไม่ถูกต้อง'; draw(); return }
-  const { error } = await SB.auth.signInWithPassword({ email: STANDALONE_ADMIN_EMAIL, password })
+  let email = null
+  if (username === cfg('ADMIN_LOGIN_USERNAME', 'aaaaaa')) {
+    email = STANDALONE_ADMIN_EMAIL
+  } else {
+    const { data, error: resolveError } = await SB.rpc('resolve_sports_competition_login_email', { p_identifier: username })
+    if (resolveError) { S.adminLoginError = resolveError.message; draw(); return }
+    email = data
+  }
+  if (!email) { S.adminLoginError = 'ไม่พบบัญชีผู้รับผิดชอบที่พร้อมใช้งาน'; draw(); return }
+  const { error } = await SB.auth.signInWithPassword({ email, password })
   if (error) { S.adminLoginError = 'ยูสเซอร์เนมหรือรหัสผ่านไม่ถูกต้อง'; draw(); return }
   S.adminLoginOpen = false
   await refresh()

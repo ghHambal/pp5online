@@ -1829,6 +1829,7 @@ export async function renderSportsCompetitionManager() {
   let responsibleCredentialRows = []
   let event = null
   let rosterPrintLoading = false
+  let credentialProvisionLoading = false
   let simulationResults = {}
   const onSimulationSaved = e => {
     const payload = e.detail || {}
@@ -1923,7 +1924,13 @@ export async function renderSportsCompetitionManager() {
     })
     const displayName = name => String(name || '—').replace(/^(นาย|นางสาว|นาง|ดร\.)\s*/, '') || '—'
     const inputClass = 'w-full min-w-[120px] rounded-lg border border-gray-300 bg-white px-2.5 py-2 text-sm'
-    return `<section class="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🔐 ข้อมูลเข้าสู่ระบบผู้รับผิดชอบทุกรายการ</h2><p class="text-sm text-gray-500 mt-1">แสดงครูทุกคนที่มีชื่อเป็นผู้รับผิดชอบรายการแข่งขันที่ใช้งานอยู่ ครูหนึ่งคนใช้ Username และรหัสผ่านชุดเดียว รวมรายการแข่งขันไว้ในแถวเดียว</p></div><span class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">พบ ${rows.length} จาก ${responsibleCredentialRows.length} คน</span></div><label class="mt-4 block"><span class="text-xs font-bold text-gray-600">ค้นหาผู้รับผิดชอบ</span><input id="sports-responsible-credential-search" value="${esc(credentialSearch)}" placeholder="ค้นหาได้ทุกช่อง: ยศ ชื่อ รหัส Username รหัสผ่าน หรือรายการแข่งขัน" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm"></label><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[1250px] text-sm"><thead class="bg-emerald-50 text-emerald-900"><tr><th class="p-3 text-left">ยศ/ประเภท</th><th class="p-3 text-left">ชื่อผู้รับผิดชอบ</th><th class="p-3 text-left">Username</th><th class="p-3 text-left">รหัสผ่าน</th><th class="p-3 text-left">รายการแข่งขันที่รับผิดชอบ</th><th class="p-3 text-left">สถานะ</th><th class="p-3 text-left">จัดการ</th></tr></thead><tbody>${rows.map(person => `<tr class="border-t border-gray-100 align-top"><td class="p-3"><b>${esc(person.teacher_title || 'ครู')}</b><div class="text-xs text-gray-500 mt-1">${esc(person.teacher_staff_type || 'ครู')}</div></td><td class="p-3 font-bold">${esc(displayName(person.teacher_name))}<div class="mt-1 text-xs font-mono text-gray-500">${esc(person.teacher_code || 'ไม่มีเลขครู 4 หลัก')}</div></td><td class="p-3"><input data-credential-username="${esc(person.teacher_profile_id)}" value="${esc(person.username || person.teacher_code || '')}" inputmode="numeric" maxlength="4" class="${inputClass}"></td><td class="p-3"><input data-credential-password="${esc(person.teacher_profile_id)}" value="${esc(person.password || 'azgames')}" class="${inputClass}"></td><td class="p-3"><div class="max-w-[360px] space-y-1">${(person.sports || []).map(sport => `<div><b>${esc(sport.sport_code ? `${sport.sport_code} · ` : '')}${esc(sport.sport_name || '—')}</b>${sport.sport_gender ? `<span class="ml-1 text-xs text-gray-500">(เพศ${esc(sport.sport_gender)})</span>` : ''}</div>`).join('')}</div></td><td class="p-3">${person.credential_status === 'ready' ? '<span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">พร้อมใช้งาน</span>' : '<span class="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">ยังไม่ได้สร้าง</span>'}</td><td class="p-3"><div class="flex flex-wrap gap-2"><button type="button" data-save-credential="${esc(person.teacher_profile_id)}" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700">บันทึก</button>${person.credential_id ? `<button type="button" data-delete-credential="${esc(person.credential_id)}" class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">ลบ</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="7" class="p-8 text-center text-sm text-gray-400">ยังไม่มีผู้รับผิดชอบรายการแข่งขัน หรือไม่พบผลการค้นหา</td></tr>'}</tbody></table></div></section>`
+    const authReady = person => person.provision_status === 'ready'
+    const authStatus = person => authReady(person)
+      ? '<span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">บัญชีกีฬาสีพร้อมใช้</span>'
+      : person.provision_status === 'error'
+        ? '<span class="inline-flex rounded-full bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-700">สร้างบัญชีไม่สำเร็จ</span>'
+        : '<span class="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-700">รอสร้างบัญชีกีฬาสี</span>'
+    return `<section class="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🔐 ข้อมูลเข้าสู่ระบบผู้รับผิดชอบทุกรายการ</h2><p class="text-sm text-gray-500 mt-1">แสดงครูทุกคนที่มีชื่อเป็นผู้รับผิดชอบรายการแข่งขันที่ใช้งานอยู่ ครูหนึ่งคนใช้ Username และรหัสผ่านชุดเดียว รวมรายการแข่งขันไว้ในแถวเดียว</p></div><div class="flex flex-wrap items-center gap-2"><span class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">พบ ${rows.length} จาก ${responsibleCredentialRows.length} คน</span><button type="button" id="provision-all-sports-credentials" class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">🔑 สร้าง/ซิงก์บัญชีกีฬาสีทั้งหมด</button></div></div><div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">หลังบันทึกหรือแก้ไข Username/รหัสผ่าน ให้กดปุ่มซิงก์บัญชี ครูจึงจะใช้บัญชีนั้นเข้าสู่ระบบกีฬาสีหลักได้ บัญชีนี้แยกจากรหัสผ่าน ปพ.5 เดิม</div><label class="mt-4 block"><span class="text-xs font-bold text-gray-600">ค้นหาผู้รับผิดชอบ</span><input id="sports-responsible-credential-search" value="${esc(credentialSearch)}" placeholder="ค้นหาได้ทุกช่อง: ยศ ชื่อ รหัส Username รหัสผ่าน หรือรายการแข่งขัน" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm"></label><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[1250px] text-sm"><thead class="bg-emerald-50 text-emerald-900"><tr><th class="p-3 text-left">ยศ/ประเภท</th><th class="p-3 text-left">ชื่อผู้รับผิดชอบ</th><th class="p-3 text-left">Username</th><th class="p-3 text-left">รหัสผ่าน</th><th class="p-3 text-left">รายการแข่งขันที่รับผิดชอบ</th><th class="p-3 text-left">สถานะ</th><th class="p-3 text-left">จัดการ</th></tr></thead><tbody>${rows.map(person => `<tr class="border-t border-gray-100 align-top"><td class="p-3"><b>${esc(person.teacher_title || 'ครู')}</b><div class="text-xs text-gray-500 mt-1">${esc(person.teacher_staff_type || 'ครู')}</div></td><td class="p-3 font-bold">${esc(displayName(person.teacher_name))}<div class="mt-1 text-xs font-mono text-gray-500">${esc(person.teacher_code || 'ไม่มีเลขครู 4 หลัก')}</div></td><td class="p-3"><input data-credential-username="${esc(person.teacher_profile_id)}" value="${esc(person.username || person.teacher_code || '')}" inputmode="numeric" maxlength="4" class="${inputClass}"></td><td class="p-3"><input data-credential-password="${esc(person.teacher_profile_id)}" value="${esc(person.password || 'azgames')}" class="${inputClass}"></td><td class="p-3"><div class="max-w-[360px] space-y-1">${(person.sports || []).map(sport => `<div><b>${esc(sport.sport_code ? `${sport.sport_code} · ` : '')}${esc(sport.sport_name || '—')}</b>${sport.sport_gender ? `<span class="ml-1 text-xs text-gray-500">(เพศ${esc(sport.sport_gender)})</span>` : ''}</div>`).join('')}</div></td><td class="p-3">${authStatus(person)}</td><td class="p-3"><div class="flex flex-wrap gap-2"><button type="button" data-save-credential="${esc(person.teacher_profile_id)}" class="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700">บันทึก</button>${person.credential_id ? `<button type="button" data-delete-credential="${esc(person.credential_id)}" class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">ลบ</button>` : ''}</div></td></tr>`).join('') || '<tr><td colspan="7" class="p-8 text-center text-sm text-gray-400">ยังไม่มีผู้รับผิดชอบรายการแข่งขัน หรือไม่พบผลการค้นหา</td></tr>'}</tbody></table></div></section>`
   }
   const competitionDeadlineSection = () => {
     if (!workspace?.is_admin) return ''
@@ -1984,6 +1991,28 @@ export async function renderSportsCompetitionManager() {
     })
   }
   const bindResponsibleCredentialControls = () => {
+    el.querySelector('#provision-all-sports-credentials')?.addEventListener('click', async buttonEvent => {
+      if (credentialProvisionLoading) return
+      const button = buttonEvent.currentTarget
+      credentialProvisionLoading = true
+      button.disabled = true
+      button.textContent = 'กำลังสร้าง/ซิงก์บัญชี...'
+      try {
+        const { data, error } = await supabase.functions.invoke('provision-sports-competition-auth', {
+          body: { event_id: event.id },
+        })
+        if (error) throw error
+        if (data?.failed) throw new Error(`สร้าง/ซิงก์ไม่สำเร็จ ${data.failed} รายการ`)
+        toast(`สร้าง/ซิงก์บัญชีกีฬาสีแล้ว ${data?.provisioned || 0} รายการ`)
+        await reload()
+      } catch (error) {
+        toast(error?.message || 'สร้าง/ซิงก์บัญชีกีฬาสีไม่สำเร็จ', 'error')
+      } finally {
+        credentialProvisionLoading = false
+        button.disabled = false
+        button.textContent = '🔑 สร้าง/ซิงก์บัญชีกีฬาสีทั้งหมด'
+      }
+    })
     el.querySelector('#sports-responsible-credential-search')?.addEventListener('input', event => {
       credentialSearch = event.target.value || ''
       draw()
@@ -1994,7 +2023,7 @@ export async function renderSportsCompetitionManager() {
       const password = el.querySelector(`[data-credential-password="${teacherProfileId}"]`)?.value?.trim() || ''
       button.disabled = true
       button.textContent = 'กำลังบันทึก...'
-      const { error } = await supabase.rpc('upsert_sports_competition_responsible_credential', {
+      const { data: savedCredential, error } = await supabase.rpc('upsert_sports_competition_responsible_credential', {
         p_event: event.id,
         p_teacher_profile_id: teacherProfileId,
         p_username: username,
@@ -2006,7 +2035,14 @@ export async function renderSportsCompetitionManager() {
         button.textContent = 'บันทึก'
         return
       }
-      toast('บันทึกข้อมูล Username และรหัสผ่านแล้ว')
+      const { data: provisionResult, error: provisionError } = await supabase.functions.invoke('provision-sports-competition-auth', {
+        body: { event_id: event.id, credential_id: savedCredential?.id },
+      })
+      if (provisionError || provisionResult?.failed) {
+        toast('บันทึกข้อมูลแล้ว แต่สร้างบัญชีกีฬาสียังไม่สำเร็จ กรุณากดซิงก์อีกครั้ง', 'error')
+      } else {
+        toast('บันทึกและเปิดใช้งานบัญชีกีฬาสีแล้ว')
+      }
       await reload()
     }))
     el.querySelectorAll('[data-delete-credential]').forEach(button => button.addEventListener('click', async () => {
@@ -2164,56 +2200,7 @@ export async function renderSportsCompetitionManager() {
   const simulationStatusLabel = value => ({ live: 'กำลังแข่ง', done: 'เสร็จสิ้น', pending: 'รอแข่ง' }[value] || value || 'รอแข่ง')
   const openSimulation = (row, sport) => {
     openAzizGamesModal({ tab: 'p3', simulation: true, matchId: row.id, sportId: sport?.id || '' })
-    return
-
-    const colors = workspace?.colors || []
-    const teamA = colorById(colors, row.team_a_color_id)
-    const teamB = colorById(colors, row.team_b_color_id)
-    const previous = simulationFor(row) || {}
-    const overlay = document.createElement('div')
-    overlay.className = 'fixed inset-0 z-[120] grid place-items-center bg-slate-950/60 p-4'
-    overlay.innerHTML = `<section class="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white shadow-2xl">
-      <div class="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4"><div><p class="text-xs font-bold text-violet-600">🧪 โหมดจำลองผลการแข่งขัน</p><h2 class="mt-1 text-xl font-extrabold text-slate-900">${esc(sport?.name || 'การแข่งขัน')}</h2><p class="mt-1 text-xs text-slate-500">รอบ ${esc(row.round_name || 'รอบแรก')} · ${esc(row.scheduled_date ? dateLabel(row.scheduled_date) : 'ยังไม่กำหนดวัน')}</p></div><button type="button" data-sim-close class="rounded-xl border border-slate-200 px-3 py-2 text-slate-500 hover:bg-slate-50">✕</button></div>
-      <form data-sim-form class="space-y-4 p-5">
-        <div class="grid grid-cols-2 gap-3">
-          <div class="rounded-2xl border px-3 py-3 text-center" style="border-color:${_validHexColor(teamA?.hex_color)}55;background:${_validHexColor(teamA?.hex_color)}12"><div class="flex justify-center">${colorIdentity(teamA)}</div><p class="mt-2 text-sm font-extrabold text-slate-900">${teamA ? `สี${esc(teamA.name)}` : 'ทีม A ยังไม่ระบุ'}</p><input name="score_a" type="text" inputmode="decimal" value="${esc(previous.score_a ?? '')}" placeholder="คะแนน A" class="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-lg font-extrabold text-slate-900"></div>
-          <div class="rounded-2xl border px-3 py-3 text-center" style="border-color:${_validHexColor(teamB?.hex_color)}55;background:${_validHexColor(teamB?.hex_color)}12"><div class="flex justify-center">${colorIdentity(teamB)}</div><p class="mt-2 text-sm font-extrabold text-slate-900">${teamB ? `สี${esc(teamB.name)}` : 'ทีม B ยังไม่ระบุ'}</p><input name="score_b" type="text" inputmode="decimal" value="${esc(previous.score_b ?? '')}" placeholder="คะแนน B" class="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-center text-lg font-extrabold text-slate-900"></div>
-        </div>
-        <label class="block"><span class="text-xs font-bold text-slate-600">สถานะจำลอง</span><select name="status" class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="pending" ${previous.status === 'pending' || !previous.status ? 'selected' : ''}>รอแข่ง</option><option value="live" ${previous.status === 'live' ? 'selected' : ''}>กำลังแข่ง</option><option value="done" ${previous.status === 'done' ? 'selected' : ''}>เสร็จสิ้น</option></select></label>
-        <label class="block"><span class="text-xs font-bold text-slate-600">หมายเหตุจำลอง</span><textarea name="note" rows="3" placeholder="ข้อมูลเพิ่มเติมสำหรับการทดลอง" class="mt-1 w-full resize-none rounded-xl border border-slate-200 px-3 py-2.5 text-sm">${esc(previous.note ?? '')}</textarea></label>
-        <div class="rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs leading-5 text-violet-800">ข้อมูลนี้เป็นเพียงตัวอย่างในเครื่องนี้เท่านั้น จะไม่เปลี่ยนผลจริง เหรียญ อันดับ หรือคู่แข่งขันในฐานข้อมูล</div>
-        <div class="flex flex-wrap justify-end gap-2"><button type="button" data-sim-reset class="rounded-xl border border-rose-200 px-4 py-2.5 text-sm font-bold text-rose-600 hover:bg-rose-50">ล้างผลจำลอง</button><button type="button" data-sim-close class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">ยกเลิก</button><button type="submit" class="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-violet-700">บันทึกผลจำลอง</button></div>
-      </form>
-    </section>`
-    document.body.appendChild(overlay)
-    const close = () => overlay.remove()
-    overlay.querySelectorAll('[data-sim-close]').forEach(button => button.addEventListener('click', close))
-    overlay.addEventListener('click', e => { if (e.target === overlay) close() })
-    overlay.querySelector('[data-sim-reset]')?.addEventListener('click', () => {
-      delete simulationResults[String(row.id)]
-      _writeCompetitionSimulations(event.id, simulationResults)
-      close(); draw(); toast('ล้างผลจำลองแล้ว')
-    })
-    overlay.querySelector('[data-sim-form]')?.addEventListener('submit', e => {
-      e.preventDefault()
-      const form = e.currentTarget
-      const scoreA = form.elements.score_a.value.trim()
-      const scoreB = form.elements.score_b.value.trim()
-      const numericA = Number(scoreA)
-      const numericB = Number(scoreB)
-      let status = form.elements.status.value
-      let winner = ''
-      if (scoreA !== '' && scoreB !== '' && Number.isFinite(numericA) && Number.isFinite(numericB)) {
-        if (numericA === numericB) { toast('ผลจำลองต้องมีผู้ชนะ ห้ามเสมอสำหรับรายการนี้', 'error'); return }
-        status = 'done'
-        winner = numericA > numericB ? 'A' : 'B'
-      }
-      simulationResults[String(row.id)] = { score_a: scoreA, score_b: scoreB, status, winner, note: form.elements.note.value.trim(), updated_at: new Date().toISOString() }
-      _writeCompetitionSimulations(event.id, simulationResults)
-      close(); draw(); toast('บันทึกผลจำลองไว้ในเครื่องแล้ว')
-    })
   }
-
   const draw = () => {
     const sports = workspace?.sports || []
     const colors = workspace?.colors || []
@@ -2271,7 +2258,7 @@ export async function renderSportsCompetitionManager() {
         <div class="mt-4 flex flex-wrap gap-2">${eligibleColors.map(c => `<span class="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm" style="border-color:${_validHexColor(c.hex_color)}55;background:${_validHexColor(c.hex_color)}12"><span class="flex-shrink-0">${colorIdentity(c, true)}</span><span class="font-bold" style="color:${_validHexColor(c.hex_color)}">สี${esc(c.name)}</span></span>`).join('') || `<p class="text-sm text-gray-400">ยังไม่มีสีที่กำหนดสำหรับ${esc(genderLabel(sport.gender))}</p>`}</div>
       </div>
       <div class="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-        <div class="px-5 py-4 border-b border-gray-100"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="font-extrabold text-gray-900">โปรแกรมและคู่แข่งขัน</h2><p class="text-xs text-gray-500 mt-1">เพิ่มคู่แข่งขันได้แม้รายการยังไม่มีโปรแกรม ระบบจะบันทึกกลับไปยังตาราง <code>matches</code> ชุดเดียวกับระบบหลัก</p></div>${Object.keys(simulationResults).length ? `<button type="button" data-clear-all-simulations class="px-3 py-2 rounded-lg border border-amber-200 bg-amber-50 text-amber-800 text-xs font-bold">ล้างผลจำลองทั้งหมด (${Object.keys(simulationResults).length})</button>` : ''}</div><div class="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800">🧪 <b>โหมดจำลองผลการแข่งขัน</b> ปุ่มจำลองจะเปิดหน้าบันทึกผลจริงของชนิดกีฬานั้นโดยตรง ผลคะแนน/เหรียญ/เหตุการณ์/รางวัลดีเด่นจำลองไม่ส่งเข้าฐานข้อมูลและไม่กระทบอันดับจริง ส่วนค่ากติกาเริ่มต้นที่ตั้งครั้งแรกจะจำไว้ใช้รอบถัดไป</div></div>
+        <div class="px-5 py-4 border-b border-gray-100"><div><h2 class="font-extrabold text-gray-900">โปรแกรมและคู่แข่งขัน</h2><p class="text-xs text-gray-500 mt-1">หน้านี้ใช้ตรวจสอบและแก้ไขโปรแกรม คู่แข่งขัน เวลา และสถานที่เท่านั้น</p></div><div class="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-800">🏆 <b>ผลการแข่งขันจริง</b> ให้เข้าไปบันทึกผ่านระบบกีฬาสีหลักเท่านั้น ส่วนปุ่ม “จำลองผล” ใช้ทดลองได้และไม่กระทบคะแนนจริง อันดับ หรือฐานข้อมูลการแข่งขัน</div></div>
         <div class="overflow-x-auto"><table class="w-full min-w-[1120px] text-sm"><thead class="bg-gray-50 text-gray-500"><tr><th class="p-3 text-left">รอบ</th><th class="p-3 text-left">ทีม A</th><th class="p-3 text-left">ทีม B</th><th class="p-3 text-left">วันที่</th><th class="p-3 text-left">เวลา</th><th class="p-3 text-left">สถานที่</th><th class="p-3 text-left">หมายเหตุ</th><th class="p-3 text-right">สถานะ</th><th class="p-3"></th></tr></thead>
           <tbody>${rows.map((row, index) => { const locked = !canEdit || isLockedMatch(row); const key = row.id || row._draftKey || `draft-${index}`; const sim = simulationFor(row); return `<tr data-match-row="${esc(key)}" data-match-id="${esc(row.id || '')}" class="border-t border-gray-100 align-top ${row._draftKey ? 'bg-indigo-50/40' : ''}">
             <td class="p-2"><input data-field="round_name" value="${esc(row.round_name || 'รอบแรก')}" class="w-32 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}><input data-field="round" type="number" min="1" value="${Number(row.round || 1)}" class="mt-1 w-16 rounded-lg border border-gray-300 px-2 py-1 text-xs" ${locked ? 'disabled' : ''}></td>
@@ -2281,8 +2268,8 @@ export async function renderSportsCompetitionManager() {
             <td class="p-2"><input data-field="scheduled_time" type="time" value="${esc(timeValue(row.scheduled_time))}" class="rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
             <td class="p-2"><input data-field="venue" value="${esc(row.venue || sport.venue || '')}" class="w-40 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
             <td class="p-2"><input data-field="note" value="${esc(row.note || '')}" placeholder="ข้อมูลเพิ่มเติม" class="w-44 rounded-lg border border-gray-300 px-2 py-2 text-sm" ${locked ? 'disabled' : ''}></td>
-            <td class="p-2 text-right whitespace-nowrap"><span class="inline-flex px-2 py-1 rounded-full text-xs font-bold ${row.status === 'done' ? 'bg-emerald-50 text-emerald-700' : row.status === 'live' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}">${esc(row.status || 'pending')}</span>${row.score_a != null || row.score_b != null ? `<div class="text-xs text-gray-500 mt-1">ผล ${esc(row.score_a ?? '-')} : ${esc(row.score_b ?? '-')}</div>` : ''}${sim ? `<div class="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-700">🧪 ${esc(simulationStatusLabel(sim.status))} ${esc(sim.score_a ?? '')}:${esc(sim.score_b ?? '')}</div>` : ''}</td>
-            <td class="p-2 text-right"><div class="flex flex-col items-end gap-1.5">${locked ? '<span class="text-xs text-gray-400">ล็อก</span>' : '<button data-save-match class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700">บันทึก</button>'}${row.id ? `<button type="button" data-simulate-match class="px-3 py-2 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-xs font-bold hover:bg-violet-100">🧪 ${sim ? 'แก้ผลจำลอง' : 'จำลองผล'}</button>${sim ? '<button type="button" data-clear-simulation class="text-[11px] text-rose-600 hover:underline">ล้างจำลอง</button>' : ''}` : ''}</div></td>
+            <td class="p-2 text-right whitespace-nowrap"><span class="inline-flex px-2 py-1 rounded-full text-xs font-bold ${row.status === 'done' ? 'bg-emerald-50 text-emerald-700' : row.status === 'live' ? 'bg-red-50 text-red-700' : 'bg-gray-100 text-gray-600'}">${esc(row.status || 'pending')}</span>${row.score_a != null || row.score_b != null ? `<div class="text-xs text-gray-500 mt-1">ผลจริง ${esc(row.score_a ?? '-')} : ${esc(row.score_b ?? '-')}</div>` : ''}${sim ? `<div class="mt-1 inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-700">🧪 ผลจำลอง ${esc(simulationStatusLabel(sim.status))} ${esc(sim.score_a ?? '')}:${esc(sim.score_b ?? '')}</div>` : ''}</td>
+            <td class="p-2 text-right"><div class="flex flex-col items-end gap-1.5">${locked ? '<span class="text-xs text-gray-400">ล็อก</span>' : '<button data-save-match class="px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700">บันทึกโปรแกรม</button>'}${row.id ? `<button type="button" data-simulate-match class="px-3 py-2 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 text-xs font-bold hover:bg-violet-100">🧪 ${sim ? 'แก้ผลจำลอง' : 'จำลองผล'}</button>${sim ? '<button type="button" data-clear-simulation class="text-[11px] text-rose-600 hover:underline">ล้างจำลอง</button>' : ''}` : ''}</div></td>
           </tr>`}).join('') || `<tr><td colspan="9" class="p-10 text-center text-gray-400">ยังไม่มีโปรแกรมการแข่งขัน — กด “เพิ่มคู่แข่งขัน” เพื่อระบุคู่แข่งขันและเวลา</td></tr>`}</tbody></table></div>
       </div>
     </section>`
@@ -2325,12 +2312,6 @@ export async function renderSportsCompetitionManager() {
       _writeCompetitionSimulations(event.id, simulationResults)
       draw(); toast('ล้างผลจำลองแล้ว')
     }))
-    el.querySelector('[data-clear-all-simulations]')?.addEventListener('click', () => {
-      if (!window.confirm('ต้องการล้างผลจำลองของกิจกรรมนี้ทั้งหมดหรือไม่?')) return
-      simulationResults = {}
-      _writeCompetitionSimulations(event.id, simulationResults)
-      draw(); toast('ล้างผลจำลองทั้งหมดแล้ว')
-    })
     el.querySelectorAll('[data-competition-gender]').forEach(button => button.addEventListener('click', () => {
       selectedGender = button.dataset.competitionGender
       selectedSportId = sports.find(s => normalizeGender(s.gender) === selectedGender)?.id || null
