@@ -3,6 +3,8 @@ import { getFriendlyErrorMessage } from './ui.js'
 
 const PW = 'azreg26'
 const PW_KEY = 'sports_checkin_pw'
+const OFFLINE_QUEUE_KEY = 'sports_checkin_offline_queue'
+const OFFLINE_DATA_KEY = 'sports_checkin_roster_cache'
 const DEFAULT_EVENT = '00000000-0000-0000-0000-000000000001'
 const root = document.getElementById('checkin-root')
 
@@ -11,6 +13,38 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 // เที่ยงคืน-ตี 7 เวลาไทยเพี้ยนไปเป็นเมื่อวาน
 const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 const photoOf = s => s?.image_url || s?.photo_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(s?.full_name || 'AZ')}&background=e2e8f0&color=334155`
+
+const readOfflineQueue = () => {
+  try {
+    const value = JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || '[]')
+    return Array.isArray(value) ? value : []
+  } catch (e) {
+    return []
+  }
+}
+
+const saveOfflineQueue = queue => {
+  try { localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(queue)) } catch (e) {}
+}
+
+const readCachedData = () => {
+  try {
+    const cached = JSON.parse(localStorage.getItem(OFFLINE_DATA_KEY) || 'null')
+    return cached?.data || null
+  } catch (e) {
+    return null
+  }
+}
+
+const saveCachedData = data => {
+  try { localStorage.setItem(OFFLINE_DATA_KEY, JSON.stringify({ savedAt: new Date().toISOString(), data })) } catch (e) {}
+}
+
+const queueKey = item => `${item.eventId}|${item.studentId}|${item.checkInDate}`
+const isTransientNetworkError = error => {
+  const message = String(error?.message || error || '').toLowerCase()
+  return navigator.onLine === false || /failed to fetch|network|offline|timeout|timed out|load failed|connection/i.test(message)
+}
 
 async function _fetchAllRows(table, build, pageSize = 1000) {
   let all = [], from = 0
@@ -93,7 +127,7 @@ async function loadData() {
   return { colors: colors || [], sports: sports || [], matches: matches || [], registrations, students, dailyCheckins }
 }
 
-function renderApp(data) {
+function renderApp(data, { fromCache = false } = {}) {
   let { colors, sports, matches, registrations, students, dailyCheckins } = data
   let checkInDate = todayLocal()
   let lastLocalDate = checkInDate
@@ -102,6 +136,9 @@ function renderApp(data) {
   let showScanner = false
   let html5Qrcode = null, scanning = false
   let refreshing = false
+  let syncingOfflineQueue = false
+  let offlineQueue = readOfflineQueue()
+  let usingCachedData = fromCache
   let feedback = { text: 'ยกกล้องส่อง QR ของนักกีฬาเพื่อรายงานตัว', tone: 'muted' }
 
   const studentById = new Map(students.map(s => [s.id, s]))
@@ -121,7 +158,10 @@ function renderApp(data) {
     return [...bySport.values()].map(row => ({ ...row, sportNames: [...row.sportNames] }))
   }
 
-  const checkedIdsToday = () => new Set(dailyCheckins.filter(c => c.check_in_date === checkInDate).map(c => c.student_id))
+  const checkedIdsToday = () => new Set([
+    ...dailyCheckins.filter(c => c.check_in_date === checkInDate).map(c => c.student_id),
+    ...offlineQueue.filter(c => c.checkInDate === checkInDate).map(c => c.studentId),
+  ])
 
   root.innerHTML = `
     <div class="space-y-4">
@@ -140,6 +180,7 @@ function renderApp(data) {
         <div class="mt-1">เจ้าหน้าที่แต่ละจุดสามารถสแกนหรือกดรายงานตัวแทนได้ ระบบจะกันการรายงานซ้ำ และกดรีเฟรชเพื่อดูสถานะล่าสุดจากจุดอื่นได้</div>
         <div class="mt-1 font-semibold">กรณีวัน 4 ให้เลือกวันที่ 4 ได้ตั้งแต่ช่วงเย็นวัน 3 เพื่อรับรายงานตัวล่วงหน้า</div>
       </div>
+      <div id="ci-offline-status" class="hidden"></div>
 
       <div id="ci-scanner-wrap"></div>
 
@@ -162,29 +203,55 @@ function renderApp(data) {
   const updateFeedback = () => {
     const el = root.querySelector('#ci-feedback')
     if (!el) return
-    const feedbackColor = { muted: '#64748b', success: '#059669', warn: '#d97706', error: '#dc2626' }[feedback.tone] || '#64748b'
+    const feedbackColor = { muted: '#64748b', success: '#059669', pending: '#0284c7', warn: '#d97706', error: '#dc2626' }[feedback.tone] || '#64748b'
     el.style.color = feedbackColor
     el.textContent = feedback.text
   }
 
+  const updateOfflineStatus = () => {
+    const status = root.querySelector('#ci-offline-status')
+    if (!status) return
+    if (usingCachedData) {
+      status.className = 'rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800'
+      status.innerHTML = '<div class="font-bold">📦 กำลังใช้ข้อมูลสำรองในเครื่อง</div><div class="mt-1">ระบบจะรีเฟรชข้อมูลล่าสุดเมื่อเชื่อมต่ออินเทอร์เน็ตได้อีกครั้ง</div>'
+    } else if (offlineQueue.length) {
+      status.className = 'rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800'
+      status.innerHTML = `<div class="font-bold">⏳ มีรายการรอส่งข้อมูล ${offlineQueue.length} รายการ</div><div class="mt-1">ระบบจะส่งให้อัตโนมัติเมื่ออินเทอร์เน็ตกลับมา กรุณาอย่าล้างข้อมูลเว็บไซต์หรือปิดเบราว์เซอร์ก่อนเห็นข้อความว่าส่งสำเร็จ</div>`
+    } else if (navigator.onLine === false) {
+      status.className = 'rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-800'
+      status.innerHTML = '<div class="font-bold">📡 ขณะนี้ออฟไลน์</div><div class="mt-1">สามารถสแกนต่อได้ ระบบจะเก็บรายการไว้ในเครื่องและส่งภายหลัง</div>'
+    } else {
+      status.className = 'hidden'
+      status.innerHTML = ''
+    }
+  }
+
   const showScanResult = (student, tone = 'success') => {
     const card = root.querySelector('#ci-scan-result')
+    const panel = root.querySelector('#ci-scanner-panel')
     if (!card) return
+    panel?.classList.remove('ci-success-popup-glow')
     if (!student) { card.className = 'hidden'; card.innerHTML = ''; return }
     const styles = {
       success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+      pending: 'border-sky-200 bg-sky-50 text-sky-800',
       warn: 'border-amber-200 bg-amber-50 text-amber-800',
     }
     card.className = `rounded-2xl border px-4 py-3 ${styles[tone] || styles.success}`
+    if (tone === 'success' && panel) {
+      panel.classList.remove('ci-success-popup-glow')
+      void panel.offsetWidth
+      panel.classList.add('ci-success-popup-glow')
+    }
     card.innerHTML = `
       <div class="flex items-center gap-3">
         <img src="${esc(photoOf(student))}" alt="รูป ${esc(student.full_name)}" class="w-14 h-16 rounded-xl object-cover border border-white/80 shadow-sm flex-shrink-0">
         <div class="min-w-0">
-          <div class="text-[11px] font-bold uppercase tracking-wide opacity-70">${tone === 'warn' ? 'รายงานตัวแล้ว' : 'รายงานตัวสำเร็จ'}</div>
+          <div class="text-[11px] font-bold uppercase tracking-wide opacity-70">${tone === 'warn' ? 'รายงานตัวแล้ว' : tone === 'pending' ? 'บันทึกไว้ รอส่งข้อมูล' : 'รายงานตัวสำเร็จ'}</div>
           <div class="font-extrabold text-base truncate">${esc(student.full_name)}</div>
           <div class="text-xs opacity-80">รหัส ${esc(student.student_code)} · ${esc(student.main_room || 'ไม่ระบุห้อง')}</div>
         </div>
-        <div class="ml-auto text-3xl">${tone === 'warn' ? '⚠️' : '✅'}</div>
+        <div class="ml-auto text-3xl">${tone === 'warn' ? '⚠️' : tone === 'pending' ? '⏳' : '✅'}</div>
       </div>`
   }
 
@@ -192,7 +259,18 @@ function renderApp(data) {
     const wrap = root.querySelector('#ci-scanner-wrap')
     wrap.innerHTML = `
       <div id="ci-scanner-modal" class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-slate-950/75 backdrop-blur-sm p-2 sm:p-6">
-        <div class="w-full max-w-2xl max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-3rem)] overflow-y-auto bg-white rounded-3xl shadow-2xl">
+        <style>
+          @keyframes ci-success-popup-glow {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0), 0 0 0 rgba(16, 185, 129, 0); }
+            22% { box-shadow: 0 0 0 5px rgba(16, 185, 129, .16), 0 0 28px rgba(16, 185, 129, .48); }
+            52% { box-shadow: 0 0 0 2px rgba(16, 185, 129, .10), 0 0 16px rgba(16, 185, 129, .28); }
+          }
+          .ci-success-popup-glow { animation: ci-success-popup-glow 1.45s ease-out; border: 2px solid #34d399; }
+          @media (prefers-reduced-motion: reduce) {
+            .ci-success-popup-glow { animation: none; box-shadow: 0 0 0 4px rgba(16, 185, 129, .18), 0 0 18px rgba(16, 185, 129, .28); }
+          }
+        </style>
+        <div id="ci-scanner-panel" class="w-full max-w-2xl max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-3rem)] overflow-y-auto bg-white rounded-3xl shadow-2xl">
           <div class="sticky top-0 z-10 flex items-center justify-between gap-3 px-4 py-3 sm:px-5 bg-pink-600 text-white">
             <div>
               <div class="font-extrabold">✅ รับรายงานตัวนักกีฬา</div>
@@ -262,6 +340,51 @@ function renderApp(data) {
     }
   }
 
+  const enqueueOfflineCheckin = studentId => {
+    const item = {
+      id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${studentId}`,
+      eventId: DEFAULT_EVENT,
+      studentId,
+      checkInDate,
+      checkedInAt: new Date().toISOString(),
+      queuedAt: new Date().toISOString(),
+    }
+    const key = queueKey(item)
+    if (!offlineQueue.some(existing => queueKey(existing) === key)) offlineQueue = [...offlineQueue, item]
+    saveOfflineQueue(offlineQueue)
+    updateOfflineStatus()
+    renderList()
+    return item
+  }
+
+  const flushOfflineQueue = async () => {
+    if (syncingOfflineQueue || !offlineQueue.length || navigator.onLine === false) return
+    syncingOfflineQueue = true
+    try {
+      const remaining = []
+      for (const item of offlineQueue) {
+        const { data, error } = await supabase.from('daily_checkins').upsert({
+          event_id: item.eventId,
+          student_id: item.studentId,
+          check_in_date: item.checkInDate,
+          checked_in_at: item.checkedInAt,
+        }, { onConflict: 'event_id,student_id,check_in_date' }).select().single()
+        if (error) {
+          remaining.push(item)
+          if (isTransientNetworkError(error)) break
+          continue
+        }
+        dailyCheckins = [...dailyCheckins.filter(c => !(c.student_id === item.studentId && c.check_in_date === item.checkInDate)), data]
+      }
+      offlineQueue = remaining
+      saveOfflineQueue(offlineQueue)
+      updateOfflineStatus()
+      renderList()
+    } finally {
+      syncingOfflineQueue = false
+    }
+  }
+
   const tryCheckin = async (code) => {
     const roster = rosterForDate()
     const row = roster.find(r => r.student.student_code === code)
@@ -269,6 +392,13 @@ function renderApp(data) {
     if (checkedIdsToday().has(row.student.id)) { playBeep(false); feedback = { text: `${row.student.full_name} รายงานตัวไปแล้ว`, tone: 'warn' }; updateFeedback(); showScanResult(row.student, 'warn'); return }
     const saved = await doCheckin(row.student.id)
     if (!saved) return
+    if (saved.queued) {
+      playBeep(true)
+      feedback = { text: `บันทึกไว้ในเครื่อง รอส่งข้อมูล · ${row.student.full_name}`, tone: 'pending' }
+      updateFeedback()
+      showScanResult(row.student, 'pending')
+      return
+    }
     playBeep(true)
     feedback = { text: `✓ รายงานตัวแล้ว · ${row.student.full_name}`, tone: 'success' }
     updateFeedback()
@@ -282,13 +412,32 @@ function renderApp(data) {
       check_in_date: checkInDate,
       checked_in_at: new Date().toISOString(),
     }, { onConflict: 'event_id,student_id,check_in_date' }).select().single()
-    if (error) { alert(error.message); return false }
+    if (error) {
+      if (isTransientNetworkError(error)) {
+        enqueueOfflineCheckin(studentId)
+        return { queued: true }
+      }
+      alert(error.message)
+      return false
+    }
+    const key = `${DEFAULT_EVENT}|${studentId}|${checkInDate}`
+    offlineQueue = offlineQueue.filter(item => queueKey(item) !== key)
+    saveOfflineQueue(offlineQueue)
     dailyCheckins = [...dailyCheckins.filter(c => !(c.student_id === studentId && c.check_in_date === checkInDate)), data]
+    updateOfflineStatus()
     renderList()
-    return true
+    return { queued: false }
   }
 
   const undoCheckin = async (id) => {
+    const pending = offlineQueue.find(item => `pending:${item.id}` === String(id))
+    if (pending) {
+      offlineQueue = offlineQueue.filter(item => item.id !== pending.id)
+      saveOfflineQueue(offlineQueue)
+      updateOfflineStatus()
+      renderList()
+      return true
+    }
     const { error } = await supabase.from('daily_checkins').delete().eq('id', id)
     if (error) { alert(error.message); return false }
     dailyCheckins = dailyCheckins.filter(c => c.id !== id)
@@ -353,16 +502,17 @@ function renderApp(data) {
     listEl.innerHTML = `${selectedDateNote}<div class="divide-y divide-slate-100 max-h-[55vh] overflow-y-auto">${filtered.map(row => {
       const isChecked = checked.has(row.student.id)
       const checkin = dailyCheckins.find(c => c.student_id === row.student.id && c.check_in_date === checkInDate)
+      const pending = offlineQueue.find(c => c.studentId === row.student.id && c.checkInDate === checkInDate)
       const colorName = colorById.get(row.teamColorId)?.name || ''
       return `<div class="flex items-center gap-3 px-4 py-2.5 ${isChecked ? 'bg-emerald-50' : ''}">
         <img src="${esc(photoOf(row.student))}" alt="รูป ${esc(row.student.full_name)}" class="w-11 h-14 rounded-lg object-cover border border-slate-200 flex-shrink-0">
         <div class="flex-1 min-w-0">
           <div class="text-slate-800 text-xs font-bold truncate">${esc(row.student.full_name)} <span class="text-slate-400 font-normal">(${esc(row.student.student_code)})</span></div>
           <div class="text-slate-500 text-[10.5px] truncate">${esc(row.student.main_room)} · สี${esc(colorName)} · ${esc(row.sportNames.join(', '))}</div>
-          ${isChecked ? `<div class="text-emerald-700 text-[10px] mt-0.5">✓ รายงานตัวแล้ว${checkin?.checked_in_at ? ` · ${new Date(checkin.checked_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}${checkin?.checked_in_by ? ` · ${esc(checkin.checked_in_by)}` : ''}</div>` : '<div class="text-slate-400 text-[10px] mt-0.5">ยังไม่รายงานตัว</div>'}
+          ${pending ? `<div class="text-sky-700 text-[10px] mt-0.5">⏳ รอส่งข้อมูล${pending.queuedAt ? ` · ${new Date(pending.queuedAt).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</div>` : isChecked ? `<div class="text-emerald-700 text-[10px] mt-0.5">✓ รายงานตัวแล้ว${checkin?.checked_in_at ? ` · ${new Date(checkin.checked_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}${checkin?.checked_in_by ? ` · ${esc(checkin.checked_in_by)}` : ''}</div>` : '<div class="text-slate-400 text-[10px] mt-0.5">ยังไม่รายงานตัว</div>'}
         </div>
         ${isChecked
-          ? `<button data-cancel="${esc(checkin?.id || '')}" class="flex-shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white border border-red-200 text-red-600 hover:bg-red-50">ยกเลิกการรายงานตัว</button>`
+          ? `<button data-cancel="${esc(pending ? `pending:${pending.id}` : (checkin?.id || ''))}" class="flex-shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-white border border-red-200 text-red-600 hover:bg-red-50">ยกเลิกการรายงานตัว</button>`
           : `<button data-report="${esc(row.student.id)}" class="flex-shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200">รายงานตัว</button>`}
       </div>`
     }).join('')}</div>`
@@ -379,7 +529,7 @@ function renderApp(data) {
   }
 
   root.querySelector('#ci-date').onchange = e => { checkInDate = e.target.value || todayLocal(); autoFollowToday = checkInDate === todayLocal(); renderList() }
-  root.querySelector('#ci-refresh').onclick = () => refreshDailyCheckins()
+  root.querySelector('#ci-refresh').onclick = () => { void refreshDailyCheckins(); void flushOfflineQueue() }
   root.querySelector('#ci-search').oninput = e => { search = e.target.value; renderList() }
   root.querySelectorAll('[data-gender-filter]').forEach(btn => btn.onclick = () => {
     genderFilter = btn.dataset.genderFilter || ''
@@ -397,6 +547,10 @@ function renderApp(data) {
   }
 
   renderList()
+  updateOfflineStatus()
+  window.addEventListener('online', () => { updateOfflineStatus(); void flushOfflineQueue() })
+  window.addEventListener('offline', updateOfflineStatus)
+  void flushOfflineQueue()
 
   const syncLocalDate = () => {
     const currentDate = todayLocal()
@@ -412,9 +566,17 @@ function renderApp(data) {
     }
     refreshDailyCheckins(true)
   }
-  document.addEventListener('visibilitychange', syncLocalDate)
+  document.addEventListener('visibilitychange', () => {
+    syncLocalDate()
+    if (!document.hidden) void flushOfflineQueue()
+  })
   window.setInterval(syncLocalDate, 30000)
-  window.setInterval(() => { if (!document.hidden) refreshDailyCheckins(true) }, 30000)
+  window.setInterval(() => {
+    if (!document.hidden) {
+      refreshDailyCheckins(true)
+      void flushOfflineQueue()
+    }
+  }, 30000)
 }
 
 async function init() {
@@ -423,9 +585,15 @@ async function init() {
   const boot = async () => {
     try {
       const data = await loadData()
+      saveCachedData(data)
       renderApp(data)
     } catch (e) {
-      root.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${esc(getFriendlyErrorMessage(e))}</div>`
+      const cached = readCachedData()
+      if (cached) {
+        renderApp(cached, { fromCache: true })
+      } else {
+        root.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${esc(getFriendlyErrorMessage(e))}</div>`
+      }
     }
   }
   if (cachedPw === PW) {
