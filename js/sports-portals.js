@@ -1901,6 +1901,43 @@ export async function renderSportsCompetitionManager() {
     const requests = registrationWorkspace.pending_requests || []
     return `<section class="bg-white border border-amber-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🔔 คำขอลงทะเบียนผู้รับผิดชอบ</h2><p class="text-sm text-gray-500 mt-1">อนุมัติทีละรายการได้ตามคำขอ ระบบจะผูกครูกับรายการและให้สิทธิ์จัดการโปรแกรมทันที พร้อมส่ง Push แจ้งครูเจ้าของคำขอ</p></div><span class="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">รออนุมัติ ${requests.length} รายการ</span></div><div class="mt-4 space-y-2">${requests.map(request => `<div class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3"><div class="min-w-0 flex-1"><b class="block text-sm text-gray-900">${esc(request.sport_code ? `${request.sport_code} · ` : '')}${esc(request.sport_name || '—')}</b><p class="mt-1 text-xs text-gray-500">ครู ${esc(request.teacher_name || '—')}${request.teacher_code ? ` (${esc(request.teacher_code)})` : ''}</p>${request.teacher_note ? `<p class="mt-1 text-xs text-gray-500">หมายเหตุ: ${esc(request.teacher_note)}</p>` : ''}</div><div class="flex gap-2"><button type="button" data-review-registration="${esc(request.id)}" data-registration-sport-name="${esc(request.sport_name || 'รายการแข่งขัน')}" data-registration-teacher-name="${esc(request.teacher_name || 'คุณครู')}" data-decision="approved" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">อนุมัติ</button><button type="button" data-review-registration="${esc(request.id)}" data-registration-sport-name="${esc(request.sport_name || 'รายการแข่งขัน')}" data-registration-teacher-name="${esc(request.teacher_name || 'คุณครู')}" data-decision="rejected" class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">ปฏิเสธ</button></div></div>`).join('') || '<p class="py-6 text-center text-sm text-gray-400">ยังไม่มีคำขอรออนุมัติ</p>'}</div></section>`
   }
+  const competitionDeadlineSection = () => {
+    if (!workspace?.is_admin) return ''
+    return `<section class="bg-white border border-indigo-200 rounded-2xl p-5 shadow-sm">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div><h2 class="text-lg font-extrabold text-gray-900">⚙️ ตั้งค่าวันสิ้นสุดการแก้ไขโปรแกรม</h2><p class="text-sm text-gray-500 mt-1">กำหนดวันและเวลาที่ครูผู้รับผิดชอบจะหยุดแก้ไขคู่แข่งขัน เวลา และสถานที่ แอดมินยังแก้ไขได้แม้เลยกำหนด</p></div>
+        <span class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">ไม่ปิดการส่งคำขอลงทะเบียน</span>
+      </div>
+      <div class="mt-4 flex flex-wrap items-end gap-3">
+        <label class="block min-w-[260px] flex-1"><span class="text-xs font-bold text-gray-600">วันสิ้นสุดการแก้ไข</span><input id="competition-edit-cutoff" type="datetime-local" required value="${esc(toDatetimeLocalValue(workspace.cutoff_at))}" class="mt-1 w-full rounded-xl border border-gray-300 bg-white px-3 py-2.5 text-sm"></label>
+        <button type="button" id="competition-edit-cutoff-save" class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700">บันทึกวันสิ้นสุด</button>
+      </div>
+      <p class="mt-2 text-xs text-gray-500">เวลาจะบันทึกตามเขตเวลาของเครื่องผู้ใช้งาน และแสดงให้ครูเห็นในหน้า “รายการแข่งขันของฉัน”</p>
+    </section>`
+  }
+  const bindCompetitionDeadlineControl = () => {
+    el.querySelector('#competition-edit-cutoff-save')?.addEventListener('click', async buttonEvent => {
+      const button = buttonEvent.currentTarget
+      const input = el.querySelector('#competition-edit-cutoff')
+      if (!input?.value) { toast('กรุณากำหนดวันและเวลาสิ้นสุดการแก้ไข', 'error'); return }
+      const cutoff = new Date(input.value)
+      if (Number.isNaN(cutoff.getTime())) { toast('วันและเวลาที่กำหนดไม่ถูกต้อง', 'error'); return }
+      button.disabled = true
+      button.textContent = 'กำลังบันทึก...'
+      const { error } = await supabase.rpc('set_sports_competition_edit_deadline', {
+        p_event: event.id,
+        p_cutoff: cutoff.toISOString(),
+      })
+      if (error) {
+        toast(error.message || 'บันทึกวันสิ้นสุดไม่สำเร็จ', 'error')
+        button.disabled = false
+        button.textContent = 'บันทึกวันสิ้นสุด'
+        return
+      }
+      toast('บันทึกวันสิ้นสุดการแก้ไขแล้ว')
+      await reload()
+    })
+  }
   const bindRegistrationControls = () => {
     el.querySelectorAll('[data-registration-gender]').forEach(button => button.addEventListener('click', () => {
       registrationGender = button.dataset.registrationGender || registrationGender
@@ -2075,14 +2112,16 @@ export async function renderSportsCompetitionManager() {
     const cutoffText = workspace?.cutoff_at
       ? new Date(workspace.cutoff_at).toLocaleString('th-TH', { dateStyle: 'long', timeStyle: 'short' })
       : 'ยังไม่ได้ตั้งวันปิดแก้ไข'
+    const competitionDeadlineMarkup = competitionDeadlineSection()
     const registrationMarkup = registrationSection()
     const pendingRequestsMarkup = pendingRegistrationSection()
     if (!sports.length) {
       el.innerHTML = `<section class="max-w-7xl mx-auto space-y-5"><div class="bg-white rounded-3xl border border-gray-200 p-8 text-center shadow-sm">
         <div class="text-5xl mb-3">🏟️</div><h1 class="text-2xl font-extrabold text-gray-800">รายการแข่งขันของฉัน</h1>
         <p class="text-gray-500 mt-2">ยังไม่มีรายการแข่งขันที่แอดมินอนุมัติให้บัญชีครูนี้รับผิดชอบ</p>
-        <p class="text-xs text-gray-400 mt-3">เลือกหลายรายการจากแบบฟอร์มด้านล่างเพื่อส่งคำขอให้แอดมินตรวจสอบ</p></div>${pendingRequestsMarkup}${registrationMarkup}</section>`
+        <p class="text-xs text-gray-400 mt-3">เลือกหลายรายการจากแบบฟอร์มด้านล่างเพื่อส่งคำขอให้แอดมินตรวจสอบ</p></div>${competitionDeadlineMarkup}${pendingRequestsMarkup}${registrationMarkup}</section>`
       bindRegistrationControls()
+      bindCompetitionDeadlineControl()
       return
     }
     const matches = (workspace.matches || []).filter(m => m.sport_id === sport.id)
@@ -2100,6 +2139,7 @@ export async function renderSportsCompetitionManager() {
           <p class="text-sm text-gray-500 mt-1">ตรวจสอบและปรับโปรแกรม คู่แข่งขัน เวลา และสถานที่ จากฐานข้อมูลกีฬาสีหลัก</p></div>
         <div class="flex flex-wrap gap-2 text-xs font-bold">${editHint}</div>
       </div>
+      ${competitionDeadlineMarkup}
       ${pendingRequestsMarkup}
       ${registrationMarkup}
       <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
@@ -2132,6 +2172,8 @@ export async function renderSportsCompetitionManager() {
       </div>
     </section>`
 
+    bindCompetitionDeadlineControl()
+    bindRegistrationControls()
     el.querySelectorAll('[data-color-picker]').forEach(picker => {
       const trigger = picker.querySelector('[data-color-trigger]')
       const menu = picker.querySelector('[data-color-menu]')
