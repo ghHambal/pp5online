@@ -1903,7 +1903,12 @@ export async function renderSportsCompetitionManager() {
   const pendingRegistrationSection = () => {
     if (!registrationWorkspace?.is_admin) return ''
     const requests = registrationWorkspace.pending_requests || []
-    return `<section class="bg-white border border-amber-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🔔 คำขอลงทะเบียนผู้รับผิดชอบ</h2><p class="text-sm text-gray-500 mt-1">อนุมัติทีละรายการได้ตามคำขอ ระบบจะผูกครูกับรายการและให้สิทธิ์จัดการโปรแกรมทันที พร้อมส่ง Push แจ้งครูเจ้าของคำขอ</p></div><span class="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">รออนุมัติ ${requests.length} รายการ</span></div><div class="mt-4 space-y-2">${requests.map(request => `<div class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3"><div class="min-w-0 flex-1"><b class="block text-sm text-gray-900">${esc(request.sport_code ? `${request.sport_code} · ` : '')}${esc(request.sport_name || '—')}</b><p class="mt-1 text-xs text-gray-500">ครู ${esc(request.teacher_name || '—')}${request.teacher_code ? ` (${esc(request.teacher_code)})` : ''}</p>${request.teacher_note ? `<p class="mt-1 text-xs text-gray-500">หมายเหตุ: ${esc(request.teacher_note)}</p>` : ''}</div><div class="flex gap-2"><button type="button" data-review-registration="${esc(request.id)}" data-registration-sport-name="${esc(request.sport_name || 'รายการแข่งขัน')}" data-registration-teacher-name="${esc(request.teacher_name || 'คุณครู')}" data-decision="approved" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">อนุมัติ</button><button type="button" data-review-registration="${esc(request.id)}" data-registration-sport-name="${esc(request.sport_name || 'รายการแข่งขัน')}" data-registration-teacher-name="${esc(request.teacher_name || 'คุณครู')}" data-decision="rejected" class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">ปฏิเสธ</button></div></div>`).join('') || '<p class="py-6 text-center text-sm text-gray-400">ยังไม่มีคำขอรออนุมัติ</p>'}</div></section>`
+    return `<section class="bg-white border border-amber-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🔔 คำขอลงทะเบียนผู้รับผิดชอบ</h2><p class="text-sm text-gray-500 mt-1">อนุมัติแล้วระบบจะผูกครูกับรายการและให้สิทธิ์จัดการโปรแกรมทันที พร้อมส่ง Push แจ้งครูเจ้าของคำขอ</p></div><div class="flex flex-wrap items-center gap-2"><span class="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">รออนุมัติ ${requests.length} รายการ</span>${requests.length ? '<button type="button" id="approve-all-registration" class="rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700">✅ อนุมัติทั้งหมด</button>' : ''}</div></div><div class="mt-4 space-y-2">${requests.map(request => `<div class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3"><div class="min-w-0 flex-1"><b class="block text-sm text-gray-900">${esc(request.sport_code ? `${request.sport_code} · ` : '')}${esc(request.sport_name || '—')}</b><p class="mt-1 text-xs text-gray-500">ครู ${esc(request.teacher_name || '—')}${request.teacher_code ? ` (${esc(request.teacher_code)})` : ''}</p>${request.teacher_note ? `<p class="mt-1 text-xs text-gray-500">หมายเหตุ: ${esc(request.teacher_note)}</p>` : ''}</div><div class="flex gap-2"><button type="button" data-review-registration="${esc(request.id)}" data-registration-sport-name="${esc(request.sport_name || 'รายการแข่งขัน')}" data-registration-teacher-name="${esc(request.teacher_name || 'คุณครู')}" data-decision="approved" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">อนุมัติ</button><button type="button" data-review-registration="${esc(request.id)}" data-registration-sport-name="${esc(request.sport_name || 'รายการแข่งขัน')}" data-registration-teacher-name="${esc(request.teacher_name || 'คุณครู')}" data-decision="rejected" class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">ปฏิเสธ</button></div></div>`).join('') || '<p class="py-6 text-center text-sm text-gray-400">ยังไม่มีคำขอรออนุมัติ</p>'}</div></section>`
+  }
+  const approvedRegistrationSection = () => {
+    if (!registrationWorkspace?.is_admin) return ''
+    const approved = (registrationWorkspace.sports || []).filter(option => option.responsible_teacher_id)
+    return `<section class="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">✅ รายการแข่งขันที่อนุมัติแล้ว</h2><p class="text-sm text-gray-500 mt-1">ตรวจสอบครูผู้รับผิดชอบและชื่อบัญชีที่ใช้เข้าสู่ระบบได้ที่ตารางนี้ รหัสผ่านใช้บัญชีครู ปพ.5 เดิมและจะไม่แสดงในตาราง</p></div><span class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">${approved.length} รายการ</span></div><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[760px] text-sm"><thead class="bg-emerald-50 text-emerald-900"><tr><th class="p-3 text-left">รายการแข่งขัน</th><th class="p-3 text-left">ครูผู้รับผิดชอบ</th><th class="p-3 text-left">Username</th><th class="p-3 text-left">รหัสผ่าน</th><th class="p-3 text-left">สถานะ</th></tr></thead><tbody>${approved.map(option => `<tr class="border-t border-gray-100"><td class="p-3"><b>${esc(option.code ? `${option.code} · ` : '')}${esc(option.name || '—')}</b><div class="text-xs text-gray-500 mt-1">${esc(option.gender ? `เพศ${option.gender}` : '')}${option.category ? ` · ${esc(option.category)}` : ''}</div></td><td class="p-3">${esc(option.responsible_teacher_name || '—')}</td><td class="p-3 font-mono font-bold text-indigo-700">${esc(option.responsible_teacher_code || 'ใช้บัญชีครู ปพ.5')}</td><td class="p-3 text-gray-500">ใช้รหัสผ่านบัญชีเดิม</td><td class="p-3"><span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">อนุมัติแล้ว</span></td></tr>`).join('') || '<tr><td colspan="5" class="p-8 text-center text-sm text-gray-400">ยังไม่มีรายการที่อนุมัติ</td></tr>'}</tbody></table></div></section>`
   }
   const competitionDeadlineSection = () => {
     if (!workspace?.is_admin) return ''
@@ -2008,6 +2013,32 @@ export async function renderSportsCompetitionManager() {
           : 'ส่งคำขอลงทะเบียนแล้ว และแจ้งเตือนแอดมินเรียบร้อย',
         pushError || !pushResult?.sent ? 'warning' : 'success',
       )
+      await reload()
+    })
+    el.querySelector('#approve-all-registration')?.addEventListener('click', async buttonEvent => {
+      const button = buttonEvent.currentTarget
+      const requests = registrationWorkspace?.pending_requests || []
+      if (!requests.length) return
+      if (!window.confirm(`ยืนยันอนุมัติคำขอทั้งหมด ${requests.length} รายการหรือไม่?`)) return
+      button.disabled = true
+      button.textContent = 'กำลังอนุมัติทั้งหมด...'
+      const { data: bulkResult, error } = await supabase.rpc('approve_all_sports_competition_responsibility_requests', { p_event: event.id })
+      if (error) { toast(error.message || 'อนุมัติทั้งหมดไม่สำเร็จ', 'error'); button.disabled = false; button.textContent = '✅ อนุมัติทั้งหมด'; return }
+      const teacherProfileIds = Array.isArray(bulkResult?.teacher_profile_ids) ? bulkResult.teacher_profile_ids : []
+      let pushWarning = ''
+      if (teacherProfileIds.length) {
+        const { data: pushResult, error: pushError } = await supabase.functions.invoke('send-push', {
+          body: {
+            title: '✅ อนุมัติผู้รับผิดชอบรายการแข่งขันแล้ว',
+            body: 'แอดมินอนุมัติคำขอของคุณแล้ว เปิดหน้ารายการแข่งขันของฉันเพื่อตรวจสอบรายละเอียดและทดสอบบันทึกผลได้เลย',
+            url: 'teacher.html',
+            tag: `sports-responsibility-bulk-${event.id}`,
+            profileIds: teacherProfileIds,
+          },
+        })
+        if (pushError || !pushResult?.sent) pushWarning = ' แต่บางบัญชีอาจยังไม่ได้รับ Push'
+      }
+      toast(`อนุมัติแล้ว ${Number(bulkResult?.approved_count || 0)} รายการ${Number(bulkResult?.rejected_count || 0) ? ` · ปฏิเสธอัตโนมัติ ${Number(bulkResult.rejected_count)} รายการที่มีผู้รับผิดชอบแล้ว` : ''}${pushWarning}`, pushWarning ? 'warning' : 'success')
       await reload()
     })
     el.querySelectorAll('[data-review-registration]').forEach(button => button.addEventListener('click', async () => {
@@ -2140,11 +2171,12 @@ export async function renderSportsCompetitionManager() {
     const competitionDeadlineMarkup = competitionDeadlineSection()
     const registrationMarkup = registrationSection()
     const pendingRequestsMarkup = pendingRegistrationSection()
+    const approvedRegistrationMarkup = approvedRegistrationSection()
     if (!sports.length) {
       el.innerHTML = `<section class="max-w-7xl mx-auto space-y-5"><div class="bg-white rounded-3xl border border-gray-200 p-8 text-center shadow-sm">
         <div class="text-5xl mb-3">🏟️</div><h1 class="text-2xl font-extrabold text-gray-800">รายการแข่งขันของฉัน</h1>
         <p class="text-gray-500 mt-2">ยังไม่มีรายการแข่งขันที่แอดมินอนุมัติให้บัญชีครูนี้รับผิดชอบ</p>
-        <p class="text-xs text-gray-400 mt-3">เลือกหลายรายการจากแบบฟอร์มด้านล่างเพื่อส่งคำขอให้แอดมินตรวจสอบ</p></div>${competitionDeadlineMarkup}${pendingRequestsMarkup}${registrationMarkup}</section>`
+        <p class="text-xs text-gray-400 mt-3">เลือกหลายรายการจากแบบฟอร์มด้านล่างเพื่อส่งคำขอให้แอดมินตรวจสอบ</p></div>${competitionDeadlineMarkup}${pendingRequestsMarkup}${approvedRegistrationMarkup}${registrationMarkup}</section>`
       bindRegistrationControls()
       bindCompetitionDeadlineControl()
       return
@@ -2166,6 +2198,7 @@ export async function renderSportsCompetitionManager() {
       </div>
       ${competitionDeadlineMarkup}
       ${pendingRequestsMarkup}
+      ${approvedRegistrationMarkup}
       ${registrationMarkup}
       <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3">
         <div class="flex flex-wrap gap-2" role="tablist" aria-label="กรองเพศรายการแข่งขัน">${['M', 'W', 'Coed'].filter(g => sports.some(s => normalizeGender(s.gender) === g)).map(g => `<button type="button" data-competition-gender="${g}" class="px-4 py-2 rounded-xl text-sm font-bold border transition ${selectedGender === g ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' : 'bg-white text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-600'}">${g === 'M' ? '👦 ' : g === 'W' ? '👧 ' : '👥 '}${genderShortLabel(g)} <span class="text-xs opacity-75">(${sports.filter(s => normalizeGender(s.gender) === g).length})</span></button>`).join('')}</div>
