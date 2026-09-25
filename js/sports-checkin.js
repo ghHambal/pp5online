@@ -88,7 +88,7 @@ async function loadData() {
   let students = []
   for (let i = 0; i < studentIds.length; i += 1000) {
     const chunk = studentIds.slice(i, i + 1000)
-    const { data, error } = await supabase.from('students').select('id,student_code,full_name,main_room,image_url,photo_url').in('id', chunk)
+    const { data, error } = await supabase.from('students').select('id,student_code,full_name,main_room,gender,image_url,photo_url').in('id', chunk)
     if (error) throw error
     students = students.concat(data || [])
   }
@@ -99,7 +99,7 @@ async function loadData() {
 function renderApp(data) {
   let { colors, sports, matches, registrations, students, dailyCheckins } = data
   let checkInDate = todayLocal()
-  let search = '', colorFilter = '', sportFilter = ''
+  let search = '', colorFilter = '', sportFilter = '', genderFilter = ''
   let showScanner = false
   let html5Qrcode = null, scanning = false
   let feedback = { text: 'ยกกล้องส่อง QR ของนักกีฬาเพื่อรายงานตัว', tone: 'muted' }
@@ -138,6 +138,11 @@ function renderApp(data) {
 
       <div class="flex flex-wrap gap-2">
         <input id="ci-search" placeholder="🔍 ค้นหาชื่อ/รหัส/ห้อง..." class="flex-1 min-w-[180px] border border-slate-300 rounded-xl px-3 py-2 text-sm">
+        <div id="ci-gender-filter" class="flex items-center rounded-xl border border-slate-300 bg-white p-1 gap-1" aria-label="กรองตามเพศ">
+          <button type="button" data-gender-filter="" class="px-3 py-1.5 rounded-lg text-xs font-bold bg-pink-600 text-white shadow-sm">ทุกเพศ</button>
+          <button type="button" data-gender-filter="ชาย" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">ชาย</button>
+          <button type="button" data-gender-filter="หญิง" class="px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100">หญิง</button>
+        </div>
         <select id="ci-color-filter" class="border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="">ทุกสี</option>${colors.map(c => `<option value="${esc(c.id)}">สี${esc(c.name)}</option>`).join('')}</select>
         <select id="ci-sport-filter" class="border border-slate-300 rounded-xl px-3 py-2 text-sm"><option value="">ทุกกีฬา</option></select>
       </div>
@@ -237,6 +242,12 @@ function renderApp(data) {
   const renderList = () => {
     const roster = rosterForDate()
     const checked = checkedIdsToday()
+    root.querySelectorAll('[data-gender-filter]').forEach(btn => {
+      const active = btn.dataset.genderFilter === genderFilter
+      btn.className = active
+        ? 'px-3 py-1.5 rounded-lg text-xs font-bold bg-pink-600 text-white shadow-sm'
+        : 'px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100'
+    })
     root.querySelector('#ci-summary').textContent = `รายงานตัวแล้ว ${roster.filter(r => checked.has(r.student.id)).length} / ${roster.length} คน`
 
     const sportOptions = [...new Set(roster.flatMap(r => r.sportNames))].sort((a, b) => a.localeCompare(b, 'th'))
@@ -248,6 +259,7 @@ function renderApp(data) {
 
     const q = search.trim().toLowerCase()
     const filtered = roster.filter(row => {
+      if (genderFilter && row.student.gender !== genderFilter) return false
       if (colorFilter && row.teamColorId !== colorFilter) return false
       if (sportFilter && !row.sportNames.includes(sportFilter)) return false
       if (q) {
@@ -288,6 +300,10 @@ function renderApp(data) {
 
   root.querySelector('#ci-date').onchange = e => { checkInDate = e.target.value || todayLocal(); renderList() }
   root.querySelector('#ci-search').oninput = e => { search = e.target.value; renderList() }
+  root.querySelectorAll('[data-gender-filter]').forEach(btn => btn.onclick = () => {
+    genderFilter = btn.dataset.genderFilter || ''
+    renderList()
+  })
   root.querySelector('#ci-color-filter').onchange = e => { colorFilter = e.target.value; renderList() }
   root.querySelector('#ci-sport-filter').onchange = e => { sportFilter = e.target.value; renderList() }
   root.querySelector('#ci-scan-toggle').onclick = async () => {
