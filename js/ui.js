@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.798'
+import { APP_VERSION } from './version.js?v=10.22.799'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.799': [
+    '🧹 แยกปุ่มล้างผลการแข่งขันออกจากปุ่มล้างโปรแกรมการแข่งขัน ล้างผลจะไม่ลบเวลา สนาม หรือการประกบคู่ และเพิ่มปุ่มล้างโปรแกรม/ผังโดยเฉพาะ',
+  ],
   '10.22.798': [
     '🔐 เพิ่มโหมดกองกลางสำหรับบันทึกสกอร์สรุปจากใบบันทึกผล โดยต้องยืนยันรหัสผ่านก่อนใช้งาน และไม่บังคับระบุผู้ทำประตู/ผู้ทำคะแนน',
   ],
