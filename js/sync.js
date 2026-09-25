@@ -1,4 +1,5 @@
 import { getFriendlyErrorMessage } from './ui.js'
+import { isLifeSkillGroup } from './skill-groups.js'
 // sync.js — ซิงค์ข้อมูลไปยัง Google Sheet ผ่าน Central GAS (Admin deploy ครั้งเดียว)
 
 const SHEET_TAB = 'หน้าหลัก'
@@ -54,7 +55,7 @@ export function getCopyTemplateForClass(cfg = {}, cls = {}) {
   if (subjectGroup === 'AGM') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateReligionSecondaryId'), id: getCopyTemplateId(cfg, 'copyTemplateReligionSecondaryId') }
   if (subjectGroup === 'ACDMVOC' && skill === 'สามัญปวช') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateVocAcademicId'), id: getCopyTemplateId(cfg, 'copyTemplateVocAcademicId') }
   if (skill === 'ภาษา') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateLanguageId'), id: getCopyTemplateId(cfg, 'copyTemplateLanguageId') }
-  if (skill === 'ชีวิต') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateLifeId'), id: getCopyTemplateId(cfg, 'copyTemplateLifeId') }
+  if (isLifeSkillGroup(skill)) return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateLifeId'), id: getCopyTemplateId(cfg, 'copyTemplateLifeId') }
   if (skill === 'วิชาการ') return { ...COPY_TEMPLATE_CONFIG.find(t => t.key === 'copyTemplateAcademicId'), id: getCopyTemplateId(cfg, 'copyTemplateAcademicId') }
   return null
 }

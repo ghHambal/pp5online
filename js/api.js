@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { readInFlight } from './read-requests.js'
 import { isMissingColumn } from './supabase-errors.js'
+import { normalizeSkillGroup, isLifeSkillGroup } from './skill-groups.js'
 
 export async function getClassScoreRounding(classId) {
   const { data, error } = await supabase.from('class_score_display_settings').select('rounding').eq('class_id', classId).maybeSingle()
@@ -1489,7 +1490,7 @@ async function _getSkillGroup(classId) {
   try {
     const { data } = await supabase
       .from('classes').select('skill_group').eq('id', classId).single()
-    return data?.skill_group ?? null
+    return normalizeSkillGroup(data?.skill_group)
   } catch { return null }
 }
 
@@ -1915,7 +1916,10 @@ export async function getReligionRoomsByGrade(gradePrefix) {
 
 // ─── Classes CRUD ─────────────────────────────────────────────────────────────
 export async function updateClass(id, payload) {
-  const { error } = await supabase.from('classes').update(payload).eq('id', id)
+  const normalizedPayload = Object.prototype.hasOwnProperty.call(payload, 'skill_group')
+    ? { ...payload, skill_group: normalizeSkillGroup(payload.skill_group) }
+    : payload
+  const { error } = await supabase.from('classes').update(normalizedPayload).eq('id', id)
   if (error) throw error
 }
 
@@ -1925,8 +1929,11 @@ export async function deleteClass(id) {
 }
 
 export async function createClass(payload, teacherId = null) {
+  const normalizedPayload = Object.prototype.hasOwnProperty.call(payload, 'skill_group')
+    ? { ...payload, skill_group: normalizeSkillGroup(payload.skill_group) }
+    : payload
   const { data, error } = await supabase
-    .from('classes').insert(payload).select('id').single()
+    .from('classes').insert(normalizedPayload).select('id').single()
   if (error) throw error
   // อัปเดตโควตา (ไม่ block ถ้า rpc ล้มเหลว)
   if (teacherId) {
@@ -1947,9 +1954,12 @@ export async function enrollStudents(classId, studentIds) {
 
 // ─── Master Subjects CRUD ─────────────────────────────────────────────────────
 export async function createSubject(payload, coTeacherIds = []) {
+  const normalizedPayload = Object.prototype.hasOwnProperty.call(payload, 'skill_group')
+    ? { ...payload, skill_group: normalizeSkillGroup(payload.skill_group) }
+    : payload
   const { data, error } = await supabase
     .from('master_subjects')
-    .insert(payload)
+    .insert(normalizedPayload)
     .select('id')
     .single()
   if (error) throw error
@@ -1965,18 +1975,23 @@ export async function createSubject(payload, coTeacherIds = []) {
 export async function updateSubjectAtomic(id, payload, coTeacherIds = null) {
   // One transaction: a failure must not leave the course or co-teachers half saved.
   // Omitted coTeacherIds preserves the list (e.g. the admin's course-only editor).
+  const normalizedPayload = Object.prototype.hasOwnProperty.call(payload, 'skill_group')
+    ? { ...payload, skill_group: normalizeSkillGroup(payload.skill_group) }
+    : payload
   const { error } = await supabase.rpc('update_subject_atomic', {
     p_subject_id: id,
-    p_payload: payload,
+    p_payload: normalizedPayload,
     p_co_teacher_ids: coTeacherIds,
   })
   if (error) throw error
 }
 
-
 export async function updateSubject(id, payload, coTeacherIds = []) {
+  const normalizedPayload = Object.prototype.hasOwnProperty.call(payload, 'skill_group')
+    ? { ...payload, skill_group: normalizeSkillGroup(payload.skill_group) }
+    : payload
   const { error } = await supabase
-    .from('master_subjects').update(payload).eq('id', id)
+    .from('master_subjects').update(normalizedPayload).eq('id', id)
   if (error) throw error
 
   const { error: delErr } = await supabase
@@ -2913,10 +2928,15 @@ export async function fillLifeSkillScoresForClass(classId, academicYear, semeste
 
   const { data: cls, error } = await supabase
     .from('classes')
-    .select('id, class_students ( student_id )')
+    .select('id, skill_group, academic_year, semester, source_class_id, class_students ( student_id )')
     .eq('id', classId)
     .single()
   if (error) throw error
+
+  if (!isLifeSkillGroup(cls.skill_group) || cls.source_class_id
+      || Number(cls.academic_year) !== Number(academicYear) || Number(cls.semester) !== Number(semester)) {
+    return { classes: 0, columns: 0, scores: 0, columnNames: [] }
+  }
 
   const students = (cls?.class_students ?? []).map(r => r.student_id).filter(Boolean)
   if (!students.length) return { classes: 0, columns: columns.length, scores: 0, columnNames: columns.map(c => c.name) }
@@ -2960,7 +2980,10 @@ export async function fillLifeSkillScoresToClassScores(academicYear, semester) {
       id, class_name, skill_group,
       class_students ( student_id )
     `)
-    .eq('skill_group', 'ชีวิต')
+    .in('skill_group', ['ชีวิต', 'ทักษะชีวิต'])
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+    .is('source_class_id', null)
     .range(0, 9999)
   if (error) throw error
 

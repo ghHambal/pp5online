@@ -3,6 +3,7 @@
 // เฉพาะคอลัมน์ที่ไม่ใช่คะแนนอัตโนมัติ (column_type ต้องเป็น regular/bonus และไม่ใช่คอลัมน์ระบบกลางของ "ห้องนี้โดยเฉพาะ")
 import { getClassStudents, getScoreColumns, getStudentScores, saveStudentScore, getMyClasses, getLifeSkillColumns, getSystemConfig, getClassByIdFull } from './api.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { isLifeSkillGroup } from './skill-groups.js'
 // สำคัญ: ชื่อคอลัมน์อัตโนมัติ (เช่น "การมาเรียน") เป็นวลีธรรมดาที่ครูวิชาอื่นอาจตั้งชื่อคอลัมน์ของตัวเอง
 // ซ้ำกันได้โดยบังเอิญ — ห้าม exclude แบบ global ตามชื่ออย่างเดียว ต้องเช็คบริบทห้อง (skill_group/subject_group)
 // ก่อนเสมอ ว่าห้องนี้เป็นห้องศาสนา/ทักษะชีวิตจริงไหม ถึงจะ exclude ชื่อกลุ่มนั้น (ดู _buildExcludedNames)
@@ -23,7 +24,7 @@ async function _buildExcludedNames(classId) {
     if (['AGM', 'AGMVOC'].includes(subjectGroup)) {
       excluded.push('คะแนนมาเรียน', 'คะแนนละหมาด')
     }
-    if (skillGroup === 'ชีวิต') {
+    if (isLifeSkillGroup(skillGroup)) {
       excluded.push('การมาเรียน', 'เดินสวนสนาม', 'ความสะอาด')
       try {
         const sysCfg = await getSystemConfig()

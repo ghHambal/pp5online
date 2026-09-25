@@ -4,6 +4,7 @@ import { getDepartments, getSystemConfig, getRoomsByGrade, getStudentsByRoom,
          getScoreColumns, createScoreColumn, linkClassToSchedule,
          getTeacherClassesForLinking, getLifeSkillColumns } from './api.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { normalizeSkillGroup, isLifeSkillGroup } from './skill-groups.js'
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
 const INPUT_CLS  = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm'
 
@@ -115,7 +116,7 @@ export async function renderClassForm(teacher, course, opts = {}) {
   const rooms = cloneFrom ? allRooms.filter(r => !usedRooms.has(r)) : allRooms
 
   // skill ที่ pre-select จากต้นฉบับ (ถ้า clone)
-  const srcSkill = cloneFrom ? (opts.srcSkill ?? '') : ''
+  const srcSkill = cloneFrom ? normalizeSkillGroup(opts.srcSkill) : ''
   setContent(`<div class="max-w-2xl mx-auto animate-fade">
     <div class="flex items-center gap-3 mb-6">
       <button onclick="window._goBack()" class="text-sm text-gray-500 hover:text-emerald-600">← กลับ</button>
@@ -413,7 +414,7 @@ export async function renderClassForm(teacher, course, opts = {}) {
       const payload = {
         course_id:       course.id,
         class_name:      room,
-        skill_group:     skill || null,
+        skill_group:     normalizeSkillGroup(skill),
         google_sheet_id: sheetId || null,
         head_student_id: headId ? Number(headId) : null,
         day1_date: document.getElementById('cls-day1').value || null,
@@ -438,7 +439,7 @@ export async function renderClassForm(teacher, course, opts = {}) {
       // copy score columns จากห้องต้นฉบับ (ถ้า clone)
       // ข้าม auto-generated columns (ทักษะชีวิต/ศาสนา) เพราะ Grades page จะ generate ให้ใหม่
       const PRAYER_AUTO_COLS = new Set(['คะแนนมาเรียน', 'คะแนนละหมาด'])
-      const isSrcLifeSkill = (opts.srcSkill ?? '') === 'ชีวิต'
+      const isSrcLifeSkill = isLifeSkillGroup(opts.srcSkill)
       const isSrcReligion  = ['AGM', 'AGMVOC'].includes(course.subject_group ?? '')
       // เช็คด้วยชื่อหัวข้อปัจจุบันจาก life_skill_columns แทนการเดา sheet_column แบบ hardcode
       // เพราะคอลัมน์อัตโนมัติอาจถูกสร้างผ่านปุ่ม "เติมทักษะชีวิต" ที่ sheet_column ไม่ใช่ EH/EI/EJ เสมอไป
@@ -490,6 +491,7 @@ export async function renderClassEditForm(teacher, classData) {
   const ms       = classData.master_subjects
   const skillOpts = SKILL_GROUPS[ms?.subject_group] ?? []
   const autoSkill = skillOpts.length === 1
+  const selectedSkill = normalizeSkillGroup(classData.skill_group)
   const classStudents = await getClassStudents(classData.id).catch(()=>[])
   setContent(`<div class="max-w-2xl mx-auto animate-fade">
     <div class="flex items-center gap-3 mb-6">
@@ -519,7 +521,7 @@ export async function renderClassEditForm(teacher, classData) {
                <input type="hidden" id="ce-skill" value="${skillOpts[0]}" />`
             : `<select id="ce-skill" class="${SELECT_CLS}">
                  <option value="">— เลือกกลุ่มทักษะ —</option>
-                 ${skillOpts.map(s=>`<option value="${s}" ${s===classData.skill_group?'selected':''}>${s}</option>`).join('')}
+                 ${skillOpts.map(s=>`<option value="${s}" ${s===selectedSkill?'selected':''}>${s}</option>`).join('')}
                </select>`}
         </div>
         <div>
@@ -712,7 +714,7 @@ export async function renderClassEditForm(teacher, classData) {
       const sourceClassId = document.getElementById('ce-source-class')?.value
       await updateClass(classData.id, {
         google_sheet_id: document.getElementById('ce-sheet').value.trim() || null,
-        skill_group:     document.getElementById('ce-skill').value || null,
+        skill_group:     normalizeSkillGroup(document.getElementById('ce-skill').value),
         head_student_id: document.getElementById('ce-head').value ? Number(document.getElementById('ce-head').value) : null,
         day1_date: document.getElementById('ce-day1').value || null,
         day2_date: document.getElementById('ce-day2').value || null,

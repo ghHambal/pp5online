@@ -2,6 +2,7 @@ import { getScoreColumns, getSystemConfig, getLifeSkillColumns,
          createScoreColumn, updateScoreColumn, deleteScoreColumn,
          updateColumnSortOrders, getMyClasses, setColumnAutoAttendanceSync } from './api.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { isLifeSkillGroup } from './skill-groups.js'
 const SELECT_CLS = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:border-emerald-400'
 const INPUT_CLS  = 'input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm'
 
@@ -125,7 +126,7 @@ export async function renderScoreColumns(teacher, classId, className, classData 
   setActiveNav('my-classes')
   setTitle(`คอลัมน์คะแนน — ${className}`)
 
-  const isLifeSkill = (classData?.skill_group ?? classData?.master_subjects?.skill_group ?? '') === 'ชีวิต'
+  const isLifeSkill = isLifeSkillGroup(classData?.skill_group ?? classData?.master_subjects?.skill_group)
   const isReligion  = ['AGM', 'AGMVOC'].includes(classData?.master_subjects?.subject_group)
   const hasSheet    = !!(classData?.google_sheet_id)
   let lockedScoreColumnIds = new Set()

@@ -19,6 +19,7 @@ import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-scor
 import { openScoreScanner } from './score-qr-scanner.js'
 import { publishGradebookUpdate, subscribeGradebookUpdates } from './gradebook-sync.js'
 import { downloadGradeOnlineXlsx } from './gradeonline-xlsx.js'
+import { isLifeSkillGroup } from './skill-groups.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _readingGrade, applyReadingGradesFromConfig,
 } from './teacher-views-utils.js'
@@ -239,7 +240,7 @@ export async function renderGradesGrid(teacher, classData) {
     const _rsYear = parseInt(sysCfg.academicYear ?? 2568)
     const _rsSem  = parseInt(sysCfg.semester ?? 1)
     const subjectGroup = ms?.subject_group ?? ''
-    const isLifeSkillClass = (classData?.skill_group ?? '').trim() === 'ชีวิต'
+    const isLifeSkillClass = isLifeSkillGroup(classData?.skill_group)
     const isReligionClass = ['AGM', 'AGMVOC'].includes(subjectGroup)
     let scoreRows = rawScoreRows
     let priorityColumnNames = []

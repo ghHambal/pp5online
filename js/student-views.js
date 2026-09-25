@@ -19,6 +19,7 @@ import {
 import { getFriendlyErrorMessage } from './ui.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
+import { isLifeSkillGroup } from './skill-groups.js'
 import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputValue, renderIconTile } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
@@ -185,7 +186,7 @@ function _subjectColorCls(cls) {
     return { bg:'bg-purple-50', border:'border-purple-200', text:'text-purple-800', tag:'bg-purple-100 text-purple-700', accent:'border-l-purple-400' }
   if (sk === 'ภาษา')
     return { bg:'bg-blue-50', border:'border-blue-200', text:'text-blue-800', tag:'bg-blue-100 text-blue-700', accent:'border-l-blue-400' }
-  if (sk === 'ชีวิต')
+  if (isLifeSkillGroup(sk))
     return { bg:'bg-emerald-50', border:'border-emerald-200', text:'text-emerald-800', tag:'bg-emerald-100 text-emerald-700', accent:'border-l-emerald-400' }
   if (sk === 'วิชาการ')
     return { bg:'bg-orange-50', border:'border-orange-200', text:'text-orange-800', tag:'bg-orange-100 text-orange-700', accent:'border-l-orange-400' }
@@ -200,7 +201,7 @@ function _subjectGroupMeta(cls, cfg = {}) {
     if (cat === 'ศาสนา' || sg === 'AGM' || sg === 'AGMVOC') return cfg.teacherReligionColor || '#b45309'
     if (sg === 'ACDMVOC' || sk === 'สามัญปวช') return cfg.teacherVocColor || '#7c3aed'
     if (sk === 'ภาษา') return cfg.teacherLanguageColor || '#2563eb'
-    if (sk === 'ชีวิต') return cfg.teacherLifeColor || '#059669'
+    if (isLifeSkillGroup(sk)) return cfg.teacherLifeColor || '#059669'
     if (sk === 'วิชาการ') return cfg.teacherAcademicColor || '#ea580c'
     return cfg.teacherDefaultColor || '#059669'
   })()

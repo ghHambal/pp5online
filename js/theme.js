@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { isLifeSkillGroup } from './skill-groups.js'
 
 let _themeCache = null
 
@@ -48,7 +49,7 @@ function teacherColor(cfg, teacher = {}) {
   if (category === 'ศาสนา' || subjectGroup === 'AGM' || subjectGroup === 'AGMVOC') return cfg.teacherReligionColor
   if (subjectGroup === 'ACDMVOC' || skillGroup === 'สามัญปวช') return cfg.teacherVocColor
   if (skillGroup === 'ภาษา') return cfg.teacherLanguageColor
-  if (skillGroup === 'ชีวิต') return cfg.teacherLifeColor
+  if (isLifeSkillGroup(skillGroup)) return cfg.teacherLifeColor
   if (skillGroup === 'วิชาการ') return cfg.teacherAcademicColor
   return cfg.teacherDefaultColor
 }

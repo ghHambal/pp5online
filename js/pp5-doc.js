@@ -12,6 +12,7 @@ import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { supabase } from './supabase.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import { _readingGrade, applyReadingGradesFromConfig } from './teacher-views-utils.js'
+import { isLifeSkillGroup } from './skill-groups.js'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -437,7 +438,7 @@ async function _loadDocData(classId) {
   ).filter(c => c.column_type !== 'override' && !isBonus(c))
   const systemPriorityNames = ['AGM', 'AGMVOC'].includes(ms.subject_group)
     ? ['คะแนนมาเรียน', 'คะแนนละหมาด']
-    : (cls.skill_group ?? '').trim() === 'ชีวิต'
+    : isLifeSkillGroup(cls.skill_group)
       ? (await getLifeSkillColumns(academicYear, semester, 'สามัญ').catch(() => [])).slice(0, 3).map(c => c.name)
       : []
   const orderedScoreColumns = sortScoreColumns(filteredScoreColumns, systemPriorityNames)
