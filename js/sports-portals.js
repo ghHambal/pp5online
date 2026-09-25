@@ -1825,6 +1825,7 @@ export async function renderSportsCompetitionManager() {
   let draftRows = []
   let workspace = null
   let registrationWorkspace = null
+  let approvedResponsibleRows = []
   let event = null
   let rosterPrintLoading = false
   let simulationResults = {}
@@ -1849,6 +1850,12 @@ export async function renderSportsCompetitionManager() {
     workspace = data || {}
     registrationWorkspace = registrationResult?.error ? null : (registrationResult?.data || {})
     if (registrationResult?.error) console.warn('โหลดคำขอลงทะเบียนรายการแข่งขันไม่สำเร็จ', registrationResult.error)
+    approvedResponsibleRows = []
+    if (registrationWorkspace?.is_admin) {
+      const approvedResult = await supabase.rpc('get_sports_competition_approved_responsible_people', { p_event: event.id })
+      if (approvedResult?.error) console.warn('โหลดรายชื่อผู้รับผิดชอบที่อนุมัติแล้วไม่สำเร็จ', approvedResult.error)
+      else approvedResponsibleRows = Array.isArray(approvedResult?.data) ? approvedResult.data : []
+    }
     const sports = workspace.sports || []
     const normalizeGender = s => s === 'M' || s === 'W' ? s : 'Coed'
     if (!sports.length) {
@@ -1907,8 +1914,20 @@ export async function renderSportsCompetitionManager() {
   }
   const approvedRegistrationSection = () => {
     if (!registrationWorkspace?.is_admin) return ''
-    const approved = (registrationWorkspace.sports || []).filter(option => option.responsible_teacher_id)
-    return `<section class="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">✅ รายการแข่งขันที่อนุมัติแล้ว</h2><p class="text-sm text-gray-500 mt-1">ตรวจสอบครูผู้รับผิดชอบและชื่อบัญชีที่ใช้เข้าสู่ระบบได้ที่ตารางนี้ รหัสผ่านใช้บัญชีครู ปพ.5 เดิมและจะไม่แสดงในตาราง</p></div><span class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">${approved.length} รายการ</span></div><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[760px] text-sm"><thead class="bg-emerald-50 text-emerald-900"><tr><th class="p-3 text-left">รายการแข่งขัน</th><th class="p-3 text-left">ครูผู้รับผิดชอบ</th><th class="p-3 text-left">Username</th><th class="p-3 text-left">รหัสผ่าน</th><th class="p-3 text-left">สถานะ</th></tr></thead><tbody>${approved.map(option => `<tr class="border-t border-gray-100"><td class="p-3"><b>${esc(option.code ? `${option.code} · ` : '')}${esc(option.name || '—')}</b><div class="text-xs text-gray-500 mt-1">${esc(option.gender ? `เพศ${option.gender}` : '')}${option.category ? ` · ${esc(option.category)}` : ''}</div></td><td class="p-3">${esc(option.responsible_teacher_name || '—')}</td><td class="p-3 font-mono font-bold text-indigo-700">${esc(option.responsible_teacher_code || 'ใช้บัญชีครู ปพ.5')}</td><td class="p-3 text-gray-500">ใช้รหัสผ่านบัญชีเดิม</td><td class="p-3"><span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">อนุมัติแล้ว</span></td></tr>`).join('') || '<tr><td colspan="5" class="p-8 text-center text-sm text-gray-400">ยังไม่มีรายการที่อนุมัติ</td></tr>'}</tbody></table></div></section>`
+    const people = []
+    const peopleById = new Map()
+    approvedResponsibleRows.forEach(row => {
+      const key = String(row.teacher_profile_id || row.teacher_code || row.teacher_name || '')
+      let person = peopleById.get(key)
+      if (!person) {
+        person = { ...row, sports: [] }
+        peopleById.set(key, person)
+        people.push(person)
+      }
+      person.sports.push(row)
+    })
+    const displayName = name => String(name || '—').replace(/^(นาย|นางสาว|นาง|ดร\.)\s*/, '') || '—'
+    return `<section class="bg-white border border-emerald-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">✅ รายชื่อผู้รับผิดชอบที่อนุมัติแล้ว</h2><p class="text-sm text-gray-500 mt-1">แสดงเฉพาะครูที่ส่งคำขอและแอดมินกดอนุมัติแล้ว รวมรายการแข่งขันที่ครูคนนั้นรับผิดชอบไว้ในแถวเดียว รหัสผ่านใช้บัญชีครู ปพ.5 เดิมและไม่แสดงในตาราง</p></div><span class="rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700">${people.length} คน</span></div><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[900px] text-sm"><thead class="bg-emerald-50 text-emerald-900"><tr><th class="p-3 text-left">ยศ/ประเภท</th><th class="p-3 text-left">ชื่อผู้รับผิดชอบ</th><th class="p-3 text-left">Username</th><th class="p-3 text-left">รายการแข่งขันที่รับผิดชอบ</th><th class="p-3 text-left">สถานะ</th></tr></thead><tbody>${people.map(person => `<tr class="border-t border-gray-100 align-top"><td class="p-3"><b>${esc(person.teacher_title || 'ครู')}</b><div class="text-xs text-gray-500 mt-1">${esc(person.teacher_staff_type || 'ครู')}</div></td><td class="p-3 font-bold">${esc(displayName(person.teacher_name))}</td><td class="p-3 font-mono font-bold text-indigo-700">${esc(person.teacher_code || 'ใช้บัญชีครู ปพ.5')}</td><td class="p-3"><div class="space-y-1">${person.sports.map(sport => `<div><b>${esc(sport.sport_code ? `${sport.sport_code} · ` : '')}${esc(sport.sport_name || '—')}</b>${sport.sport_gender ? `<span class="ml-1 text-xs text-gray-500">(เพศ${esc(sport.sport_gender)})</span>` : ''}</div>`).join('')}</div></td><td class="p-3"><span class="inline-flex rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700">อนุมัติแล้ว</span></td></tr>`).join('') || '<tr><td colspan="5" class="p-8 text-center text-sm text-gray-400">ยังไม่มีคำขอที่แอดมินอนุมัติ</td></tr>'}</tbody></table></div></section>`
   }
   const competitionDeadlineSection = () => {
     if (!workspace?.is_admin) return ''
