@@ -1870,7 +1870,10 @@ export async function renderSportsCompetitionManager() {
   const registrationOptions = () => registrationWorkspace?.sports || []
   const registrationStatus = option => {
     const currentId = registrationWorkspace?.teacher_profile_id
-    if (option.responsible_teacher_id && String(option.responsible_teacher_id) === String(currentId)) return { label: 'รับผิดชอบอยู่แล้ว', className: 'text-emerald-700 bg-emerald-50', disabled: true }
+    const isMine = option.responsible_teacher_id && String(option.responsible_teacher_id) === String(currentId)
+    if (isMine && option.request_status === 'pending') return { label: 'รายการของคุณ · รอแอดมินอนุมัติ', className: 'text-amber-700 bg-amber-50', disabled: true }
+    if (isMine && option.request_status === 'approved') return { label: 'ลงทะเบียนและเปิดสิทธิ์แล้ว', className: 'text-emerald-700 bg-emerald-50', disabled: true }
+    if (isMine) return { label: 'รายการของคุณ — ส่งคำขอเพื่อเปิดสิทธิ์', className: 'text-emerald-700 bg-emerald-50', disabled: false }
     if (option.responsible_teacher_id) return { label: `มีผู้รับผิดชอบแล้ว${option.responsible_teacher_name ? `: ${option.responsible_teacher_name}` : ''}`, className: 'text-slate-500 bg-slate-100', disabled: true }
     if (option.request_status === 'pending') return { label: 'รอแอดมินอนุมัติ', className: 'text-amber-700 bg-amber-50', disabled: true }
     if (option.request_status === 'rejected') return { label: 'ถูกปฏิเสธ — ขอใหม่ได้', className: 'text-rose-700 bg-rose-50', disabled: false }
@@ -1893,7 +1896,7 @@ export async function renderSportsCompetitionManager() {
       <label class="block mt-3"><span class="text-xs font-bold text-gray-500">ค้นหารายการแข่งขัน</span><input id="sports-registration-search" value="${esc(registrationSearch)}" placeholder="รหัสหรือชื่อรายการ" class="mt-1 w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm"></label>
       <div class="mt-3 grid md:grid-cols-2 gap-2 max-h-80 overflow-y-auto pr-1">${visible.map(option => { const status = registrationStatus(option); const selected = registrationSelectedIds.has(String(option.id)); return `<label class="flex items-start gap-3 rounded-xl border p-3 ${status.disabled ? 'cursor-not-allowed opacity-70 bg-gray-50' : 'cursor-pointer hover:border-indigo-300'}"><input type="checkbox" data-registration-sport="${esc(option.id)}" class="mt-1 h-4 w-4 accent-indigo-600" ${selected ? 'checked' : ''} ${status.disabled ? 'disabled' : ''}><span class="min-w-0 flex-1"><span class="block font-bold text-sm text-gray-800">${esc(option.code ? `${option.code} · ` : '')}${esc(option.name)}</span><span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[11px] font-bold ${status.className}">${esc(status.label)}</span></span></label>` }).join('') || '<p class="col-span-full py-6 text-center text-sm text-gray-400">ไม่พบรายการในกลุ่มนี้</p>'}</div>
       <textarea id="sports-registration-note" rows="2" placeholder="หมายเหตุถึงแอดมิน (ถ้ามี)" class="mt-3 w-full resize-none rounded-xl border border-gray-300 px-3 py-2.5 text-sm">${esc(registrationNote)}</textarea>
-      <div class="mt-3 flex flex-wrap items-center justify-between gap-3"><p class="text-xs text-gray-500">รายการที่มีผู้รับผิดชอบแล้วหรือรออนุมัติจะเลือกซ้ำไม่ได้</p><button type="button" id="sports-registration-submit" class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700">ส่งคำขอรายการที่เลือก</button></div>
+      <div class="mt-3 flex flex-wrap items-center justify-between gap-3"><p class="text-xs text-gray-500">เลือกได้เฉพาะรายการของคุณเองหรือรายการที่ยังว่าง รายการของครูท่านอื่นเลือกไม่ได้</p><button type="button" id="sports-registration-submit" class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700">ส่งคำขอรายการที่เลือก</button></div>
     </section>`
   }
   const pendingRegistrationSection = () => {
