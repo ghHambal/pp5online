@@ -1924,15 +1924,28 @@ export async function renderSportsCompetitionManager() {
       if (!registrationSelectedIds.size) { toast('กรุณาเลือกรายการแข่งขันอย่างน้อย 1 รายการ', 'error'); return }
       registrationNote = el.querySelector('#sports-registration-note')?.value || ''
       button.disabled = true; button.textContent = 'กำลังส่งคำขอ...'
+      const submittedSportIds = [...registrationSelectedIds]
       const { error } = await supabase.rpc('submit_sports_competition_responsibility_request', {
         p_event: event.id,
-        p_sport_ids: [...registrationSelectedIds],
+        p_sport_ids: submittedSportIds,
         p_teacher_note: registrationNote || null,
       })
       if (error) { toast(error.message || 'ส่งคำขอไม่สำเร็จ', 'error'); button.disabled = false; button.textContent = 'ส่งคำขอรายการที่เลือก'; return }
+      const { data: pushResult, error: pushError } = await supabase.functions.invoke('send-push', {
+        body: {
+          target: 'sports_competition_admins',
+          eventId: event.id,
+          sportIds: submittedSportIds,
+        },
+      })
       registrationSelectedIds.clear()
       registrationNote = ''
-      toast('ส่งคำขอลงทะเบียนแล้ว รอแอดมินอนุมัติ')
+      toast(
+        pushError || !pushResult?.sent
+          ? 'ส่งคำขอลงทะเบียนแล้ว แต่ยังส่ง Push แจ้งแอดมินไม่สำเร็จ'
+          : 'ส่งคำขอลงทะเบียนแล้ว และแจ้งเตือนแอดมินเรียบร้อย',
+        pushError || !pushResult?.sent ? 'warning' : 'success',
+      )
       await reload()
     })
     el.querySelectorAll('[data-review-registration]').forEach(button => button.addEventListener('click', async () => {

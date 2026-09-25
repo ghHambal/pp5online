@@ -6,6 +6,8 @@
 // - target: 'terangganu_missing_passport' / 'terangganu_incomplete_survey': ผู้รับผิดชอบค่าย TERANGGANU ยิงได้
 //   (ไม่ต้องเป็นแอดมิน) — สิทธิ์และรายชื่อเป้าหมายตรวจ/คำนวณผ่าน RPC ของระบบนั้นๆ (ดู TERANGGANU_RPC_TARGETS ด้านล่าง)
 //   ด้วย JWT ของผู้เรียกเอง (แต่ละ RPC เช็ค terangganu_can(...,'settings') เอง) — เพิ่ม target ใหม่ได้โดยเพิ่ม entry ในแมปนี้
+// - target: 'sports_competition_admins': ครูที่ส่งคำขอรับผิดชอบรายการแข่งขันยิงแจ้งเตือนถึงแอดมิน
+//   ได้เฉพาะเมื่อคำขอ pending เป็นของ auth.uid() เอง และระบบจะคำนวณผู้รับ/ข้อความฝั่งเซิร์ฟเวอร์
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'npm:@supabase/supabase-js@2'
 import webpush from 'npm:web-push@3.6.7'
@@ -57,10 +59,11 @@ Deno.serve(async (req: Request) => {
 
     const payload = await req.json()
     let { title, body: msgBody, url, tag } = payload
-    const { profileIds, target, subjectId, event: regradeEvent } = payload
+    const { profileIds, target, subjectId, event: regradeEvent, eventId: sportsEventId, sportIds: sportsSportIds } = payload
 
     let targetIds: string[] | null = Array.isArray(profileIds) ? profileIds : null
     const isRegradeTarget = ['regrade_teacher', 'regrade_student'].includes(target)
+    const isSportsRegistrationTarget = target === 'sports_competition_admins'
 
     // ระบบแก้ค้างเก่า: หาเป้าหมายจากรายการจริงฝั่งเซิร์ฟเวอร์ และตรวจว่าผู้เรียกเป็นเจ้าของ
     // รายการฝั่งนักเรียน/ครูจริง ไม่เชื่อ profileIds หรือข้อความจาก client
@@ -108,6 +111,40 @@ Deno.serve(async (req: Request) => {
       url = 'regrade.html'
     }
 
+    // แจ้งแอดมินเมื่อครูส่งคำขอรับผิดชอบรายการแข่งขัน — ห้ามรับ profileIds จาก client
+    // และตรวจว่ารายการที่อ้างถึงเป็นคำขอ pending ของครูผู้เรียกจริงเท่านั้น
+    if (isSportsRegistrationTarget) {
+      if (targetIds) return new Response(JSON.stringify({ error: 'ห้ามระบุ profileIds สำหรับการแจ้งคำขอรายการแข่งขัน' }), { status: 400, headers: corsHeaders })
+      if (!sportsEventId || !Array.isArray(sportsSportIds) || !sportsSportIds.length || sportsSportIds.length > 60) {
+        return new Response(JSON.stringify({ error: 'ข้อมูลคำขอรายการแข่งขันไม่ถูกต้อง' }), { status: 400, headers: corsHeaders })
+      }
+
+      const uniqueSportIds = [...new Set(sportsSportIds.map((id: unknown) => String(id)).filter(Boolean))]
+      const [{ data: callerTeacher }, { data: requests }, { data: eventRow }, { data: adminIds }] = await Promise.all([
+        admin.from('teachers').select('full_name').eq('profile_id', user.id).maybeSingle(),
+        admin.from('sports_competition_responsibility_requests')
+          .select('sport_id')
+          .eq('event_id', sportsEventId)
+          .eq('teacher_profile_id', user.id)
+          .eq('status', 'pending')
+          .in('sport_id', uniqueSportIds),
+        admin.from('events').select('name').eq('id', sportsEventId).maybeSingle(),
+        admin.rpc('get_admin_profile_ids'),
+      ])
+      if (!callerTeacher) return new Response(JSON.stringify({ error: 'เฉพาะบัญชีครูเท่านั้นที่แจ้งคำขอรายการแข่งขันได้' }), { status: 403, headers: corsHeaders })
+      if (!requests || requests.length !== uniqueSportIds.length) {
+        return new Response(JSON.stringify({ error: 'ไม่พบคำขอ pending ของครูผู้เรียก หรือคำขอถูกดำเนินการไปแล้ว' }), { status: 403, headers: corsHeaders })
+      }
+
+      targetIds = Array.isArray(adminIds) ? adminIds : []
+      title = '🏟️ มีคำขอลงทะเบียนรายการแข่งขันใหม่'
+      const teacherName = callerTeacher.full_name || 'ครูผู้สอน'
+      const eventName = eventRow?.name ? ` ในกิจกรรม ${eventRow.name}` : ''
+      msgBody = `${teacherName} ส่งคำขอรับผิดชอบ ${requests.length} รายการ${eventName} กรุณาเปิดหน้ารายการแข่งขันของฉันเพื่อตรวจสอบ`
+      url = 'teacher.html'
+      tag = `sports-registration-${sportsEventId}-${user.id}`
+    }
+
     // target ที่คำนวณรายชื่อ+สิทธิ์ผ่าน RPC ของระบบย่อยเอง (ดูหมายเหตุด้านบน) — เพิ่ม target ใหม่ที่นี่ได้เรื่อยๆ
     const TERANGGANU_RPC_TARGETS: Record<string, { rpc: string, emptyMessage: string }> = {
       terangganu_missing_passport: { rpc: 'get_terangganu_missing_passport_targets', emptyMessage: 'ไม่มีใครขาดข้อมูลหนังสือเดินทางแล้ว' },
@@ -115,7 +152,7 @@ Deno.serve(async (req: Request) => {
     }
     const terangganuTarget = target ? TERANGGANU_RPC_TARGETS[target] : undefined
 
-    if (isRegradeTarget) {
+    if (isRegradeTarget || isSportsRegistrationTarget) {
       // ตรวจสิทธิ์และคำนวณผู้รับเสร็จแล้วในบล็อกด้านบน
     } else if (!targetIds && terangganuTarget) {
       const { data: ids, error: rpcErr } = await supabaseUser.rpc(terangganuTarget.rpc)
