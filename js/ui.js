@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.797'
+import { APP_VERSION } from './version.js?v=10.22.798'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.798': [
+    '🔐 เพิ่มโหมดกองกลางสำหรับบันทึกสกอร์สรุปจากใบบันทึกผล โดยต้องยืนยันรหัสผ่านก่อนใช้งาน และไม่บังคับระบุผู้ทำประตู/ผู้ทำคะแนน',
+  ],
   '10.22.797': [
     '🎽 เพิ่มการลงทะเบียนกรรมการภาคสนามแบบสร้างบัญชีทันที พร้อมแสดง Username/PIN และเพิ่มตารางแอดมินในหน้ารายการแข่งขันของฉัน กรองตามเพศ รายการแข่งขัน และค้นหาได้ทุกช่อง',
   ],
