@@ -1899,7 +1899,7 @@ export async function renderSportsCompetitionManager() {
   const pendingRegistrationSection = () => {
     if (!registrationWorkspace?.is_admin) return ''
     const requests = registrationWorkspace.pending_requests || []
-    return `<section class="bg-white border border-amber-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🔔 คำขอลงทะเบียนผู้รับผิดชอบ</h2><p class="text-sm text-gray-500 mt-1">อนุมัติทีละรายการได้ตามคำขอ ระบบจะผูกครูกับรายการและให้สิทธิ์จัดการโปรแกรมทันที</p></div><span class="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">รออนุมัติ ${requests.length} รายการ</span></div><div class="mt-4 space-y-2">${requests.map(request => `<div class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3"><div class="min-w-0 flex-1"><b class="block text-sm text-gray-900">${esc(request.sport_code ? `${request.sport_code} · ` : '')}${esc(request.sport_name || '—')}</b><p class="mt-1 text-xs text-gray-500">ครู ${esc(request.teacher_name || '—')}${request.teacher_code ? ` (${esc(request.teacher_code)})` : ''}</p>${request.teacher_note ? `<p class="mt-1 text-xs text-gray-500">หมายเหตุ: ${esc(request.teacher_note)}</p>` : ''}</div><div class="flex gap-2"><button type="button" data-review-registration="${esc(request.id)}" data-decision="approved" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">อนุมัติ</button><button type="button" data-review-registration="${esc(request.id)}" data-decision="rejected" class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">ปฏิเสธ</button></div></div>`).join('') || '<p class="py-6 text-center text-sm text-gray-400">ยังไม่มีคำขอรออนุมัติ</p>'}</div></section>`
+    return `<section class="bg-white border border-amber-200 rounded-2xl p-5 shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-900">🔔 คำขอลงทะเบียนผู้รับผิดชอบ</h2><p class="text-sm text-gray-500 mt-1">อนุมัติทีละรายการได้ตามคำขอ ระบบจะผูกครูกับรายการและให้สิทธิ์จัดการโปรแกรมทันที พร้อมส่ง Push แจ้งครูเจ้าของคำขอ</p></div><span class="rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-700">รออนุมัติ ${requests.length} รายการ</span></div><div class="mt-4 space-y-2">${requests.map(request => `<div class="flex flex-wrap items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3"><div class="min-w-0 flex-1"><b class="block text-sm text-gray-900">${esc(request.sport_code ? `${request.sport_code} · ` : '')}${esc(request.sport_name || '—')}</b><p class="mt-1 text-xs text-gray-500">ครู ${esc(request.teacher_name || '—')}${request.teacher_code ? ` (${esc(request.teacher_code)})` : ''}</p>${request.teacher_note ? `<p class="mt-1 text-xs text-gray-500">หมายเหตุ: ${esc(request.teacher_note)}</p>` : ''}</div><div class="flex gap-2"><button type="button" data-review-registration="${esc(request.id)}" data-registration-sport-name="${esc(request.sport_name || 'รายการแข่งขัน')}" data-registration-teacher-name="${esc(request.teacher_name || 'คุณครู')}" data-decision="approved" class="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">อนุมัติ</button><button type="button" data-review-registration="${esc(request.id)}" data-registration-sport-name="${esc(request.sport_name || 'รายการแข่งขัน')}" data-registration-teacher-name="${esc(request.teacher_name || 'คุณครู')}" data-decision="rejected" class="rounded-lg border border-rose-200 bg-white px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50">ปฏิเสธ</button></div></div>`).join('') || '<p class="py-6 text-center text-sm text-gray-400">ยังไม่มีคำขอรออนุมัติ</p>'}</div></section>`
   }
   const bindRegistrationControls = () => {
     el.querySelectorAll('[data-registration-gender]').forEach(button => button.addEventListener('click', () => {
@@ -1940,13 +1940,34 @@ export async function renderSportsCompetitionManager() {
       const label = decision === 'approved' ? 'อนุมัติ' : 'ปฏิเสธ'
       if (!window.confirm(`ยืนยัน${label}คำขอนี้หรือไม่?`)) return
       button.disabled = true
-      const { error } = await supabase.rpc('review_sports_competition_responsibility_request', {
+      const { data: reviewResult, error } = await supabase.rpc('review_sports_competition_responsibility_request', {
         p_request_id: button.dataset.reviewRegistration,
         p_decision: decision,
         p_reviewer_note: null,
       })
       if (error) { toast(error.message || `${label}คำขอไม่สำเร็จ`, 'error'); button.disabled = false; return }
-      toast(`${label}คำขอแล้ว`)
+      // ส่ง Push แบบเจาะจงไปยังบัญชีครูเจ้าของคำขอเท่านั้น — การอนุมัติหลักไม่ล้มเหลว
+      // หากครูยังไม่ได้กดอนุญาตการแจ้งเตือนหรืออุปกรณ์ของครูออฟไลน์อยู่
+      let pushWarning = ''
+      const teacherProfileId = reviewResult?.teacher_profile_id
+      if (teacherProfileId) {
+        const sportName = button.dataset.registrationSportName || 'รายการแข่งขัน'
+        const teacherName = button.dataset.registrationTeacherName || 'คุณครู'
+        const decisionText = decision === 'approved'
+          ? `แอดมินอนุมัติให้คุณรับผิดชอบ “${sportName}” แล้ว เปิดหน้ารายการแข่งขันของฉันเพื่อดูรายละเอียดและทดสอบบันทึกผลได้เลย`
+          : `แอดมินไม่อนุมัติคำขอรับผิดชอบ “${sportName}” กรุณาตรวจสอบรายละเอียดหรือติดต่อแอดมิน`
+        const { data: pushResult, error: pushError } = await supabase.functions.invoke('send-push', {
+          body: {
+            title: decision === 'approved' ? '✅ อนุมัติผู้รับผิดชอบรายการแข่งขัน' : '📩 ผลการพิจารณาคำขอรายการแข่งขัน',
+            body: `${teacherName} · ${decisionText}`,
+            url: 'teacher.html',
+            tag: `sports-responsibility-${button.dataset.reviewRegistration}-${decision}`,
+            profileIds: [teacherProfileId],
+          },
+        })
+        if (pushError || !pushResult?.sent) pushWarning = ' แต่ยังส่ง Push ไม่ถึงครู (ครูอาจยังไม่ได้เปิดรับการแจ้งเตือน)'
+      }
+      toast(`${label}คำขอแล้ว${pushWarning}`, pushWarning ? 'warning' : 'success')
       await reload()
     }))
   }
