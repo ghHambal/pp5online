@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.800'
+import { APP_VERSION } from './version.js?v=10.22.801'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.801': [
+    '📝 ปรับใบบันทึกผลการแข่งขันให้สอดคล้องกับบริบทของแต่ละรายการ เช่น เซต ยก/เกม เอนด์/รอบ และรายการคะแนนทั่วไป',
+  ],
   '10.22.800': [
     '🖨️ ปรับปุ่มของกรรมการภาคสนามให้พิมพ์ใบบันทึกผลการแข่งขันสำรองแทนการสแกนรายงานตัวในหน้าผลการแข่งขัน โดยยังคงปุ่มสแกนไว้สำหรับแอดมิน',
   ],
