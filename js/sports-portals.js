@@ -1826,6 +1826,7 @@ export async function renderSportsCompetitionManager() {
   let workspace = null
   let registrationWorkspace = null
   let event = null
+  let rosterPrintLoading = false
   let simulationResults = {}
   const onSimulationSaved = e => {
     const payload = e.detail || {}
@@ -1939,6 +1940,27 @@ export async function renderSportsCompetitionManager() {
       }
       toast('บันทึกวันสิ้นสุดการแก้ไขแล้ว')
       await reload()
+    })
+  }
+  const bindCompetitionRosterPrint = () => {
+    el.querySelector('#competition-roster-print')?.addEventListener('click', async buttonEvent => {
+      if (rosterPrintLoading) return
+      const button = buttonEvent.currentTarget
+      rosterPrintLoading = true
+      button.disabled = true
+      button.textContent = 'กำลังโหลดรายชื่อ...'
+      try {
+        const { data, error } = await supabase.rpc('get_sports_competition_manager_roster', { p_event: event.id })
+        if (error) throw error
+        openCompetitionRosterPrint(event, Array.isArray(data) ? data : [])
+      } catch (error) {
+        console.error(error)
+        toast(error?.message || 'โหลดรายชื่อนักกีฬาไม่สำเร็จ', 'error')
+      } finally {
+        rosterPrintLoading = false
+        button.disabled = false
+        button.textContent = '🖨️ พิมพ์ใบรายชื่อนักกีฬา'
+      }
     })
   }
   const bindRegistrationControls = () => {
@@ -2140,7 +2162,7 @@ export async function renderSportsCompetitionManager() {
         <div><p class="text-sm text-indigo-600 font-bold">🏟️ ${esc(workspace.event?.name || event?.name || 'กีฬาสี')}</p>
           <h1 class="text-2xl md:text-3xl font-extrabold text-gray-900 mt-1">รายการแข่งขันของฉัน</h1>
           <p class="text-sm text-gray-500 mt-1">ตรวจสอบและปรับโปรแกรม คู่แข่งขัน เวลา และสถานที่ จากฐานข้อมูลกีฬาสีหลัก</p></div>
-        <div class="flex flex-wrap gap-2 text-xs font-bold">${editHint}</div>
+        <div class="flex flex-wrap items-center justify-end gap-2 text-xs font-bold"><button type="button" id="competition-roster-print" class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-emerald-700 hover:bg-emerald-100">🖨️ พิมพ์ใบรายชื่อนักกีฬา</button>${editHint}</div>
       </div>
       ${competitionDeadlineMarkup}
       ${pendingRequestsMarkup}
@@ -2176,6 +2198,7 @@ export async function renderSportsCompetitionManager() {
     </section>`
 
     bindCompetitionDeadlineControl()
+    bindCompetitionRosterPrint()
     bindRegistrationControls()
     el.querySelectorAll('[data-color-picker]').forEach(picker => {
       const trigger = picker.querySelector('[data-color-trigger]')
@@ -5252,6 +5275,58 @@ function printColorRoster(color,members,{academicYear,schoolName,schoolName2}){
   </style></head><body>${body}</body></html>`
   openHtmlPrintOverlay(html, { autoprint: true })
 }
+
+function openCompetitionRosterPrint(event, rows) {
+  const orderedRows = [...(rows || [])].sort((a, b) => {
+    const sport = Number(a.sport_order || 999) - Number(b.sport_order || 999)
+    if (sport) return sport
+    const sportName = `${a.sport_code || ''} ${a.sport_name || ''}`.localeCompare(`${b.sport_code || ''} ${b.sport_name || ''}`, 'th')
+    if (sportName) return sportName
+    const color = Number(a.team_color_order || 999) - Number(b.team_color_order || 999)
+    if (color) return color
+    const colorName = String(a.team_color_name || '').localeCompare(String(b.team_color_name || ''), 'th')
+    if (colorName) return colorName
+    return `${a.student_code || ''} ${a.student_name || ''}`.localeCompare(`${b.student_code || ''} ${b.student_name || ''}`, 'th')
+  })
+  const groups = []
+  const sportMap = new Map()
+  orderedRows.forEach(row => {
+    const sportKey = String(row.sport_id || `${row.sport_code || ''}:${row.sport_name || ''}`)
+    let sport = sportMap.get(sportKey)
+    if (!sport) {
+      sport = { ...row, colors: [], colorMap: new Map() }
+      sportMap.set(sportKey, sport)
+      groups.push(sport)
+    }
+    const colorKey = String(row.team_color_id || row.team_color_name || 'unknown')
+    let color = sport.colorMap.get(colorKey)
+    if (!color) {
+      color = { ...row, athletes: [] }
+      sport.colorMap.set(colorKey, color)
+      sport.colors.push(color)
+    }
+    color.athletes.push(row)
+  })
+  const generatedAt = new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })
+  const photoMarkup = row => {
+    const photo = row.image_url
+      ? `<img src="${esc(row.image_url)}" alt="" loading="eager" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'">`
+      : ''
+    return `<div class="athlete-photo">${photo}<span class="photo-fallback" style="${photo ? 'display:none' : ''}">👤</span></div>`
+  }
+  const sportMarkup = sport => `<section class="competition-section">
+    <div class="sport-heading"><div><h2>${esc(sport.sport_code ? `${sport.sport_code} · ` : '')}${esc(sport.sport_name || 'รายการแข่งขัน')}</h2><p>${esc(sport.sport_gender ? `เพศ${sport.sport_gender}` : '')}${sport.sport_category ? ` · ${esc(sport.sport_category)}` : ''}</p></div><strong>${sport.colors.reduce((sum, color) => sum + color.athletes.length, 0)} คน</strong></div>
+    ${sport.colors.map(color => `<div class="color-group">
+      <h3><span class="color-dot" style="background:${_validHexColor(color.team_color_hex)}"></span>สี${esc(color.team_color_name || 'ไม่ระบุสี')} <span class="color-count">${color.athletes.length} คน</span></h3>
+      <table><thead><tr><th class="no">ลำดับ</th><th class="photo-col">รูป</th><th>รหัส</th><th>ชื่อ–สกุล</th><th>ห้อง</th><th>เบอร์</th></tr></thead><tbody>${color.athletes.map((row, index) => `<tr><td class="no">${index + 1}</td><td class="photo-col">${photoMarkup(row)}</td><td>${esc(row.student_code || '—')}</td><td class="name">${esc(row.student_name || '—')}</td><td>${esc(row.main_room || '—')}</td><td>${esc(row.jersey_number || '—')}</td></tr>`).join('')}</tbody></table>
+    </div>`).join('')}
+  </section>`
+  const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายชื่อนักกีฬา</title><style>
+    @page{size:A4 portrait;margin:12mm 10mm}*{box-sizing:border-box}body{margin:0;color:#172033;font-family:"Sarabun","Noto Sans Thai",Arial,sans-serif;font-size:11pt;background:#fff}.page-header{border-bottom:2px solid #0f766e;padding-bottom:9px;margin-bottom:14px}.page-header h1{margin:0;color:#075985;font-size:21pt}.page-header p{margin:3px 0 0;color:#475569}.meta{display:flex;justify-content:space-between;gap:12px;margin-top:8px;font-size:9pt;color:#64748b}.competition-section{margin:0 0 18px;break-inside:auto}.sport-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;border-left:6px solid #2563eb;background:#eff6ff;padding:8px 10px;margin-bottom:7px;break-after:avoid}.sport-heading h2{margin:0;font-size:15pt;color:#0f3d70}.sport-heading p{margin:2px 0 0;color:#64748b;font-size:9pt}.sport-heading strong{white-space:nowrap;color:#075985}.color-group{margin:0 0 12px;break-inside:avoid}.color-group h3{display:flex;align-items:center;gap:6px;margin:7px 0 4px;padding:4px 7px;background:#f8fafc;border-bottom:1px solid #cbd5e1;font-size:12pt}.color-dot{display:inline-block;width:11px;height:11px;border-radius:50%;border:1px solid #94a3b8}.color-count{font-size:9pt;font-weight:normal;color:#64748b}table{width:100%;border-collapse:collapse;table-layout:fixed}thead{display:table-header-group}tr{break-inside:avoid}th,td{border:1px solid #cbd5e1;padding:4px 5px;text-align:left;vertical-align:middle}th{background:#e2e8f0;color:#334155;font-size:9pt}td{font-size:10pt}.no{width:9%;text-align:center}.photo-col{width:15%;text-align:center}.athlete-photo{width:43px;height:49px;margin:auto;border-radius:6px;overflow:hidden;background:#e2e8f0;display:grid;place-items:center;color:#64748b;font-size:17px}.athlete-photo img{width:100%;height:100%;object-fit:cover}.photo-fallback{place-items:center;width:100%;height:100%}.name{font-weight:700}@media print{.competition-section{break-inside:auto}.sport-heading{break-after:avoid}.color-group{break-inside:avoid}}
+  </style></head><body><header class="page-header"><h1>รายชื่อนักกีฬา</h1><p>${esc(event?.name || 'กิจกรรมกีฬาสี')}</p><div class="meta"><span>พิมพ์จากรายการแข่งขันของฉัน</span><span>จัดทำเมื่อ ${esc(generatedAt)}</span></div></header>${groups.length ? groups.map(sportMarkup).join('') : '<div class="empty">ยังไม่พบรายชื่อนักกีฬาในรายการที่ครูรับผิดชอบ</div>'}</body></html>`
+  openHtmlPrintOverlay(html, { autoprint: false })
+}
+
 function printTeamList(title,c,rows,{mode='table'}={}){
   const cards=rows.map((r,i)=>`<div class="print-card"><div class="print-photo">${r.photo?`<img src="${esc(r.photo)}">`:i+1}</div><div><b>${esc(r.name)}</b><p>${esc(r.code)} · ${esc(r.room)}</p><p>${esc(r.detail)} ${esc(r.extra||'')}</p></div></div>`).join('')
   const table=`<table class="print-table"><thead><tr><th>#</th><th>รหัส</th><th>ชื่อ - สกุล</th><th>ชั้น</th><th>รายละเอียด</th><th>หมายเหตุ</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td>${i+1}</td><td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.room)}</td><td>${esc(r.detail)}</td><td>${esc(r.extra||'')}</td></tr>`).join('')}</tbody></table>`
