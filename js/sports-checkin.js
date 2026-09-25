@@ -111,7 +111,7 @@ async function loadData() {
   const [{ data: colors, error: e1 }, { data: sports, error: e2 }, { data: matches, error: e3 }] = await Promise.all([
     supabase.from('team_colors').select('id,name,hex_color').eq('event_id', DEFAULT_EVENT).order('display_order'),
     supabase.from('sports').select('id,name').eq('event_id', DEFAULT_EVENT),
-    supabase.from('matches').select('id,sport_id,scheduled_date').eq('event_id', DEFAULT_EVENT),
+    supabase.from('matches').select('id,sport_id,scheduled_date,scheduled_time,venue,status').eq('event_id', DEFAULT_EVENT).order('scheduled_date').order('scheduled_time'),
   ])
   if (e1) throw e1; if (e2) throw e2; if (e3) throw e3
   const registrations = await _fetchAllRows('registrations', q => q.select('student_id,sport_id,team_color_id').eq('event_id', DEFAULT_EVENT))
@@ -180,6 +180,7 @@ function renderApp(data, { fromCache = false } = {}) {
         <div class="mt-1">เจ้าหน้าที่แต่ละจุดสามารถสแกนหรือกดรายงานตัวแทนได้ ระบบจะกันการรายงานซ้ำ และกดรีเฟรชเพื่อดูสถานะล่าสุดจากจุดอื่นได้</div>
         <div class="mt-1 font-semibold">กรณีวัน 4 ให้เลือกวันที่ 4 ได้ตั้งแต่ช่วงเย็นวัน 3 เพื่อรับรายงานตัวล่วงหน้า</div>
       </div>
+      <section id="ci-day-schedule" class="bg-white rounded-xl border border-slate-200 p-4"></section>
       <div id="ci-offline-status" class="hidden"></div>
 
       <div id="ci-scanner-wrap"></div>
@@ -464,6 +465,14 @@ function renderApp(data, { fromCache = false } = {}) {
   const renderList = () => {
     const roster = rosterForDate()
     const checked = checkedIdsToday()
+    const dayMatches = matches.filter(m => m.scheduled_date === checkInDate)
+    const scheduleRows = [...new Map(dayMatches.map(match => [match.sport_id, match])).values()]
+      .map(match => ({
+        sport: sportById.get(match.sport_id),
+        matches: dayMatches.filter(item => item.sport_id === match.sport_id),
+      }))
+      .filter(row => row.sport)
+      .sort((a, b) => (a.sport.name || '').localeCompare(b.sport.name || '', 'th'))
     root.querySelectorAll('[data-gender-filter]').forEach(btn => {
       const active = btn.dataset.genderFilter === genderFilter
       btn.className = active
@@ -492,6 +501,21 @@ function renderApp(data, { fromCache = false } = {}) {
     }).sort((a, b) => (a.student.full_name || '').localeCompare(b.student.full_name || '', 'th'))
 
     const listEl = root.querySelector('#ci-list')
+    const scheduleEl = root.querySelector('#ci-day-schedule')
+    if (scheduleEl) {
+      const dateLabel = checkInDate === todayLocal() ? 'วันนี้' : `วันที่ ${checkInDate}`
+      scheduleEl.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div><h2 class="font-bold text-slate-800">🗓️ รายการแข่งขัน${esc(dateLabel)}</h2><p class="text-[11px] text-slate-500 mt-0.5">ครูผู้รับรายงานตัวใช้ส่วนนี้ตรวจสอบว่าต้องรับรายงานตัวนักกีฬารายการใดบ้าง</p></div>
+          <span class="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-[11px] font-bold">${dayMatches.length} นัด · ${scheduleRows.length} ประเภท</span>
+        </div>
+        ${scheduleRows.length ? `<div class="grid sm:grid-cols-2 gap-2">${scheduleRows.map(row => {
+          const times = [...new Set(row.matches.map(m => m.scheduled_time ? String(m.scheduled_time).slice(0, 5) : '').filter(Boolean))]
+          const venues = [...new Set(row.matches.map(m => m.venue).filter(Boolean))]
+          return `<div class="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2"><div class="font-bold text-sm text-slate-800">${esc(row.sport.name)}</div><div class="text-[11px] text-slate-600 mt-1">${row.matches.length} นัด${times.length ? ` · เวลา ${esc(times.join(', '))}` : ''}${venues.length ? ` · ${esc(venues.join(', '))}` : ''}</div></div>`
+        }).join('')}</div>` : '<div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">ยังไม่มีการตั้งตารางแข่งขันในวันที่เลือก จึงยังไม่มีรายชื่อนักกีฬาสำหรับรับรายงานตัว</div>'}
+      `
+    }
     const selectedDateNote = checkInDate > todayLocal()
       ? `<div class="px-4 py-2 text-[11px] text-amber-800 bg-amber-50 border-b border-amber-100">กำลังเตรียมรายงานตัวล่วงหน้าสำหรับวันที่ ${esc(checkInDate)} — ระบบจะใช้รายชื่อนักกีฬาจากตารางแข่งขันของวันที่เลือก</div>`
       : ''
