@@ -174,6 +174,89 @@ const saveSportsPortalShirtRequest = async (enabled) => {
   }
 };
 
+// ให้โหมดบันทึกผลจากใบบันทึกผลเข้าถึงได้จากด้านบนของหน้าต่างกรอกผล
+// และจำสิทธิ์ไว้เฉพาะ browser session ปัจจุบันเท่านั้น ไม่เก็บรหัสผ่านแบบถาวร
+const CENTRAL_RESULT_PASSWORD_KEY = 'aziz_central_result_password';
+const CENTRAL_RESULT_UNLOCKED_KEY = 'aziz_central_result_unlocked';
+
+const getCentralResultButton = () => Array.from(document.querySelectorAll('button'))
+  .find((button) => button.textContent?.includes('บันทึกสรุปจากใบบันทึกผล (กองกลาง)'));
+
+const moveCentralResultButtonToTop = () => {
+  const button = getCentralResultButton();
+  if (!button) return;
+  const modal = button.closest('div.fixed.inset-0');
+  const card = modal?.querySelector('div.w-full.max-w-md');
+  if (!card || button.parentElement !== card) return;
+
+  const firstContent = card.firstElementChild;
+  if (button !== firstContent && button !== firstContent?.nextElementSibling) {
+    card.insertBefore(button, firstContent?.nextElementSibling || firstContent || null);
+  }
+  button.dataset.centralResultMoved = 'true';
+};
+
+const setControlledInputValue = (input, value) => {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+};
+
+const installCentralResultSession = () => {
+  let submittedPassword = '';
+
+  document.addEventListener('input', (event) => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.type !== 'password') return;
+    const form = input.closest('form');
+    if (form?.textContent?.includes('ยืนยันสิทธิ์กองกลาง')) submittedPassword = input.value;
+  }, true);
+
+  document.addEventListener('submit', () => {
+    if (!submittedPassword) return;
+    const rememberAfterVerification = (attempt = 0) => {
+      const unlocked = document.body.textContent?.includes('โหมดกองกลางเปิดใช้งานแล้ว');
+      if (!unlocked) {
+        if (attempt < 12) setTimeout(() => rememberAfterVerification(attempt + 1), 150);
+        return;
+      }
+      sessionStorage.setItem(CENTRAL_RESULT_PASSWORD_KEY, submittedPassword);
+      sessionStorage.setItem(CENTRAL_RESULT_UNLOCKED_KEY, 'true');
+      submittedPassword = '';
+    };
+    setTimeout(() => rememberAfterVerification(), 150);
+  }, true);
+
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest?.('button');
+    if (!button) return;
+    if (button.textContent?.includes('ออกจากระบบ')) {
+      sessionStorage.removeItem(CENTRAL_RESULT_PASSWORD_KEY);
+      sessionStorage.removeItem(CENTRAL_RESULT_UNLOCKED_KEY);
+      return;
+    }
+    if (!button.textContent?.includes('บันทึกสรุปจากใบบันทึกผล (กองกลาง)')) return;
+
+    const password = sessionStorage.getItem(CENTRAL_RESULT_PASSWORD_KEY);
+    if (!password) return;
+    setTimeout(() => {
+      const form = Array.from(document.querySelectorAll('form'))
+        .find((item) => item.textContent?.includes('ยืนยันสิทธิ์กองกลาง'));
+      const input = form?.querySelector('input[type="password"]');
+      const submit = Array.from(form?.querySelectorAll('button[type="submit"]') || [])
+        .find((item) => item.textContent?.includes('ยืนยันรหัสผ่าน'));
+      if (!input || !submit) return;
+      setControlledInputValue(input, password);
+      submit.click();
+    }, 0);
+  }, true);
+
+  const observer = new MutationObserver(moveCentralResultButtonToTop);
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  moveCentralResultButtonToTop();
+};
+
 const escapeHtml = (value) =>
   String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -1063,6 +1146,7 @@ const injectSportsCsvControls = () => {
 };
 
 installSportsSync();
+installCentralResultSession();
 loadPublicButtons().finally(() => {
   injectLiveDisplayLink();
   injectPanel();
