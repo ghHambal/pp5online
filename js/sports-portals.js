@@ -3333,6 +3333,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
     const publicButtons=pub?.value&&typeof pub.value==='object'?pub.value:{}
     const headerMap=Object.fromEntries((headerRows||[]).map(r=>[r.key,r.value]))
     const docHeader={academicYear:event?.academic_year||'2569',schoolName:headerMap.school_name||'โรงเรียนมูลนิธิอาซิซสถานร่วมกับวิทยาลัยเทคโนโลยีอาซิซสถานพณิชยการ',schoolName2:headerMap.school_name_2||''}
+    const reloadAttendance=()=>_fetchAllRows('sports_attendance',q=>q.select('*').eq('team_color_id',c.id).eq('event_id',event.id))
     // หมายเหตุ: ตาราง sports_registrations/sports_matches/sports_color_totals/sports_competitions
     // เป็นสคีมาเก่าที่ไม่มีข้อมูลจริง (AZIZGAMES เขียนลง registrations/matches/color_totals/sports แทน)
     // — สลับมาใช้ตารางจริงเพื่อให้ "นักกีฬาในสี" ตรงกับสิ่งที่ลงทะเบียนจริงใน AZIZGAMES
@@ -3346,7 +3347,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
       safe(supabase.from('color_totals').select('*').eq('event_id',event.id)),
       canShirt?_fetchAllRows('sports_shirt_requests', q=>q.select('status,requested_size,confirmed_size,students(id,full_name,student_code,main_room,house_color)').eq('event_id',event.id)).catch(e=>{console.warn(e);return []}):Promise.resolve([]),
       safe(supabase.from('sports').select('id,code,name,category,gender,venue').eq('event_id',event.id).eq('is_active',true).order('display_order').order('name')),
-      canAttendance?safe(supabase.from('sports_attendance').select('*').eq('team_color_id',c.id).eq('event_id',event.id)):Promise.resolve([]),
+      canAttendance?reloadAttendance().catch(e=>{console.warn(e);return []}):Promise.resolve([]),
       safe(supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).order('display_order')),
       safe(supabase.from('sports_score_entries').select('*').eq('event_id',event.id).eq('team_color_id',c.id)),
       safe(supabase.from('medal_awards').select('medal_type,points,sports(name)').eq('event_id',event.id).eq('team_color_id',c.id)),
@@ -3478,7 +3479,7 @@ async function renderColorWorkspace(wrap,m,c,opts={}) {
     // เหรียญแยกตามรายการแข่งขัน (medal_awards query ข้างบนกรอง team_color_id ไว้แล้ว) เรียงทอง→เงิน→ทองแดง
     const medalRankOrder={gold:0,silver:1,bronze:2}
     const medalBreakdown=[...(medalAwards||[])].sort((a,b)=>(medalRankOrder[a.medal_type]??3)-(medalRankOrder[b.medal_type]??3)).map(a=>({sport:a.sports?.name||'ไม่ระบุรายการ',medalType:a.medal_type,points:Number(a.points)||0}))
-    const data={m,c,event,cfg,shirtSizes,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,compAssignments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,canCompAssign,isLead,canManageStaff,theme,studentView}
+    const data={m,c,event,cfg,shirtSizes,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,reloadAttendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,compAssignments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,canCompAssign,isLead,canManageStaff,theme,studentView}
     const drawTab=()=>renderTeamWorkspaceTab(wrap,tabState.active,data)
     // จัดกลุ่มแท็บสำหรับแถบเมนูด้านล่างบนมือถือ (บนเดสก์ท็อปยังใช้แถบเดิมด้านบนเหมือนเดิม)
     // กดกลุ่มที่มีแท็บเดียว (เช่น ภาพรวม) ไปหน้านั้นทันที ส่วนกลุ่มที่มีหลายแท็บ ลอยแคปซูล
@@ -3611,7 +3612,7 @@ function renderTeamAthletesTab(body,data,card){
 }
 
 function renderTeamWorkspaceTab(wrap,tab,data){
-  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,shirtSizes,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,compAssignments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,canCompAssign,isLead,canManageStaff,studentView}=data
+  const body=wrap.querySelector('#team-tab-body'), {m,c,event,cfg,shirtSizes,publicButtons,docHeader,membersList,tasks,anns,identity,regs,matches,totals,shirtReqs,competitions,attendance,reloadAttendance,scoreBreakdown,maxParadeScore,maxPageScore,maxColorEvalScore,medalBreakdown,campCalendar,duesPayments,fundLedger,compAssignments,myTotal,scoreRank,medalRank,pendingTasks,doneMatches,canMembers,canReg,canTasks,canAnn,canShirt,canAttendance,canDues,canExpenses,canCompAssign,isLead,canManageStaff,studentView}=data
   const card='team-card rounded-2xl p-5 border', sub='team-sub rounded-xl p-3'
   if(tab==='overview') {
     const eligibleSports=(competitions||[]).filter(s=>!s.gender||s.gender==='Coed'||s.gender===c.gender)
@@ -3704,7 +3705,7 @@ function renderTeamWorkspaceTab(wrap,tab,data){
   else if(tab==='permissions') body.innerHTML=`${isLead?`<section class="${card} mb-4"><h2 class="font-bold mb-1">🎖️ เกณฑ์เช็คชื่อขั้นต่ำสำหรับเกียรติบัตร (เฉพาะสีนี้)</h2><p class="text-xs muted mb-3">ปล่อยว่างไว้ = ใช้ค่าเริ่มต้นของแอดมิน (ตอนนี้ ${Number(cfg?.cert_attendance_threshold_pct??80)}%) — กำหนดเป็นตัวเลขถ้าอยากให้สีนี้เข้มงวด/ผ่อนปรนกว่าสีอื่น</p><div class="flex gap-2 items-center"><input id="cert-threshold-override" type="number" min="0" max="100" step="1" placeholder="ค่าเริ่มต้น (${Number(cfg?.cert_attendance_threshold_pct??80)}%)" value="${c.cert_attendance_threshold_pct_override ?? ''}" class="w-40 rounded-xl team-field px-3 py-2 text-sm"><button id="cert-threshold-save" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold">บันทึก</button></div></section>`:''}<section id="sports-team-membership-admin" class="${card}"><div class="py-8 text-center muted">กำลังโหลดหน้ามอบหมายสิทธิ์ประจำสี...</div></section>`
   else if(tab==='shirts') body.innerHTML=shirtSection(c,shirtReqs,shirtSizes)
   else if(tab==='work') body.innerHTML=`<div class="grid xl:grid-cols-2 gap-5">${canTasks?`<section class="${card}"><h2 class="font-bold mb-3">📋 งานของสี</h2>${tasks.map(t=>`<div class="${sub} mb-2"><b>${esc(t.title)}</b><span class="float-right text-xs text-cyan-400">${esc(t.status)}</span><p class="text-xs muted">${esc(t.detail||'')}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีงาน</p>'}</section>`:''}${canAnn?`<section class="${card}"><h2 class="font-bold mb-3">📢 ประกาศ</h2>${anns.map(a=>`<div class="${sub} mb-2"><b>${esc(a.title)}</b><p class="text-sm muted">${esc(a.body)}</p></div>`).join('')||'<p class="text-sm muted">ยังไม่มีประกาศ</p>'}</section>`:''}</div>`
-  else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card,cfg})
+  else if(tab==='attendance') renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card,cfg,reloadAttendance})
   else if(tab==='dues') renderDuesSection(body,{event,c,membersList,duesPayments,duesAmount:cfg?.dues_amount||30,card})
   else if(tab==='ledger') renderTeamLedgerSection(body,{event,c,fundLedger,canExpenses,card})
   else if(tab==='gallery') renderGallerySection(body,{event,c,competitions,card,studentView:data.studentView})
@@ -3896,7 +3897,7 @@ window.addEventListener('online',()=>trySyncSportsQueue())
 // เผื่อไม่ได้พก QR) เห็นได้เฉพาะพ่อสี/แม่สี ครูประจำสี และนักเรียนสต๊าฟที่ได้รับมอบสิทธิ์
 // "attendance" (ดูสิทธิ์ได้ที่แท็บ "สิทธิ์ประจำสี") — สรุปคนขาดออกเป็นรายงาน CSV ให้ครูกิจการ
 // นักเรียนเอาไปหักคะแนนกิจกรรมพัฒนาผู้เรียนนอกระบบ (ระบบนี้ไม่ได้เชื่อมคะแนนให้อัตโนมัติ)
-function renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card,cfg}){
+function renderAttendanceSection(body,{event,c,membersList,attendance,campCalendar,card,cfg,reloadAttendance}){
   const todayStr=todayLocal()
   // จับคู่วันนี้กับ "ปฏิทินปฏิบัติงาน" ที่ครูตั้งวันเข้าสี/กีฬาสีไว้ล่วงหน้าแล้ว (work_calendar_events)
   // แทนที่จะให้เลือกประเภทเช็คชื่อเองมั่วๆ ทุกครั้ง — ยังกดสลับมือทับได้เผื่อปฏิทินผิด/ทดสอบระบบ
@@ -3937,6 +3938,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
       <div><h2 class="font-bold">📷 เช็คชื่อเข้าร่วมสี${esc(c.name)}</h2><p id="att-subtitle" class="text-xs muted">สแกน QR ประจำตัวนักเรียน หรือกรอกรหัสด้วยมือ — บันทึกของวันที่ ${todayStr}</p></div>
       <div class="flex flex-wrap items-center gap-2">
+        <button type="button" id="att-refresh" class="px-3 py-2 rounded-xl border line text-xs font-bold">↻ รีเฟรชข้อมูล</button>
         ${dateOptions.length>1?`<select id="att-session-date" class="rounded-xl team-field px-3 py-2 text-xs font-bold">${dateOptions.map(d=>`<option value="${esc(d.date)}">${d.date===todayStr?'วันนี้':esc(d.date)}${d.label?` — ${esc(d.label)}`:''}</option>`).join('')}</select>`:''}
         <div class="inline-flex p-1 rounded-xl team-sub gap-1">
           <button type="button" data-att-type="pre_event" class="px-3 py-2 rounded-lg text-xs font-bold transition-all">🏕️ เข้าค่ายสี</button>
@@ -4030,6 +4032,21 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
     body.querySelector('#att-list-grid').innerHTML=filtered.length
       ? filtered.map(s=>`<div class="team-sub rounded-xl p-2 flex items-center gap-2">${(s.image_url||s.photo_url)?`<img src="${esc(s.image_url||s.photo_url)}" class="w-7 h-9 rounded object-cover border border-slate-700/60 flex-shrink-0" onerror="this.style.display='none'">`:''}<div class="min-w-0 flex-1"><b class="text-xs truncate block">${esc(s.full_name)}</b><span class="text-[10px] muted">${esc(s.student_code)} · ${esc(s.main_room)}</span></div></div>`).join('')
       : `<p class="text-xs muted text-center py-6 col-span-full">${attListTab==='checked'?'ยังไม่มีใครเช็คชื่อในวันที่นี้':'🎉 เช็คชื่อครบทุกคนแล้ว'}</p>`
+  }
+  const attendanceKey=row=>`${row.student_id}|${row.session_date}`
+  const refreshAttendance=async()=>{
+    const button=body.querySelector('#att-refresh')
+    if(!reloadAttendance||button?.disabled)return
+    if(button){button.disabled=true;button.textContent='กำลังรีเฟรช…'}
+    try{
+      const fresh=await reloadAttendance()
+      const rowsByKey=new Map((fresh||[]).map(row=>[attendanceKey(row),row]))
+      attendanceLocal.filter(row=>row._pending).forEach(row=>{if(!rowsByKey.has(attendanceKey(row)))rowsByKey.set(attendanceKey(row),row)})
+      attendanceLocal=[...rowsByKey.values()]
+      renderProgress();renderRecent();renderAttList();renderQueueStatus()
+      feedback(true,'โหลดข้อมูลเช็คชื่อล่าสุดแล้ว',`พบข้อมูลของสี${c.name} ${fresh?.length||0} รายการ`)
+    }catch(e){feedback(false,'รีเฟรชข้อมูลไม่สำเร็จ',getFriendlyErrorMessage(e))}
+    finally{if(button){button.disabled=false;button.textContent='↻ รีเฟรชข้อมูล'}}
   }
   const leaveStudent=id=>membersList.find(s=>String(s.id)===String(id))
   const stopAreaLeaveScanner=async()=>{
@@ -4308,6 +4325,7 @@ function renderAttendanceSection(body,{event,c,membersList,attendance,campCalend
   renderQueueStatus()
   trySyncSportsQueue()
 
+  body.querySelector('#att-refresh').onclick=refreshAttendance
   body.querySelectorAll('[data-att-type]').forEach(b=>b.onclick=()=>{sessionType=b.dataset.attType;renderProgress()})
 
   body.querySelector('#att-session-date')?.addEventListener('change',e=>{

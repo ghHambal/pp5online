@@ -96,15 +96,18 @@ function renderGate(onSuccess) {
   input.addEventListener('keydown', e => { if (e.key === 'Enter') submit() })
 }
 
+let html5QrcodeLoader = null
 async function _loadHtml5Qrcode() {
   if (window.Html5Qrcode) return window.Html5Qrcode
-  return new Promise((resolve, reject) => {
+  if (html5QrcodeLoader) return html5QrcodeLoader
+  html5QrcodeLoader = new Promise((resolve, reject) => {
     const s = document.createElement('script')
     s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
-    s.onload = () => resolve(window.Html5Qrcode)
+    s.onload = () => window.Html5Qrcode ? resolve(window.Html5Qrcode) : reject(new Error('โหลดตัวอ่าน QR Code ไม่สำเร็จ'))
     s.onerror = () => reject(new Error('โหลดตัวอ่าน QR Code ไม่สำเร็จ'))
     document.head.appendChild(s)
   })
+  try { return await html5QrcodeLoader } catch (e) { html5QrcodeLoader = null; throw e }
 }
 
 function playBeep(success) {
@@ -146,13 +149,13 @@ function renderApp(data, { fromCache = false } = {}) {
   let search = '', competitionSearch = '', colorFilter = '', sportFilter = '', genderFilter = ''
   let showScanner = false
   let scannerSportId = null
-  let html5Qrcode = null, scanning = false
+  let html5Qrcode = null, scanning = false, cameraStarting = false, cameraSession = 0
   let refreshing = false
   let syncingOfflineQueue = false
   let realtimeChannel = null
   let offlineQueue = readOfflineQueue()
   let usingCachedData = fromCache
-  let feedback = { text: 'ยกกล้องส่อง QR ของนักกีฬาเพื่อรายงานตัว', tone: 'muted' }
+  let feedback = { text: 'ยกกล้องส่อง QR ของนักกีฬาเพื่อรายงานตัว', tone: 'muted', retryCamera: false }
 
   const studentById = new Map(students.map(s => [s.id, s]))
   const sportById = new Map(sports.map(s => [s.id, s]))
@@ -233,7 +236,12 @@ function renderApp(data, { fromCache = false } = {}) {
     if (!el) return
     const feedbackColor = { muted: '#64748b', success: '#059669', pending: '#0284c7', warn: '#d97706', error: '#dc2626' }[feedback.tone] || '#64748b'
     el.style.color = feedbackColor
-    el.textContent = feedback.text
+    el.innerHTML = `<div>${esc(feedback.text)}</div>${feedback.retryCamera ? '<button type="button" id="ci-camera-retry" class="mt-2 px-3 py-1.5 rounded-xl border border-red-300 bg-white text-red-700 text-xs font-bold">🔁 ขออนุญาต/ลองเปิดกล้องอีกครั้ง</button>' : ''}`
+    el.querySelector('#ci-camera-retry')?.addEventListener('click', () => {
+      feedback = { text: 'กำลังขออนุญาตใช้กล้อง… หากเบราว์เซอร์ถาม ให้กด “อนุญาต”', tone: 'pending', retryCamera: false }
+      updateFeedback()
+      void startCamera(cameraSession)
+    })
   }
 
   const updateOfflineStatus = () => {
@@ -286,6 +294,7 @@ function renderApp(data, { fromCache = false } = {}) {
   const openScanner = (sportId = null) => {
     const wrap = root.querySelector('#ci-scanner-wrap')
     scannerSportId = sportId
+    const session = ++cameraSession
     wrap.innerHTML = `
       <div id="ci-scanner-modal" class="fixed inset-0 z-[300] flex items-end sm:items-center justify-center bg-slate-950/75 backdrop-blur-sm p-2 sm:p-6">
         <style>
@@ -311,13 +320,13 @@ function renderApp(data, { fromCache = false } = {}) {
             <div class="relative overflow-hidden rounded-2xl bg-slate-950 aspect-[4/3] sm:aspect-[16/9] border-4 border-slate-100 shadow-inner">
               <div id="ci-camera-reader" class="w-full h-full"></div>
             </div>
-            <div id="ci-feedback" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-bold text-slate-600">กำลังเตรียมกล้อง…</div>
+            <div id="ci-feedback" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-center text-sm font-bold text-slate-600">กำลังขออนุญาตใช้กล้อง…</div>
             <div id="ci-scan-result" class="hidden"></div>
             <form id="ci-manual-form" class="flex gap-2">
               <input id="ci-manual-code" placeholder="หรือพิมพ์รหัสนักเรียน" class="min-w-0 flex-1 border border-slate-300 rounded-xl px-3 py-2.5 text-sm">
               <button type="submit" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold whitespace-nowrap">รายงานตัว</button>
             </form>
-            <div class="text-center text-[11px] text-slate-400">เมื่อสำเร็จแล้ว กล้องจะพร้อมสแกนคนถัดไปทันที</div>
+            <div class="text-center text-[11px] text-slate-400">ครั้งแรกให้กด “อนุญาต” เมื่อเบราว์เซอร์ถาม และเลือกใช้กล้องหลังของมือถือ</div>
           </div>
         </div>
       </div>`
@@ -332,11 +341,13 @@ function renderApp(data, { fromCache = false } = {}) {
     }
     wrap.querySelector('#ci-modal-close').onclick = () => { void closeScanner() }
     wrap.querySelector('#ci-scanner-modal').addEventListener('click', e => { if (e.target.id === 'ci-scanner-modal') void closeScanner() })
+    feedback = { text: 'กำลังขออนุญาตใช้กล้อง… หากเบราว์เซอร์ถาม ให้กด “อนุญาต”', tone: 'pending', retryCamera: false }
     updateFeedback()
-    void startCamera()
+    void startCamera(session)
   }
 
   const closeScanner = async () => {
+    cameraSession += 1
     await stopCamera()
     root.querySelector('#ci-scanner-wrap').innerHTML = ''
     showScanner = false
@@ -346,27 +357,71 @@ function renderApp(data, { fromCache = false } = {}) {
   }
 
   const stopCamera = async () => {
-    if (html5Qrcode) { try { await html5Qrcode.stop() } catch (e) {} }
+    const scanner = html5Qrcode
     html5Qrcode = null
     scanning = false
+    if (scanner) { try { await scanner.stop() } catch (e) {} }
   }
 
-  const startCamera = async () => {
+  const cameraErrorMessage = error => {
+    const name = String(error?.name || '')
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') return 'ยังไม่ได้รับอนุญาตใช้กล้อง — กดไอคอนแม่กุญแจ/การตั้งค่าเว็บไซต์ข้างที่อยู่เว็บ แล้วตั้งค่า “กล้อง” เป็น “อนุญาต” จากนั้นกดปุ่มลองเปิดกล้องอีกครั้ง'
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') return 'ไม่พบกล้องในอุปกรณ์นี้ — ตรวจสอบว่ามือถือมีกล้องและไม่ได้ถูกปิดใช้งาน'
+    if (name === 'NotReadableError' || name === 'TrackStartError') return 'กล้องถูกใช้งานโดยแอปหรือแท็บอื่น — ปิดกล้องจากแอป/แท็บอื่น แล้วกดปุ่มลองเปิดกล้องอีกครั้ง'
+    if (name === 'SecurityError' || name === 'SecureContextError') return 'หน้านี้ต้องเปิดผ่าน HTTPS จึงจะใช้กล้องได้ — กรุณาเปิดลิงก์เว็บไซต์ตัวจริงที่ขึ้นต้นด้วย https://'
+    if (name === 'TypeError' || !navigator.mediaDevices?.getUserMedia) return 'เบราว์เซอร์นี้ไม่รองรับการเปิดกล้อง กรุณาใช้ Chrome หรือ Safari รุ่นล่าสุดบนมือถือ'
+    return `เปิดกล้องไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`
+  }
+
+  const requestCameraPermission = async () => {
+    const isLocalhost = ['localhost', '127.0.0.1'].includes(location.hostname)
+    if (!window.isSecureContext && !isLocalhost) {
+      const error = new Error('ต้องเปิดผ่าน HTTPS')
+      error.name = 'SecureContextError'
+      throw error
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      const error = new Error('ไม่รองรับ getUserMedia')
+      error.name = 'TypeError'
+      throw error
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false })
+    stream.getTracks().forEach(track => track.stop())
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+
+  const startCamera = async (session = cameraSession) => {
+    if (cameraStarting || scanning) return
+    cameraStarting = true
+    const isActive = () => showScanner && session === cameraSession && !!root.querySelector('#ci-camera-reader')
     try {
+      await requestCameraPermission()
+      if (!isActive()) return
       const Html5Qrcode = await _loadHtml5Qrcode()
-      html5Qrcode = new Html5Qrcode('ci-camera-reader')
+      if (!isActive()) return
+      const scanner = new Html5Qrcode('ci-camera-reader')
+      html5Qrcode = scanner
       let lastCode = null, lastTime = 0
-      await html5Qrcode.start({ facingMode: 'environment' }, { fps: 15, aspectRatio: 1 }, decodedText => {
+      await scanner.start({ facingMode: 'environment' }, { fps: 15, aspectRatio: 1 }, decodedText => {
         if (decodedText === lastCode && Date.now() - lastTime < 2000) return
         lastCode = decodedText; lastTime = Date.now()
         let code = decodedText
         if (code.startsWith('SQ:')) code = code.split(':')[1]
         tryCheckin(code)
       }, () => {})
+      if (!isActive()) { try { await scanner.stop() } catch (e) {} ; return }
       scanning = true
-    } catch (e) {
-      feedback = { text: 'เปิดกล้องไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), tone: 'error' }
+      feedback = { text: 'กล้องพร้อมแล้ว — หันกล้องหลังไปที่ QR ของนักกีฬา', tone: 'success', retryCamera: false }
       updateFeedback()
+    } catch (e) {
+      if (!isActive()) return
+      if (html5Qrcode) { try { await html5Qrcode.stop() } catch (stopError) {} }
+      html5Qrcode = null
+      scanning = false
+      feedback = { text: cameraErrorMessage(e), tone: 'error', retryCamera: true }
+      updateFeedback()
+    } finally {
+      cameraStarting = false
     }
   }
 

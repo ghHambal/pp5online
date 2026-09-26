@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.815'
+import { APP_VERSION } from './version.js?v=10.22.816'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.816': [
+    '📷 ปรับหน้ารับรายงานตัวให้ขอสิทธิ์กล้องมือถือโดยตรง เลือกกล้องหลัง ป้องกันการเปิดกล้องซ้อน และมีปุ่มลองขออนุญาตใหม่เมื่อเปิดกล้องไม่สำเร็จ',
+    '📊 แก้หน้าจัดการสีให้โหลดข้อมูลเช็คชื่อเกิน 1,000 แถวได้ครบ พร้อมปุ่มรีเฟรชข้อมูลล่าสุด',
+  ],
   '10.22.815': [
     '🏅 ปรับรายชื่อผู้ได้รับเหรียญของรายการประเภททีมและทีมคู่ให้แสดงสมาชิกในทะเบียนครบทั้งทีม รวมตัวจริงและตัวสำรอง โดยไม่กระทบสถิติผู้ทำคะแนน',
   ],
