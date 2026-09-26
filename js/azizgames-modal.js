@@ -1,13 +1,13 @@
-import { APP_VERSION } from './version.js?v=10.22.797'
 import { supabase } from './supabase.js'
 
 const AZIZGAMES_PATH = 'azizgames.html'
+const AZIZGAMES_VERSION = '10.22.809'
 
 // เดิม iframe src ไม่มี cache-busting เลย ทำให้ GitHub Pages (cache-control: max-age=600)
 // เสิร์ฟ azizgames.html เวอร์ชันเก่าค้างได้นานถึง 10 นาทีหลัง deploy แม้ asset จริงจะอัปเดตแล้ว
 const getAzizGamesUrl = (tab = '', stdid = '', simulation = false, matchId = '', sportId = '') => {
   const url = new URL(AZIZGAMES_PATH, window.location.href)
-  url.searchParams.set('v', APP_VERSION)
+  url.searchParams.set('v', AZIZGAMES_VERSION)
   if (tab) url.searchParams.set('tab', tab)
   if (stdid) url.searchParams.set('stdid', stdid)
   if (simulation) url.searchParams.set('simulation', '1')
