@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.805'
+import { APP_VERSION } from './version.js?v=10.22.813'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.813': [
+    '🎛️ ปรับหน้าตารางและผลการแข่งขันให้แอดมิน กรรมการกองกลาง และกรรมการภาคสนามใช้ตัวเลือกค้นหารายการแข่งขันและปุ่มปฏิบัติงานในรูปแบบเดียวกัน โดยยังจำกัดรายการตามสิทธิ์ที่ได้รับมอบหมาย',
+  ],
   '10.22.805': [
     '📷 ปรับหน้ารับรายงานตัวให้อำนวยความสะดวกแก่ทีมงานทุกจุด โดยใช้รหัสกลาง azreg26 ได้ทันที ไม่ต้องมี Username/PIN แยกทุกคน และยังรองรับบัญชีเดิมตามปกติ',
   ],
