@@ -8,11 +8,11 @@
     <script>
       (async () => {
         const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/';
-        const version = '10.22.807';
+        const version = '10.22.808';
         const stylesheet = document.createElement('link');
         stylesheet.rel = 'stylesheet';
         stylesheet.crossOrigin = 'anonymous';
-        stylesheet.href = `${base}azizgames/assets/index-DCzY_R2k.css?v=${version}`;
+        stylesheet.href = `${base}azizgames/assets/index-B_roTS1t.css?v=${version}`;
         document.head.appendChild(stylesheet);
 
         let active = false;
@@ -26,7 +26,7 @@
         window.addEventListener('storage', event => {
           if (event.key === 'pp5:workloadSchedule') window.location.reload();
         });
-        ['azizgames/assets/index-DlcqJ5sU.js', 'azizgames-public-controls.js'].forEach((src) => {
+        ['azizgames/assets/index-DMQe507M.js', 'azizgames-public-controls.js'].forEach((src) => {
           const script = document.createElement('script');
           script.type = 'module';
           script.crossOrigin = 'anonymous';
