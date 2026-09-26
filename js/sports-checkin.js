@@ -46,6 +46,16 @@ const isTransientNetworkError = error => {
   return navigator.onLine === false || /failed to fetch|network|offline|timeout|timed out|load failed|connection/i.test(message)
 }
 
+const writeDailyCheckin = async (action, payload) => {
+  const accessCode = sessionStorage.getItem(PW_KEY) || PW
+  const { data, error } = await supabase.rpc('sports_checkin_write', {
+    p_access_code: accessCode,
+    p_action: action,
+    p_payload: payload,
+  })
+  return { data, error }
+}
+
 async function _fetchAllRows(table, build, pageSize = 1000) {
   let all = [], from = 0
   while (true) {
@@ -381,12 +391,12 @@ function renderApp(data, { fromCache = false } = {}) {
     try {
       const remaining = []
       for (const item of offlineQueue) {
-        const { data, error } = await supabase.from('daily_checkins').upsert({
+        const { data, error } = await writeDailyCheckin('upsert', {
           event_id: item.eventId,
           student_id: item.studentId,
           check_in_date: item.checkInDate,
           checked_in_at: item.checkedInAt,
-        }, { onConflict: 'event_id,student_id,check_in_date' }).select().single()
+        })
         if (error) {
           remaining.push(item)
           if (isTransientNetworkError(error)) break
@@ -424,12 +434,12 @@ function renderApp(data, { fromCache = false } = {}) {
   }
 
   const doCheckin = async (studentId) => {
-    const { data, error } = await supabase.from('daily_checkins').upsert({
+    const { data, error } = await writeDailyCheckin('upsert', {
       event_id: DEFAULT_EVENT,
       student_id: studentId,
       check_in_date: checkInDate,
       checked_in_at: new Date().toISOString(),
-    }, { onConflict: 'event_id,student_id,check_in_date' }).select().single()
+    })
     if (error) {
       if (isTransientNetworkError(error)) {
         enqueueOfflineCheckin(studentId)
@@ -456,7 +466,7 @@ function renderApp(data, { fromCache = false } = {}) {
       renderList()
       return true
     }
-    const { error } = await supabase.from('daily_checkins').delete().eq('id', id)
+    const { error } = await writeDailyCheckin('delete', { id, event_id: DEFAULT_EVENT })
     if (error) { alert(error.message); return false }
     dailyCheckins = dailyCheckins.filter(c => c.id !== id)
     renderList()

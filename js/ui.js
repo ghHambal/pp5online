@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.803'
+import { APP_VERSION } from './version.js?v=10.22.804'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.804': [
+    '🚑 แก้สิทธิ์หน้ารับรายงานตัวนักกีฬา ให้การสแกน การกดรายงานตัวแทน การยกเลิก และการส่งรายการออฟไลน์บันทึกผ่านฐานข้อมูลได้ตามรหัสเจ้าหน้าที่ โดยไม่เปิดสิทธิ์เขียนตารางโดยตรง',
+  ],
   '10.22.803': [
     '🖨️ เปิดปุ่มพิมพ์เอกสารบันทึกผลการแข่งขันให้ผู้ชมทั่วไปใช้งานได้ โดยไม่ต้องลงชื่อเข้าใช้ ขณะที่การสแกนรายงานตัวยังคงจำกัดตามสิทธิ์',
   ],
