@@ -118,12 +118,11 @@ function playBeep(success) {
 }
 
 async function loadData() {
-  const [{ data: colors, error: e1 }, { data: sports, error: e2 }, { data: matches, error: e3 }] = await Promise.all([
-    supabase.from('team_colors').select('id,name,hex_color').eq('event_id', DEFAULT_EVENT).order('display_order'),
-    supabase.from('sports').select('id,name').eq('event_id', DEFAULT_EVENT),
-    supabase.from('matches').select('id,sport_id,scheduled_date,scheduled_time,venue,status').eq('event_id', DEFAULT_EVENT).order('scheduled_date').order('scheduled_time'),
+  const [colors, sports, matches] = await Promise.all([
+    _fetchAllRows('team_colors', q => q.select('id,name,hex_color').eq('event_id', DEFAULT_EVENT).order('display_order')),
+    _fetchAllRows('sports', q => q.select('id,name').eq('event_id', DEFAULT_EVENT)),
+    _fetchAllRows('matches', q => q.select('id,sport_id,scheduled_date,scheduled_time,venue,status').eq('event_id', DEFAULT_EVENT).order('scheduled_date').order('scheduled_time')),
   ])
-  if (e1) throw e1; if (e2) throw e2; if (e3) throw e3
   const registrations = await _fetchAllRows('registrations', q => q.select('student_id,sport_id,team_color_id').eq('event_id', DEFAULT_EVENT))
   const studentIds = [...new Set(registrations.map(r => r.student_id))]
   let students = []
@@ -134,7 +133,7 @@ async function loadData() {
     students = students.concat(data || [])
   }
   const dailyCheckins = await _fetchAllRows('daily_checkins', q => q.select('id,student_id,check_in_date,checked_in_at,checked_in_by').eq('event_id', DEFAULT_EVENT))
-  return { colors: colors || [], sports: sports || [], matches: matches || [], registrations, students, dailyCheckins }
+  return { colors, sports, matches, registrations, students, dailyCheckins }
 }
 
 function renderApp(data, { fromCache = false } = {}) {
@@ -144,7 +143,7 @@ function renderApp(data, { fromCache = false } = {}) {
   let autoFollowToday = true
   let activeTab = 'matches'
   let selectedSportId = null
-  let search = '', colorFilter = '', sportFilter = '', genderFilter = ''
+  let search = '', competitionSearch = '', colorFilter = '', sportFilter = '', genderFilter = ''
   let showScanner = false
   let scannerSportId = null
   let html5Qrcode = null, scanning = false
@@ -160,9 +159,9 @@ function renderApp(data, { fromCache = false } = {}) {
   const colorById = new Map(colors.map(c => [c.id, c]))
 
   const rosterForDate = () => {
-    const sportIdsToday = new Set(matches.filter(m => m.scheduled_date === checkInDate && m.sport_id).map(m => m.sport_id))
+    const sportIdsForCheckin = new Set(registrations.map(row => row.sport_id).filter(Boolean))
     const bySport = new Map()
-    registrations.filter(r => sportIdsToday.has(r.sport_id)).forEach(r => {
+    registrations.filter(r => sportIdsForCheckin.has(r.sport_id)).forEach(r => {
       const student = studentById.get(r.student_id)
       if (!student) return
       if (!bySport.has(student.id)) bySport.set(student.id, { student, sportNames: new Set(), teamColorId: r.team_color_id })
@@ -203,7 +202,10 @@ function renderApp(data, { fromCache = false } = {}) {
       </div>
 
       <section id="ci-matches-panel" class="space-y-3">
-        <div id="ci-day-schedule" class="bg-white rounded-xl border border-slate-200 p-4"></div>
+        <div class="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white p-3">
+          <input id="ci-match-search" placeholder="🔍 ค้นหารายการแข่งขัน ชื่อนักกีฬา รหัส สนาม เวลา หรือเพศ..." class="flex-1 min-w-[240px] border border-slate-300 rounded-xl px-3 py-2 text-sm">
+          <span id="ci-match-count" class="px-3 py-2 rounded-xl bg-indigo-50 text-indigo-700 text-xs font-bold whitespace-nowrap"></span>
+        </div>
         <div id="ci-match-list" class="space-y-2"></div>
       </section>
 
@@ -416,7 +418,7 @@ function renderApp(data, { fromCache = false } = {}) {
   const tryCheckin = async (code) => {
     const roster = scannerSportId ? competitionRoster(scannerSportId) : rosterForDate()
     const row = roster.find(r => r.student.student_code === code)
-    if (!row) { playBeep(false); feedback = { text: `ไม่พบรหัส ${code} ในนักกีฬาที่มีนัดแข่งวันที่เลือก`, tone: 'error' }; updateFeedback(); showScanResult(null); return }
+    if (!row) { playBeep(false); feedback = { text: `ไม่พบรหัส ${code} ในนักกีฬาของรายการที่เลือกหรือวันที่รายงานตัวนี้`, tone: 'error' }; updateFeedback(); showScanResult(null); return }
     if (checkedIdsToday().has(row.student.id)) { playBeep(false); feedback = { text: `${row.student.full_name} รายงานตัวไปแล้ว`, tone: 'warn' }; updateFeedback(); showScanResult(row.student, 'warn'); return }
     const saved = await doCheckin(row.student.id)
     if (!saved) return
@@ -502,18 +504,26 @@ function renderApp(data, { fromCache = false } = {}) {
     const modal = root.querySelector('#ci-competition-modal')
     const sport = sportById.get(selectedSportId)
     const competitionMatches = matches.filter(row => row.sport_id === selectedSportId && row.scheduled_date === checkInDate)
-    if (!modal || !sport || !competitionMatches.length) return
+    const allCompetitionMatches = matches.filter(row => row.sport_id === selectedSportId)
+    if (!modal || !sport) return
     const roster = competitionRoster(sport.id)
     const checked = checkedIdsToday()
     const came = roster.filter(row => checked.has(row.student.id)).length
     const dateLabel = checkInDate === todayLocal() ? 'วันนี้' : checkInDate
-    const times = [...new Set(competitionMatches.map(row => row.scheduled_time ? String(row.scheduled_time).slice(0, 5) : '').filter(Boolean))]
-    const venues = [...new Set(competitionMatches.map(row => row.venue).filter(Boolean))]
+    const scheduleMatches = competitionMatches.length ? competitionMatches : allCompetitionMatches
+    const scheduledDates = [...new Set(allCompetitionMatches.map(row => row.scheduled_date).filter(Boolean))]
+    const times = [...new Set(scheduleMatches.map(row => row.scheduled_time ? String(row.scheduled_time).slice(0, 5) : '').filter(Boolean))]
+    const venues = [...new Set(scheduleMatches.map(row => row.venue).filter(Boolean))]
+    const scheduleLabel = competitionMatches.length
+      ? `${dateLabel} · ${competitionMatches.length} นัด`
+      : scheduledDates.length
+        ? `${dateLabel} · ไม่มีนัดวันนี้ · มีตาราง ${scheduledDates.join(', ')}`
+        : `${dateLabel} · ยังไม่กำหนดวันแข่งขัน`
     modal.innerHTML = `
       <div class="fixed inset-0 z-[120] bg-slate-950/80 backdrop-blur-sm p-2 sm:p-5 flex items-center justify-center">
         <div class="w-full max-w-5xl h-full max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2.5rem)] overflow-hidden rounded-3xl bg-slate-50 shadow-2xl flex flex-col">
           <header class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 bg-indigo-700 text-white">
-            <div class="min-w-0"><div class="text-xs text-indigo-200">${esc(dateLabel)} · ${competitionMatches.length} นัด</div><h2 class="text-lg sm:text-2xl font-extrabold truncate">${esc(sport.name)}</h2><div class="text-xs text-indigo-100 mt-0.5">${times.length ? `เวลา ${esc(times.join(', '))}` : 'ไม่ระบุเวลา'}${venues.length ? ` · ${esc(venues.join(', '))}` : ''} · ${came}/${roster.length} คนรายงานตัวแล้ว</div></div>
+            <div class="min-w-0"><div class="text-xs text-indigo-200">${esc(scheduleLabel)}</div><h2 class="text-lg sm:text-2xl font-extrabold truncate">${esc(sport.name)}</h2><div class="text-xs text-indigo-100 mt-0.5">${times.length ? `เวลา ${esc(times.join(', '))}` : 'ไม่ระบุเวลา'}${venues.length ? ` · ${esc(venues.join(', '))}` : ''} · ${came}/${roster.length} คนรายงานตัวแล้ว</div></div>
             <div class="flex items-center gap-2 flex-shrink-0"><button id="ci-competition-scan" type="button" class="px-3 py-2 rounded-xl bg-white text-indigo-700 text-xs font-extrabold hover:bg-indigo-50">📷 รับรายงานตัว</button><button id="ci-competition-close" type="button" class="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 text-2xl" aria-label="ปิด">×</button></div>
           </header>
           <div class="px-4 py-3 sm:px-6 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-2"><div class="text-xs text-slate-500">เปิดหน้านี้บนจอใหญ่เพื่อติดตามสถานะแบบ Real-time และใช้มือถืออีกเครื่องสแกน QR ได้</div><div class="text-xs font-bold ${came === roster.length && roster.length ? 'text-emerald-600' : 'text-amber-600'}">${came === roster.length && roster.length ? '✅ ครบทุกคนแล้ว' : `⏳ เหลือ ${roster.length - came} คน`}</div></div>
@@ -576,12 +586,13 @@ function renderApp(data, { fromCache = false } = {}) {
     const roster = rosterForDate()
     const checked = checkedIdsToday()
     const dayMatches = matches.filter(m => m.scheduled_date === checkInDate)
-    const scheduleRows = [...new Map(dayMatches.map(match => [match.sport_id, match])).values()]
-      .map(match => ({
-        sport: sportById.get(match.sport_id),
-        matches: dayMatches.filter(item => item.sport_id === match.sport_id),
+    const registeredSportIds = new Set(registrations.map(row => row.sport_id).filter(Boolean))
+    const scheduleRows = sports.filter(sport => registeredSportIds.has(sport.id)).map(sport => ({
+        sport,
+        matches: dayMatches.filter(item => item.sport_id === sport.id),
+        allMatches: matches.filter(item => item.sport_id === sport.id),
       }))
-      .filter(row => row.sport)
+      .filter(row => row.sport && competitionRoster(row.sport.id).length)
       .sort((a, b) => (a.sport.name || '').localeCompare(b.sport.name || '', 'th'))
     root.querySelectorAll('[data-gender-filter]').forEach(btn => {
       const active = btn.dataset.genderFilter === genderFilter
@@ -611,36 +622,46 @@ function renderApp(data, { fromCache = false } = {}) {
     }).sort((a, b) => (a.student.full_name || '').localeCompare(b.student.full_name || '', 'th'))
 
     const listEl = root.querySelector('#ci-list')
-    const scheduleEl = root.querySelector('#ci-day-schedule')
-    if (scheduleEl) {
-      const dateLabel = checkInDate === todayLocal() ? 'วันนี้' : `วันที่ ${checkInDate}`
-      scheduleEl.innerHTML = `
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-          <div><h2 class="font-bold text-slate-800">🗓️ รายการแข่งขัน${esc(dateLabel)}</h2><p class="text-[11px] text-slate-500 mt-0.5">ครูผู้รับรายงานตัวใช้ส่วนนี้ตรวจสอบว่าต้องรับรายงานตัวนักกีฬารายการใดบ้าง</p></div>
-          <span class="px-2.5 py-1 rounded-full bg-blue-100 text-blue-700 text-[11px] font-bold">${dayMatches.length} นัด · ${scheduleRows.length} ประเภท</span>
-        </div>
-        ${scheduleRows.length ? `<div class="grid sm:grid-cols-2 gap-2">${scheduleRows.map(row => {
-          const times = [...new Set(row.matches.map(m => m.scheduled_time ? String(m.scheduled_time).slice(0, 5) : '').filter(Boolean))]
-          const venues = [...new Set(row.matches.map(m => m.venue).filter(Boolean))]
-          return `<div class="rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-2"><div class="font-bold text-sm text-slate-800">${esc(row.sport.name)}</div><div class="text-[11px] text-slate-600 mt-1">${row.matches.length} นัด${times.length ? ` · เวลา ${esc(times.join(', '))}` : ''}${venues.length ? ` · ${esc(venues.join(', '))}` : ''}</div></div>`
-        }).join('')}</div>` : '<div class="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">ยังไม่มีการตั้งตารางแข่งขันในวันที่เลือก จึงยังไม่มีรายชื่อนักกีฬาสำหรับรับรายงานตัว</div>'}
-      `
-    }
     const matchListEl = root.querySelector('#ci-match-list')
+    const matchCountEl = root.querySelector('#ci-match-count')
     if (matchListEl) {
-      matchListEl.innerHTML = scheduleRows.length ? scheduleRows.map(row => {
+      const q = competitionSearch.trim().toLowerCase()
+      const filteredScheduleRows = scheduleRows.filter(row => {
+        if (!q) return true
+        const athleteText = competitionRoster(row.sport.id).map(item => [
+          item.student.full_name,
+          item.student.student_code,
+          item.student.main_room,
+          colorById.get(item.teamColorId)?.name,
+        ].join(' ')).join(' ')
+        const matchText = row.allMatches.map(item => [
+          item.scheduled_date,
+          item.scheduled_time,
+          item.venue,
+          item.status,
+        ].join(' ')).join(' ')
+        return `${row.sport.name} ${athleteText} ${matchText}`.toLowerCase().includes(q)
+      })
+      if (matchCountEl) matchCountEl.textContent = `แสดง ${filteredScheduleRows.length} รายการ จาก ${scheduleRows.length} รายการ`
+      matchListEl.innerHTML = filteredScheduleRows.length ? filteredScheduleRows.map(row => {
         const times = [...new Set(row.matches.map(item => item.scheduled_time ? String(item.scheduled_time).slice(0, 5) : '').filter(Boolean))]
         const venues = [...new Set(row.matches.map(item => item.venue).filter(Boolean))]
         const participants = competitionRoster(row.sport.id).length
-        return `<button type="button" data-open-competition="${esc(row.sport.id)}" class="w-full text-left bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition p-4 flex flex-wrap items-center gap-3"><span class="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-700 grid place-items-center text-xl flex-shrink-0">🏃</span><span class="min-w-0 flex-1"><b class="block text-sm sm:text-base text-slate-800 truncate">${esc(row.sport.name)}</b><span class="block text-[11px] text-slate-500 mt-1">${row.matches.length} นัด${times.length ? ` · เวลา ${esc(times.join(', '))}` : ''}${venues.length ? ` · ${esc(venues.join(', '))}` : ''} · นักกีฬา ${participants} คน</span></span><span class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[11px] font-bold flex-shrink-0">เปิดรายการ →</span></button>`
-      }).join('') : '<div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-center text-xs text-amber-800">ยังไม่มีรายการแข่งขันในวันที่เลือก</div>'
+        const scheduledDates = [...new Set(row.allMatches.map(item => item.scheduled_date).filter(Boolean))]
+        const scheduleText = row.matches.length
+          ? `${row.matches.length} นัด${times.length ? ` · เวลา ${esc(times.join(', '))}` : ''}${venues.length ? ` · ${esc(venues.join(', '))}` : ''}`
+          : scheduledDates.length
+            ? `ไม่มีนัดวันที่เลือก · มีตาราง ${esc(scheduledDates.join(', '))}`
+            : 'ยังไม่กำหนดวันแข่งขัน · รับรายงานตัวได้ตามวันที่เลือก'
+        return `<button type="button" data-open-competition="${esc(row.sport.id)}" class="w-full text-left bg-white rounded-2xl border border-slate-200 hover:border-indigo-300 hover:shadow-md transition p-4 flex flex-wrap items-center gap-3"><span class="w-11 h-11 rounded-xl bg-indigo-100 text-indigo-700 grid place-items-center text-xl flex-shrink-0">🏃</span><span class="min-w-0 flex-1"><b class="block text-sm sm:text-base text-slate-800 truncate">${esc(row.sport.name)}</b><span class="block text-[11px] text-slate-500 mt-1">${scheduleText} · นักกีฬา ${participants} คน</span></span><span class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[11px] font-bold flex-shrink-0">เปิดรายการ →</span></button>`
+      }).join('') : `<div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-5 text-center text-xs text-amber-800">${scheduleRows.length ? 'ไม่พบรายการที่ตรงกับคำค้นหา' : 'ยังไม่มีรายการที่มีนักกีฬาลงทะเบียน'}</div>`
       matchListEl.querySelectorAll('[data-open-competition]').forEach(button => { button.onclick = () => openCompetitionModal(button.dataset.openCompetition) })
     }
     const selectedDateNote = checkInDate > todayLocal()
-      ? `<div class="px-4 py-2 text-[11px] text-amber-800 bg-amber-50 border-b border-amber-100">กำลังเตรียมรายงานตัวล่วงหน้าสำหรับวันที่ ${esc(checkInDate)} — ระบบจะใช้รายชื่อนักกีฬาจากตารางแข่งขันของวันที่เลือก</div>`
+      ? `<div class="px-4 py-2 text-[11px] text-amber-800 bg-amber-50 border-b border-amber-100">กำลังเตรียมรายงานตัวล่วงหน้าสำหรับวันที่ ${esc(checkInDate)} — ทุกรายการที่มีนักกีฬาลงทะเบียนสามารถเลือกรับรายงานตัวได้</div>`
       : ''
     if (!filtered.length) {
-      listEl.innerHTML = `${selectedDateNote}<div class="p-8 text-center text-xs text-slate-400">${roster.length === 0 ? 'ยังไม่มีนัดแข่งขันที่ตั้งตารางไว้ในวันที่เลือก' : 'ไม่พบนักกีฬาตามตัวกรองนี้'}</div>`
+      listEl.innerHTML = `${selectedDateNote}<div class="p-8 text-center text-xs text-slate-400">${roster.length === 0 ? 'ยังไม่มีนักกีฬาที่ลงทะเบียนในรายการแข่งขัน' : 'ไม่พบนักกีฬาตามตัวกรองนี้'}</div>`
       return
     }
     listEl.innerHTML = `${selectedDateNote}<div class="divide-y divide-slate-100 max-h-[55vh] overflow-y-auto">${filtered.map(row => {
@@ -676,6 +697,7 @@ function renderApp(data, { fromCache = false } = {}) {
   root.querySelector('#ci-date').onchange = e => { checkInDate = e.target.value || todayLocal(); autoFollowToday = checkInDate === todayLocal(); closeCompetitionModal(); renderList() }
   root.querySelector('#ci-refresh').onclick = () => { void refreshDailyCheckins(); void flushOfflineQueue() }
   root.querySelector('#ci-search').oninput = e => { search = e.target.value; renderList() }
+  root.querySelector('#ci-match-search').oninput = e => { competitionSearch = e.target.value; renderList() }
   root.querySelectorAll('[data-gender-filter]').forEach(btn => btn.onclick = () => {
     genderFilter = btn.dataset.genderFilter || ''
     renderList()
