@@ -693,7 +693,16 @@ const installSportsSync = () => {
   window.__azizSportsSyncInstalled = true;
   const originalSetItem = localStorage.setItem.bind(localStorage);
   localStorage.setItem = (key, value) => {
-    const result = originalSetItem(key, value);
+    let result;
+    try {
+      result = originalSetItem(key, value);
+    } catch (error) {
+      if (error?.name === 'QuotaExceededError' || error?.code === 22) {
+        console.warn(`ข้ามการเก็บแคช ${key}: พื้นที่จัดเก็บเบราว์เซอร์เต็ม`);
+        return undefined;
+      }
+      throw error;
+    }
     if (key === 'aziz_sports') syncSportsToSupabase(value);
     return result;
   };
@@ -1073,8 +1082,8 @@ const injectSportsCsvControls = () => {
   });
 };
 
+installSportsSync();
 loadPublicButtons().finally(() => {
-  installSportsSync();
   injectLiveDisplayLink();
   injectPanel();
   injectSportsCsvControls();
