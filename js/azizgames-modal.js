@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 
 const AZIZGAMES_PATH = 'azizgames.html'
-const AZIZGAMES_VERSION = '10.22.813'
+const AZIZGAMES_VERSION = '10.22.814'
 
 // เดิม iframe src ไม่มี cache-busting เลย ทำให้ GitHub Pages (cache-control: max-age=600)
 // เสิร์ฟ azizgames.html เวอร์ชันเก่าค้างได้นานถึง 10 นาทีหลัง deploy แม้ asset จริงจะอัปเดตแล้ว

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.813'
+import { APP_VERSION } from './version.js?v=10.22.814'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.814': [
+    '🛡️ แก้ปัญหาแคชรายการแข่งขันเก่าถูกซิงก์กลับไปทับฐานข้อมูล ทำให้ชื่อรายการหรือรายการแข่งขันหาย/สลับกัน โดยให้ฐานข้อมูลเป็นแหล่งข้อมูลหลักและซิงก์เฉพาะการนำเข้า CSV ที่ยืนยันแล้ว',
+  ],
   '10.22.813': [
     '🎛️ ปรับหน้าตารางและผลการแข่งขันให้แอดมิน กรรมการกองกลาง และกรรมการภาคสนามใช้ตัวเลือกค้นหารายการแข่งขันและปุ่มปฏิบัติงานในรูปแบบเดียวกัน โดยยังจำกัดรายการตามสิทธิ์ที่ได้รับมอบหมาย',
   ],

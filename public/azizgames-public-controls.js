@@ -603,8 +603,6 @@ const importSportCsvFile = async (file, statusEl) => {
   showSportImportPreview(preview, statusEl, commitSportImport);
 };
 
-let sportsSyncTimer = null;
-
 const buildSportsPayload = (sports) =>
   sports
     .filter((sport) => sport?.sp_id && sport?.sport_name)
@@ -668,34 +666,18 @@ const commitSportImport = async (preview, statusEl) => {
   }
 };
 
-const syncSportsToSupabase = (rawValue) => {
-  clearTimeout(sportsSyncTimer);
-  sportsSyncTimer = setTimeout(async () => {
-    let sports;
-    try {
-      sports = JSON.parse(rawValue || '[]');
-    } catch {
-      return;
-    }
-    if (!Array.isArray(sports) || sports.length === 0) return;
-
-    try {
-      const syncedCount = await saveSportsToSupabase(sports);
-      console.info(`Synced ${syncedCount} AZIZGAMES sports to Supabase`);
-    } catch (error) {
-      console.warn('Unable to sync AZIZGAMES sports to Supabase', error);
-    }
-  }, 600);
-};
-
 const installSportsSync = () => {
   if (window.__azizSportsSyncInstalled) return;
   window.__azizSportsSyncInstalled = true;
+
+  // `aziz_sports` is only a browser cache. The React app hydrates it from
+  // Supabase and writes the cache during startup, so syncing every setItem
+  // can push stale cached names back over the live sports catalogue. CSV
+  // imports already call saveSportsToSupabase explicitly after confirmation.
   const originalSetItem = localStorage.setItem.bind(localStorage);
   localStorage.setItem = (key, value) => {
-    let result;
     try {
-      result = originalSetItem(key, value);
+      return originalSetItem(key, value);
     } catch (error) {
       if (error?.name === 'QuotaExceededError' || error?.code === 22) {
         console.warn(`ข้ามการเก็บแคช ${key}: พื้นที่จัดเก็บเบราว์เซอร์เต็ม`);
@@ -703,8 +685,6 @@ const installSportsSync = () => {
       }
       throw error;
     }
-    if (key === 'aziz_sports') syncSportsToSupabase(value);
-    return result;
   };
 };
 
