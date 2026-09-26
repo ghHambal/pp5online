@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.802'
+import { APP_VERSION } from './version.js?v=10.22.803'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.803': [
+    '🖨️ เปิดปุ่มพิมพ์เอกสารบันทึกผลการแข่งขันให้ผู้ชมทั่วไปใช้งานได้ โดยไม่ต้องลงชื่อเข้าใช้ ขณะที่การสแกนรายงานตัวยังคงจำกัดตามสิทธิ์',
+  ],
   '10.22.802': [
     '🏐 ปรับเอกสารบันทึกผลกีฬาแบบเซตเป็นตารางแนวนอนสำหรับขีดบันทึกคะแนนรายเซต และเพิ่มโลโก้ทางการ 3 ดวงบนเอกสารบันทึกผลทุกแบบ',
   ],
