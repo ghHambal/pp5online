@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.825'
+import { APP_VERSION } from './version.js?v=10.22.826'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.826': [
+    '🐛 AZIZGAMES: แก้ข้อผิดพลาด callback หลังบันทึกการแก้คู่ ซึ่งทำให้แจ้งว่าแก้การประกบคู่ไม่สำเร็จทั้งที่บันทึกแล้ว',
+    '🏅 AZIZGAMES: เพิ่มคำยืนยันส่งผลเข้าศูนย์มอบเหรียญ และคงผลที่บันทึกไว้ให้ตรวจสอบต่อได้',
+  ],
   '10.22.825': [
     '🏆 AZIZGAMES: แก้การส่งผู้ชนะรอบแรกไปชิงชนะเลิศ และส่งผู้แพ้รอบแรกไปชิงอันดับที่ 3 ให้ถูกต้อง พร้อมซ่อมคู่ที่ค้างผิด',
   ],
