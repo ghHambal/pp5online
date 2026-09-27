@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.824'
+import { APP_VERSION } from './version.js?v=10.22.825'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.825': [
+    '🏆 AZIZGAMES: แก้การส่งผู้ชนะรอบแรกไปชิงชนะเลิศ และส่งผู้แพ้รอบแรกไปชิงอันดับที่ 3 ให้ถูกต้อง พร้อมซ่อมคู่ที่ค้างผิด',
+  ],
   '10.22.824': [
     '🏅 ศูนย์มอบเหรียญกีฬาสี: เปิดรายละเอียดรายการเป็นป๊อบอัพกลางหน้าจอ พร้อมปุ่มปิด ฉากหลัง และกด Esc เพื่อปิด',
   ],
