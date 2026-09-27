@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.823'
+import { APP_VERSION } from './version.js?v=10.22.824'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.824': [
+    '🏅 ศูนย์มอบเหรียญกีฬาสี: เปิดรายละเอียดรายการเป็นป๊อบอัพกลางหน้าจอ พร้อมปุ่มปิด ฉากหลัง และกด Esc เพื่อปิด',
+  ],
   '10.22.823': [
     '🏅 ศูนย์มอบเหรียญกีฬาสี: เพิ่มตัวสลับเพศทั้งหมด/ชาย/หญิง/ผสม และช่องค้นหาที่ค้นได้จากชื่อกีฬา นักกีฬา สี ห้อง ทีม เหรียญ สถานะ วันที่ และข้อมูลรายละเอียด',
   ],
