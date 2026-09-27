@@ -115,6 +115,7 @@ const canEditPairing = (match) => !['live', 'done', 'กำลังแข่ง
 
 const isCentralView = () => {
   try {
+    if (!/\/azizgames\.html$/.test(window.location.pathname)) return false
     return Boolean(
       sessionStorage.getItem('aziz_central_result_password')
       || sessionStorage.getItem('aziz_central_result_unlocked') === 'true'
