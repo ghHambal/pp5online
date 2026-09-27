@@ -196,6 +196,22 @@ const moveCentralResultButtonToTop = () => {
   button.dataset.centralResultMoved = 'true';
 };
 
+const moveCentralResultPanelToTop = () => {
+  const modeText = Array.from(document.querySelectorAll('div'))
+    .find((element) => element.textContent?.trim() === '🔓 โหมดกองกลางเปิดใช้งานแล้ว');
+  if (!modeText) return;
+  const modal = modeText.closest('div.fixed.inset-0');
+  const card = modal?.querySelector('div.w-full.max-w-md');
+  const panel = Array.from(card?.children || [])
+    .find((element) => element.textContent?.includes('โหมดกองกลางเปิดใช้งานแล้ว'));
+  if (!card || !panel) return;
+
+  const header = Array.from(card.children).find((element) => element.querySelector('button'));
+  const topTarget = header?.nextElementSibling || card.firstElementChild;
+  if (panel !== topTarget) card.insertBefore(panel, topTarget || null);
+  panel.dataset.centralResultPanelMoved = 'true';
+};
+
 const setControlledInputValue = (input, value) => {
   const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
   setter?.call(input, value);
@@ -252,9 +268,13 @@ const installCentralResultSession = () => {
     }, 0);
   }, true);
 
-  const observer = new MutationObserver(moveCentralResultButtonToTop);
+  const moveCentralResultControls = () => {
+    moveCentralResultButtonToTop();
+    moveCentralResultPanelToTop();
+  };
+  const observer = new MutationObserver(moveCentralResultControls);
   observer.observe(document.documentElement, { childList: true, subtree: true });
-  moveCentralResultButtonToTop();
+  moveCentralResultControls();
 };
 
 const escapeHtml = (value) =>

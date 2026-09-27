@@ -525,6 +525,8 @@ function _render() {
         <div class="flex flex-wrap gap-2">
           <button id="sports-refresh" class="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">รีเฟรช</button>
           <a href="patch_sports_module.sql" target="_blank" class="px-4 py-2 rounded-xl border border-amber-200 text-sm font-semibold text-amber-700 hover:bg-amber-50 transition">ดู SQL patch</a>
+          <a href="patch_sports_schedule_2569.sql" target="_blank" class="px-4 py-2 rounded-xl border border-sky-200 text-sm font-semibold text-sky-700 hover:bg-sky-50 transition">นำเข้าโปรแกรมปี 2569</a>
+          <a href="patch_sports_schedule_2569_cleanup.sql" target="_blank" class="px-4 py-2 rounded-xl border border-red-200 text-sm font-semibold text-red-700 hover:bg-red-50 transition">ล้างรายการซ้ำ</a>
         </div>
       </div>
 

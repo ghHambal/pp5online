@@ -2528,6 +2528,19 @@ export async function renderSportsEvaluationWorkspace() {
       supabase.from('color_totals').select('*').eq('event_id',event.id),
       supabase.from('sports_evaluation_sessions').select('*').eq('event_id',event.id).order('session_type').order('day_no'),
     ])
+    // สรุปเช็คชื่อเข้าสีใช้ RPC ชุดเดียวกับหน้า "ภาพรวมกีฬาสี" เพื่อให้ตัวหารสมาชิก
+    // และยอดเช็คชื่อสอดคล้องกัน และไม่ต้องดึง sports_attendance ทีละ 1,000 แถวจากฝั่ง client
+    let attendanceOverview={colors:[],attendance:[]}, attendanceCalendar=[]
+    let attendanceOverviewError=null
+    if(isAdmin){
+      const [{data:overview,error:overviewError},{data:calendar,error:calendarError}]=await Promise.all([
+        supabase.rpc('get_sports_admin_overview',{p_event:event.id}),
+        supabase.from('work_calendar_events').select('id,label,event_date,end_date').or('label.ilike.%เข้าสี%,label.ilike.%กีฬาสี%,label.ilike.%วันงาน%'),
+      ])
+      attendanceOverview=overview||{colors:[],attendance:[]}
+      attendanceCalendar=calendar||[]
+      attendanceOverviewError=overviewError||calendarError||null
+    }
     let allEvaluators=[], allTeachers=[], azizJudges=[]
     if(isAdmin){
       const [{data:ev},{data:tc},{data:aj}]=await Promise.all([
@@ -2910,9 +2923,60 @@ export async function renderSportsEvaluationWorkspace() {
       </div>
     </section>`
 
+    // แท็บสรุปเปอร์เซ็นต์เช็คชื่อเข้าสี — แสดงเฉพาะแอดมิน เพราะเป็นข้อมูลภาพรวมข้ามสี
+    // ใช้วันที่จากปฏิทินปฏิบัติงานเป็นหลัก เพื่อไม่ให้วันทดสอบ/วันย้อนหลังหลุดเข้ามาปนในรายงาน
+    const attendanceSummaryTabContent=()=>{
+      if(attendanceOverviewError) return `<section class="bg-white border rounded-2xl p-8 text-center"><div class="text-3xl mb-2">⚠️</div><h2 class="font-bold text-gray-800">โหลดสรุปเช็คชื่อเข้าสีไม่สำเร็จ</h2><p class="text-xs text-gray-500 mt-2">กรุณารีเฟรชหน้า หรือตรวจสอบสิทธิ์แอดมินและการตั้งค่าปฏิทินกีฬาสี</p></section>`
+      const snapshotColors=attendanceOverview.colors||[]
+      const dayInfos=[...new Map(_expandCalendarDays(attendanceCalendar).map(d=>[d.date,d.label])).entries()].map(([date,label])=>({date,label})).sort((a,b)=>a.date<b.date?-1:1)
+      if(!snapshotColors.length) return `<section class="bg-white border rounded-2xl p-8 text-center text-gray-400">ยังไม่มีข้อมูลสีในกิจกรรมนี้</section>`
+      if(!dayInfos.length) return `<section class="bg-white border rounded-2xl p-8 text-center"><div class="text-3xl mb-2">📅</div><h2 class="font-bold text-gray-800">ยังไม่มีวันเข้าสีในปฏิทินปฏิบัติงาน</h2><p class="text-xs text-gray-500 mt-2">กรุณาตั้งวันเข้าสีหรือวันกีฬาสีจริงในปฏิทินก่อนดูเปอร์เซ็นต์</p></section>`
+      const colorsForGender=snapshotColors.filter(c=>attendanceGender==='ALL'||c.gender===attendanceGender)
+      const attendanceMap=new Map((attendanceOverview.attendance||[]).map(a=>[`${a.team_color_id}|${a.session_date}`,Number(a.checked_count)||0]))
+      const pct=(checked,total)=>total?Math.round(checked*1000/total)/10:0
+      const pctClass=value=>value>=80?'text-emerald-600':value>=50?'text-amber-600':'text-red-600'
+      const rows=colorsForGender.map(c=>{
+        const total=Number(c.member_count)||0
+        const daily=dayInfos.map(d=>({checked:attendanceMap.get(`${c.id}|${d.date}`)||0,total,pct:pct(attendanceMap.get(`${c.id}|${d.date}`)||0,total)}))
+        const average=daily.length?Math.round(daily.reduce((sum,d)=>sum+d.pct,0)/daily.length*10)/10:0
+        return {c,total,daily,average}
+      })
+      const totalsByDay=dayInfos.map((d,idx)=>{
+        const checked=rows.reduce((sum,r)=>sum+r.daily[idx].checked,0)
+        const total=rows.reduce((sum,r)=>sum+r.total,0)
+        return {checked,total,pct:pct(checked,total)}
+      })
+      const allTotal=rows.reduce((sum,r)=>sum+r.total,0)
+      const overallAverage=totalsByDay.length?Math.round(totalsByDay.reduce((sum,d)=>sum+d.pct,0)/totalsByDay.length*10)/10:0
+      return `<section class="bg-white border rounded-2xl p-5 space-y-4">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div><h2 class="font-bold">📷 สรุปเปอร์เซ็นต์การเช็คชื่อเข้าสี</h2><p class="text-xs text-gray-500 mt-1">คำนวณจากผู้ที่เช็คชื่อแล้ว ÷ สมาชิกทั้งหมดของสีนั้น แยกตามวันที่ตั้งไว้ในปฏิทินปฏิบัติงาน</p></div>
+          <div class="inline-flex p-1 rounded-xl bg-gray-100 gap-1">
+            <button type="button" data-attendance-gender="ALL" class="px-3 py-1.5 rounded-lg text-xs font-bold ${attendanceGender==='ALL'?'bg-indigo-600 text-white':'text-gray-600'}">👥 ทุกสี</button>
+            <button type="button" data-attendance-gender="M" class="px-3 py-1.5 rounded-lg text-xs font-bold ${attendanceGender==='M'?'bg-emerald-600 text-white':'text-gray-600'}">👦 สีชาย</button>
+            <button type="button" data-attendance-gender="W" class="px-3 py-1.5 rounded-lg text-xs font-bold ${attendanceGender==='W'?'bg-rose-600 text-white':'text-gray-600'}">👧 สีหญิง</button>
+          </div>
+        </div>
+        <div class="grid sm:grid-cols-3 gap-3">
+          <div class="rounded-xl bg-indigo-50 border border-indigo-100 p-3"><p class="text-xs text-indigo-700">จำนวนสีที่แสดง</p><b class="text-2xl text-indigo-900">${rows.length}</b> <span class="text-xs text-indigo-700">สี</span></div>
+          <div class="rounded-xl bg-slate-50 border border-slate-200 p-3"><p class="text-xs text-slate-600">สมาชิกตามสี</p><b class="text-2xl text-slate-900">${allTotal.toLocaleString('th-TH')}</b> <span class="text-xs text-slate-600">คน</span></div>
+          <div class="rounded-xl bg-emerald-50 border border-emerald-100 p-3"><p class="text-xs text-emerald-700">เฉลี่ยรวมทุกวัน</p><b class="text-2xl ${pctClass(overallAverage)}">${overallAverage}%</b></div>
+        </div>
+        <div class="overflow-x-auto border rounded-xl">
+          <table class="w-full text-sm border-collapse min-w-[760px]">
+            <thead><tr class="border-b bg-gray-50"><th class="p-3 text-left sticky left-0 bg-gray-50 z-10">สี</th><th class="p-3 text-center whitespace-nowrap">สมาชิก</th>${dayInfos.map(d=>`<th class="p-3 text-center whitespace-nowrap"><div>${esc(d.date)}</div><div class="text-[10px] font-normal text-gray-400">${esc(d.label||'')}</div></th>`).join('')}<th class="p-3 text-center whitespace-nowrap">เฉลี่ยรายวัน</th></tr></thead>
+            <tbody>${rows.map(r=>`<tr class="border-b"><td class="p-3 font-bold sticky left-0 bg-white z-10" style="color:${esc(r.c.hex_color||'#475569')}">สี${esc(r.c.name)}</td><td class="p-3 text-center text-gray-600">${r.total}</td>${r.daily.map(d=>`<td class="p-3 text-center"><b class="${pctClass(d.pct)}">${d.pct}%</b><div class="text-[10px] text-gray-400 mt-0.5">${d.checked}/${d.total}</div></td>`).join('')}<td class="p-3 text-center font-black ${pctClass(r.average)}">${r.average}%</td></tr>`).join('')}</tbody>
+            <tfoot><tr class="bg-gray-50 font-bold"><td class="p-3 sticky left-0 bg-gray-50 z-10">รวมตามวันที่</td><td class="p-3 text-center">${allTotal}</td>${totalsByDay.map(d=>`<td class="p-3 text-center"><span class="${pctClass(d.pct)}">${d.pct}%</span><div class="text-[10px] text-gray-500 mt-0.5">${d.checked}/${d.total}</div></td>`).join('')}<td class="p-3 text-center ${pctClass(overallAverage)}">${overallAverage}%</td></tr></tfoot>
+          </table>
+        </div>
+        <p class="text-[11px] text-gray-400">หมายเหตุ: ตัวหารสมาชิกใช้หลักเดียวกับหน้า “ภาพรวมกีฬาสี” และนับการเช็คชื่อซ้ำของคนเดิมในวันเดียวเป็น 1 คน</p>
+      </section>`
+    }
+
     const tabDefs=[
       {key:'score',label:'📝 ให้คะแนน',show:true},
       {key:'summary',label:'🏅 สรุปคะแนนทุกสี',show:true},
+      {key:'attendance',label:'📷 เช็คชื่อเข้าสี (%)',show:isAdmin},
       {key:'status',label:'🧑‍⚖️ สถานะผู้ประเมิน',show:isAdmin},
       {key:'settings',label:'⚙️ ตั้งค่า',show:isAdmin},
     ].filter(t=>t.show)
@@ -2923,7 +2987,7 @@ export async function renderSportsEvaluationWorkspace() {
       el.innerHTML=`<div class="max-w-6xl mx-auto space-y-5">
         <div><h1 class="text-2xl font-bold">🧑‍⚖️ ประเมินกีฬาสี</h1><p class="text-sm text-gray-500">ให้คะแนน ดูสรุปผล และติดตามสถานะผู้ประเมิน ทุกอย่างในหน้าเดียว</p></div>
         <div class="inline-flex flex-wrap p-1 rounded-xl bg-gray-100 gap-1">${tabDefs.map(t=>`<button type="button" data-eval-main-tab="${t.key}" class="px-4 py-2 rounded-lg text-sm font-bold transition ${activeTab===t.key?'bg-indigo-600 text-white':'text-gray-600 hover:bg-gray-200'}">${t.label}</button>`).join('')}</div>
-        <div id="eval-tab-body">${activeTab==='score'?scoringSection():activeTab==='summary'?summaryTabContent():activeTab==='status'?statusTabContent():settingsTabContent()}</div>
+        <div id="eval-tab-body">${activeTab==='score'?scoringSection():activeTab==='summary'?summaryTabContent():activeTab==='attendance'?attendanceSummaryTabContent():activeTab==='status'?statusTabContent():settingsTabContent()}</div>
       </div>`
 
       el.querySelectorAll('[data-eval-main-tab]').forEach(b=>b.onclick=()=>{activeTab=b.dataset.evalMainTab;draw()})
@@ -2977,6 +3041,10 @@ export async function renderSportsEvaluationWorkspace() {
         el.querySelectorAll('[data-sum-gender]').forEach(b=>b.onclick=()=>{summaryGender=b.dataset.sumGender;summaryExpandedId=null;draw()})
         el.querySelectorAll('[data-toggle-expand]').forEach(b=>b.onclick=()=>{const id=b.dataset.toggleExpand;summaryExpandedId=summaryExpandedId===id?null:id;draw()})
         el.querySelectorAll('[data-summary-sports-day]').forEach(b=>b.onclick=()=>{summarySportsDay=b.dataset.summarySportsDay;draw()})
+      }
+
+      if(activeTab==='attendance'){
+        el.querySelectorAll('[data-attendance-gender]').forEach(b=>b.onclick=()=>{attendanceGender=b.dataset.attendanceGender;draw()})
       }
 
       if(activeTab!=='settings'||!isAdmin)return

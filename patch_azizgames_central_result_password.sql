@@ -91,28 +91,28 @@ begin
   v_finished := v_match.round;
   if v_template='page_playoff_7' then
     if v_finished=1 then
-      update public.matches set team_a_color_id=v_match.winner_team_color_id where sport_id=v_sport and round=3;
-      update public.matches set team_a_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where sport_id=v_sport and round=4;
+      update public.matches set team_a_color_id=v_match.winner_team_color_id where event_id=v_event and sport_id=v_sport and round=3;
+      update public.matches set team_a_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where event_id=v_event and sport_id=v_sport and round=4;
     elsif v_finished=2 then
-      update public.matches set team_b_color_id=v_match.winner_team_color_id where sport_id=v_sport and round=3;
-      update public.matches set team_b_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where sport_id=v_sport and round=4;
+      update public.matches set team_b_color_id=v_match.winner_team_color_id where event_id=v_event and sport_id=v_sport and round=3;
+      update public.matches set team_b_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where event_id=v_event and sport_id=v_sport and round=4;
     elsif v_finished=3 then
-      update public.matches set team_a_color_id=v_match.winner_team_color_id where sport_id=v_sport and round=7;
-      update public.matches set team_a_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where sport_id=v_sport and round=5;
+      update public.matches set team_a_color_id=v_match.winner_team_color_id where event_id=v_event and sport_id=v_sport and round=7;
+      update public.matches set team_a_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where event_id=v_event and sport_id=v_sport and round=5;
     elsif v_finished=4 then
-      update public.matches set team_b_color_id=v_match.winner_team_color_id where sport_id=v_sport and round=5;
-      update public.matches set team_a_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where sport_id=v_sport and round=6;
+      update public.matches set team_b_color_id=v_match.winner_team_color_id where event_id=v_event and sport_id=v_sport and round=5;
+      update public.matches set team_a_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where event_id=v_event and sport_id=v_sport and round=6;
     elsif v_finished=5 then
-      update public.matches set team_b_color_id=v_match.winner_team_color_id where sport_id=v_sport and round=7;
-      update public.matches set team_b_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where sport_id=v_sport and round=6;
+      update public.matches set team_b_color_id=v_match.winner_team_color_id where event_id=v_event and sport_id=v_sport and round=7;
+      update public.matches set team_b_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where event_id=v_event and sport_id=v_sport and round=6;
     end if;
   elsif v_template='single_elim_4' then
     if v_finished=1 then
-      update public.matches set team_a_color_id=v_match.winner_team_color_id where sport_id=v_sport and round=4;
-      update public.matches set team_a_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where sport_id=v_sport and round=3;
+      update public.matches set team_a_color_id=v_match.winner_team_color_id where event_id=v_event and sport_id=v_sport and round=4;
+      update public.matches set team_a_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where event_id=v_event and sport_id=v_sport and round=3;
     elsif v_finished=2 then
-      update public.matches set team_b_color_id=v_match.winner_team_color_id where sport_id=v_sport and round=4;
-      update public.matches set team_b_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where sport_id=v_sport and round=3;
+      update public.matches set team_b_color_id=v_match.winner_team_color_id where event_id=v_event and sport_id=v_sport and round=4;
+      update public.matches set team_b_color_id=case when v_match.winner_team_color_id=v_match.team_a_color_id then v_match.team_b_color_id else v_match.team_a_color_id end where event_id=v_event and sport_id=v_sport and round=3;
     end if;
   end if;
 

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.817'
+import { APP_VERSION } from './version.js?v=10.22.820'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,15 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.820': [
+    '🏆 AZIZGAMES: แก้การประกบคู่แบบชนะเข้าชิง แพ้เข้าชิงอันดับ 3 ให้ผู้ชนะไปคู่ชิงชนะเลิศและผู้แพ้ไปคู่ชิงอันดับ 3 อย่างถูกต้อง พร้อมป้องกันการเขียนทับคู่ที่แข่งจบแล้ว',
+  ],
+  '10.22.819': [
+    '📷 หน้า “ประเมินกีฬาสี” เพิ่มแท็บสรุปเปอร์เซ็นต์การเช็คชื่อเข้าสี แสดงจำนวนมาแล้ว/สมาชิกทั้งหมดและเปอร์เซ็นต์แยกตามสีและวันที่ พร้อมตัวกรองสีชาย-สีหญิง',
+  ],
+  '10.22.818': [
+    '📝 AZIZGAMES: ย้ายแผงกรอกสกอร์สรุปจากใบบันทึกผลขึ้นด้านบนของหน้าต่างกรอกผล เพื่อให้กองกลางเข้าถึงช่องกรอกได้ทันที',
+  ],
   '10.22.817': [
     '📝 AZIZGAMES: ย้ายปุ่มบันทึกสรุปจากใบบันทึกผลขึ้นด้านบนของหน้าต่างกรอกผล และจำสิทธิ์กองกลางไว้เฉพาะ session ปัจจุบันเพื่อไม่ต้องกรอกรหัสซ้ำเมื่อเปลี่ยนรายการแข่งขัน',
   ],
@@ -1129,6 +1138,12 @@ const CHANGELOGS = {
   ],
   '10.22.767': [
     '⚙️ เพิ่มตัวควบคุมช่วงเวลาการทำงานของ workload และ guardrail ป้องกันการลดขนาดระบบอัตโนมัติเร็วเกินไป',
+  ],
+  '10.22.766': [
+    '📊 นับผลพิเศษ เช่น ร เป็น “ไม่ผ่าน” ในสรุปคุณลักษณะอันพึงประสงค์ และไม่ตัดผลประเมินการอ่านออกจากสรุป',
+  ],
+  '10.22.765': [
+    '📢 รวมประกาศใหม่เป็นหน้าต่างเดียว เพิ่มปุ่มรับทราบทั้งหมด และให้ครูบันทึกการรับทราบลงฐานข้อมูลเพื่อไม่แสดงซ้ำเมื่อเปลี่ยนเบราว์เซอร์',
   ],
   '10.22.764': [
     '🔢 ปรับการปัดคะแนนรวมให้ใช้ค่าที่ปัดแล้วคำนวณเกรดจริง เช่น 69.5 ปัดเป็น 70 และได้เกรด 3.0',
@@ -4204,54 +4219,73 @@ export function videoEmbedHtml(url) {
   return `<a href="${_esc(url)}" target="_blank" rel="noopener" class="block text-center py-3 rounded-xl border border-indigo-200 text-indigo-600 text-sm font-bold hover:bg-indigo-50">🎬 เปิดดูวิดีโอ (แท็บใหม่ — แพลตฟอร์มนี้ไม่รองรับฝังดูในหน้า)</a>`
 }
 
-// ─── Show announcement pop-ups (centered, one at a time) for teachers/students ──
-export function showAnnouncementPopups(items, seenKey) {
+// ─── Show announcement digest (one modal) for teachers/students ───────────────
+export function showAnnouncementPopups(items, seenKey, { onAcknowledgeAll = null, useLocalSeen = true } = {}) {
   if (!items?.length) return
-  const seen = new Set(JSON.parse(localStorage.getItem(seenKey) ?? '[]'))
-  const queue = items.filter(a => !seen.has(a.id))
+  let storedSeen = []
+  try { storedSeen = JSON.parse(localStorage.getItem(seenKey) ?? '[]') } catch {}
+  const seen = new Set(storedSeen)
+  const queue = items.filter(a => !useLocalSeen || !seen.has(a.id))
   if (!queue.length) return
 
   const _esc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   const _fmtD = d => new Date(d).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })
-
-  const showNext = () => {
-    const a = queue.shift()
-    if (!a) return
-    const modal = document.createElement('div')
-    modal.className = 'fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4'
-    modal.innerHTML = `
-      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md max-h-[85vh] flex flex-col overflow-hidden" style="animation: ui-pop-in .25s ease-out">
-        <div class="px-6 pt-6 pb-4 flex-shrink-0">
-          <div class="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center mb-3 border border-amber-100 text-2xl shadow-sm">📢</div>
-          <h3 class="font-extrabold text-gray-800 text-base leading-snug">${_esc(a.title)}</h3>
-          <p class="text-[11px] text-gray-400 mt-1 font-medium">${_fmtD(a.created_at)}${a.teachers?.full_name ? ' · ' + _esc(a.teachers.full_name) : ''}</p>
-        </div>
-        ${a.video_url ? `<div class="px-6 flex-shrink-0 mb-3">${videoEmbedHtml(a.video_url)}</div>` : ''}
-        ${a.file_url ? `<div class="px-6 flex-shrink-0"><img src="${_esc(a.file_url)}" class="w-full rounded-2xl border border-gray-100 object-contain max-h-56 mb-3" /></div>` : ''}
-        <div class="px-6 pb-5 overflow-y-auto flex-1 text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">${_esc(a.body ?? '') || '<span class="text-gray-300">—</span>'}</div>
-        <div class="px-6 pb-6 pt-2 flex-shrink-0 flex items-center gap-3">
-          ${queue.length ? `<span class="text-[11px] text-gray-400 flex-shrink-0">อีก ${queue.length} รายการ</span>` : ''}
-          <button id="btn-ann-popup-close" class="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold shadow-md shadow-indigo-200/60 transition active:scale-95">
-            ${queue.length ? 'ถัดไป →' : 'รับทราบ'}
-          </button>
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden" style="animation: ui-pop-in .25s ease-out">
+      <div class="px-6 pt-6 pb-4 flex-shrink-0">
+        <div class="flex items-start gap-3">
+          <div class="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center border border-amber-100 text-2xl shadow-sm flex-shrink-0">📢</div>
+          <div>
+            <h3 class="font-extrabold text-gray-800 text-lg leading-snug">มีประกาศใหม่ ${queue.length} รายการ</h3>
+            <p class="text-xs text-gray-500 mt-1 leading-relaxed">ตรวจสอบรายการด้านล่าง แล้วกด “รับทราบทั้งหมด” เพื่อปิดประกาศครั้งเดียว</p>
+          </div>
         </div>
       </div>
-      <style>
-        @keyframes ui-pop-in { from { opacity: 0; transform: scale(0.9) translateY(10px) } to { opacity: 1; transform: scale(1) translateY(0) } }
-      </style>`
-    document.body.appendChild(modal)
+      <div class="px-6 pb-4 overflow-y-auto flex-1 space-y-2">
+        ${queue.map(a => {
+          const excerpt = String(a.body ?? '').replace(/\s+/g, ' ').trim()
+          return `<div class="rounded-2xl border border-gray-100 bg-gray-50 px-4 py-3">
+            <div class="flex items-start justify-between gap-3">
+              <div class="font-bold text-sm text-gray-800 leading-snug">${_esc(a.title)}</div>
+              ${a.requires_ack ? '<span class="text-[10px] rounded-full bg-rose-50 text-rose-600 px-2 py-1 font-bold whitespace-nowrap">ต้องรับทราบ</span>' : ''}
+            </div>
+            <div class="text-[11px] text-gray-400 mt-1">${_fmtD(a.created_at)}${a.teachers?.full_name ? ' · ' + _esc(a.teachers.full_name) : ''}</div>
+            ${excerpt ? `<div class="text-xs text-gray-500 mt-2 leading-relaxed">${_esc(excerpt.slice(0, 180))}${excerpt.length > 180 ? '…' : ''}</div>` : ''}
+          </div>`
+        }).join('')}
+      </div>
+      <div class="px-6 pb-6 pt-2 flex flex-col-reverse sm:flex-row items-stretch sm:items-center gap-2 flex-shrink-0">
+        <button id="btn-ann-popup-later" class="py-3 px-4 border border-gray-200 text-gray-500 hover:bg-gray-50 rounded-2xl text-xs font-bold transition">ไว้ภายหลัง</button>
+        <button id="btn-ann-popup-ack-all" class="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold shadow-md shadow-indigo-200/60 transition active:scale-95">รับทราบทั้งหมด</button>
+      </div>
+    </div>
+    <style>
+      @keyframes ui-pop-in { from { opacity: 0; transform: scale(0.9) translateY(10px) } to { opacity: 1; transform: scale(1) translateY(0) } }
+    </style>`
+  document.body.appendChild(modal)
 
-    const dismiss = () => {
-      seen.add(a.id)
-      localStorage.setItem(seenKey, JSON.stringify([...seen]))
+  const ackBtn = modal.querySelector('#btn-ann-popup-ack-all')
+  const dismissLater = () => modal.remove()
+  const acknowledgeAll = async () => {
+    ackBtn.disabled = true
+    ackBtn.textContent = 'กำลังบันทึก…'
+    try {
+      if (onAcknowledgeAll) await onAcknowledgeAll(queue.map(a => a.id))
+      if (useLocalSeen) {
+        queue.forEach(a => seen.add(a.id))
+        localStorage.setItem(seenKey, JSON.stringify([...seen]))
+      }
       modal.remove()
-      showNext()
+    } catch {
+      ackBtn.disabled = false
+      ackBtn.textContent = 'บันทึกไม่สำเร็จ — ลองอีกครั้ง'
     }
-    modal.querySelector('#btn-ann-popup-close').addEventListener('click', dismiss)
-    modal.addEventListener('click', e => { if (e.target === modal) dismiss() })
   }
-
-  showNext()
+  modal.querySelector('#btn-ann-popup-later').addEventListener('click', dismissLater)
+  ackBtn.addEventListener('click', acknowledgeAll)
+  modal.addEventListener('click', e => { if (e.target === modal) dismissLater() })
 }
 
 // ป๊อบอัพเต็มจอเร่งด่วนให้กรอกแบบสำรวจค่ายลูกเสือ TERANGGANU — โชว์เฉพาะผู้เข้าร่วมค่ายจริงที่ยังไม่กรอก

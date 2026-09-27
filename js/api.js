@@ -1565,11 +1565,11 @@ export async function getStudentScores(classId, loadedColumns = null) {
   }
   if (!cols?.length) return []
   const colIds = cols.map(c => c.id)
-  const { data, error } = await supabase
+  const data = await _fetchAllRows(() => supabase
     .from('student_scores')
-    .select('student_id, assignment_id, original_score, retake_score, final_score, score_history')
+    .select('id, student_id, assignment_id, original_score, retake_score, final_score, score_history')
     .in('assignment_id', colIds)
-  if (error) throw error
+    .order('id'))
   // normalize: map assignment_id → score_column_id, original_score → score
   return (data ?? []).map(r => ({
     student_id:     r.student_id,
@@ -2957,12 +2957,11 @@ export async function fillLifeSkillScoresForClass(classId, academicYear, semeste
   for (const [idx, col] of columns.entries()) {
     const classColId = await _ensureClassScoreColumn(classId, col.name, col.max_score ?? 10, _LIFE_SKILL_SHEET_COLUMNS[idx] ?? '')
     const rows = students
-      .filter(studentId => scoreMap[studentId]?.[col.id] !== undefined && scoreMap[studentId]?.[col.id] !== null)
       .map(studentId => ({
         assignment_id: classColId,
         student_id: studentId,
-        original_score: scoreMap[studentId][col.id],
-        final_score: scoreMap[studentId][col.id],
+        original_score: scoreMap[studentId]?.[col.id] ?? null,
+        final_score: scoreMap[studentId]?.[col.id] ?? null,
       }))
     scoreCount += await _upsertStudentScoreRows(rows)
   }
@@ -3010,12 +3009,11 @@ export async function fillLifeSkillScoresToClassScores(academicYear, semester) {
       const classColId = await _ensureClassScoreColumn(cls.id, col.name, col.max_score ?? 10, _LIFE_SKILL_SHEET_COLUMNS[idx] ?? '')
       ensuredColumns++
       const rows = students
-        .filter(studentId => scoreMap[studentId]?.[col.id] !== undefined && scoreMap[studentId]?.[col.id] !== null)
         .map(studentId => ({
           assignment_id: classColId,
           student_id: studentId,
-          original_score: scoreMap[studentId][col.id],
-          final_score: scoreMap[studentId][col.id],
+          original_score: scoreMap[studentId]?.[col.id] ?? null,
+          final_score: scoreMap[studentId]?.[col.id] ?? null,
         }))
       scoreCount += await _upsertStudentScoreRows(rows)
     }
@@ -3965,6 +3963,18 @@ export async function getMyAcks(teacherId) {
 export async function ackAnnouncement(announcementId, teacherId) {
   const { error } = await supabase.from('announcement_acks')
     .insert({ announcement_id: announcementId, teacher_id: teacherId })
+  if (error) throw error
+}
+
+export async function ackAnnouncementsBulk(announcementIds, teacherId) {
+  const ids = [...new Set((announcementIds ?? [])
+    .map(Number)
+    .filter(Number.isInteger))]
+  if (!ids.length || !teacherId) return
+  const { error } = await supabase.from('announcement_acks').upsert(
+    ids.map(announcement_id => ({ announcement_id, teacher_id: teacherId })),
+    { onConflict: 'announcement_id,teacher_id', ignoreDuplicates: true }
+  )
   if (error) throw error
 }
 

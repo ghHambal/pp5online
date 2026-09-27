@@ -5445,12 +5445,13 @@ export async function renderLifeSkillAdmin() {
         <div class="flex flex-wrap justify-end gap-2">
           <button id="btn-fill-ls-classes"
             class="px-4 py-2 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 transition">
-            เติมเข้ารายวิชาทักษะชีวิต
+            ซ่อมคะแนนรายวิชาจากส่วนกลาง
           </button>
           <div class="flex gap-2" id="lsk-tab-actions"></div>
         </div>
       </div>
       <!-- Tabs -->
+      <p class="text-xs text-emerald-700 mb-4">คะแนนที่บันทึกจะส่งเข้ารายวิชาทักษะชีวิตในภาคเรียนเดียวกันอัตโนมัติ ปุ่มซ่อมใช้กรณีต้องการเติมข้อมูลย้อนหลังเท่านั้น</p>
       <div class="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit">
         <button id="lsk-tab-scores" data-tab="scores"
           class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700">
@@ -5468,7 +5469,7 @@ export async function renderLifeSkillAdmin() {
     const allCols = [...samaiCols]
 
     document.getElementById('btn-fill-ls-classes')?.addEventListener('click', async () => {
-      if (!confirm('ยืนยันเติมคะแนนทักษะชีวิตไปยังรายวิชากลุ่มทักษะชีวิตทั้งหมด?')) return
+      if (!confirm('ยืนยันซ่อมคะแนนรายวิชาทักษะชีวิตในภาคเรียนนี้ให้ตรงกับส่วนกลาง? คะแนนที่ล้างในส่วนกลางจะถูกล้างในรายวิชาด้วย')) return
       const btn = document.getElementById('btn-fill-ls-classes')
       const orig = btn.textContent
       btn.disabled = true

@@ -12,12 +12,12 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          updateLastSeen, logLogin,
          getUnreadNotifications, markNotificationsRead,
          getClassByIdFull,
-         getTeacherPositionPermissions, getActiveAnnouncements,
+         getTeacherPositionPermissions, getActiveAnnouncements, getMyAcks, ackAnnouncementsBulk,
          getTeacherById, submitAppFeedback } from './api.js'
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.816'
+import { APP_VERSION } from './version.js?v=10.22.820'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -26,7 +26,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsCompetitionManager, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.777'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsCompetitionManager, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.820'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -568,6 +568,8 @@ window._openReadingScorePicker = (roomsJson) => {
 
 let _lastPendingCount = null
 let _lastRegradePendingCount = null
+let _teacherPollingTimer = null
+let _teacherPollingVisibilityHandler = null
 
 async function _updateRequestsBadge() {
   if (!_teacher) return
@@ -625,14 +627,24 @@ async function _updateRegradeBadge() {
 }
 
 function _startPolling() {
+  if (_teacherPollingTimer) return
   const INTERVAL = 30000 // 30 วินาที
-  setInterval(() => {
+  _teacherPollingTimer = setInterval(() => {
     if (document.visibilityState === 'visible') { _updateRequestsBadge(); _updateRegradeBadge() }
   }, INTERVAL)
   // resume ทันทีเมื่อ user กลับมาที่แท็บ
-  document.addEventListener('visibilitychange', () => {
+  _teacherPollingVisibilityHandler = () => {
     if (document.visibilityState === 'visible') { _updateRequestsBadge(); _updateRegradeBadge() }
-  })
+  }
+  document.addEventListener('visibilitychange', _teacherPollingVisibilityHandler)
+  window._cleanupTeacherPolling = _stopPolling
+}
+
+function _stopPolling() {
+  if (_teacherPollingTimer) clearInterval(_teacherPollingTimer)
+  _teacherPollingTimer = null
+  if (_teacherPollingVisibilityHandler) document.removeEventListener('visibilitychange', _teacherPollingVisibilityHandler)
+  _teacherPollingVisibilityHandler = null
 }
 
 // เดิมฟังก์ชันนี้ await ทีละก้อนเรียงต่อกัน 6-7 รอบ (คนละ round-trip เครือข่ายทั้งหมด แม้แต่ละ query
@@ -2294,9 +2306,21 @@ function _exitSupervisorMode() {
 
 // ── ประกาศ (ป๊อบอัพกลางจอ) ───────────────────────────────────────────────────
 async function _loadAnnouncementBanners() {
+  if (!_teacher?.id) return
   try {
-    const items = await getActiveAnnouncements('teacher', _teacher?.id ?? null)
-    showAnnouncementPopups(items, 'pp5_ann_dismissed')
+    const [items, ackRows] = await Promise.all([
+      getActiveAnnouncements('teacher', _teacher?.id ?? null),
+      _teacher?.id ? getMyAcks(_teacher.id) : Promise.resolve([]),
+    ])
+    const ackedIds = new Set((ackRows ?? []).map(row => Number(row.announcement_id)))
+    const popupItems = items.filter(a =>
+      !ackedIds.has(Number(a.id)) &&
+      (a.requires_ack || (Number(a.priority) >= 5 && a.ann_type !== 'system'))
+    )
+    showAnnouncementPopups(popupItems, 'pp5_ann_dismissed', {
+      useLocalSeen: false,
+      onAcknowledgeAll: ids => ackAnnouncementsBulk(ids, _teacher?.id),
+    })
   } catch { /* ไม่ block */ }
 }
 
@@ -2861,7 +2885,7 @@ function _showShirtSizeReminderPopup() {
   document.body.appendChild(wrap)
   wrap.querySelector('#ssrp-go').addEventListener('click', () => {
     wrap.remove()
-    import('./sports-portals.js?v=10.22.683').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+    import('./sports-portals.js?v=10.22.820').then(m => m.openTeacherShirtSizeModal?.(_teacher))
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
 }
