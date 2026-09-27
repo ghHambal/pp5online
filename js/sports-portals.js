@@ -2528,13 +2528,14 @@ export async function renderSportsEvaluationWorkspace() {
       supabase.from('color_totals').select('*').eq('event_id',event.id),
       supabase.from('sports_evaluation_sessions').select('*').eq('event_id',event.id).order('session_type').order('day_no'),
     ])
-    // สรุปเช็คชื่อเข้าสีใช้ RPC ชุดเดียวกับหน้า "ภาพรวมกีฬาสี" เพื่อให้ตัวหารสมาชิก
-    // และยอดเช็คชื่อสอดคล้องกัน และไม่ต้องดึง sports_attendance ทีละ 1,000 แถวจากฝั่ง client
+    // สรุปเช็คชื่อเข้าสีใช้ RPC ที่แยกสิทธิ์เฉพาะข้อมูลนี้ — แอดมินและครูผู้ประเมิน
+    // ที่ได้รับมอบหมายในอีเวนต์เดียวกันเห็นได้ โดยไม่เปิดยอดค่าบำรุง/บัญชีสีให้ครู
     let attendanceOverview={colors:[],attendance:[]}, attendanceCalendar=[]
     let attendanceOverviewError=null
-    if(isAdmin){
+    const canViewAttendanceSummary=isAdmin||(myAssignments||[]).length>0
+    if(canViewAttendanceSummary){
       const [{data:overview,error:overviewError},{data:calendar,error:calendarError}]=await Promise.all([
-        supabase.rpc('get_sports_admin_overview',{p_event:event.id}),
+        supabase.rpc('get_sports_attendance_overview',{p_event:event.id}),
         supabase.from('work_calendar_events').select('id,label,event_date,end_date').or('label.ilike.%เข้าสี%,label.ilike.%กีฬาสี%,label.ilike.%วันงาน%'),
       ])
       attendanceOverview=overview||{colors:[],attendance:[]}
@@ -2923,10 +2924,10 @@ export async function renderSportsEvaluationWorkspace() {
       </div>
     </section>`
 
-    // แท็บสรุปเปอร์เซ็นต์เช็คชื่อเข้าสี — แสดงเฉพาะแอดมิน เพราะเป็นข้อมูลภาพรวมข้ามสี
+    // แท็บสรุปเปอร์เซ็นต์เช็คชื่อเข้าสี — แอดมินและครูผู้ประเมินที่ได้รับมอบหมายดูได้
     // ใช้วันที่จากปฏิทินปฏิบัติงานเป็นหลัก เพื่อไม่ให้วันทดสอบ/วันย้อนหลังหลุดเข้ามาปนในรายงาน
     const attendanceSummaryTabContent=()=>{
-      if(attendanceOverviewError) return `<section class="bg-white border rounded-2xl p-8 text-center"><div class="text-3xl mb-2">⚠️</div><h2 class="font-bold text-gray-800">โหลดสรุปเช็คชื่อเข้าสีไม่สำเร็จ</h2><p class="text-xs text-gray-500 mt-2">กรุณารีเฟรชหน้า หรือตรวจสอบสิทธิ์แอดมินและการตั้งค่าปฏิทินกีฬาสี</p></section>`
+      if(attendanceOverviewError) return `<section class="bg-white border rounded-2xl p-8 text-center"><div class="text-3xl mb-2">⚠️</div><h2 class="font-bold text-gray-800">โหลดสรุปเช็คชื่อเข้าสีไม่สำเร็จ</h2><p class="text-xs text-gray-500 mt-2">กรุณารีเฟรชหน้า หรือตรวจสอบสิทธิ์ผู้ประเมินและการตั้งค่าปฏิทินกีฬาสี</p></section>`
       const snapshotColors=attendanceOverview.colors||[]
       const dayInfos=[...new Map(_expandCalendarDays(attendanceCalendar).map(d=>[d.date,d.label])).entries()].map(([date,label])=>({date,label})).sort((a,b)=>a.date<b.date?-1:1)
       if(!snapshotColors.length) return `<section class="bg-white border rounded-2xl p-8 text-center text-gray-400">ยังไม่มีข้อมูลสีในกิจกรรมนี้</section>`
@@ -2976,7 +2977,7 @@ export async function renderSportsEvaluationWorkspace() {
     const tabDefs=[
       {key:'score',label:'📝 ให้คะแนน',show:true},
       {key:'summary',label:'🏅 สรุปคะแนนทุกสี',show:true},
-      {key:'attendance',label:'📷 เช็คชื่อเข้าสี (%)',show:isAdmin},
+      {key:'attendance',label:'📷 เช็คชื่อเข้าสี (%)',show:canViewAttendanceSummary},
       {key:'status',label:'🧑‍⚖️ สถานะผู้ประเมิน',show:isAdmin},
       {key:'settings',label:'⚙️ ตั้งค่า',show:isAdmin},
     ].filter(t=>t.show)

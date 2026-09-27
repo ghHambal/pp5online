@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.834'
+import { APP_VERSION } from './version.js?v=10.22.835'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.835': [
+    '📷 หน้าประเมินกีฬาสี: ครูผู้ประเมินที่ได้รับมอบหมายสามารถดูสรุปเปอร์เซ็นต์การเช็คชื่อเข้าสีได้ ไม่จำกัดเฉพาะแอดมิน',
+  ],
   '10.22.834': [
     '🔐 AZIZGAMES: แสดงปุ่มบันทึกสรุปจากใบบันทึกผลเฉพาะบัญชีกองกลาง และบันทึกด้วยเซสชันที่ล็อกอินโดยไม่ถามรหัสซ้ำ',
   ],
