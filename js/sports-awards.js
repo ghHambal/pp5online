@@ -9,6 +9,7 @@ const root = document.getElementById('awards-root')
 let eventId, password = null, snapshot, activeId = null, busy = false
 let tab = new URL(location.href).searchParams.get('tab') === 'done' ? 'done' : 'pending'
 let search = ''
+let genderFilter = 'all'
 const pendingUploads = new Map()
 async function rpc(name, args = {}) {
   const { data, error } = await supabase.rpc(name, args)
@@ -50,9 +51,10 @@ function render() {
   const pending = rows.filter(r => !r.delivered_at)
   const done = rows.filter(r => r.delivered_at)
   const selected = rows.find(r => r.id === activeId)
-  root.innerHTML = `<div class="flex flex-wrap gap-3 items-center mb-5"><a href="?tab=pending" data-tab="pending" class="px-5 py-3 rounded-xl ${tab === 'pending' ? 'bg-amber-700 text-white' : 'bg-white border'}">🏅 ยังไม่ได้มอบ (${pending.length})</a><a href="?tab=done" data-tab="done" class="px-5 py-3 rounded-xl ${tab === 'done' ? 'bg-emerald-700 text-white' : 'bg-white border'}">✅ มอบแล้ว (${done.length})</a><button id="awards-refresh" class="bg-white border rounded-xl px-4 py-3">↻ รีเฟรช</button><a class="text-sm underline" href="azizgames.html?tab=gallery" target="_blank" rel="noopener">📸 แกลเลอรี่</a></div><label class="block text-sm mb-4">ค้นหารายการ กีฬา เพศ ระดับชั้น หรือสี<input id="awards-search" value="${esc(search)}" class="block w-full border rounded-xl p-3 mt-1" placeholder="เช่น วิ่ง 100 เมตร"></label><div id="awards-list" class="grid md:grid-cols-2 gap-4"></div><div id="awards-detail"></div>${snapshot.admin ? '<details id="awards-settings" class="mt-6"><summary class="font-bold cursor-pointer">⚙️ ตั้งค่าครูทีมมอบเหรียญ</summary><div id="awards-staff"></div></details>' : ''}`
+  root.innerHTML = `<div class="flex flex-wrap gap-3 items-center mb-5"><a href="?tab=pending" data-tab="pending" class="px-5 py-3 rounded-xl ${tab === 'pending' ? 'bg-amber-700 text-white' : 'bg-white border'}">🏅 ยังไม่ได้มอบ (${pending.length})</a><a href="?tab=done" data-tab="done" class="px-5 py-3 rounded-xl ${tab === 'done' ? 'bg-emerald-700 text-white' : 'bg-white border'}">✅ มอบแล้ว (${done.length})</a><button id="awards-refresh" class="bg-white border rounded-xl px-4 py-3">↻ รีเฟรช</button><a class="text-sm underline" href="azizgames.html?tab=gallery" target="_blank" rel="noopener">📸 แกลเลอรี่</a></div><div class="grid gap-3 mb-4 md:grid-cols-[1fr_auto] md:items-end"><label class="block text-sm">ค้นหาได้ทุกข้อมูล<input id="awards-search" value="${esc(search)}" class="block w-full border rounded-xl p-3 mt-1" placeholder="ค้นหาชื่อกีฬา นักกีฬา สี เพศ ระดับชั้น ห้อง ทีม สนาม เหรียญ หรือวันที่"></label><div><span class="block text-sm mb-1">สลับเพศ</span><div id="awards-gender-filter" class="inline-flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">${[['all','ทั้งหมด'],['M','ชาย'],['W','หญิง'],['Coed','ผสม']].map(([value,label]) => `<button type="button" data-gender="${value}" aria-pressed="${genderFilter === value}" class="px-3 py-2 rounded-lg text-sm font-bold ${genderFilter === value ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-600 hover:bg-white'}">${label}</button>`).join('')}</div></div></div><p id="awards-list-summary" class="text-xs text-slate-500 mb-3"></p><div id="awards-list" class="grid md:grid-cols-2 gap-4"></div><div id="awards-detail"></div>${snapshot.admin ? '<details id="awards-settings" class="mt-6"><summary class="font-bold cursor-pointer">⚙️ ตั้งค่าครูทีมมอบเหรียญ</summary><div id="awards-staff"></div></details>' : ''}`
   root.querySelectorAll('[data-tab]').forEach(a => a.onclick = e => { e.preventDefault(); setTab(a.dataset.tab); activeId = null; render() })
   root.querySelector('#awards-search').oninput = e => { search = e.target.value; renderList() }
+  root.querySelectorAll('[data-gender]').forEach(button => button.onclick = () => { genderFilter = button.dataset.gender; render() })
   root.querySelector('#awards-refresh').onclick = () => run(refresh)
   root.querySelector('#awards-settings')?.addEventListener('toggle', async e => {
     if (e.currentTarget.open && !e.currentTarget.dataset.loaded) {
@@ -64,7 +66,17 @@ function render() {
   if (selected) detail(selected)
 }
 function renderList() {
-  const rows = (snapshot.rows || []).filter(r => (tab === 'done' ? !!r.delivered_at : !r.delivered_at) && `${r.name} ${gender(r.gender)} ${r.level} ${(r.result || []).map(a => a.color).join(' ')}`.toLowerCase().includes(search.toLowerCase()))
+  const tokens = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  const rows = (snapshot.rows || []).filter(r => {
+    if (tab === 'done' ? !r.delivered_at : r.delivered_at) return false
+    if (genderFilter !== 'all' && r.gender !== genderFilter) return false
+    const medalsText = (r.result || []).flatMap(a => [a.medal, { gold: 'ทอง', silver: 'เงิน', bronze: 'ทองแดง' }[a.medal], a.color]).join(' ')
+    const statusText = r.delivered_at ? 'มอบแล้ว delivered done' : 'ยังไม่ได้มอบ รอมอบเหรียญ pending'
+    const haystack = `${gender(r.gender)} ${statusText} ${medalsText} ${JSON.stringify(r)}`.toLocaleLowerCase()
+    const compactHaystack = haystack.replace(/\s+/g, '')
+    return tokens.every(token => haystack.includes(token) || compactHaystack.includes(token.replace(/\s+/g, '')))
+  })
+  root.querySelector('#awards-list-summary').textContent = `แสดง ${rows.length} รายการ${genderFilter === 'all' ? '' : ` · เพศ${gender(genderFilter)}`}${search.trim() ? ` · ค้นหา “${search.trim()}”` : ''}`
   root.querySelector('#awards-list').innerHTML = rows.map(r => `<button data-open="${esc(r.id)}" class="text-left bg-white border rounded-2xl p-5 shadow-sm hover:border-amber-600"><h2 class="font-bold text-lg">${esc(r.name)}</h2><p class="text-sm text-slate-500">${esc(gender(r.gender))} · ${esc(r.level)}</p><div class="flex flex-wrap gap-3 mt-3">${(r.result || []).map(a => `<span class="flex items-center gap-1 text-sm">${colorLogo(a, true)}${{gold:'🥇',silver:'🥈',bronze:'🥉'}[a.medal] || '🏅'} สี${esc(a.color)}</span>`).join('')}</div><p class="mt-3">${r.delivered_at ? `✅ มอบแล้ว ${esc(date(r.delivered_at))}` : '🏅 รอมอบเหรียญ'}</p>${r.changed ? '<p class="text-red-700 mt-2 font-bold">ผลเปลี่ยนหลังการมอบ — รอผู้ดูแลตรวจสอบ</p>' : ''}${!r.ready ? '<p class="text-red-700">ผลเหรียญยังไม่ครบ</p>' : ''}${r.delivered_at ? `<p class="text-sm mt-2">${r.photos.length ? `📸 ${r.photos.length} รูป` : '📷 รอแนบรูป'}</p>` : ''}</button>`).join('') || '<p class="p-8 text-center text-slate-500">ไม่มีรายการในหน้านี้</p>'
   root.querySelectorAll('[data-open]').forEach(btn => btn.onclick = () => { activeId = btn.dataset.open; detail(snapshot.rows.find(r => r.id === activeId)); root.querySelector('#awards-detail').scrollIntoView({ behavior: 'smooth' }) })
 }
