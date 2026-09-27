@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.828'
+import { APP_VERSION } from './version.js?v=10.22.829'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.829': [
+    '🐛 AZIZGAMES: ป้องกันหน้าบันทึกผลค้างระหว่างตรวจรหัสกองกลาง พร้อมแจ้งสาเหตุให้ตรงกับปัญหา',
+    '🎨 AZIZGAMES: ป้องกันข้อมูลคะแนนประเมินสีบางแถวทำให้หน้าโหลดสะดุด',
+  ],
   '10.22.828': [
     '🐛 AZIZGAMES: แก้ปุ่มรีเซ็ตการประกบคู่ไม่แสดง เพราะการ์ดการแข่งขันใช้คลาส glass-panel',
   ],
