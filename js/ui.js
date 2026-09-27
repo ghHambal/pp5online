@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.830'
+import { APP_VERSION } from './version.js?v=10.22.831'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.831': [
+    '🛠️ AZIZGAMES: หลังรีเซ็ตหรือแก้ไขคู่ สามารถเลือกสีทีม A/B แล้วบันทึกคู่ใหม่ได้จากการ์ดการแข่งขัน',
+    '🚑 AZIZGAMES: แก้หน้าเว็บค้างจาก observer ของปุ่มรีเซ็ตการประกบคู่ที่เพิ่มปุ่มซ้ำวนไม่สิ้นสุด',
+  ],
   '10.22.830': [
     '🐛 AZIZGAMES: แก้การรีเซ็ตการประกบคู่ติดข้อจำกัด audit action ของฐานข้อมูล',
   ],

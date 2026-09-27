@@ -42,32 +42,60 @@ const callReset = async (password, matchId) => {
   return response.json()
 }
 
+const callUpdatePairing = async (password, matchId, teamA, teamB) => {
+  const response = await fetch(`${PAIRING_RESET_URL}/rest/v1/rpc/sports_central_update_pairing`, {
+    method: 'POST',
+    headers: {
+      ...pairingHeaders,
+      Authorization: `Bearer ${PAIRING_RESET_KEY}`,
+    },
+    body: JSON.stringify({
+      p_gate_password: password,
+      p_match_id: matchId,
+      p_team_a_color_id: teamA,
+      p_team_b_color_id: teamB,
+    }),
+  })
+  if (!response.ok) {
+    const raw = await response.text()
+    let message = raw
+    try { message = JSON.parse(raw)?.message || raw } catch {}
+    throw new Error(message || 'บันทึกคู่แข่งขันใหม่ไม่สำเร็จ')
+  }
+  return response.json()
+}
+
 const loadMatches = async () => {
   const query = `scheduled_date=eq.${today()}&select=id,event_id,sport_id,status,round_name,scheduled_time,venue,team_a_color_id,team_b_color_id,score_a,score_b,winner_team_color_id&order=scheduled_time.asc`
   const response = await fetch(`${PAIRING_RESET_URL}/rest/v1/matches?${query}`, { headers: pairingHeaders })
   if (!response.ok) throw new Error('โหลดรายการคู่แข่งขันไม่สำเร็จ')
   const matches = await response.json()
   const sportIds = [...new Set(matches.map((match) => match.sport_id).filter(Boolean))]
-  const colorIds = [...new Set(matches.flatMap((match) => [match.team_a_color_id, match.team_b_color_id]).filter(Boolean))]
+  const eventIds = [...new Set(matches.map((match) => match.event_id).filter(Boolean))]
   const inFilter = (values) => encodeURIComponent(`(${values.join(',')})`)
   const [sportsResponse, colorsResponse] = await Promise.all([
     sportIds.length
-      ? fetch(`${PAIRING_RESET_URL}/rest/v1/sports?id=in.${inFilter(sportIds)}&select=id,name`, { headers: pairingHeaders })
+      ? fetch(`${PAIRING_RESET_URL}/rest/v1/sports?id=in.${inFilter(sportIds)}&select=id,name,gender`, { headers: pairingHeaders })
       : Promise.resolve({ ok: true, json: async () => [] }),
-    colorIds.length
-      ? fetch(`${PAIRING_RESET_URL}/rest/v1/team_colors?id=in.${inFilter(colorIds)}&select=id,name`, { headers: pairingHeaders })
+    eventIds.length
+      ? fetch(`${PAIRING_RESET_URL}/rest/v1/team_colors?event_id=in.${inFilter(eventIds)}&select=id,event_id,name,gender&order=name.asc`, { headers: pairingHeaders })
       : Promise.resolve({ ok: true, json: async () => [] }),
   ])
   if (!sportsResponse.ok || !colorsResponse.ok) throw new Error('โหลดข้อมูลสีหรือชนิดกีฬาไม่สำเร็จ')
   const sports = await sportsResponse.json()
   const colors = await colorsResponse.json()
-  const sportMap = new Map(sports.map((sport) => [sport.id, sport.name]))
-  const colorMap = new Map(colors.map((color) => [color.id, color.name]))
+  const sportMap = new Map(sports.map((sport) => [sport.id, sport]))
+  const colorMap = new Map(colors.map((color) => [color.id, color]))
   return matches.map((match) => ({
     ...match,
-    sport_name: sportMap.get(match.sport_id) || '',
-    team_a_name: colorMap.get(match.team_a_color_id) || '',
-    team_b_name: colorMap.get(match.team_b_color_id) || '',
+    sport_name: sportMap.get(match.sport_id)?.name || '',
+    sport_gender: sportMap.get(match.sport_id)?.gender || '',
+    team_a_name: colorMap.get(match.team_a_color_id)?.name || '',
+    team_b_name: colorMap.get(match.team_b_color_id)?.name || '',
+    available_colors: colors.filter((color) => color.event_id === match.event_id
+      && (!sportMap.get(match.sport_id)?.gender
+        || sportMap.get(match.sport_id).gender === 'Coed'
+        || color.gender === sportMap.get(match.sport_id).gender)),
   }))
 }
 
@@ -79,6 +107,11 @@ const cardMatches = (card, match) => {
   const teams = [match.team_a_name, match.team_b_name].filter(Boolean).map(normalize)
   return required.every((value) => text.includes(value)) && teams.every((value) => text.includes(value))
 }
+
+const canEditPairing = (match) => !['live', 'done', 'กำลังแข่ง', 'เสร็จสิ้น'].includes(match.status)
+  && match.score_a == null
+  && match.score_b == null
+  && match.winner_team_color_id == null
 
 const isCentralView = () => {
   try {
@@ -97,10 +130,17 @@ const installStyles = () => {
   const style = document.createElement('style')
   style.id = 'azizgames-pairing-reset-style'
   style.textContent = `
-    [data-aziz-pairing-reset-wrap]{display:flex;gap:8px;margin-top:10px}
-    [data-aziz-pairing-reset]{flex:1;border:1px solid rgba(244,63,94,.35);border-radius:10px;background:rgba(127,29,29,.18);color:#fda4af;padding:7px 10px;font-size:11px;font-weight:800;cursor:pointer}
-    [data-aziz-pairing-reset]:hover{background:rgba(159,18,57,.35);color:#fff}
-    [data-aziz-pairing-reset]:disabled{cursor:wait;opacity:.55}
+    [data-aziz-pairing-reset-wrap]{display:grid;gap:8px;margin-top:10px;padding:10px;border:1px solid rgba(99,102,241,.2);border-radius:12px;background:rgba(15,23,42,.55)}
+    [data-aziz-pairing-editor] summary{color:#c7d2fe;font-size:11px;font-weight:800;cursor:pointer}
+    [data-aziz-pairing-editor] [data-aziz-pairing-hint]{display:block;margin:8px 0}
+    [data-aziz-pairing-controls]{display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:center}
+    [data-aziz-pairing-controls] select{min-width:0;width:100%;border:1px solid rgba(148,163,184,.25);border-radius:9px;background:#080f22;color:#e2e8f0;padding:8px;font-size:11px;font-weight:700}
+    [data-aziz-pairing-save],[data-aziz-pairing-reset]{border:1px solid rgba(99,102,241,.3);border-radius:9px;background:rgba(67,56,202,.25);color:#c7d2fe;padding:8px 10px;font-size:11px;font-weight:800;cursor:pointer}
+    [data-aziz-pairing-reset]{border-color:rgba(244,63,94,.35);background:rgba(127,29,29,.18);color:#fda4af}
+    [data-aziz-pairing-save]:hover,[data-aziz-pairing-reset]:hover{filter:brightness(1.2)}
+    [data-aziz-pairing-save]:disabled,[data-aziz-pairing-reset]:disabled{cursor:wait;opacity:.55}
+    [data-aziz-pairing-hint]{color:#94a3b8;font-size:10px;font-weight:700}
+    @media(max-width:520px){[data-aziz-pairing-controls]{grid-template-columns:1fr 1fr}[data-aziz-pairing-save]{grid-column:1/-1}}
   `
   document.head.append(style)
 }
@@ -114,17 +154,88 @@ const install = async () => {
     if (!state.loaded || !isCentralView()) return
     const cards = [...document.querySelectorAll('.glass-card, .glass-panel')]
     state.matches.forEach((match) => {
+      if (!canEditPairing(match)) return
       const card = cards
-        .filter((candidate) => !candidate.querySelector(`[data-aziz-pairing-reset="${match.id}"]`) && cardMatches(candidate, match))
+        .filter((candidate) => !candidate.dataset.azizMatchCard
+          && !candidate.querySelector('[data-aziz-match-card]')
+          && cardMatches(candidate, match))
         .sort((left, right) => left.textContent.length - right.textContent.length)[0]
       if (!card) return
+      card.dataset.azizMatchCard = match.id
       const wrap = document.createElement('div')
       wrap.dataset.azizPairingResetWrap = 'true'
+      const editor = document.createElement('details')
+      editor.dataset.azizPairingEditor = 'true'
+      editor.open = !match.team_a_color_id || !match.team_b_color_id
+      const editorLabel = document.createElement('summary')
+      editorLabel.textContent = '🛠️ จับคู่ใหม่ / แก้ไขคู่'
+      editor.append(editorLabel)
+      const controls = document.createElement('div')
+      controls.dataset.azizPairingControls = 'true'
+      const makeSelect = (label, selectedId) => {
+        const select = document.createElement('select')
+        select.setAttribute('aria-label', label)
+        const placeholder = document.createElement('option')
+        placeholder.value = ''
+        placeholder.textContent = label
+        select.append(placeholder)
+        match.available_colors.forEach((color) => {
+          const option = document.createElement('option')
+          option.value = color.id
+          option.textContent = color.name
+          option.selected = color.id === selectedId
+          select.append(option)
+        })
+        return select
+      }
+      const teamASelect = makeSelect('เลือกทีม A', match.team_a_color_id)
+      const teamBSelect = makeSelect('เลือกทีม B', match.team_b_color_id)
+      const saveButton = document.createElement('button')
+      saveButton.type = 'button'
+      saveButton.dataset.azizPairingSave = match.id
+      saveButton.textContent = 'บันทึกคู่ใหม่'
+      saveButton.disabled = !teamASelect.value || !teamBSelect.value || teamASelect.value === teamBSelect.value
+      const updateSaveState = () => {
+        saveButton.disabled = !teamASelect.value || !teamBSelect.value || teamASelect.value === teamBSelect.value
+      }
+      teamASelect.addEventListener('change', updateSaveState)
+      teamBSelect.addEventListener('change', updateSaveState)
+      saveButton.addEventListener('click', async (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        if (!teamASelect.value || !teamBSelect.value || teamASelect.value === teamBSelect.value) return
+        const password = centralPassword()
+        if (!password) return
+        saveButton.disabled = true
+        saveButton.textContent = 'กำลังบันทึก...'
+        try {
+          await callUpdatePairing(password, match.id, teamASelect.value, teamBSelect.value)
+          sessionStorage.setItem('aziz_central_result_password', password)
+          sessionStorage.setItem('aziz_central_result_unlocked', 'true')
+          window.location.reload()
+        } catch (error) {
+          saveButton.disabled = false
+          saveButton.textContent = 'บันทึกคู่ใหม่'
+          window.alert(error?.message || 'บันทึกคู่แข่งขันใหม่ไม่สำเร็จ')
+        }
+      })
+      const hint = document.createElement('span')
+      hint.dataset.azizPairingHint = 'true'
+      hint.textContent = match.available_colors.length
+        ? 'เลือกสีทีม A และ B แล้วบันทึกคู่ใหม่'
+        : 'ไม่พบสีทีมที่ตรงกับรายการนี้'
+      if (!match.available_colors.length) {
+        teamASelect.disabled = true
+        teamBSelect.disabled = true
+      }
+      controls.append(teamASelect, teamBSelect, saveButton)
+      editor.append(hint, controls)
       const button = document.createElement('button')
       button.type = 'button'
       button.dataset.azizPairingReset = match.id
       button.textContent = '↺ รีเซ็ตการประกบคู่'
       button.title = 'รีเซ็ตคู่นี้กลับเป็นรอแข่ง แล้วเลือกสีใหม่'
+      button.hidden = !match.team_a_color_id && !match.team_b_color_id
       button.addEventListener('click', async (event) => {
         event.preventDefault()
         event.stopPropagation()
@@ -145,7 +256,7 @@ const install = async () => {
           window.alert(error?.message || 'รีเซ็ตการประกบคู่ไม่สำเร็จ')
         }
       })
-      wrap.append(button)
+      wrap.append(editor, button)
       card.append(wrap)
     })
   }
@@ -158,7 +269,16 @@ const install = async () => {
     console.warn('AZIZGAMES pairing reset unavailable', error)
   }
 
-  const observer = new MutationObserver(() => window.setTimeout(addButtons, 0))
+  let addButtonsScheduled = false
+  const scheduleAddButtons = () => {
+    if (addButtonsScheduled) return
+    addButtonsScheduled = true
+    window.setTimeout(() => {
+      addButtonsScheduled = false
+      addButtons()
+    }, 0)
+  }
+  const observer = new MutationObserver(scheduleAddButtons)
   observer.observe(document.body, { childList: true, subtree: true })
 }
 
