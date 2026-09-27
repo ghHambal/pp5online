@@ -36,7 +36,7 @@ const bootstrap = async () => {
   // Install the storage quota guard before React starts writing its caches.
   await loadScript('azizgames-public-controls.js')
   await loadScript('azizgames/assets/index-DMQe507M.js')
-  await loadScript('js/azizgames-result-publish.js')
+  await loadScript('azizgames-result-publish.js')
 }
 
 bootstrap().catch(error => {
