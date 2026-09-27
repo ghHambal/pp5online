@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.833'
+import { APP_VERSION } from './version.js?v=10.22.834'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.834': [
+    '🔐 AZIZGAMES: แสดงปุ่มบันทึกสรุปจากใบบันทึกผลเฉพาะบัญชีกองกลาง และบันทึกด้วยเซสชันที่ล็อกอินโดยไม่ถามรหัสซ้ำ',
+  ],
   '10.22.833': [
     '🐛 AZIZGAMES: แก้หน้าเช็คชื่ออ่านข้อมูลเกิน 1,000 แถวไม่ครบ ทำให้ผู้ที่รายงานตัวแล้วถูกแสดงว่ายังไม่รายงานตัว',
   ],
