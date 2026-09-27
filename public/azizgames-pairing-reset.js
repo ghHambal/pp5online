@@ -112,9 +112,11 @@ const install = async () => {
 
   const addButtons = () => {
     if (!state.loaded || !isCentralView()) return
-    const cards = [...document.querySelectorAll('.glass-card')]
+    const cards = [...document.querySelectorAll('.glass-card, .glass-panel')]
     state.matches.forEach((match) => {
-      const card = cards.find((candidate) => !candidate.querySelector(`[data-aziz-pairing-reset="${match.id}"]`) && cardMatches(candidate, match))
+      const card = cards
+        .filter((candidate) => !candidate.querySelector(`[data-aziz-pairing-reset="${match.id}"]`) && cardMatches(candidate, match))
+        .sort((left, right) => left.textContent.length - right.textContent.length)[0]
       if (!card) return
       const wrap = document.createElement('div')
       wrap.dataset.azizPairingResetWrap = 'true'

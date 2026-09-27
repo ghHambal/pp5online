@@ -1,6 +1,6 @@
 import { getWorkloadState } from './workload-scheduler.js'
 
-const VERSION = '10.22.827'
+const VERSION = '10.22.828'
 const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/'
 
 const loadScript = (src) => new Promise((resolve, reject) => {
