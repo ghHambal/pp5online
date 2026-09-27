@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.820'
+import { APP_VERSION } from './version.js?v=10.22.821'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.821': [
+    '🐛 หน้า “ประเมินกีฬาสี” แก้ข้อผิดพลาดแท็บสรุปเปอร์เซ็นต์การเช็คชื่อเข้าสีที่ทำให้หน้าใช้งานไม่ได้หลังคลิกแท็บ',
+  ],
   '10.22.820': [
     '🏆 AZIZGAMES: แก้การประกบคู่แบบชนะเข้าชิง แพ้เข้าชิงอันดับ 3 ให้ผู้ชนะไปคู่ชิงชนะเลิศและผู้แพ้ไปคู่ชิงอันดับ 3 อย่างถูกต้อง พร้อมป้องกันการเขียนทับคู่ที่แข่งจบแล้ว',
   ],

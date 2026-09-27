@@ -2565,7 +2565,7 @@ export async function renderSportsEvaluationWorkspace() {
 
     const myCategories=[...new Set(myCriteria.map(c=>c.category))]
     let gender='M', evalCategory=myCategories[0]||null, evalSession=null, selectedColorId=null, scoreDirty=false
-    let summaryGender='M', summaryExpandedId=null, summarySportsDay='cumulative'
+    let summaryGender='M', summaryExpandedId=null, summarySportsDay='cumulative', attendanceGender='ALL'
     // ตัดชื่อหัวข้อที่ตั้งแบบ "รอบ/วัน - หัวข้อย่อย" (เช่น "เข้าสีครั้งที่ 1 - การซ้อมกีฬา") เอาส่วน
     // หน้า " - " มาเป็นชื่อรอบ ไว้จัดกลุ่มให้เลือกทีละรอบ กันหัวข้อทั้งหมวดยาวเป็นสิบข้อโผล่พร้อมกัน
     const sessionOf=name=>{ const i=String(name||'').indexOf(' - '); return i===-1?name:name.slice(0,i) }
