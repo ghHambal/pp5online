@@ -1,6 +1,7 @@
 const PAIRING_RESET_STATE = '__azizgamesPairingResetPatch'
 const PAIRING_RESET_URL = 'https://isupghduywzqbmnjgtip.supabase.co'
 const PAIRING_RESET_KEY = 'sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0'
+const PAIRING_RESET_EVENT_ID = '00000000-0000-0000-0000-000000000001'
 
 const pairingHeaders = {
   apikey: PAIRING_RESET_KEY,
@@ -8,11 +9,6 @@ const pairingHeaders = {
 }
 
 const normalize = (value) => String(value || '').replace(/\s+/g, '')
-
-const today = () => {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
 
 const timeLabel = (value) => String(value || '').slice(0, 5)
 
@@ -66,7 +62,7 @@ const callUpdatePairing = async (password, matchId, teamA, teamB) => {
 }
 
 const loadMatches = async () => {
-  const query = `scheduled_date=eq.${today()}&select=id,event_id,sport_id,status,round_name,scheduled_time,venue,team_a_color_id,team_b_color_id,score_a,score_b,winner_team_color_id&order=scheduled_time.asc`
+  const query = `event_id=eq.${PAIRING_RESET_EVENT_ID}&select=id,event_id,sport_id,status,round,round_name,scheduled_time,venue,team_a_color_id,team_b_color_id,score_a,score_b,winner_team_color_id&order=sport_id.asc,round.asc`
   const response = await fetch(`${PAIRING_RESET_URL}/rest/v1/matches?${query}`, { headers: pairingHeaders })
   if (!response.ok) throw new Error('โหลดรายการคู่แข่งขันไม่สำเร็จ')
   const matches = await response.json()
@@ -108,19 +104,20 @@ const cardMatches = (card, match) => {
   return required.every((value) => text.includes(value)) && teams.every((value) => text.includes(value))
 }
 
-const canEditPairing = (match) => !['live', 'done', 'กำลังแข่ง', 'เสร็จสิ้น'].includes(match.status)
-  && match.score_a == null
-  && match.score_b == null
+const isBlankScore = (value) => value == null || String(value).trim() === ''
+
+const canEditPairing = (match) => !['done', 'เสร็จสิ้น'].includes(match.status)
+  && isBlankScore(match.score_a)
+  && isBlankScore(match.score_b)
   && match.winner_team_color_id == null
 
 const isCentralView = () => {
   try {
     if (!/\/azizgames\.html$/.test(window.location.pathname)) return false
-    return Boolean(
-      sessionStorage.getItem('aziz_central_result_password')
-      || sessionStorage.getItem('aziz_central_result_unlocked') === 'true'
-      || document.querySelector('button[title*="แก้ไขการประกบคู่"], button[title*="ตั้งวันที่/เวลา/สถานที่"]'),
-    )
+    const savedUser = JSON.parse(localStorage.getItem('aziz_current_user') || 'null')
+    const isCentralOfficial = savedUser?.role === 'official'
+      && savedUser?.username?.trim().toLowerCase() === 'ag2026'
+    return isCentralOfficial
   } catch {
     return false
   }
