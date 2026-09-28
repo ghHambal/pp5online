@@ -79,7 +79,9 @@ const medalText = row => (row.medals || []).map(medal => `${medalLabel(medal.med
 const openResultPage = row => {
   if (!row.id) return
   const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/'
-  window.open(`${base}azizgames.html?tab=p3&sport_id=${encodeURIComponent(row.id)}`, '_blank', 'noopener')
+  const target = `${base}azizgames.html?tab=p3&sport_id=${encodeURIComponent(row.id)}`
+  close()
+  window.location.assign(target)
 }
 
 const filterButton = (group, value, label) => `<button type="button" data-filter-group="${group}" data-filter-value="${value}" class="rounded-lg border px-3 py-1.5 text-xs font-bold ${state.filters[group] === value ? 'border-pink-400 bg-pink-600 text-white' : 'border-slate-700 bg-slate-950/60 text-slate-300 hover:bg-slate-800'}">${label}</button>`
