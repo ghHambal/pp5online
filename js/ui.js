@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.835'
+import { APP_VERSION } from './version.js?v=10.22.839'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.839': [
+    '🏅 AZIZGAMES: ตัวเลือกรายการแข่งขันนักกีฬาดีเด่นแสดงรายการที่ลงทะเบียนก่อน และพิมพ์ค้นหารายการอื่นในระบบได้ตามต้องการ',
+  ],
   '10.22.838': [
     '🏅 AZIZGAMES: หน้าบันทึกนักกีฬาดีเด่นค้นหาด้วยชื่อนักเรียนได้ เติมข้อมูลอัตโนมัติ และกรองรายการแข่งขันเฉพาะรายการที่ลงทะเบียนไว้',
     '🐛 AZIZGAMES: ตรวจสอบการบันทึกนักกีฬาดีเด่นกับฐานข้อมูลจริงและยืนยันผล INSERT/UPDATE ไม่แจ้งสำเร็จลวง',
