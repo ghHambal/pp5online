@@ -1,6 +1,7 @@
 const SUPABASE_URL = 'https://isupghduywzqbmnjgtip.supabase.co'
 const SUPABASE_KEY = 'sb_publishable_LZEC92mMf_usMKRR9_eSeA_OQCK1dv0'
 const AUTH_STORAGE_KEY = 'sb-isupghduywzqbmnjgtip-auth-token'
+const CONTEXT_STORAGE_KEY = '__azizgamesAwardCenterContext'
 const PATCH_STATE = '__azizgamesResultPublishPatch'
 
 const getSupabaseToken = () => {
@@ -13,20 +14,36 @@ const getSupabaseToken = () => {
   }
 }
 
+const apiHeaders = (token = getSupabaseToken()) => ({
+  apikey: SUPABASE_KEY,
+  Authorization: `Bearer ${token || SUPABASE_KEY}`,
+  'Content-Type': 'application/json',
+})
+
 const rpc = async (name, payload) => {
-  const token = getSupabaseToken()
   const response = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${name}`, {
     method: 'POST',
-    headers: {
-      apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${token || SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    headers: apiHeaders(),
     body: JSON.stringify(payload),
   })
   if (!response.ok) throw new Error((await response.text()) || `RPC ${name} failed`)
   return response.json()
 }
+
+const restJson = async (path) => {
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: apiHeaders(),
+  })
+  if (!response.ok) throw new Error((await response.text()) || `REST ${path} failed`)
+  return response.json()
+}
+
+const escapeHtml = (value) => String(value ?? '')
+  .replaceAll('&', '&amp;')
+  .replaceAll('<', '&lt;')
+  .replaceAll('>', '&gt;')
+  .replaceAll('"', '&quot;')
+  .replaceAll("'", '&#039;')
 
 const resultModal = (element) => {
   const modal = element?.closest?.('.fixed')
@@ -36,53 +53,62 @@ const resultModal = (element) => {
   return form && scoreInputs.length === 2 && form.querySelector('textarea') ? modal : null
 }
 
-const showPublishChoice = (sportName) => new Promise((resolve) => {
-  const root = document.createElement('div')
-  root.className = 'az-result-publish-overlay'
-  root.innerHTML = `
-    <div class="az-result-publish-dialog" role="dialog" aria-modal="true" aria-labelledby="az-result-publish-title">
-      <div class="az-result-publish-kicker">ขั้นตอนยืนยันก่อนบันทึก</div>
-      <h2 id="az-result-publish-title">ส่งผลการแข่งขันเข้าศูนย์มอบเหรียญหรือไม่?</h2>
-      <p>รายการ ${sportName || 'นี้'} จะถูกบันทึกเป็นผลการแข่งขันก่อนเสมอ หากเลือกส่ง ระบบจะส่งข้อมูลเหรียญที่มีอยู่ตอนนี้เข้าศูนย์มอบเหรียญ แม้อันดับเหรียญยังไม่ครบ และสามารถอัปเดตภายหลังได้</p>
-      <div class="az-result-publish-actions">
-        <button type="button" data-publish="no">บันทึกผลอย่างเดียว</button>
-        <button type="button" data-publish="yes">ส่งเข้าศูนย์มอบเหรียญ</button>
-      </div>
-    </div>`
-  const finish = (value) => {
-    root.remove()
-    resolve(value)
-  }
-  root.querySelector('[data-publish="no"]').addEventListener('click', () => finish(false))
-  root.querySelector('[data-publish="yes"]').addEventListener('click', () => finish(true))
-  document.body.append(root)
-  root.querySelector('[data-publish="yes"]').focus()
-})
-
 const showPublishToast = (message, error = false) => {
   const toast = document.createElement('div')
   toast.className = `az-result-publish-toast${error ? ' is-error' : ''}`
   toast.textContent = message
   document.body.append(toast)
-  window.setTimeout(() => toast.remove(), 4200)
+  window.setTimeout(() => toast.remove(), 5200)
 }
 
 const installStyles = () => {
   const style = document.createElement('style')
+  style.id = 'azizgames-result-publish-style'
   style.textContent = `
-    .az-result-publish-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(2,6,23,.78);backdrop-filter:blur(5px)}
-    .az-result-publish-dialog{width:min(100%,520px);border:1px solid rgba(236,72,153,.6);border-radius:22px;background:#0f172a;color:#e2e8f0;padding:24px;box-shadow:0 24px 80px rgba(0,0,0,.45);font-family:inherit}
-    .az-result-publish-kicker{color:#f472b6;font-size:11px;font-weight:800;letter-spacing:.08em;margin-bottom:7px}
-    .az-result-publish-dialog h2{font-size:18px;line-height:1.35;margin:0 0 10px;font-weight:800}
-    .az-result-publish-dialog p{color:#cbd5e1;font-size:13px;line-height:1.7;margin:0}
-    .az-result-publish-actions{display:flex;gap:10px;margin-top:20px;justify-content:flex-end;flex-wrap:wrap}
-    .az-result-publish-actions button{border:0;border-radius:12px;padding:11px 15px;font-weight:800;cursor:pointer;color:#fff}
-    .az-result-publish-actions button[data-publish="no"]{background:#334155}
-    .az-result-publish-actions button[data-publish="yes"]{background:#db2777}
+    .az-award-center-panel{margin-top:14px;padding:14px 16px;border:1px solid rgba(236,72,153,.38);border-radius:16px;background:linear-gradient(135deg,rgba(30,41,59,.88),rgba(15,23,42,.72));text-align:left;box-shadow:0 10px 28px rgba(0,0,0,.18)}
+    .az-award-center-panel__head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .az-award-center-panel__title{font-size:13px;font-weight:800;color:#f8fafc}
+    .az-award-center-panel__status{font-size:11px;font-weight:800;border-radius:999px;padding:5px 9px;background:rgba(100,116,139,.2);color:#cbd5e1}
+    .az-award-center-panel__status.is-sent{background:rgba(16,185,129,.16);color:#6ee7b7}
+    .az-award-center-panel__status.is-warning{background:rgba(245,158,11,.16);color:#fcd34d}
+    .az-award-center-panel__detail{margin:8px 0 11px;font-size:11px;line-height:1.6;color:#cbd5e1}
+    .az-award-center-panel__button{border:0;border-radius:10px;padding:9px 13px;background:#db2777;color:#fff;font:inherit;font-size:11px;font-weight:800;cursor:pointer;box-shadow:0 7px 18px rgba(219,39,119,.22)}
+    .az-award-center-panel__button:hover{background:#be185d}
+    .az-award-center-panel__button:disabled{opacity:.55;cursor:wait}
     .az-result-publish-toast{position:fixed;right:18px;bottom:18px;z-index:10000;max-width:min(90vw,460px);padding:12px 16px;border:1px solid rgba(16,185,129,.45);border-radius:12px;background:#064e3b;color:#d1fae5;font-size:13px;font-weight:800;box-shadow:0 12px 35px rgba(0,0,0,.3)}
     .az-result-publish-toast.is-error{border-color:rgba(251,146,60,.5);background:#7c2d12;color:#ffedd5}
   `
   document.head.append(style)
+}
+
+const findSummaryHeading = (sportName = '') => {
+  if (sportName && !document.body.textContent?.includes(sportName)) return null
+  return [...document.querySelectorAll('h1,h2,h3,h4')].find((heading) => {
+    const text = heading.textContent || ''
+    return /แท่นโพเดียมสรุปเหรียญ|สรุปเหรียญรางวัล|สรุปอันดับเหรียญ/.test(text)
+  }) || null
+}
+
+const persistContext = (context) => {
+  try {
+    sessionStorage.setItem(CONTEXT_STORAGE_KEY, JSON.stringify({
+      matchId: context.matchId,
+      sportId: context.sportId,
+      sportName: context.sportName,
+      officialToken: context.officialToken || null,
+    }))
+  } catch {
+    // Storage can be unavailable in private browsing; the current page still works.
+  }
+}
+
+const readPersistedContext = () => {
+  try {
+    const raw = sessionStorage.getItem(CONTEXT_STORAGE_KEY)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
 }
 
 const keepSavedResultVisible = (modalText) => {
@@ -100,16 +126,154 @@ const keepSavedResultVisible = (modalText) => {
 const install = () => {
   if (window[PATCH_STATE]) return
   const state = window[PATCH_STATE] = {
-    decision: null,
     officialToken: null,
-    pending: new Map(),
+    pendingSave: null,
     replayButton: null,
-    lastModalText: '',
+    currentContext: null,
   }
 
   installStyles()
 
-  document.addEventListener('click', async (event) => {
+  const renderAwardCenterPanel = () => {
+    const context = state.currentContext
+    if (!context) return
+    const heading = findSummaryHeading(context.sportName)
+    if (!heading) return
+
+    let panel = document.querySelector('[data-az-award-center-panel]')
+    if (!panel) {
+      panel = document.createElement('section')
+      panel.className = 'az-award-center-panel'
+      panel.dataset.azAwardCenterPanel = 'true'
+      const header = heading.parentElement || heading
+      header.insertAdjacentElement('afterend', panel)
+    }
+
+    const sent = Boolean(context.ceremony)
+    const hasNewerResult = sent && context.ceremony.changed
+    const statusClass = context.syncing ? '' : sent && !hasNewerResult ? 'is-sent' : 'is-warning'
+    const statusText = context.syncing
+      ? 'กำลังตรวจสอบสถานะ...'
+      : hasNewerResult
+        ? '⚠️ มีผลล่าสุดรอส่งเข้าศูนย์'
+      : sent
+        ? `✅ ส่งแล้ว · ครั้งที่ ${context.ceremony.revision || 1}`
+        : '⏳ ยังไม่ได้ส่งเข้าศูนย์'
+    const detail = context.syncing
+      ? 'กำลังอ่านสรุปเหรียญและสถานะการส่งจากศูนย์มอบเหรียญ'
+      : `${context.medalTypes || 0}/3 อันดับเหรียญ${context.ready
+        ? hasNewerResult ? ' · ผลการแข่งขันเปลี่ยนแปลง รอส่งข้อมูลล่าสุด' : ' · ผลเหรียญครบ ระบบส่งอัตโนมัติแล้ว'
+        : ' · เหรียญยังไม่ครบ สามารถส่งข้อมูลที่มีอยู่ได้'}`
+        + (context.ceremony?.delivered_at ? ' · ยืนยันมอบเหรียญแล้ว' : '')
+
+    panel.innerHTML = `
+      <div class="az-award-center-panel__head">
+        <span class="az-award-center-panel__title">🏅 ศูนย์มอบเหรียญ</span>
+        <span class="az-award-center-panel__status ${statusClass}">${escapeHtml(statusText)}</span>
+      </div>
+      <p class="az-award-center-panel__detail">${escapeHtml(detail)}</p>
+      <button type="button" class="az-award-center-panel__button" data-az-award-center-send ${context.syncing ? 'disabled' : ''}>
+        ${sent ? '↻ ส่งข้อมูลล่าสุดอีกครั้ง' : '📤 ส่งเข้าศูนย์มอบเหรียญ'}
+      </button>`
+
+    panel.querySelector('[data-az-award-center-send]')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget
+      if (!state.currentContext?.matchId || button.disabled) return
+      button.disabled = true
+      state.currentContext.syncing = true
+      renderAwardCenterPanel()
+      try {
+        await publishMatch(state.currentContext.matchId, state.currentContext)
+        await syncCenterForMatch(state.currentContext.matchId, { silent: true, autoPublish: false })
+      } catch (error) {
+        showPublishToast(`ส่งเข้าศูนย์มอบเหรียญไม่สำเร็จ: ${error?.message || 'กรุณาลองใหม่'}`, true)
+        state.currentContext.syncing = false
+        renderAwardCenterPanel()
+      }
+    }, { once: true })
+  }
+
+  const loadAwardContext = async (matchId, base = {}) => {
+    const matches = await restJson(`matches?id=eq.${encodeURIComponent(matchId)}&select=id,event_id,sport_id`)
+    const match = matches?.[0]
+    if (!match) throw new Error('ไม่พบคู่แข่งขันหลังบันทึกผล')
+    const [sports, awards, status] = await Promise.all([
+      restJson(`sports?id=eq.${encodeURIComponent(match.sport_id)}&select=id,name`),
+      restJson(`medal_awards?sport_id=eq.${encodeURIComponent(match.sport_id)}&select=medal_type,team_color_id`),
+      rpc('sports_awards_result_status', {
+        p_match_id: matchId,
+        p_session_token: base.officialToken || state.officialToken || null,
+      }),
+    ])
+    const medalTypes = new Set((awards || []).map((award) => award.medal_type).filter(Boolean)).size
+    const awardFingerprint = JSON.stringify((awards || [])
+      .map((award) => `${award.medal_type}:${award.team_color_id}`)
+      .sort())
+    const ceremony = status?.sent
+      ? {
+        delivered_at: status.delivered_at || null,
+        revision: status.revision || 1,
+        changed: Boolean(status.changed),
+      }
+      : null
+    return {
+      ...base,
+      matchId,
+      eventId: match.event_id,
+      sportId: match.sport_id,
+      sportName: sports?.[0]?.name || base.sportName || '',
+      medalTypes,
+      ready: medalTypes === 3,
+      ceremony,
+      syncing: false,
+    }
+  }
+
+  const publishMatch = async (matchId, context = state.currentContext) => {
+    const result = await rpc('sports_awards_publish_match', {
+      p_match_id: matchId,
+      p_session_token: context?.officialToken || state.officialToken || null,
+    })
+    showPublishToast(result?.ready
+      ? 'ส่งข้อมูลเหรียญเข้าศูนย์มอบเหรียญเรียบร้อย'
+      : 'ส่งข้อมูลที่มีอยู่เข้าศูนย์มอบเหรียญแล้ว — เหรียญยังไม่ครบ อัปเดตภายหลังได้')
+    return result
+  }
+
+  const syncCenterForMatch = async (matchId, { silent = false, autoPublish = true } = {}) => {
+    state.currentContext = {
+      ...(state.currentContext || {}),
+      matchId,
+      officialToken: state.officialToken || state.currentContext?.officialToken || null,
+      syncing: true,
+    }
+    renderAwardCenterPanel()
+    try {
+      const context = await loadAwardContext(matchId, state.currentContext)
+      state.currentContext = context
+      persistContext(context)
+      renderAwardCenterPanel()
+
+      const needsPublish = context.ready
+        && autoPublish
+        && (!context.ceremony || context.ceremony.changed)
+      if (needsPublish) {
+        await publishMatch(matchId, context)
+        const refreshed = await loadAwardContext(matchId, context)
+        state.currentContext = refreshed
+        persistContext(refreshed)
+        renderAwardCenterPanel()
+      } else if (!silent) {
+        showPublishToast(`บันทึกผลแล้ว — เหรียญมี ${context.medalTypes}/3 อันดับ สามารถกดส่งข้อมูลที่มีอยู่ได้`)
+      }
+    } catch (error) {
+      state.currentContext = { ...(state.currentContext || {}), syncing: false }
+      renderAwardCenterPanel()
+      if (!silent) showPublishToast(`ตรวจสถานะศูนย์มอบเหรียญไม่สำเร็จ: ${error?.message || 'กรุณารีเฟรชหน้า'}`, true)
+    }
+  }
+
+  document.addEventListener('click', (event) => {
     const button = event.target.closest?.('button')
     if (!button || state.replayButton === button) {
       if (state.replayButton === button) state.replayButton = null
@@ -117,15 +281,11 @@ const install = () => {
     }
     const modal = resultModal(button)
     if (!modal || button.type !== 'submit') return
-    const modalText = modal.textContent || ''
     if (!/บันทึก|ยืนยัน/.test(button.textContent || '')) return
 
     event.preventDefault()
     event.stopImmediatePropagation()
-    state.lastModalText = modalText
-    state.decision = await showPublishChoice(
-      modal.querySelector('h3,h4')?.textContent?.trim() || 'รายการแข่งขัน',
-    )
+    state.pendingSave = { modalText: modal.textContent || '' }
     state.replayButton = button
     button.click()
   }, true)
@@ -152,39 +312,27 @@ const install = () => {
     if (isFinalizeRpc && body?.p_session_token) state.officialToken = body.p_session_token
 
     const response = await originalFetch(input, init)
-    if (response.ok && state.decision !== null && matchId) {
-      const publish = state.decision
-      state.decision = null
-      if (publish) {
-        state.pending.set(matchId, { token: state.officialToken })
-        window.setTimeout(() => publishMatch(matchId), isFinalizeRpc ? 80 : 500)
-      }
-      window.setTimeout(() => {
-        keepSavedResultVisible(state.lastModalText)
-        showPublishToast(publish
-          ? 'บันทึกผลการแข่งขันแล้ว กำลังส่งข้อมูลไปยังศูนย์มอบเหรียญ'
-          : 'บันทึกผลการแข่งขันแล้ว — ยังไม่ได้ส่งเข้าศูนย์มอบเหรียญ')
-      }, 300)
+    if (response.ok && state.pendingSave && matchId) {
+      const save = state.pendingSave
+      state.pendingSave = null
+      setTimeout(() => keepSavedResultVisible(save.modalText), 300)
+      setTimeout(() => syncCenterForMatch(matchId), 450)
+    } else if (!response.ok && state.pendingSave && matchId) {
+      state.pendingSave = null
     }
     return response
   }
 
-  const publishMatch = async (matchId) => {
-    const pending = state.pending.get(matchId)
-    if (!pending) return
-    state.pending.delete(matchId)
-    try {
-      const result = await rpc('sports_awards_publish_match', {
-        p_match_id: matchId,
-        p_session_token: pending.token || null,
-      })
-      showPublishToast(result?.ready
-        ? 'ส่งข้อมูลเหรียญเข้าศูนย์มอบเหรียญเรียบร้อย'
-        : 'ส่งข้อมูลที่มีอยู่เข้าศูนย์มอบเหรียญแล้ว — เหรียญยังไม่ครบ อัปเดตภายหลังได้')
-    } catch (error) {
-      showPublishToast(`บันทึกผลแล้ว แต่ส่งเข้าศูนย์มอบเหรียญไม่สำเร็จ: ${error?.message || 'กรุณาลองส่งใหม่'}`, true)
+  const observer = new MutationObserver(() => {
+    if (state.currentContext && !document.querySelector('[data-az-award-center-panel]')) {
+      renderAwardCenterPanel()
     }
-  }
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+
+  const persisted = readPersistedContext()
+  if (persisted?.officialToken) state.officialToken = persisted.officialToken
+  if (persisted?.matchId) syncCenterForMatch(persisted.matchId, { silent: true, autoPublish: false })
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', install, { once: true })

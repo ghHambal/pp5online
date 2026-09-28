@@ -1,6 +1,6 @@
 import { getWorkloadState } from './workload-scheduler.js'
 
-const VERSION = '10.22.847'
+const VERSION = '10.22.849'
 const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/'
 
 const loadScript = (src) => new Promise((resolve, reject) => {
@@ -39,6 +39,7 @@ const bootstrap = async () => {
   await loadScript('azizgames/assets/index-DraxC0Ow.js')
   await loadScript('azizgames-result-publish.js')
   await loadScript('azizgames-pairing-reset.js')
+  await loadScript('azizgames-admin-competition-overview.js')
 }
 
 bootstrap().catch(error => {
