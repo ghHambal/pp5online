@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.841'
+import { APP_VERSION } from './version.js?v=10.22.842'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.842': [
+    '🏅 AZIZGAMES: ปรับรายชื่อผู้ได้รับเหรียญให้ครบทุกคนที่ลงทะเบียนในสี/ทีมของรายการ รวมถึงตัวสำรอง และปรับข้อมูลย้อนหลังแล้ว',
+  ],
   '10.22.841': [
     '🛡️ AZIZGAMES: ให้เจ้าหน้าที่กองกลาง ag2026 บันทึกนักกีฬาดีเด่นผ่าน session ของกรรมการได้ แม้เครื่องนั้นมี Supabase Auth คนละสิทธิ์',
   ],
