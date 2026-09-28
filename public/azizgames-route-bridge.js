@@ -21,8 +21,11 @@ if (params.get('tab') === 'p3' && targetName) {
   const chooseSport = () => {
     if (!clickGender()) return false
     const trigger = [...document.querySelectorAll('button.form-select-premium')].find(element => textOf(element) !== targetName)
-    if (trigger && textOf(trigger) !== targetName) trigger.click()
     const search = [...document.querySelectorAll('input')].find(input => input.placeholder === 'พิมพ์ชื่อกีฬา...')
+    if (!search) {
+      if (trigger) trigger.click()
+      return false
+    }
     if (search) setSearchValue(search, targetName)
     const option = [...document.querySelectorAll('button')].find(element => textOf(element) === targetName)
     if (!option) return false
