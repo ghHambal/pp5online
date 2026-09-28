@@ -79,10 +79,18 @@ const medalText = row => (row.medals || []).map(medal => `${medalLabel(medal.med
 const openResultPage = row => {
   if (!row.id) return
   const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/'
-  const target = `${base}azizgames.html?tab=p3&sport_id=${encodeURIComponent(row.id)}`
+  const params = new URLSearchParams({
+    tab: 'p3',
+    sport_id: row.id,
+    sport_name: row.name || '',
+    sport_gender: row.gender || '',
+  })
+  const target = `${base}azizgames.html?${params.toString()}`
   close()
   window.location.assign(target)
 }
+
+const genderButton = (value, label) => `<button type="button" data-gender="${value}" class="rounded-xl border px-4 py-2 text-sm font-bold transition ${state.gender === value ? 'border-pink-400 bg-pink-600 text-white shadow-lg shadow-pink-500/20' : 'border-slate-700 bg-slate-900/60 text-slate-300 hover:bg-slate-800'}">${label}</button>`
 
 const filterButton = (group, value, label) => `<button type="button" data-filter-group="${group}" data-filter-value="${value}" class="rounded-lg border px-3 py-1.5 text-xs font-bold ${state.filters[group] === value ? 'border-pink-400 bg-pink-600 text-white' : 'border-slate-700 bg-slate-950/60 text-slate-300 hover:bg-slate-800'}">${label}</button>`
 
@@ -151,7 +159,7 @@ const render = () => {
     <div class="mx-auto min-h-screen max-w-[1500px] p-4 md:p-8">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4"><div><p class="text-xs font-bold uppercase tracking-[0.18em] text-pink-400">AZIZGAMES · ฝ่ายกองกลาง</p><h1 class="mt-1 text-xl font-extrabold md:text-2xl">📊 ภาพรวมรายการแข่งขันและศูนย์มอบเหรียญ</h1><p class="mt-1 text-xs text-slate-400">ตรวจความครบถ้วนของผล เหรียญ การส่งข้อมูล และหลักฐานการมอบจากจุดเดียว</p></div><div class="flex gap-2"><button type="button" data-overview-refresh class="rounded-xl border border-slate-700 px-4 py-2 text-sm font-bold hover:bg-slate-800">↻ รีเฟรช</button><button type="button" data-overview-close class="rounded-xl bg-pink-600 px-4 py-2 text-sm font-bold hover:bg-pink-500">ปิดหน้านี้</button></div></div>
       <div data-overview-message class="mt-4"></div>
-      <div class="mt-5 flex flex-wrap items-center gap-2"><button type="button" data-gender="all" class="rounded-xl px-4 py-2 text-sm font-bold">ทั้งหมด</button><button type="button" data-gender="M" class="rounded-xl px-4 py-2 text-sm font-bold">👦 ชาย</button><button type="button" data-gender="W" class="rounded-xl px-4 py-2 text-sm font-bold">👧 หญิง</button><label class="ml-auto min-w-[250px] flex-1 md:max-w-md"><span class="sr-only">ค้นหารายการแข่งขัน</span><input data-overview-search class="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500" placeholder="ค้นหาชื่อรายการ สี เหรียญ สถานะ..." value="${esc(state.search)}"></label></div>
+      <div class="mt-5 flex flex-wrap items-center gap-2"><span class="mr-1 text-xs font-bold text-slate-400">กำลังดูเพศ:</span>${genderButton('all', 'ทั้งหมด')}${genderButton('M', '👦 ชาย')}${genderButton('W', '👧 หญิง')}<label class="ml-auto min-w-[250px] flex-1 md:max-w-md"><span class="sr-only">ค้นหารายการแข่งขัน</span><input data-overview-search class="w-full rounded-xl border border-slate-700 bg-slate-900 px-4 py-2.5 text-sm text-slate-100 placeholder:text-slate-500" placeholder="ค้นหาชื่อรายการ สี เหรียญ สถานะ..." value="${esc(state.search)}"></label></div>
       <div class="mt-4 grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-3 md:grid-cols-3">
         <div><p class="mb-2 text-[11px] font-bold text-slate-400">กรองผลการแข่งขัน</p><div class="flex flex-wrap gap-2">${filterButton('result', 'all', 'ทั้งหมด')}${filterButton('result', 'finished', '✅ เสร็จสิ้น')}${filterButton('result', 'pending', '⏳ ยังไม่เสร็จ')}</div></div>
         <div><p class="mb-2 text-[11px] font-bold text-slate-400">กรองการส่งเข้าศูนย์</p><div class="flex flex-wrap gap-2">${filterButton('send', 'all', 'ทั้งหมด')}${filterButton('send', 'sent', '✅ ส่งแล้ว')}${filterButton('send', 'pending', '📤 ยังไม่ส่ง')}${filterButton('send', 'changed', '↻ ผลเปลี่ยน')}</div></div>
