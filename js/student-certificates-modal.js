@@ -67,32 +67,36 @@ export async function openMyCertificatesModal(student) {
     onOpen: () => window.open(leaderCertUrl, '_blank'),
   })
 
-  // 3. กีฬาสี — เกียรติบัตรเหรียญสร้างจากข้อมูลผลรางวัลบนเครื่องนักเรียนเอง
-  // ส่วนสิทธิ์เข้าร่วมกีฬาสี/นักกีฬาดีเด่นเดิมยังคงแสดงจากข้อมูลของระบบเดิม
+  // 3. กีฬาสี — เกียรติบัตรเหรียญและนักกีฬาดีเด่นสร้างจากข้อมูลผลรางวัลบนเครื่องนักเรียนเอง
+  // ส่วนสิทธิ์เข้าร่วมกีฬาสียังคงแสดงจากข้อมูลสิทธิ์เดิม
   try {
     const { data: event } = await supabase.from('events').select('id, status').order('academic_year', { ascending: false }).order('created_at', { ascending: false }).limit(1).maybeSingle()
     if (event) {
-      const [eligibility, awards, medalCertificates] = await Promise.all([
+      const [eligibility, sportsCertificates] = await Promise.all([
         supabase.rpc('get_my_sports_eligibility', { p_event: event.id }).then(r => (r.error ? null : r.data)).catch(() => null),
-        supabase.from('outstanding_athletes').select('id, note, sports(name)').eq('event_id', event.id).eq('student_id', student.id).then(r => r.data ?? []).catch(() => []),
-        supabase.rpc('get_my_sports_medal_certificates', { p_event: event.id }).then(r => (r.error ? [] : r.data ?? [])).catch(() => []),
+        supabase.rpc('get_my_sports_certificates', { p_event: event.id }).then(r => (r.error ? [] : r.data ?? [])).catch(() => []),
       ])
-      const normalizedMedalCertificates = Array.isArray(medalCertificates) ? medalCertificates : []
-      normalizedMedalCertificates.forEach(cert => cards.push({
-        key: `sports-medal-${cert.id}`, emoji: '🏅',
-        title: cert.title || `เกียรติบัตร${cert.medal_label ? ` · ${cert.medal_label}` : ''}`,
-        sub: `${cert.sport_name || 'รายการแข่งขัน'} · สี${cert.color || ''}`,
-        onOpen: () => openCertificatePrint({
-          layout: cert.layout,
-          variables: {
-            name: student.full_name,
-            date: new Date(cert.awarded_at || Date.now()).toLocaleDateString('th-TH', { dateStyle: 'long' }),
-            no: cert.certificate_no,
-            ...(cert.variables || {}),
-          },
-          docTitle: cert.title,
-        }, showToast),
-      }))
+      const normalizedSportsCertificates = Array.isArray(sportsCertificates) ? sportsCertificates : []
+      normalizedSportsCertificates.forEach(cert => {
+        const isOutstanding = cert.certificate_kind === 'outstanding'
+        cards.push({
+          key: `sports-${cert.certificate_kind || 'medal'}-${cert.id}`, emoji: isOutstanding ? '🏆' : '🏅',
+          title: cert.title || `เกียรติบัตร${cert.medal_label ? ` · ${cert.medal_label}` : ''}`,
+          sub: isOutstanding
+            ? `นักกีฬาดีเด่น · ${cert.sport_name || 'กีฬาสี'}`
+            : `${cert.sport_name || 'รายการแข่งขัน'} · สี${cert.color || ''}`,
+          onOpen: () => openCertificatePrint({
+            layout: cert.layout,
+            variables: {
+              name: student.full_name,
+              date: new Date(cert.awarded_at || Date.now()).toLocaleDateString('th-TH', { dateStyle: 'long' }),
+              no: cert.certificate_no,
+              ...(cert.variables || {}),
+            },
+            docTitle: cert.title,
+          }, showToast),
+        })
+      })
       if (eligibility?.eligible && eligibility?.certificate_url) {
         cards.push({
           key: 'sports-color', emoji: '🎖️', title: 'เกียรติบัตรกีฬาสี',
@@ -100,10 +104,6 @@ export async function openMyCertificatesModal(student) {
           onOpen: () => window.open(eligibility.certificate_url, '_blank'),
         })
       }
-      awards.forEach(a => cards.push({
-        key: `sports-award-${a.id}`, emoji: '🏆',
-        title: a.sports?.name || 'รางวัลนักกีฬาดีเด่น', sub: a.note || '', onOpen: null,
-      }))
     }
   } catch (_) { /* ไม่มีสิทธิ์เข้าถึง RPC หรือยังไม่มีข้อมูลงานกีฬาสี — ข้ามไปเงียบๆ */ }
 
