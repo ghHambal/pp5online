@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.842'
+import { APP_VERSION } from './version.js?v=10.22.843'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.843': [
+    '🎓 PP5: นักเรียนดูเกียรติบัตรเหรียญกีฬาสีจากผลการแข่งขันจริง และเปิดพิมพ์/บันทึกเป็น PDF ในเครื่องโดยไม่เก็บไฟล์บนเซิร์ฟเวอร์',
+  ],
   '10.22.842': [
     '🏅 AZIZGAMES: ปรับรายชื่อผู้ได้รับเหรียญให้ครบทุกคนที่ลงทะเบียนในสี/ทีมของรายการ รวมถึงตัวสำรอง และปรับข้อมูลย้อนหลังแล้ว',
   ],

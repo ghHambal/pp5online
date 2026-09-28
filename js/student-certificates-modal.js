@@ -1,7 +1,7 @@
 // js/student-certificates-modal.js — "เกียรติบัตรของฉัน" รวบรวมเกียรติบัตรของนักเรียนจากทุกแหล่งมาไว้ที่เดียว
 // แหล่งที่ 1 (ระบบกลาง) ครอบคลุมทุกใบที่ครูออกผ่านระบบเกียรติบัตรกลาง รวมถึงกิจกรรมสภานักเรียนที่ย้าย
-// เข้ามาแล้ว ส่วนอีก 3 แหล่ง (หัวหน้าห้อง/กีฬาสี/ฟุตซอล) ยังเป็นระบบเดิมที่ไม่ได้ย้ายเข้าระบบกลาง
-// (ลิงก์ไฟล์ตรงๆ ไม่มีเอนจินเทมเพลต) จึงรวมแบบ adapter อ่านอย่างเดียวไว้ก่อน
+// เข้ามาแล้ว ส่วนหัวหน้าห้อง/สิทธิ์กีฬาสี/ฟุตซอลยังเป็น adapter จากระบบเดิม ขณะที่ใบเหรียญกีฬาสี
+// ใช้เอนจินเทมเพลตกลางสร้างในเครื่องนักเรียนและไม่อัปโหลดไฟล์กลับเซิร์ฟเวอร์
 import { getMyCertificates } from './certificates-api.js'
 import { openCertificatePrint } from './certificate-engine.js'
 import { getStudentClassroomRole } from './student-api.js'
@@ -67,14 +67,32 @@ export async function openMyCertificatesModal(student) {
     onOpen: () => window.open(leaderCertUrl, '_blank'),
   })
 
-  // 3. กีฬาสี — สิทธิ์คำนวณอัตโนมัติจาก RPC (ครูอัปโหลดไฟล์เองหลังผ่านเกณฑ์) + รางวัลนักกีฬาดีเด่น (ข้อความล้วน ไม่มีไฟล์)
+  // 3. กีฬาสี — เกียรติบัตรเหรียญสร้างจากข้อมูลผลรางวัลบนเครื่องนักเรียนเอง
+  // ส่วนสิทธิ์เข้าร่วมกีฬาสี/นักกีฬาดีเด่นเดิมยังคงแสดงจากข้อมูลของระบบเดิม
   try {
     const { data: event } = await supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle()
     if (event) {
-      const [{ data: eligibility }, { data: awards }] = await Promise.all([
+      const [eligibility, awards, medalCertificates] = await Promise.all([
         supabase.rpc('get_my_sports_eligibility', { p_event: event.id }).then(r => (r.error ? null : r.data)).catch(() => null),
         supabase.from('outstanding_athletes').select('id, note, sports(name)').eq('event_id', event.id).eq('student_id', student.id).then(r => r.data ?? []).catch(() => []),
+        supabase.rpc('get_my_sports_medal_certificates', { p_event: event.id }).then(r => (r.error ? [] : r.data ?? [])).catch(() => []),
       ])
+      const normalizedMedalCertificates = Array.isArray(medalCertificates) ? medalCertificates : []
+      normalizedMedalCertificates.forEach(cert => cards.push({
+        key: `sports-medal-${cert.id}`, emoji: '🏅',
+        title: cert.title || `เกียรติบัตร${cert.medal_label ? ` · ${cert.medal_label}` : ''}`,
+        sub: `${cert.sport_name || 'รายการแข่งขัน'} · สี${cert.color || ''}`,
+        onOpen: () => openCertificatePrint({
+          layout: cert.layout,
+          variables: {
+            name: student.full_name,
+            date: new Date(cert.awarded_at || Date.now()).toLocaleDateString('th-TH', { dateStyle: 'long' }),
+            no: cert.certificate_no,
+            ...(cert.variables || {}),
+          },
+          docTitle: cert.title,
+        }, showToast),
+      }))
       if (eligibility?.eligible && eligibility?.certificate_url) {
         cards.push({
           key: 'sports-color', emoji: '🎖️', title: 'เกียรติบัตรกีฬาสี',
@@ -102,6 +120,7 @@ export async function openMyCertificatesModal(student) {
           <div class="text-3xl mb-2">${c.emoji}</div>
           <p class="text-xs font-bold text-gray-800 leading-snug">${esc(c.title)}</p>
           <p class="text-[10px] text-gray-500 mt-1">${esc(c.sub || '')}</p>
+          ${c.onOpen ? '<p class="text-[10px] text-indigo-600 mt-2 font-bold">กดเพื่อเปิด / บันทึก PDF</p>' : ''}
         </div>`).join('')}
     </div>
   ` : `<p class="text-sm text-gray-400 text-center py-16">ยังไม่มีเกียรติบัตร</p>`
