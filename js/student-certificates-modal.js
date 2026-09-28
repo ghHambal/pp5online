@@ -70,7 +70,7 @@ export async function openMyCertificatesModal(student) {
   // 3. กีฬาสี — เกียรติบัตรเหรียญสร้างจากข้อมูลผลรางวัลบนเครื่องนักเรียนเอง
   // ส่วนสิทธิ์เข้าร่วมกีฬาสี/นักกีฬาดีเด่นเดิมยังคงแสดงจากข้อมูลของระบบเดิม
   try {
-    const { data: event } = await supabase.from('events').select('id').eq('status', 'active').order('academic_year', { ascending: false }).limit(1).maybeSingle()
+    const { data: event } = await supabase.from('events').select('id, status').order('academic_year', { ascending: false }).order('created_at', { ascending: false }).limit(1).maybeSingle()
     if (event) {
       const [eligibility, awards, medalCertificates] = await Promise.all([
         supabase.rpc('get_my_sports_eligibility', { p_event: event.id }).then(r => (r.error ? null : r.data)).catch(() => null),
@@ -105,7 +105,7 @@ export async function openMyCertificatesModal(student) {
         title: a.sports?.name || 'รางวัลนักกีฬาดีเด่น', sub: a.note || '', onOpen: null,
       }))
     }
-  } catch (_) { /* ไม่มีสิทธิ์เข้าถึง RPC หรือยังไม่มีงานกีฬาสีที่ active — ข้ามไปเงียบๆ */ }
+  } catch (_) { /* ไม่มีสิทธิ์เข้าถึง RPC หรือยังไม่มีข้อมูลงานกีฬาสี — ข้ามไปเงียบๆ */ }
 
   // 4. AZFUTSAL — คำนวณแชมป์/รางวัลสดจากผลการแข่งขันในระบบฟุตซอลเอง (คนละเอนจิน ไม่ join ตรงๆ ที่นี่)
   cards.push({
