@@ -13,6 +13,21 @@ const state = {
   gender: 'all',
   search: '',
   busy: false,
+  previousBodyOverflow: '',
+  previousDocumentOverflow: '',
+}
+
+const installStyles = () => {
+  if (document.getElementById('azizgames-competition-overview-style')) return
+  const style = document.createElement('style')
+  style.id = 'azizgames-competition-overview-style'
+  style.textContent = `
+    [data-azizgames-competition-overview-root]{position:fixed!important;inset:0!important;z-index:2147483647!important;display:block!important;width:100vw!important;height:100vh!important;overflow:hidden!important;pointer-events:auto!important}
+    [data-azizgames-competition-overview]{position:fixed!important;inset:0!important;z-index:2147483647!important;display:block!important;width:100vw!important;height:100vh!important;max-width:none!important;overflow-y:auto!important;overflow-x:hidden!important;background:rgba(2,6,23,.98)!important;color:#e2e8f0!important;font-family:inherit!important}
+    [data-azizgames-competition-overview]>div{box-sizing:border-box;min-height:100%;width:100%;max-width:1500px;margin:0 auto;padding:24px 28px 48px}
+    @media(max-width:640px){[data-azizgames-competition-overview]>div{padding:16px 14px 32px}}
+  `
+  document.head.append(style)
 }
 
 const getSupabaseToken = () => {
@@ -170,13 +185,22 @@ const sendRow = async matchId => {
 
 const close = () => {
   state.root?.remove()
+  document.body.style.overflow = state.previousBodyOverflow
+  document.documentElement.style.overflow = state.previousDocumentOverflow
   state.root = null
   state.rows = []
 }
 
 const open = () => {
   if (state.root) return
+  installStyles()
+  state.previousBodyOverflow = document.body.style.overflow
+  state.previousDocumentOverflow = document.documentElement.style.overflow
+  document.body.style.overflow = 'hidden'
+  document.documentElement.style.overflow = 'hidden'
   state.root = document.createElement('div')
+  state.root.setAttribute('data-azizgames-competition-overview-root', 'true')
+  state.root.style.cssText = 'position:fixed;inset:0;z-index:2147483647;width:100vw;height:100vh;overflow:hidden;pointer-events:auto;'
   document.body.append(state.root)
   render()
   load()
