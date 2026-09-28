@@ -1,5 +1,4 @@
--- ให้กรรมการกองกลางบันทึกนักกีฬาดีเด่นผ่าน session token ของ sports_officials
--- แทนการพึ่งบทบาท Supabase Auth ของเครื่องที่กำลังใช้งาน
+-- จำกัดการแก้ไขนักกีฬาดีเด่นของกรรมการกองกลางให้อยู่ในรายการกีฬาที่ส่งมาด้วย
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public.sports_official_save_outstanding(
