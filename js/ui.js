@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.839'
+import { APP_VERSION } from './version.js?v=10.22.840'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.840': [
+    '🏅 AZIZGAMES: ช่องหมายเหตุของนักกีฬาดีเด่นไม่บังคับกรอก สามารถบันทึกได้แม้ไม่มีเหตุผลเพิ่มเติม',
+    '🛡️ AZIZGAMES: แก้สิทธิ์ RLS ให้ผู้ดูแลกีฬาที่ได้รับสิทธิ์ผ่านระบบ PP5 บันทึกนักกีฬาดีเด่นได้',
+  ],
   '10.22.839': [
     '🏅 AZIZGAMES: ตัวเลือกรายการแข่งขันนักกีฬาดีเด่นแสดงรายการที่ลงทะเบียนก่อน และพิมพ์ค้นหารายการอื่นในระบบได้ตามต้องการ',
   ],
