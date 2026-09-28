@@ -70,24 +70,27 @@ export function layoutForTemplate(template) {
 
 const safeFontFamily = value => String(value || 'Sarabun').replace(/[^A-Za-z0-9 _-]/g, '').trim() || 'Sarabun'
 
-function elementStyle(el) {
+function elementStyle(el, baseWidth) {
   const alignTransform = el.align === 'left' ? 'translate(0,-50%)' : el.align === 'right' ? 'translate(-100%,-50%)' : 'translate(-50%,-50%)'
-  const widthRule = el.borderTop ? 'width:180px;' : el.maxWidth ? `width:${el.maxWidth}%;` : 'white-space:nowrap;'
-  const borderRule = el.borderTop ? 'border-top:1px solid #999;padding-top:6px;' : ''
+  const fontSize = Math.max(1, Number(el.fontSize) || 16)
+  const fontSizeCqw = (fontSize * 100 / baseWidth).toFixed(4)
+  const letterSpacing = Number(el.letterSpacing) || 0
+  const letterSpacingCqw = (letterSpacing * 100 / baseWidth).toFixed(4)
+  const widthRule = el.borderTop ? `width:min(180px,18cqw);` : el.maxWidth ? `width:${el.maxWidth}%;` : 'white-space:nowrap;'
+  const borderRule = el.borderTop ? 'border-top:1px solid #999;padding-top:0.6cqw;' : ''
   const shadow = el.shadow?.enabled
-    ? `text-shadow:${Number(el.shadow.offsetX) || 0}px ${Number(el.shadow.offsetY) || 0}px ${Number(el.shadow.blur) || 0}px ${_esc(el.shadow.color || '#000000')};`
+    ? `text-shadow:${((Number(el.shadow.offsetX) || 0) * 100 / baseWidth).toFixed(4)}cqw ${((Number(el.shadow.offsetY) || 0) * 100 / baseWidth).toFixed(4)}cqw ${((Number(el.shadow.blur) || 0) * 100 / baseWidth).toFixed(4)}cqw ${_esc(el.shadow.color || '#000000')};`
     : ''
   const stroke = el.stroke?.enabled
-    ? `-webkit-text-stroke:${Number(el.stroke.width) || 1}px ${_esc(el.stroke.color || '#ffffff')};paint-order:stroke fill;`
+    ? `-webkit-text-stroke:${((Number(el.stroke.width) || 1) * 100 / baseWidth).toFixed(4)}cqw ${_esc(el.stroke.color || '#ffffff')};paint-order:stroke fill;`
     : ''
   const opacity = el.opacity == null ? 1 : Math.min(1, Math.max(0, Number(el.opacity)))
-  const letterSpacing = Number(el.letterSpacing) || 0
-  return `position:absolute;left:${el.x}%;top:${el.y}%;transform:${alignTransform};font-size:${el.fontSize}px;font-weight:${el.bold ? 700 : 400};color:${_esc(el.color)};text-align:${el.align};line-height:1.6;opacity:${opacity};letter-spacing:${letterSpacing}px;${widthRule}${borderRule}${shadow}${stroke}font-family:'${safeFontFamily(el.fontFamily)}',sans-serif;`
+  return `position:absolute;left:${el.x}%;top:${el.y}%;transform:${alignTransform};font-size:clamp(6px,${fontSizeCqw}cqw,${fontSize}px);font-weight:${el.bold ? 700 : 400};color:${_esc(el.color)};text-align:${el.align};line-height:1.6;opacity:${opacity};letter-spacing:${letterSpacingCqw}cqw;${widthRule}${borderRule}${shadow}${stroke}font-family:'${safeFontFamily(el.fontFamily)}',sans-serif;`
 }
 
 // element ปกติเป็นข้อความ (text, ค่าเริ่มต้นถ้าไม่ระบุ type) — type:'image' คือรูปโลโก้/ตราสัญลักษณ์ที่วาง
 // ลงบนการ์ดได้อิสระ (คนละแนวคิดกับพื้นหลังเต็มใบ) width เป็น % ของความกว้างการ์ด สูงปรับตามสัดส่วนรูปเอง
-function renderElement(el, escapedVars) {
+function renderElement(el, escapedVars, baseWidth) {
   if (el.type === 'cornerGraphic') {
     const width = Math.min(45, Math.max(2, Number(el.width) || 14))
     const insetX = Math.min(45, Math.max(0, Number(el.insetX) || 2))
@@ -102,7 +105,7 @@ function renderElement(el, escapedVars) {
     const opacity = el.opacity == null ? 1 : Math.min(1, Math.max(0, Number(el.opacity)))
     return `<img data-cert-el-id="${_esc(el.id)}" src="${_esc(el.imageUrl)}" style="position:absolute;left:${el.x}%;top:${el.y}%;width:${w}%;height:auto;opacity:${opacity};transform:translate(-50%,-50%)${el.flipX ? ' scaleX(-1)' : ''};" />`
   }
-  return `<div data-cert-el-id="${_esc(el.id)}" style="${elementStyle(el)}">${substitutePlaceholders(_esc(el.text), escapedVars)}</div>`
+  return `<div data-cert-el-id="${_esc(el.id)}" style="${elementStyle(el, baseWidth)}">${substitutePlaceholders(_esc(el.text), escapedVars)}</div>`
 }
 
 // variables: { name, date, no, ...customKeys } — ค่าดิบยังไม่ escape (ฟังก์ชันนี้ escape ให้เอง)
@@ -110,12 +113,13 @@ function renderElement(el, escapedVars) {
 export function renderCertificateCanvasHtml({ layout, variables }, canvasStyleExtra = '') {
   const escapedVars = Object.fromEntries(Object.entries(variables ?? {}).map(([k, v]) => [k, _esc(v)]))
   const bg = layout.background ?? {}
+  const baseWidth = layout.orientation === 'portrait' ? 700 : 1000
   const bgStyle = bg.type === 'image' && bg.imageUrl
     ? `background:url('${_esc(bg.imageUrl)}') center/cover no-repeat;`
     : `background:${_esc(bg.color || '#fffdf8')};border:${bg.borderWidth ?? 4}px ${bg.borderStyle || 'solid'} ${_esc(bg.borderColor || '#999')};`
-  const elementsHtml = (layout.elements ?? []).map(el => renderElement(el, escapedVars)).join('')
+  const elementsHtml = (layout.elements ?? []).map(el => renderElement(el, escapedVars, baseWidth)).join('')
   const aspectRatio = layout.orientation === 'portrait' ? '1/1.414' : '1.414/1'
-  return `<div class="cert-canvas" style="position:relative;width:100%;aspect-ratio:${aspectRatio};${bgStyle}${canvasStyleExtra}">${elementsHtml}</div>`
+  return `<div class="cert-canvas" style="position:relative;width:100%;container-type:inline-size;aspect-ratio:${aspectRatio};${bgStyle}${canvasStyleExtra}">${elementsHtml}</div>`
 }
 
 export function buildCertificateHtml({ layout, variables, docTitle }) {

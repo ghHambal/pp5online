@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.846'
+import { APP_VERSION } from './version.js?v=10.22.847'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.847': [
+    '🎓 PP5: ปรับขนาดฟอนต์เกียรติบัตรให้สัมพันธ์กับขนาดใบประกาศบนคอมพิวเตอร์และมือถือ ใช้สัดส่วนเดียวกันทั้งหน้าแก้ไขและหน้าพิมพ์',
+  ],
   '10.22.846': [
     '🎓 PP5: เพิ่มเกียรติบัตรนักกีฬาดีเด่น และเปลี่ยนข้อความผลการแข่งขันเป็น ชนะเลิศ / รองชนะเลิศอันดับ 1 / รองชนะเลิศอันดับ 2',
   ],
