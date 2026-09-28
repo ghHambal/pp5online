@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.844'
+import { APP_VERSION } from './version.js?v=10.22.845'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.845': [
+    '🎓 PP5: แก้ตัวแปรบนเกียรติบัตรกีฬาสีให้แสดงชื่อเหรียญและรายการแข่งขันจริง ไม่แสดง {{award}} / {{types}} ค้างบนใบประกาศ',
+  ],
   '10.22.844': [
     '🎓 PP5: แสดงเกียรติบัตรกีฬาสีจากงานล่าสุดได้ต่อเนื่อง แม้ปิดสถานะการจัดงานหลังสรุปผลแล้ว',
   ],
