@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.840'
+import { APP_VERSION } from './version.js?v=10.22.841'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.841': [
+    '🛡️ AZIZGAMES: ให้เจ้าหน้าที่กองกลาง ag2026 บันทึกนักกีฬาดีเด่นผ่าน session ของกรรมการได้ แม้เครื่องนั้นมี Supabase Auth คนละสิทธิ์',
+  ],
   '10.22.840': [
     '🏅 AZIZGAMES: ช่องหมายเหตุของนักกีฬาดีเด่นไม่บังคับกรอก สามารถบันทึกได้แม้ไม่มีเหตุผลเพิ่มเติม',
     '🛡️ AZIZGAMES: แก้สิทธิ์ RLS ให้ผู้ดูแลกีฬาที่ได้รับสิทธิ์ผ่านระบบ PP5 บันทึกนักกีฬาดีเด่นได้',
