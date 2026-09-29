@@ -1,6 +1,6 @@
 import { getWorkloadState } from './workload-scheduler.js'
 
-const VERSION = '10.22.854'
+const VERSION = '10.22.858'
 const base = location.pathname.startsWith('/pp5online/') ? '/pp5online/' : '/'
 
 const loadScript = (src) => new Promise((resolve, reject) => {
@@ -17,7 +17,7 @@ const bootstrap = async () => {
   const stylesheet = document.createElement('link')
   stylesheet.rel = 'stylesheet'
   stylesheet.crossOrigin = 'anonymous'
-  stylesheet.href = `${base}azizgames/assets/index-B_roTS1t.css?v=${VERSION}`
+  stylesheet.href = `${base}azizgames/assets/index-mN4jUqD8.css?v=${VERSION}`
   document.head.appendChild(stylesheet)
 
   let active = true
@@ -36,7 +36,7 @@ const bootstrap = async () => {
   // Install the storage quota guard before React starts writing its caches.
   await loadScript('azizgames-public-controls.js')
   await loadScript('azizgames-daily-checkins-pagination.js')
-  await loadScript('azizgames/assets/index-DraxC0Ow.js')
+  await loadScript('azizgames/assets/index-CzrYgM9C.js')
   await loadScript('azizgames-route-bridge.js')
   await loadScript('azizgames-result-publish.js')
   await loadScript('azizgames-pairing-reset.js')

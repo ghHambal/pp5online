@@ -34,6 +34,15 @@ function _templateColumnTokens(columns = null) {
 }
 
 export async function renderCertificateManager(teacher) {
+  const params = new URLSearchParams(window.location.search)
+  const certificateDeepLink = params.get('certificate_student_code') ? {
+    studentCode: params.get('certificate_student_code'),
+    title: params.get('certificate_title') || '',
+    reason: params.get('certificate_reason') || '',
+    forceLandscape: params.get('certificate_landscape') === '1',
+    sourceSystem: params.get('certificate_source') || null,
+    sourceRefId: params.get('certificate_source_ref') || null,
+  } : null
   setActiveNav('certificates')
   setTitle('ระบบเกียรติบัตร')
 
@@ -64,13 +73,18 @@ export async function renderCertificateManager(teacher) {
       document.getElementById(`cert-tab-${t}`).className = t === tab ? _activeCls : _inactiveCls
     })
     if (tab === 'templates') _renderTemplatesTab(teacher)
-    if (tab === 'issue') _renderIssueTab(teacher)
+    if (tab === 'issue') _renderIssueTab(teacher, certificateDeepLink)
     if (tab === 'history') _renderHistoryTab()
   }
   document.getElementById('cert-tab-templates').addEventListener('click', () => _selectTab('templates'))
   document.getElementById('cert-tab-issue').addEventListener('click', () => _selectTab('issue'))
   document.getElementById('cert-tab-history').addEventListener('click', () => _selectTab('history'))
-  _selectTab(_activeTab)
+  if (certificateDeepLink) {
+    await _renderTemplatesTab(teacher)
+    _selectTab('issue')
+  } else {
+    _selectTab(_activeTab)
+  }
 }
 
 // ─── แท็บ 1: เทมเพลต ─────────────────────────────────────────────────────────
@@ -210,7 +224,7 @@ async function _renderTemplatesTab(teacher) {
 // ─── แท็บ 2: ออกเกียรติบัตร ────────────────────────────────────────────────────
 // รองรับผู้รับหลายคนพร้อมกัน (นักเรียนและ/หรือครูปนกันได้) — พิมพ์รหัส/ชื่อคั่นด้วยคอมมาหรือขึ้นบรรทัดใหม่
 // แล้วกด "เพิ่ม" ระบบค้นหาทีละรายการแล้วแสดงเป็นการ์ดพร้อมรูป ก่อนออกจริงพร้อมกันทั้งหมด
-function _renderIssueTab(teacher) {
+function _renderIssueTab(teacher, initial = null) {
   const panel = document.getElementById('cert-tab-panel')
   panel.innerHTML = `
     <div class="space-y-3">
@@ -228,17 +242,20 @@ function _renderIssueTab(teacher) {
     tableButton.className = `px-3 py-2 rounded-lg text-xs font-bold ${mode === 'table' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`
     quickButton.className = `px-3 py-2 rounded-lg text-xs font-bold ${mode === 'quick' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500'}`
     if (mode === 'table') renderCertificateRecipientTable({ panel: content, teacher, templates: _templates ?? [] })
-    else _renderQuickIssueTab(teacher, content)
+    else _renderQuickIssueTab(teacher, content, initial)
   }
   tableButton.addEventListener('click', () => setMode('table'))
   quickButton.addEventListener('click', () => setMode('quick'))
-  setMode('table')
+  setMode(initial ? 'quick' : 'table')
 }
 
-function _renderQuickIssueTab(teacher, targetPanel = null) {
+function _renderQuickIssueTab(teacher, targetPanel = null, initial = null) {
   const panel = targetPanel ?? document.getElementById('cert-tab-panel')
   let recipientType = 'student' // 'student' | 'teacher' — สลับได้ระหว่างพิมพ์เพิ่ม ไม่ล้างการ์ดที่เพิ่มไปแล้ว
   let selectedRecipients = [] // [{ type, id, full_name, code, sub, photo }]
+  const availableTemplates = initial?.forceLandscape
+    ? (_templates ?? []).filter(template => (template.layout?.orientation ?? 'landscape') !== 'portrait')
+    : (_templates ?? [])
 
   panel.innerHTML = `
     <div class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm space-y-3 max-w-2xl">
@@ -246,7 +263,7 @@ function _renderQuickIssueTab(teacher, targetPanel = null) {
         <label class="block text-xs font-bold text-gray-500 mb-1">เทมเพลต</label>
         <select id="cert-issue-template" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
           <option value="">— เลือกเทมเพลต —</option>
-          ${(_templates ?? []).map(t => `<option value="${t.id}">${_esc(t.name)}</option>`).join('')}
+          ${availableTemplates.map(t => `<option value="${t.id}">${_esc(t.name)}</option>`).join('')}
         </select>
       </div>
       <div>
@@ -266,8 +283,8 @@ function _renderQuickIssueTab(teacher, targetPanel = null) {
       <button type="button" id="cert-issue-submit" class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold">🏅 ออกเกียรติบัตร</button>
     </div>`
 
-  if (!_templates?.length) {
-    panel.innerHTML = `<p class="text-sm text-gray-400 text-center py-12">ยังไม่มีเทมเพลต — ไปสร้างที่แท็บ "เทมเพลต" ก่อนครับ</p>`
+  if (!availableTemplates.length) {
+    panel.innerHTML = `<p class="text-sm text-gray-400 text-center py-12">${initial?.forceLandscape ? 'ยังไม่มีเทมเพลตเกียรติบัตร A4 แนวนอน — ไปสร้างหรือปรับเทมเพลตที่แท็บ "เทมเพลต" ก่อนครับ' : 'ยังไม่มีเทมเพลต — ไปสร้างที่แท็บ "เทมเพลต" ก่อนครับ'}</p>`
     return
   }
 
@@ -314,7 +331,7 @@ function _renderQuickIssueTab(teacher, targetPanel = null) {
   _renderCards()
 
   const _renderVarInputs = () => {
-    const template = _templates.find(t => t.id === Number(templateSelect.value))
+    const template = availableTemplates.find(t => t.id === Number(templateSelect.value))
     if (!template) { varsEl.innerHTML = ''; return }
     const layout = template.layout?.elements ? template.layout : null
     const customKeys = layout
@@ -324,12 +341,12 @@ function _renderQuickIssueTab(teacher, targetPanel = null) {
     varsEl.innerHTML = `
       <div>
         <label class="block text-xs font-bold text-gray-500 mb-1">ชื่อรายการ (แสดงในประวัติ ไม่บังคับ)</label>
-        <input type="text" id="cert-issue-title" placeholder="เช่น เกียรติบัตรความประพฤติดี" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white" />
+        <input type="text" id="cert-issue-title" value="${_esc(initial?.title || '')}" placeholder="เช่น เกียรติบัตรความประพฤติดี" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white" />
       </div>
       ${customKeys.map(k => `
         <div>
           <label class="block text-xs font-bold text-gray-500 mb-1">${_esc(k)}</label>
-          <input type="text" data-var-key="${_esc(k)}" class="cert-issue-var-input w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white" />
+          <input type="text" data-var-key="${_esc(k)}" value="${_esc(k === 'reason' ? (initial?.reason || '') : '')}" class="cert-issue-var-input w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white" />
         </div>`).join('')}`
   }
   templateSelect.addEventListener('change', _renderVarInputs)
@@ -371,6 +388,11 @@ function _renderQuickIssueTab(teacher, targetPanel = null) {
     _renderCards()
   })
 
+  if (initial?.studentCode) {
+    searchInput.value = initial.studentCode
+    setTimeout(() => addBtn.click(), 0)
+  }
+
   submitBtn.addEventListener('click', async () => {
     const templateId = Number(templateSelect.value)
     if (!templateId) { showToast('กรุณาเลือกเทมเพลต', 'warning'); return }
@@ -388,6 +410,8 @@ function _renderQuickIssueTab(teacher, targetPanel = null) {
           teacherId: r.type === 'teacher' ? r.id : undefined,
           recipientName: r.full_name,
           variables, title, issuedByTeacherId: teacher?.id,
+          sourceSystem: initial?.sourceSystem,
+          sourceRefId: initial?.sourceRefId,
         })
         successCount++
       } catch (err) { failCount++ }
