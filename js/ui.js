@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.858'
+import { APP_VERSION } from './version.js?v=10.22.859'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.859': [
+    '🏅 AZIZGAMES: ปุ่มสร้างเกียรติบัตรนักกีฬาดีเด่นพิมพ์จากหน้าเดิมโดยตรง และเพิ่มพิมพ์เกียรติบัตรทั้งหมดเป็นชุด A4 แนวนอน',
+  ],
   '10.22.858': [
     '🏅 AZIZGAMES: เพิ่มสลับชาย/หญิงในรายชื่อนักกีฬาดีเด่น และปุ่มสร้างเกียรติบัตร A4 แนวนอนที่เติมรายชื่อให้อัตโนมัติ',
   ],

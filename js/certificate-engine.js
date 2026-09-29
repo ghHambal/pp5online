@@ -145,3 +145,39 @@ export function buildCertificateHtml({ layout, variables, docTitle }) {
 export function openCertificatePrint({ layout, variables, docTitle }) {
   openHtmlPrintOverlay(buildCertificateHtml({ layout, variables, docTitle }))
 }
+
+// เปิดพิมพ์หลายใบในเอกสารเดียว — ใช้เอนจินและเทมเพลตเดียวกับการพิมพ์ใบเดียว
+// แต่แยกเป็นคนละหน้า A4 เพื่อให้เจ้าหน้าที่สั่งพิมพ์ทั้งหมดได้ในครั้งเดียว
+export function buildCertificateBatchHtml(certificates = []) {
+  const rows = certificates.filter(c => c?.layout)
+  if (!rows.length) return ''
+  const firstLayout = rows[0].layout
+  const isPortrait = firstLayout.orientation === 'portrait'
+  const fonts = [...new Set([
+    'Sarabun',
+    ...rows.flatMap(c => (c.layout?.elements ?? []).filter(el => !el.type || el.type === 'text').map(el => safeFontFamily(el.fontFamily))),
+  ])]
+  const fontQuery = fonts.map(f => `family=${encodeURIComponent(f).replace(/%20/g, '+')}:wght@400;600;700`).join('&amp;')
+  const pages = rows.map((certificate, index) => `
+    <section class="cert-page">
+      ${renderCertificateCanvasHtml(certificate)}
+    </section>
+  `).join('')
+  const title = _esc(rows[0].docTitle || 'เกียรติบัตร')
+  return `<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8"><title>${title}</title>
+    <link href="https://fonts.googleapis.com/css2?${fontQuery}&amp;display=swap" rel="stylesheet">
+    <style>
+      * { box-sizing: border-box; }
+      body { font-family: 'Sarabun', sans-serif; background: #e5e7eb; padding: 40px; margin: 0; }
+      .cert-page { max-width: ${isPortrait ? '700px' : '1000px'}; margin: 0 auto; break-after: ${isPortrait ? 'page' : 'page'}; page-break-after: always; }
+      .cert-page:last-child { break-after: auto; page-break-after: auto; }
+      @page { size: ${isPortrait ? 'portrait' : 'landscape'}; margin: 0; }
+      @media print { body { background: #fff; padding: 0; } .cert-page { max-width: none; width: 100%; } }
+    </style></head>
+    <body>${pages}</body></html>`
+}
+
+export function openCertificatesPrint({ certificates = [] }) {
+  const html = buildCertificateBatchHtml(certificates)
+  if (html) openHtmlPrintOverlay(html)
+}
