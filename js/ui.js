@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.847'
+import { APP_VERSION } from './version.js?v=10.22.857'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.857': [
+    '🧑‍⚖️ ประเมินกีฬาสี: แก้การโหลดคะแนนเกิน 1,000 แถวด้วยการแบ่งหน้า และแก้การบันทึกคะแนนซ้ำตามรอบประเมิน',
+  ],
   '10.22.856': [
     '📋 รับรายงานตัว: เพิ่มปุ่มรายงานตัวนักกีฬาทุกประเภท พร้อมรหัสยืนยัน azreg2026 และบันทึกเป็นชุดย่อยป้องกันหน้าค้าง',
   ],

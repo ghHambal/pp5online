@@ -2520,11 +2520,15 @@ export async function renderSportsEvaluationWorkspace() {
     const judgeUsername='pp5:'+profileId
     // entries ดึงมาทั้งหมด (ไม่กรองเฉพาะของฉัน) เพราะใช้ร่วมกันทั้ง 4 แท็บ: prefill คะแนนของฉันเอง,
     // สรุปคะแนนทุกสี, และสถานะความครบถ้วนของผู้ประเมินทุกคน — กันยิง query ซ้ำซ้อนหลายรอบ
-    const [{data:colors},{data:criteria},{data:myAssignments},{data:entries},{data:totals},{data:sessions}]=await Promise.all([
+    const [{data:colors},{data:criteria},{data:myAssignments},entries,{data:totals},{data:sessions}]=await Promise.all([
       supabase.from('team_colors').select('id,name,hex_color,logo_url,gender').eq('event_id',event.id).order('gender').order('display_order'),
       supabase.from('sports_score_criteria').select('*').eq('event_id',event.id).eq('is_active',true).order('category').order('display_order'),
       supabase.from('sports_score_evaluators').select('*').eq('event_id',event.id).eq('profile_id',profileId).eq('is_active',true),
-      supabase.from('sports_score_entries').select('criteria_id,team_color_id,session_id,judge_username,score,updated_at').eq('event_id',event.id),
+      _fetchAllRows('sports_score_entries', q => q
+        .select('id,criteria_id,team_color_id,session_id,judge_username,score,updated_at')
+        .eq('event_id',event.id)
+        .order('updated_at',{ascending:true})
+        .order('id',{ascending:true})),
       supabase.from('color_totals').select('*').eq('event_id',event.id),
       supabase.from('sports_evaluation_sessions').select('*').eq('event_id',event.id).order('session_type').order('day_no'),
     ])
@@ -3029,7 +3033,10 @@ export async function renderSportsEvaluationWorkspace() {
         const activeSession=(sessions||[]).find(s=>s.id===evalSession)
         if(activeSession?.status==='closed' && !isAdmin)return toast('รอบนี้ปิดรับคะแนนแล้ว','error')
         const btn=el.querySelector('#eval-submit'); btn.disabled=true;btn.textContent='กำลังบันทึก...'
-        const {error}=await supabase.from('sports_score_entries').upsert(rows,{onConflict:'criteria_id,team_color_id,judge_username,session_id'})
+        // Production still enforces the existing three-column unique constraint.
+        // criteria_id is already session-specific, so this conflict target updates
+        // the same score safely for both session-bound and legacy criteria rows.
+        const {error}=await supabase.from('sports_score_entries').upsert(rows,{onConflict:'criteria_id,team_color_id,judge_username'})
         btn.disabled=false;btn.textContent='💾 บันทึกคะแนนประเมิน'
         if(error)return toast(error.message,'error')
         rows.forEach(r=>scoreMap.set(`${r.criteria_id}|${r.team_color_id}|${r.session_id||''}`,r.score))
