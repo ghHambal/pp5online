@@ -2,6 +2,7 @@ import { supabase } from './supabase.js'
 import { getFriendlyErrorMessage } from './ui.js'
 
 const PW = 'azreg26'
+const ALL_CHECKIN_CODE = 'azreg2026'
 const PW_KEY = 'sports_checkin_pw'
 const OFFLINE_QUEUE_KEY = 'sports_checkin_offline_queue'
 const OFFLINE_DATA_KEY = 'sports_checkin_roster_cache'
@@ -9,6 +10,15 @@ const DEFAULT_EVENT = '00000000-0000-0000-0000-000000000001'
 const root = document.getElementById('checkin-root')
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const hexToRgba = (hex, alpha = 0.08) => {
+  const value = String(hex || '').trim().replace(/^#/, '')
+  const normalized = value.length === 3
+    ? value.split('').map(char => char + char).join('')
+    : value
+  if (!/^[0-9a-f]{6}$/i.test(normalized)) return `rgba(100,116,139,${alpha})`
+  const number = Number.parseInt(normalized, 16)
+  return `rgba(${number >> 16},${(number >> 8) & 255},${number & 255},${alpha})`
+}
 // ห้ามใช้ new Date().toISOString().slice(0,10) หาวันที่ "วันนี้" — คืนวันที่ตาม UTC ทำให้ช่วง
 // เที่ยงคืน-ตี 7 เวลาไทยเพี้ยนไปเป็นเมื่อวาน
 const todayLocal = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
@@ -152,6 +162,7 @@ function renderApp(data, { fromCache = false } = {}) {
   let html5Qrcode = null, scanning = false, cameraStarting = false, cameraSession = 0
   let refreshing = false
   let syncingOfflineQueue = false
+  let reportingAllSports = false
   let realtimeChannel = null
   let offlineQueue = readOfflineQueue()
   let usingCachedData = fromCache
@@ -189,6 +200,7 @@ function renderApp(data, { fromCache = false } = {}) {
         <div id="ci-summary" class="flex-1 min-w-[160px] rounded-xl bg-emerald-50 border border-emerald-200 px-3 py-2 text-xs text-emerald-700 font-bold"></div>
         <button id="ci-refresh" class="px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-100 border border-slate-200 text-slate-700 hover:bg-slate-200">↻ รีเฟรช</button>
         <button id="ci-scan-toggle" class="px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all bg-pink-600 text-white shadow-sm hover:bg-pink-700">✅ รับรายงานตัว</button>
+        <button id="ci-report-all" type="button" class="px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 transition-all bg-emerald-600 text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed">✅ รายงานตัวทุกกีฬา</button>
       </div>
 
       <div class="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
@@ -425,7 +437,7 @@ function renderApp(data, { fromCache = false } = {}) {
     }
   }
 
-  const enqueueOfflineCheckin = studentId => {
+  const enqueueOfflineCheckin = (studentId, { render = true } = {}) => {
     const item = {
       id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${studentId}`,
       eventId: DEFAULT_EVENT,
@@ -438,7 +450,7 @@ function renderApp(data, { fromCache = false } = {}) {
     if (!offlineQueue.some(existing => queueKey(existing) === key)) offlineQueue = [...offlineQueue, item]
     saveOfflineQueue(offlineQueue)
     updateOfflineStatus()
-    renderList()
+    if (render) renderList()
     return item
   }
 
@@ -490,7 +502,7 @@ function renderApp(data, { fromCache = false } = {}) {
     showScanResult(row.student, 'success')
   }
 
-  const doCheckin = async (studentId) => {
+  const doCheckin = async (studentId, { render = true, notifyError = true } = {}) => {
     const { data, error } = await writeDailyCheckin('upsert', {
       event_id: DEFAULT_EVENT,
       student_id: studentId,
@@ -499,10 +511,10 @@ function renderApp(data, { fromCache = false } = {}) {
     })
     if (error) {
       if (isTransientNetworkError(error)) {
-        enqueueOfflineCheckin(studentId)
+        enqueueOfflineCheckin(studentId, { render })
         return { queued: true }
       }
-      alert(error.message)
+      if (notifyError) alert(error.message)
       return false
     }
     const key = `${DEFAULT_EVENT}|${studentId}|${checkInDate}`
@@ -510,8 +522,51 @@ function renderApp(data, { fromCache = false } = {}) {
     saveOfflineQueue(offlineQueue)
     dailyCheckins = [...dailyCheckins.filter(c => !(c.student_id === studentId && c.check_in_date === checkInDate)), data]
     updateOfflineStatus()
-    renderList()
+    if (render) renderList()
     return { queued: false }
+  }
+
+  const reportAllSports = async () => {
+    const roster = rosterForDate()
+    const pendingRows = roster.filter(row => !checkedIdsToday().has(row.student.id))
+    if (!pendingRows.length) {
+      alert('นักกีฬาทุกประเภทได้รายงานตัวครบแล้ว')
+      return
+    }
+    const accessCode = window.prompt('กรอกรหัสยืนยันการรายงานตัวทุกประเภทกีฬา')
+    if (accessCode === null) return
+    if (accessCode.trim() !== ALL_CHECKIN_CODE) {
+      alert('รหัสยืนยันไม่ถูกต้อง — ยังไม่มีการบันทึกข้อมูล')
+      return
+    }
+    if (!confirm(`ยืนยันรายงานตัวนักกีฬาทุกประเภทกีฬา ${pendingRows.length} คนหรือไม่?\nระบบจะข้ามคนที่รายงานตัวไปแล้วโดยอัตโนมัติ`)) return
+
+    const button = root.querySelector('#ci-report-all')
+    reportingAllSports = true
+    if (button) { button.disabled = true; button.textContent = `กำลังบันทึก 0/${pendingRows.length} คน…` }
+    let saved = 0
+    let queued = 0
+    let failed = 0
+    const batchSize = 20
+    try {
+      for (let start = 0; start < pendingRows.length; start += batchSize) {
+        const batch = pendingRows.slice(start, start + batchSize)
+        const results = await Promise.all(batch.map(row => doCheckin(row.student.id, { render: false, notifyError: false })))
+        results.forEach(result => {
+          if (!result) failed += 1
+          else { saved += 1; if (result.queued) queued += 1 }
+        })
+        if (button) button.textContent = `กำลังบันทึก ${Math.min(start + batch.length, pendingRows.length)}/${pendingRows.length} คน…`
+      }
+    } finally {
+      reportingAllSports = false
+      renderList()
+      updateOfflineStatus()
+    }
+    const details = [`บันทึกสำเร็จ ${saved} คน`]
+    if (queued) details.push(`รอส่งข้อมูล ${queued} คน`)
+    if (failed) details.push(`ไม่สำเร็จ ${failed} คน`)
+    alert(`รายงานตัวทุกประเภทกีฬาเสร็จแล้ว\n${details.join(' · ')}`)
   }
 
   const undoCheckin = async (id) => {
@@ -564,6 +619,26 @@ function renderApp(data, { fromCache = false } = {}) {
     const roster = competitionRoster(sport.id)
     const checked = checkedIdsToday()
     const came = roster.filter(row => checked.has(row.student.id)).length
+    const pendingRoster = roster.filter(row => !checked.has(row.student.id))
+    const colorGroups = [...roster.reduce((groups, row) => {
+      const key = row.teamColorId || '__unassigned__'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key).push(row)
+      return groups
+    }, new Map())]
+      .sort(([a], [b]) => {
+        const aOrder = colors.findIndex(color => color.id === a)
+        const bOrder = colors.findIndex(color => color.id === b)
+        if (aOrder < 0 && bOrder < 0) return 0
+        if (aOrder < 0) return 1
+        if (bOrder < 0) return -1
+        return aOrder - bOrder
+      })
+      .map(([key, rows]) => ({
+        key,
+        rows,
+        color: colorById.get(key),
+      }))
     const dateLabel = checkInDate === todayLocal() ? 'วันนี้' : checkInDate
     const scheduleMatches = competitionMatches.length ? competitionMatches : allCompetitionMatches
     const scheduledDates = [...new Set(allCompetitionMatches.map(row => row.scheduled_date).filter(Boolean))]
@@ -579,21 +654,48 @@ function renderApp(data, { fromCache = false } = {}) {
         <div class="w-full max-w-5xl h-full max-h-[calc(100vh-1rem)] sm:max-h-[calc(100vh-2.5rem)] overflow-hidden rounded-3xl bg-slate-50 shadow-2xl flex flex-col">
           <header class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 bg-indigo-700 text-white">
             <div class="min-w-0"><div class="text-xs text-indigo-200">${esc(scheduleLabel)}</div><h2 class="text-lg sm:text-2xl font-extrabold truncate">${esc(sport.name)}</h2><div class="text-xs text-indigo-100 mt-0.5">${times.length ? `เวลา ${esc(times.join(', '))}` : 'ไม่ระบุเวลา'}${venues.length ? ` · ${esc(venues.join(', '))}` : ''} · ${came}/${roster.length} คนรายงานตัวแล้ว</div></div>
-            <div class="flex items-center gap-2 flex-shrink-0"><button id="ci-competition-scan" type="button" class="px-3 py-2 rounded-xl bg-white text-indigo-700 text-xs font-extrabold hover:bg-indigo-50">📷 รับรายงานตัว</button><button id="ci-competition-close" type="button" class="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 text-2xl" aria-label="ปิด">×</button></div>
+            <div class="flex items-center gap-2 flex-shrink-0"><button id="ci-competition-report-all" type="button" ${pendingRoster.length ? '' : 'disabled'} class="px-3 py-2 rounded-xl ${pendingRoster.length ? 'bg-emerald-500 hover:bg-emerald-400' : 'bg-white/20'} text-white text-xs font-extrabold disabled:opacity-60 disabled:cursor-not-allowed">✅ รายงานตัวทั้งหมด${pendingRoster.length ? ` (${pendingRoster.length})` : ''}</button><button id="ci-competition-scan" type="button" class="px-3 py-2 rounded-xl bg-white text-indigo-700 text-xs font-extrabold hover:bg-indigo-50">📷 รับรายงานตัว</button><button id="ci-competition-close" type="button" class="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 text-2xl" aria-label="ปิด">×</button></div>
           </header>
           <div class="px-4 py-3 sm:px-6 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-2"><div class="text-xs text-slate-500">เปิดหน้านี้บนจอใหญ่เพื่อติดตามสถานะแบบ Real-time และใช้มือถืออีกเครื่องสแกน QR ได้</div><div class="text-xs font-bold ${came === roster.length && roster.length ? 'text-emerald-600' : 'text-amber-600'}">${came === roster.length && roster.length ? '✅ ครบทุกคนแล้ว' : `⏳ เหลือ ${roster.length - came} คน`}</div></div>
-          <div class="flex-1 overflow-y-auto p-3 sm:p-5"><div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 sm:gap-3">${roster.length ? roster.map(row => {
-            const student = row.student
-            const isChecked = checked.has(student.id)
-            const checkin = dailyCheckins.find(item => item.student_id === student.id && item.check_in_date === checkInDate)
-            const pending = offlineQueue.find(item => item.studentId === student.id && item.checkInDate === checkInDate)
-            const colorName = colorById.get(row.teamColorId)?.name || ''
-            return `<div class="rounded-2xl border ${isChecked ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'} p-3 flex items-center gap-3"><img src="${esc(photoOf(student))}" alt="รูป ${esc(student.full_name)}" class="w-12 h-14 rounded-xl object-cover border border-slate-200 flex-shrink-0"><div class="min-w-0 flex-1"><b class="block truncate text-sm text-slate-800">${esc(student.full_name)}</b><div class="text-[11px] text-slate-500 truncate">${esc(student.student_code)} · ${esc(student.main_room || '')} · สี${esc(colorName)}</div>${isChecked ? `<div class="text-[11px] text-emerald-700 font-bold mt-1">✅ รายงานตัวแล้ว${checkin?.checked_in_at ? ` · ${new Date(checkin.checked_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : pending ? ' · รอส่งข้อมูล' : ''}</div>` : '<div class="text-[11px] text-slate-400 mt-1">ยังไม่รายงานตัว</div>'}</div>${isChecked ? `<button type="button" data-competition-cancel="${esc(pending ? `pending:${pending.id}` : (checkin?.id || ''))}" class="px-2 py-1.5 rounded-lg border border-red-200 text-red-600 text-[10px] font-bold hover:bg-red-50 flex-shrink-0">ยกเลิก</button>` : `<button type="button" data-competition-report="${esc(student.id)}" class="px-2 py-1.5 rounded-lg bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 flex-shrink-0">รายงานตัว</button>`}</div>`
-          }).join('') : '<div class="sm:col-span-2 lg:col-span-3 rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800">ยังไม่มีรายชื่อนักกีฬาในรายการนี้</div>'}</div></div>
+          <div class="flex-1 overflow-y-auto p-3 sm:p-5 space-y-4">${roster.length ? colorGroups.map(group => {
+            const colorName = group.color?.name || 'ไม่ระบุสี'
+            const colorHexCandidate = String(group.color?.hex_color || '').trim()
+            const colorHex = /^#[0-9a-f]{3,6}$/i.test(colorHexCandidate) ? colorHexCandidate : '#64748b'
+            const groupPending = group.rows.filter(row => !checked.has(row.student.id))
+            return `<section class="rounded-2xl border p-3 sm:p-4" style="background:${hexToRgba(colorHex, 0.10)};border-color:${hexToRgba(colorHex, 0.35)}"><div class="flex flex-wrap items-center justify-between gap-2 mb-3"><div class="flex items-center gap-2"><span class="w-3 h-3 rounded-full border border-white shadow-sm" style="background:${esc(colorHex)}"></span><h3 class="font-extrabold text-sm text-slate-800">สี${esc(colorName)}</h3><span class="text-[11px] text-slate-600">${group.rows.filter(row => checked.has(row.student.id)).length}/${group.rows.length} คน</span></div>${groupPending.length ? `<button type="button" data-competition-report-color="${esc(group.key)}" class="px-3 py-1.5 rounded-xl bg-white/80 border border-slate-300 text-slate-700 text-[10px] font-extrabold hover:bg-white">✅ รายงานตัวสีนี้ทั้งหมด (${groupPending.length})</button>` : '<span class="text-[10px] font-bold text-emerald-700">✅ ครบแล้ว</span>'}</div><div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">${group.rows.map(row => {
+              const student = row.student
+              const isChecked = checked.has(student.id)
+              const checkin = dailyCheckins.find(item => item.student_id === student.id && item.check_in_date === checkInDate)
+              const pending = offlineQueue.find(item => item.studentId === student.id && item.checkInDate === checkInDate)
+              return `<div class="rounded-2xl border ${isChecked ? 'border-emerald-300' : 'border-white/80'} p-3 flex items-center gap-3 shadow-sm" style="background:${hexToRgba(colorHex, isChecked ? 0.18 : 0.07)}"><img src="${esc(photoOf(student))}" alt="รูป ${esc(student.full_name)}" class="w-12 h-14 rounded-xl object-cover border border-white/80 flex-shrink-0"><div class="min-w-0 flex-1"><b class="block truncate text-sm text-slate-800">${esc(student.full_name)}</b><div class="text-[11px] text-slate-500 truncate">${esc(student.student_code)} · ${esc(student.main_room || '')}</div>${isChecked ? `<div class="text-[11px] text-emerald-700 font-bold mt-1">✅ รายงานตัวแล้ว${checkin?.checked_in_at ? ` · ${new Date(checkin.checked_in_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : pending ? ' · รอส่งข้อมูล' : ''}</div>` : '<div class="text-[11px] text-slate-500 mt-1">ยังไม่รายงานตัว</div>'}</div>${isChecked ? `<button type="button" data-competition-cancel="${esc(pending ? `pending:${pending.id}` : (checkin?.id || ''))}" class="px-2 py-1.5 rounded-lg border border-red-200 bg-white/80 text-red-600 text-[10px] font-bold hover:bg-red-50 flex-shrink-0">ยกเลิก</button>` : `<button type="button" data-competition-report="${esc(student.id)}" class="px-2 py-1.5 rounded-lg bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 flex-shrink-0">รายงานตัว</button>`}</div>`
+            }).join('')}</div></section>`
+          }).join('') : '<div class="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center text-sm text-amber-800">ยังไม่มีรายชื่อนักกีฬาในรายการนี้</div>'}</div>
         </div>
       </div>`
+    const reportStudents = async (rows, button, label = 'นักกีฬาของรายการนี้') => {
+      const ids = rows.filter(row => !checkedIdsToday().has(row.student.id)).map(row => row.student.id)
+      if (!ids.length) return
+      if (!confirm(`ยืนยันรายงานตัว${label}จำนวน ${ids.length} คนหรือไม่?\nระบบจะข้ามคนที่รายงานตัวไปแล้วโดยอัตโนมัติ`)) return
+      button.disabled = true
+      button.textContent = 'กำลังบันทึก…'
+      let saved = 0
+      let queued = 0
+      for (const studentId of ids) {
+        const result = await doCheckin(studentId)
+        if (result) { saved += 1; if (result.queued) queued += 1 }
+      }
+      renderCompetitionModal()
+      if (queued) alert(`บันทึกสำเร็จ ${saved} คน และเก็บรอส่งข้อมูล ${queued} คน เนื่องจากเครือข่ายไม่พร้อม`)
+    }
     modal.querySelector('#ci-competition-close').onclick = closeCompetitionModal
     modal.querySelector('#ci-competition-scan').onclick = () => { if (!showScanner) openScanner(selectedSportId) }
+    modal.querySelector('#ci-competition-report-all')?.addEventListener('click', event => { void reportStudents(roster, event.currentTarget) })
+    modal.querySelectorAll('[data-competition-report-color]').forEach(button => {
+      button.onclick = () => {
+        const group = colorGroups.find(item => String(item.key) === String(button.dataset.competitionReportColor))
+        if (group) void reportStudents(group.rows, button, `นักกีฬาสี${group.color?.name || 'ไม่ระบุสี'}`)
+      }
+    })
     modal.querySelectorAll('[data-competition-report]').forEach(button => {
       button.onclick = async () => {
         button.disabled = true
@@ -656,6 +758,12 @@ function renderApp(data, { fromCache = false } = {}) {
         : 'px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100'
     })
     root.querySelector('#ci-summary').textContent = `รายงานตัวแล้ว ${roster.filter(r => checked.has(r.student.id)).length} / ${roster.length} คน`
+    const reportAllButton = root.querySelector('#ci-report-all')
+    const pendingAllCount = roster.filter(row => !checked.has(row.student.id)).length
+    if (reportAllButton && !reportingAllSports) {
+      reportAllButton.disabled = pendingAllCount === 0
+      reportAllButton.textContent = pendingAllCount ? `✅ รายงานตัวทุกกีฬา (${pendingAllCount})` : '✅ รายงานตัวครบทุกกีฬา'
+    }
 
     const sportOptions = [...new Set(roster.flatMap(r => r.sportNames))].sort((a, b) => a.localeCompare(b, 'th'))
     const sportSel = root.querySelector('#ci-sport-filter')
@@ -767,6 +875,7 @@ function renderApp(data, { fromCache = false } = {}) {
       void closeScanner()
     }
   }
+  root.querySelector('#ci-report-all').onclick = () => { void reportAllSports() }
 
   setActiveTab(activeTab)
   renderList()
