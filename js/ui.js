@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.860'
+import { APP_VERSION } from './version.js?v=10.22.861'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.861': [
+    '🐛 AZIZGAMES: แก้คะแนนเดินสวนพาเหรดและคะแนนเพจไม่ครบจากข้อจำกัดอ่านข้อมูล 1,000 แถว โดยแบ่งหน้าโหลดคะแนนกรรมการครบทุกแถวทั้งตอนเปิดหน้าและรีเฟรชเรียลไทม์',
+  ],
   '10.22.860': [
     '🐛 AZIZGAMES: แก้การโหลดเอนจินพิมพ์เกียรติบัตรบน GitHub Pages และให้พิมพ์จากหน้าเดิมได้จริง',
   ],
