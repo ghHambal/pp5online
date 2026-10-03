@@ -2261,7 +2261,8 @@ export async function getAllPaymentRequests() {
     .from('payment_requests')
     .select(`
       id, package_type, amount, status, slip_url, admin_note,
-      room_count, created_at, reviewed_at,
+      room_count, created_at, reviewed_at, supporter_renewal_entitlement_id,
+      donation_tier, donation_base_amount, discount_percent, discount_amount,
       teachers ( id, full_name, teacher_code, phone ),
       master_subjects ( subject_name )
     `)
@@ -2368,7 +2369,7 @@ export async function getMyDonationRequests(teacherId) {
   if (!teacherId) return []
   const { data, error } = await supabase
     .from('payment_requests')
-    .select('id, package_type, status, amount, admin_note, created_at, reviewed_at')
+    .select('id, package_type, status, amount, admin_note, created_at, reviewed_at, supporter_renewal_entitlement_id, donation_tier, donation_base_amount, discount_percent, discount_amount')
     .eq('teacher_id', teacherId)
     .in('package_type', ['donation', 'school_sponsored'])
     .order('created_at', { ascending: false })
@@ -2380,6 +2381,42 @@ export async function getMyDonationRequests(teacherId) {
     const requestAtMs = Date.parse(String(request.reviewed_at ?? request.created_at ?? ''))
     return Number.isFinite(requestAtMs) && requestAtMs >= semesterStartMs
   })
+}
+
+// สิทธิ์ส่วนลดต่ออายุจากผู้สนับสนุนของภาคเรียนก่อนหน้า
+export async function getMySupporterRenewalEntitlement(teacherId) {
+  if (!teacherId) return null
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const academicYear = parseInt(cfg.academicYear)
+  const semester = parseInt(cfg.semester)
+  if (!Number.isInteger(academicYear) || ![1, 2].includes(semester)) return null
+
+  const { data, error } = await supabase
+    .from('supporter_renewal_entitlements')
+    .select('id, source_academic_year, source_semester, source_total_amount, source_tier, target_academic_year, target_semester, status')
+    .eq('teacher_id', teacherId)
+    .eq('target_academic_year', academicYear)
+    .eq('target_semester', semester)
+    .eq('status', 'available')
+    .maybeSingle()
+  if (error) throw error
+  return data ?? null
+}
+
+export async function getSupporterRenewalQuote(tierAmount) {
+  const { data, error } = await supabase.rpc('get_supporter_renewal_quote', {
+    p_tier_amount: parseInt(tierAmount),
+  })
+  if (error) throw error
+  return data
+}
+
+export async function createSupporterRenewalPaymentRequest(tierAmount) {
+  const { data, error } = await supabase.rpc('create_supporter_renewal_payment_request', {
+    p_tier_amount: parseInt(tierAmount),
+  })
+  if (error) throw error
+  return data
 }
 
 // ─── Classrooms ──────────────────────────────────────────────────────────────

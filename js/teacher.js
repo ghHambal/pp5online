@@ -7,6 +7,8 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          getPendingExamRequestCount,
          createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests,
          getTeacherPackageAccess, getMyDonationRequests,
+         getMySupporterRenewalEntitlement, getSupporterRenewalQuote,
+         createSupporterRenewalPaymentRequest,
          getMySchedule, getPeriods,
          getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
          updateLastSeen, logLogin,
@@ -17,7 +19,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.825'
+import { APP_VERSION } from './version.js?v=10.22.868'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -26,7 +28,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsCompetitionManager, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.825'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsCompetitionManager, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.868'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -1152,10 +1154,17 @@ async function _showDonateModal(course, cfg = {}) {
   // ── เช็คสถานะโดเนทเดิม: pending บล็อกเสมอ, approved แล้วเปิดเป็นโหมด "อัปเกรดระดับ" แทนการบล็อก ──
   let totalApproved = 0
   let isUpgrade = false
+  let renewalEntitlement = null
+  let isRenewal = false
   let nextTierAmount = null
   if (_teacher?.id) {
     try {
-      const existing = await getMyDonationRequests(_teacher.id)
+      const [existing, entitlement] = await Promise.all([
+        getMyDonationRequests(_teacher.id),
+        getMySupporterRenewalEntitlement(_teacher.id).catch(() => null),
+      ])
+      renewalEntitlement = entitlement
+      isRenewal = Boolean(entitlement?.status === 'available')
       const hasPending = existing.some(r => r.package_type === 'donation' && r.status === 'pending')
       if (hasPending) {
         showToast('คุณครูส่งหลักฐานรอการอนุมัติอยู่แล้วครับ — กรุณารอแอดมินตรวจสอบก่อนนะครับ', 'warning'); return
@@ -1180,10 +1189,15 @@ async function _showDonateModal(course, cfg = {}) {
 
   const promptpay  = cfg.paymentPromptpay ?? ''
   const quickCount = Math.min(_toPositiveInt(cfg.donationQuickCount, 4), 8)
-  const startAmount = isUpgrade ? Math.max(minAmount, (nextTierAmount ?? minAmount) - totalApproved) : minAmount
-  const quickAmounts  = Array.from({ length: quickCount }, (_, i) => startAmount + (i * stepAmount))
   const allFeatures   = _parseDonationFeatures(cfg)
   const firstTier     = stickerTiers[0]
+  const renewalStartTier = isRenewal
+    ? stickerTiers[Math.max(0, Math.min(stickerTiers.length - 1, (renewalEntitlement.source_tier || 1) - 1))]
+    : null
+  const startAmount = isRenewal
+    ? (renewalStartTier?.amount ?? firstTier?.amount ?? minAmount)
+    : (isUpgrade ? Math.max(minAmount, (nextTierAmount ?? minAmount) - totalApproved) : minAmount)
+  const quickAmounts  = Array.from({ length: quickCount }, (_, i) => startAmount + (i * stepAmount))
 
   // render feature list ตาม tier index (1-based)
   const _featureListHtml = (tierIdx) =>
@@ -1202,13 +1216,15 @@ async function _showDonateModal(course, cfg = {}) {
       <div class="px-5 pt-4 pb-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
         <button id="donate-back" class="text-gray-400 hover:text-gray-600 text-xl leading-none">←</button>
         <div class="flex-1">
-          <h3 class="font-bold text-gray-800">${isUpgrade ? '⭐ อัปเกรดระดับผู้สนับสนุน' : '☕ สนับสนุนผู้พัฒนา'}</h3>
-          <p class="text-xs text-gray-400">${isUpgrade ? 'สนับสนุนเพิ่มเพื่ออัปเกรดระดับครับ 🙏' : 'ขอบคุณมากเลยครับ 🙏'}</p>
+          <h3 class="font-bold text-gray-800">${isRenewal ? '🎁 สิทธิ์ส่วนลดผู้สนับสนุนเดิม' : (isUpgrade ? '⭐ อัปเกรดระดับผู้สนับสนุน' : '☕ สนับสนุนผู้พัฒนา')}</h3>
+          <p class="text-xs text-gray-400">${isRenewal ? 'เลือกระดับใหม่ ยิ่งสูงยิ่งได้ส่วนลดมากครับ 🙏' : (isUpgrade ? 'สนับสนุนเพิ่มเพื่ออัปเกรดระดับครับ 🙏' : 'ขอบคุณมากเลยครับ 🙏')}</p>
         </div>
       </div>
       <div class="px-5 py-4 space-y-4 overflow-auto flex-1">
         <p class="text-sm text-gray-600 text-center leading-relaxed">
-          ${isUpgrade
+          ${isRenewal
+            ? `คุณครูมีสิทธิ์ส่วนลดจากการสนับสนุนภาคเรียนที่ ${renewalEntitlement.source_semester}/${renewalEntitlement.source_academic_year}<br/><span class="text-xs text-gray-400">ยอดสะสมเดิม ${Number(renewalEntitlement.source_total_amount || 0).toLocaleString()} บาท — เลือกระดับใหม่เพื่อคำนวณส่วนลด</span>`
+            : isUpgrade
             ? `คุณครูสนับสนุนสะสมแล้ว ${totalApproved} บาท${nextTierAmount ? ` — อีก ${Math.max(0, nextTierAmount - totalApproved)} บาทจะครบ ${nextTierAmount} บาทสำหรับระดับถัดไป` : ''}<br/><span class="text-xs text-gray-400">ยอดที่สนับสนุนเพิ่มจะถูกรวมกับยอดเดิมโดยอัตโนมัติครับ</span>`
             : `สนับสนุนขั้นต่ำ ${minAmount} บาท เพื่อรับสิทธิ์ผู้สนับสนุน<br/><span class="text-xs text-gray-400">ระบบหลักใช้งานได้ไม่จำกัดอยู่แล้ว สิทธิ์นี้เป็นฟีเจอร์พิเศษเพิ่มเติมครับ</span>`}
         </p>
@@ -1223,6 +1239,15 @@ async function _showDonateModal(course, cfg = {}) {
         <div id="donate-sticker-preview">
           ${_donationStickerHtml(firstTier)}
         </div>
+        ${isRenewal ? `
+        <!-- Renewal tier selector -->
+        <div class="space-y-2">
+          <label for="donate-renewal-tier" class="text-xs font-bold text-amber-800">เลือกระดับการสนับสนุนรอบนี้</label>
+          <select id="donate-renewal-tier" class="w-full bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 text-lg font-extrabold text-amber-700 outline-none">
+            ${stickerTiers.map((tier, i) => `<option value="${tier.amount}" ${tier.amount === startAmount ? 'selected' : ''}>ระดับ ${i + 1} — ${tier.amount.toLocaleString()} บาท — ส่วนลด ${Math.min(25, (i + 1) * 5)}%</option>`).join('')}
+          </select>
+          <div id="donate-renewal-quote" class="rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800"></div>
+        </div>` : `
         <!-- Amount input -->
         <div class="flex items-center gap-3 bg-amber-50 border-2 border-amber-200 rounded-2xl p-4 focus-within:border-amber-400 transition">
           <span class="text-2xl font-bold text-amber-500">฿</span>
@@ -1236,9 +1261,10 @@ async function _showDonateModal(course, cfg = {}) {
         </div>
         <p class="text-[11px] text-gray-400 text-center leading-relaxed">
           ยอดที่สูงขึ้นจะปลดล็อกฟีเจอร์เพิ่มเติม และอัปเกรดระดับตราผู้สนับสนุนครับ
-        </p>
+        </p>`}
         <div id="donate-qr-area" class="hidden flex-col items-center gap-3 py-2">
           <img id="donate-qr-img" class="w-56 h-56 rounded-2xl shadow-md" />
+          <p id="donate-qr-total" class="text-sm font-extrabold text-emerald-700"></p>
           <p class="text-xs text-gray-500 text-center">สแกนด้วย app ธนาคาร หรือ PromptPay</p>
         </div>
         <!-- อัปโหลดสลิป (แสดงหลัง QR) -->
@@ -1273,24 +1299,40 @@ async function _showDonateModal(course, cfg = {}) {
   document.body.appendChild(wrap)
 
   const amountInput   = wrap.querySelector('#donate-amount')
+  const renewalTierInput = wrap.querySelector('#donate-renewal-tier')
   const stickerPreview = wrap.querySelector('#donate-sticker-preview')
   const featureList   = wrap.querySelector('#donate-feature-list')
+  const renewalQuoteEl = wrap.querySelector('#donate-renewal-quote')
+
+  const getBaseAmount = () => isRenewal
+    ? parseInt(renewalTierInput?.value || 0)
+    : (parseFloat(amountInput?.value) || 0)
+
+  const getTierForAmount = amount =>
+    [...stickerTiers].reverse().find(t => amount >= t.amount) || stickerTiers[0]
 
   const updatePreview = () => {
-    const amount   = parseFloat(amountInput.value) || 0
-    const tier     = [...stickerTiers].reverse().find(t => amount >= t.amount) || stickerTiers[0]
+    const amount   = getBaseAmount()
+    const tier     = getTierForAmount(amount)
     const tierIdx  = stickerTiers.indexOf(tier) + 1   // 1-based
     if (stickerPreview) stickerPreview.innerHTML = _donationStickerHtml(tier)
     if (featureList)    featureList.innerHTML    = _featureListHtml(tierIdx)
+    if (isRenewal && renewalQuoteEl) {
+      const discountPercent = Math.min(25, Math.max(0, tierIdx * 5))
+      const payableAmount = Math.round(amount * (100 - discountPercent) / 100)
+      renewalQuoteEl.innerHTML = `ยอดปกติ <b>${amount.toLocaleString()} บาท</b> · ส่วนลด <b>${discountPercent}%</b><br/>ยอดชำระจริง <b class="text-lg">${payableAmount.toLocaleString()} บาท</b>`
+    }
   }
 
   wrap.querySelectorAll('.donate-quick').forEach(btn => {
     btn.addEventListener('click', () => {
-      amountInput.value = btn.textContent.trim()
+      if (amountInput) amountInput.value = btn.textContent.trim()
       updatePreview()
     })
   })
-  amountInput.addEventListener('input', updatePreview)
+  amountInput?.addEventListener('input', updatePreview)
+  renewalTierInput?.addEventListener('change', updatePreview)
+  updatePreview()
 
   wrap.querySelector('#donate-back').addEventListener('click', () => {
     wrap.remove()
@@ -1298,12 +1340,23 @@ async function _showDonateModal(course, cfg = {}) {
   })
 
   wrap.querySelector('#donate-gen-qr').addEventListener('click', async () => {
-    const amount = parseFloat(amountInput.value)
-    if (!amount || amount < minAmount) { showToast(`กรุณาระบุยอดโดเนทขั้นต่ำ ${minAmount} บาทครับ`, 'error'); return }
+    const baseAmount = getBaseAmount()
+    if (!baseAmount || (!isRenewal && baseAmount < minAmount)) {
+      showToast(`กรุณาระบุยอดโดเนทขั้นต่ำ ${minAmount} บาทครับ`, 'error'); return
+    }
     if (!promptpay) { showToast('แอดมินยังไม่ได้ตั้งค่าเบอร์ PromptPay', 'error'); return }
     try {
+      let amount = baseAmount
+      if (isRenewal) {
+        const quote = await getSupporterRenewalQuote(baseAmount)
+        amount = Number(quote?.amount)
+        if (!Number.isInteger(amount) || amount <= 0) throw new Error('ยอดส่วนลดไม่ถูกต้อง')
+      }
       const dataUrl = await promptpayQRDataURL(promptpay, amount)
+      wrap.dataset.renewalBaseAmount = String(baseAmount)
+      wrap.dataset.payableAmount = String(amount)
       wrap.querySelector('#donate-qr-img').src = dataUrl
+      wrap.querySelector('#donate-qr-total').textContent = `ยอดที่ต้องชำระ ${amount.toLocaleString()} บาท`
       wrap.querySelector('#donate-qr-area').classList.remove('hidden')
       wrap.querySelector('#donate-qr-area').classList.add('flex')
       wrap.querySelector('#donate-slip-area').classList.remove('hidden')
@@ -1341,7 +1394,8 @@ async function _showDonateModal(course, cfg = {}) {
   })
 
   wrap.querySelector('#donate-confirm').addEventListener('click', async () => {
-    const amount = parseFloat(amountInput.value)
+    const baseAmount = getBaseAmount()
+    const amount = Number(wrap.dataset.payableAmount || baseAmount)
     // บังคับ slip ก่อนส่ง
     if (!donateSlipFile) {
       wrap.querySelector('#donate-slip-err').classList.remove('hidden')
@@ -1351,10 +1405,25 @@ async function _showDonateModal(course, cfg = {}) {
     const btn = wrap.querySelector('#donate-confirm')
     btn.disabled = true; btn.textContent = '⏳ กำลังส่งข้อมูล...'
     try {
-      const req = await createPaymentRequest({ teacher_id: _teacher?.id, package_type: 'donation', amount, status: 'pending' })
+      let req
+      if (isRenewal) {
+        const latestQuote = await getSupporterRenewalQuote(baseAmount)
+        if (Number(latestQuote?.amount) !== amount) {
+          const correctedAmount = Number(latestQuote?.amount)
+          const correctedQr = await promptpayQRDataURL(promptpay, correctedAmount)
+          wrap.querySelector('#donate-qr-img').src = correctedQr
+          wrap.querySelector('#donate-qr-total').textContent = `ยอดที่ต้องชำระ ${correctedAmount.toLocaleString()} บาท`
+          wrap.dataset.payableAmount = String(correctedAmount)
+          throw new Error('ระบบอัปเดตยอดส่วนลดล่าสุดแล้ว กรุณาตรวจสอบ QR แล้วกดส่งอีกครั้ง')
+        }
+        req = await createSupporterRenewalPaymentRequest(baseAmount)
+      } else {
+        req = await createPaymentRequest({ teacher_id: _teacher?.id, package_type: 'donation', amount, status: 'pending' })
+      }
       // อัปโหลด slip แล้วอัปเดต request
-      const slipUrl = await uploadPaymentSlip(donateSlipFile, req.id)
-      await supabase.from('payment_requests').update({ slip_url: slipUrl }).eq('id', req.id)
+      const requestId = Number(req?.id ?? req?.request_id)
+      const slipUrl = await uploadPaymentSlip(donateSlipFile, requestId)
+      await supabase.from('payment_requests').update({ slip_url: slipUrl }).eq('id', requestId)
       showToast('ส่งหลักฐานสำเร็จ! 🙏 แอดมินจะตรวจสอบและส่งการ์ดขอบคุณให้ครับ', 'success')
       wrap.remove()
       _initDonateFloatingBtn(true)
@@ -2896,7 +2965,7 @@ function _showShirtSizeReminderPopup() {
   document.body.appendChild(wrap)
   wrap.querySelector('#ssrp-go').addEventListener('click', () => {
     wrap.remove()
-    import('./sports-portals.js?v=10.22.825').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+    import('./sports-portals.js?v=10.22.868').then(m => m.openTeacherShirtSizeModal?.(_teacher))
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
 }

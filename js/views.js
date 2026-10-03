@@ -5138,7 +5138,9 @@ export async function renderPayments() {
       const pkgLabel = {
         semester:         `📦 เหมาทั้งเทอม (${r.amount ?? 299} บ.)`,
         per_subject:      `📘 รายห้อง ${parseInt(r.room_count ?? 1) || 1} ห้อง (${r.amount ?? 49} บ.)`,
-        donation:         `☕ โดเนท ${r.amount ?? 0} บ.`,
+        donation:         r.supporter_renewal_entitlement_id
+          ? `🎁 ต่ออายุผู้สนับสนุน ระดับ ${r.donation_tier ?? '-'} · ${r.amount ?? 0} บ. (ลด ${r.discount_percent ?? 0}%)`
+          : `☕ โดเนท ${r.amount ?? 0} บ.`,
         school_sponsored: `🏫 ขอสิทธิ์จากโรงเรียน (ไม่มีค่าใช้จ่าย)`,
       }[r.package_type] ?? `${r.package_type} (${r.amount ?? 0} บ.)`
 
