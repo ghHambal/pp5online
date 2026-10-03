@@ -146,19 +146,20 @@ export async function renderMyCourses(teacher) {
             ${statTile('⏱️', stats.periodsPerTerm, 'คาบ / ภาคเรียน', 'border-violet-100 bg-violet-50/50')}
           </div>
 
-          <div class="grid sm:grid-cols-[1fr_auto] gap-2 mt-4">
-            <button class="course-workspace-btn min-h-[44px] rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-sm font-bold px-4 flex items-center justify-center gap-2 shadow-sm"
-              data-sid="${subject.id}">📘 กำหนดการสอนและแผนหน้าเดียว</button>
+          <div class="mt-4 flex justify-end">
             <button onclick="window._openRegisterClass(${subject.id})"
-              class="min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-4 flex items-center justify-center gap-2">＋ เปิดห้องเรียน</button>
+              class="w-full sm:w-auto min-h-[44px] rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold px-5 flex items-center justify-center gap-2">＋ เปิดห้องเรียน</button>
           </div>
         </div>
 
         <details class="border-t border-gray-100 group">
-          <summary class="list-none cursor-pointer px-4 sm:px-5 py-3 flex items-center justify-between text-xs font-bold text-gray-600 hover:bg-gray-50 select-none">
-            <span>เครื่องมือและเอกสารของรายวิชา</span><span class="text-gray-400 group-open:rotate-180 transition">⌄</span>
+          <summary aria-label="ขยายเมนูเครื่องมือและเอกสารของรายวิชา"
+            class="list-none cursor-pointer mx-3 sm:mx-4 my-3 px-3 py-2.5 flex items-center justify-between gap-3 rounded-xl border border-indigo-100 bg-indigo-50/60 text-xs font-bold text-indigo-800 hover:bg-indigo-100/70 hover:border-indigo-200 select-none transition">
+            <span class="flex items-center gap-2 min-w-0"><span class="w-7 h-7 rounded-lg bg-white border border-indigo-100 flex items-center justify-center text-base flex-shrink-0">🧰</span><span class="truncate">เครื่องมือและเอกสารของรายวิชา</span></span>
+            <span class="flex items-center gap-2 text-[10px] text-indigo-500 whitespace-nowrap"><span class="hidden sm:inline">คลิกเพื่อขยาย</span><span class="group-open:hidden">＋</span><span class="hidden group-open:inline">−</span></span>
           </summary>
           <div class="px-4 sm:px-5 pb-4 grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <button class="course-workspace-btn col-span-2 min-h-[44px] text-xs text-white font-bold border border-blue-700 bg-blue-700 rounded-xl hover:bg-blue-800 shadow-sm" data-sid="${subject.id}">📘 กำหนดการสอนและแผนหน้าเดียว</button>
             <button class="ccm-open-btn min-h-[40px] text-xs text-indigo-700 font-semibold border border-indigo-100 bg-indigo-50/50 rounded-xl hover:bg-indigo-50" data-sid="${subject.id}" data-sname="${_htmlEsc(subject.subject_name)}">⚙️ คอลัมน์คะแนน</button>
             <button onclick="window._openCourseDocPage2(${subject.id})" class="min-h-[40px] text-xs text-emerald-700 font-semibold border border-emerald-100 bg-emerald-50/50 rounded-xl hover:bg-emerald-50">📝 คำอธิบายรายวิชา</button>
             <button class="lesson-plan-btn min-h-[40px] text-xs text-sky-700 font-semibold border border-sky-100 bg-sky-50/50 rounded-xl hover:bg-sky-50" data-sid="${subject.id}">📋 ใบขออนุญาต</button>

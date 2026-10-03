@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.877'
+import { APP_VERSION } from './version.js?v=10.22.878'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.878': [
+    '🧰 คอร์สวิชา: ปรับปุ่มขยายเครื่องมือและเอกสารให้เด่นชัด และย้ายกำหนดการสอน/แผนหน้าเดียวเข้าไว้ในกลุ่มเดียวกัน',
+  ],
   '10.22.877': [
     '🧭 Sidebar ครู: จัดเมนูเป็นกลุ่มพับ/ขยาย วางรายวิชาและภาพรวมไว้ด้านบน และคงคอร์สวิชากับห้องเรียนไว้ติดกันเพื่อเข้าถึงง่าย',
   ],
