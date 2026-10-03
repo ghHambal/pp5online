@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.862'
+import { APP_VERSION } from './version.js?v=10.22.863'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.863': [
+    '🔄 ขึ้นภาคเรียนใหม่: เริ่มพื้นที่ว่างโดยไม่สร้างคอร์ส ห้องเรียน หรือลงทะเบียนนักเรียนอัตโนมัติ และเก็บข้อมูลภาคเรียนเดิมไว้เป็นประวัติ',
+  ],
   '10.22.862': [
     '📄 ปพ.5: วิชาศาสนา AGM/AGMVOC รองรับการเลือกใช้ชื่อหัวหน้ากลุ่มสาระกลางหรือหัวหน้ากลุ่มย่อย โดยวิชาสามัญยังใช้หัวหน้ากลุ่มสาระกลางเหมือนเดิม',
   ],

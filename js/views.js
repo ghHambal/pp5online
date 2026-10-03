@@ -2440,8 +2440,8 @@ export async function renderSettings() {
         `<div id="start-new-semester-box" class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p class="text-sm font-bold text-amber-900">🔄 ขึ้นภาคเรียนใหม่</p>
           <p class="text-xs text-amber-800 mt-1.5 leading-relaxed">
-            สร้างห้องเรียนใหม่ (เปล่า ไม่มีคะแนน/คอลัมน์เดิม) ให้ทุกวิชาที่มีอยู่ในภาคเรียนปัจจุบัน แล้วลงทะเบียนนักเรียนอัตโนมัติตามห้องสามัญ/ห้องศาสนาปัจจุบัน —
-            <b>ห้องเรียนของภาคเรียนเก่าจะไม่ถูกลบ</b> ยังแก้ไขคะแนน/เช็คชื่อย้อนหลังได้ตามปกติ แต่จะไม่โชว์ในหน้า "ห้องเรียนของฉัน" อีกต่อไป (มีปุ่มดูย้อนหลังให้)
+            เปลี่ยนระบบเป็นปี/ภาคเรียนใหม่แบบพื้นที่ว่าง — <b>ไม่สร้างคอร์สวิชา ห้องเรียน หรือการลงทะเบียนนักเรียนให้อัตโนมัติ</b>
+            ครูผู้สอนจะเป็นผู้สร้างคอร์สและห้องเรียนที่สอนเอง ส่วนข้อมูลภาคเรียนเก่าจะไม่ถูกลบและยังเก็บไว้เป็นประวัติ
           </p>
           <p id="start-new-semester-target" class="text-xs text-amber-700 mt-2 font-mono"></p>
           <button id="btn-start-new-semester" type="button"
@@ -3288,14 +3288,14 @@ export async function renderSettings() {
         const nextYear = curSem === 1 ? curYear : curYear + 1
         if (startNewSemTarget) startNewSemTarget.textContent = `ตอนนี้: ภาคเรียนที่ ${curSem}/${curYear}  →  จะขึ้นเป็น: ภาคเรียนที่ ${nextSem}/${nextYear}`
         startNewSemBtn.addEventListener('click', async () => {
-          if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nระบบจะสร้างห้องเรียนใหม่ (เปล่า ไม่มีคะแนน/คอลัมน์เดิม) ให้ทุกวิชาที่มีอยู่ในภาคเรียนที่ ${curSem}/${curYear} แล้วลงทะเบียนนักเรียนอัตโนมัติตามห้องสามัญ/ห้องศาสนาปัจจุบัน\n\nห้องเรียนเทอมเก่าจะไม่ถูกลบ ยังแก้ไขคะแนน/เช็คชื่อย้อนหลังได้ตามปกติ`)) return
+          if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nภาคเรียนใหม่จะเริ่มเป็นพื้นที่ว่าง ระบบจะไม่สร้างคอร์สวิชา ห้องเรียน หรือการลงทะเบียนนักเรียนให้อัตโนมัติ\n\nข้อมูลภาคเรียนเก่าจะไม่ถูกลบและยังเก็บไว้เป็นประวัติ`)) return
           startNewSemBtn.disabled = true
           startNewSemBtn.textContent = '⏳ กำลังดำเนินการ...'
           try {
-            const result = await startNewSemester(nextYear, nextSem)
+            await startNewSemester(nextYear, nextSem)
             cfg.semester = String(nextSem)
             cfg.academicYear = String(nextYear)
-            showToast(`ขึ้นภาคเรียนที่ ${nextSem}/${nextYear} สำเร็จ ✅ สร้างห้องเรียนใหม่ ${result.classes_created} ห้อง · ลงทะเบียนนักเรียนอัตโนมัติ ${result.students_enrolled} คน`, 'success')
+            showToast(`ขึ้นภาคเรียนที่ ${nextSem}/${nextYear} สำเร็จ ✅ เริ่มพื้นที่ว่างสำหรับสร้างคอร์สและห้องเรียนใหม่`, 'success')
             renderTab('general')
           } catch (e) {
             showToast('ขึ้นภาคเรียนใหม่ไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')

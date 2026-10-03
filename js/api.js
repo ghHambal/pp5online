@@ -67,8 +67,8 @@ export async function updateSystemConfig(key, value) {
   if (error) throw error
 }
 
-// ขึ้นภาคเรียนใหม่ทั้งโรงเรียน — เปลี่ยนปี/เทอมกลาง + สร้างห้องเรียนใหม่ (เปล่า ไม่มีคะแนน/คอลัมน์เดิม)
-// ให้ทุกวิชาที่มีอยู่ในเทอมปัจจุบัน แล้วลงทะเบียนนักเรียนอัตโนมัติตาม main_room/religion_room ปัจจุบัน
+// ขึ้นภาคเรียนใหม่ทั้งโรงเรียน — เปลี่ยนปี/เทอมกลางเป็นพื้นที่ว่าง
+// ไม่ clone คอร์ส/ห้องเรียน และไม่ลงทะเบียนนักเรียนอัตโนมัติ
 export async function startNewSemester(newAcademicYear, newSemester) {
   const { data, error } = await supabase.rpc('admin_start_new_semester', {
     p_new_academic_year: newAcademicYear,
