@@ -19,7 +19,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.868'
+import { APP_VERSION } from './version.js?v=10.22.873'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -286,22 +286,22 @@ const MOBILE_NAV_GROUPS = {
   teaching: {
     title: 'งานสอน',
     items: [
-      { selector: '#menu-my-courses', icon: '📖', label: 'คอร์สวิชาของฉัน' },
       { selector: '#menu-my-classes', icon: '🏫', label: 'ห้องเรียนของฉัน' },
-      { selector: '#menu-dashboard', icon: '📈', label: 'Dashboard ห้องเรียน' },
       { selector: '#btn-quick-attendance', icon: '✅', label: 'เช็คชื่อ' },
       { selector: '#btn-quick-grades', icon: '📝', label: 'บันทึกคะแนน' },
-      { selector: '[data-nav="requests"]', icon: '🔔', label: 'คำร้องนักเรียน' },
+      { selector: '#menu-my-courses', icon: '📖', label: 'คอร์สวิชาของฉัน' },
       { selector: '[data-nav="schedule"]', icon: '🗓️', label: 'ตารางสอน' },
+      { selector: '[data-nav="requests"]', icon: '🔔', label: 'คำร้องนักเรียน' },
+      { selector: '#menu-dashboard', icon: '📈', label: 'Dashboard ห้องเรียน' },
     ],
   },
   students: {
     title: 'นักเรียน',
     items: [
+      { selector: '#btn-quick-leave-scanner', icon: '📷', label: 'สแกนเอกสารนักเรียน' },
       { selector: '#menu-advisor-students', icon: '👥', label: 'นักเรียนที่ปรึกษา' },
       { selector: '[data-nav="student-leave-scanner"]', icon: '📋', label: 'ตรวจสอบใบอนุญาตออกนอกห้อง' },
       { selector: '[data-nav="student-qr-print"]', icon: '🖨️', label: 'พิมพ์ QR Code นักเรียน' },
-      { selector: '#btn-quick-leave-scanner', icon: '📷', label: 'สแกนเอกสารนักเรียน' },
     ],
   },
   tools: {
@@ -367,6 +367,24 @@ const MOBILE_NAV_VIEW_GROUPS = {
   'sports-evaluation': 'more',
   'shirt-vote-dashboard': 'more',
   'my-team-workspace': 'more',
+}
+
+const _mobileNavBadgeCounts = { teaching: 0, more: 0, moreAnnouncements: 0, moreRegrade: 0 }
+function _setMobileNavBadge(groupKey, count) {
+  const normalized = Math.max(0, Number(count) || 0)
+  _mobileNavBadgeCounts[groupKey] = normalized
+  const badge = document.querySelector(`[data-mobile-badge="${groupKey}"]`)
+  if (!badge) return
+  if (normalized > 0) {
+    badge.textContent = normalized > 99 ? '99+' : String(normalized)
+    badge.classList.remove('hidden')
+  } else {
+    badge.classList.add('hidden')
+  }
+}
+function _setMobileMoreBadgePart(part, count) {
+  _mobileNavBadgeCounts[part] = Math.max(0, Number(count) || 0)
+  _setMobileNavBadge('more', _mobileNavBadgeCounts.moreAnnouncements + _mobileNavBadgeCounts.moreRegrade)
 }
 
 function _isMobileNavSourceVisible(source) {
@@ -771,6 +789,7 @@ async function _updateRequestsBadge() {
         badge.classList.add('hidden')
       }
     }
+    _setMobileNavBadge('teaching', count)
     // แจ้งเตือนถ้ามีคำร้องใหม่เข้ามา (ไม่แจ้งตอน load ครั้งแรก)
     if (_lastPendingCount !== null && count > _lastPendingCount) {
       const diff = count - _lastPendingCount
@@ -782,6 +801,7 @@ async function _updateRequestsBadge() {
 
 function _renderLiveRegradeBadge(count) {
   const normalized = Math.max(0, Number(count) || 0)
+  _setMobileMoreBadgePart('moreRegrade', normalized)
   const label = normalized > 99 ? '99+' : String(normalized)
   const menu = document.getElementById('menu-regrade')
   menu?.querySelector('[data-regrade-menu-badge]')?.remove()
@@ -2573,9 +2593,13 @@ async function _loadAnnouncementBanners() {
       !ackedIds.has(Number(a.id)) &&
       (a.requires_ack || (Number(a.priority) >= 5 && a.ann_type !== 'system'))
     )
+    _setMobileMoreBadgePart('moreAnnouncements', popupItems.length)
     showAnnouncementPopups(popupItems, 'pp5_ann_dismissed', {
       useLocalSeen: false,
-      onAcknowledgeAll: ids => ackAnnouncementsBulk(ids, _teacher?.id),
+      onAcknowledgeAll: async ids => {
+        await ackAnnouncementsBulk(ids, _teacher?.id)
+        _setMobileMoreBadgePart('moreAnnouncements', Math.max(0, popupItems.length - ids.length))
+      },
     })
   } catch { /* ไม่ block */ }
 }

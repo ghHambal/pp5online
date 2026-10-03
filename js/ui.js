@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.872'
+import { APP_VERSION } from './version.js?v=10.22.873'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.873': [
+    '📱 เมนูมือถือระยะที่ 2: ย่อ Header ให้เหมาะกับหน้าจอเล็ก เพิ่ม badge แจ้งเตือนบนกลุ่มเมนู และเรียงเมนูที่ใช้บ่อยไว้ด้านบน',
+  ],
   '10.22.872': [
     '📱 เมนูมือถือ: เพิ่มแถบเมนูด้านล่าง 5 กลุ่ม พร้อมแผงเมนูย่อยแบบเลื่อนขึ้น ใช้งานง่ายบนหน้าจอมือถือโดยไม่กระทบ sidebar บนคอมพิวเตอร์',
   ],
