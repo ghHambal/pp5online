@@ -25,13 +25,17 @@
     body.sc-fullscreen #app-main-col > header { display: none !important; }
     body.sc-fullscreen #mobile-teacher-nav,
     body.sc-fullscreen #mobile-nav-backdrop,
-    body.sc-fullscreen #mobile-nav-sheet { display: none !important; }
+    body.sc-fullscreen #mobile-nav-sheet,
+    body.sc-fullscreen #mobile-profile-backdrop,
+    body.sc-fullscreen #mobile-profile-sheet { display: none !important; }
     body.mobile-sidebar-open #mobile-teacher-nav { display: none !important; }
 
     /* เมนูหลักสำหรับมือถือ — desktop ยังคงใช้ sidebar เดิม */
     #mobile-teacher-nav,
     #mobile-nav-backdrop,
-    #mobile-nav-sheet { display: none; }
+    #mobile-nav-sheet,
+    #mobile-profile-backdrop,
+    #mobile-profile-sheet { display: none; }
     @media (max-width: 767px) {
       body:not(.sc-fullscreen) #app-main-col > main {
         padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)) !important;
@@ -51,6 +55,7 @@
       #app-main-col > header > div:first-child { min-width: 0; }
       #app-main-col > header > div:last-child { gap: .25rem; }
       #app-main-col > header #btn-menu { padding: .25rem; font-size: 1.1rem; }
+      #app-main-col > header #btn-menu { display: none; }
       #app-main-col > header #btn-quick-leave-scanner {
         width: 2.25rem;
         height: 2.25rem;
@@ -234,6 +239,94 @@
         font-size: 12px;
         text-align: center;
       }
+      #mobile-profile-backdrop {
+        position: fixed;
+        z-index: 90;
+        inset: 0;
+        display: block;
+        background: rgba(15, 23, 42, .38);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .2s ease;
+      }
+      #mobile-profile-backdrop.mobile-profile-open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #mobile-profile-sheet {
+        position: fixed;
+        z-index: 100;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: flex;
+        flex-direction: column;
+        max-height: min(78vh, 600px);
+        padding: 9px 16px calc(16px + env(safe-area-inset-bottom));
+        border-radius: 22px 22px 0 0;
+        background: #fff;
+        box-shadow: 0 -12px 34px rgba(15, 23, 42, .2);
+        transform: translateY(105%);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform .24s cubic-bezier(.22, 1, .36, 1), opacity .2s ease;
+      }
+      #mobile-profile-sheet.mobile-profile-open {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .mobile-profile-summary {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 3px 2px 14px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .mobile-profile-avatar {
+        width: 52px;
+        height: 58px;
+        flex: 0 0 52px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        border: 3px solid #d1fae5;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #34d399, #0d9488);
+        color: #fff;
+        font-size: 22px;
+        font-weight: 800;
+      }
+      .mobile-profile-avatar img { width: 100%; height: 100%; object-fit: cover; }
+      .mobile-profile-name { color: #0f172a; font-size: 16px; font-weight: 800; }
+      .mobile-profile-meta { margin-top: 3px; color: #64748b; font-size: 11px; line-height: 1.45; }
+      .mobile-profile-actions { display: grid; gap: 8px; padding-top: 14px; overflow-y: auto; }
+      .mobile-profile-action {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        min-height: 48px;
+        padding: 10px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        background: #fff;
+        color: #334155;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 700;
+        text-align: left;
+      }
+      .mobile-profile-action:active { transform: scale(.99); }
+      .mobile-profile-action-icon { flex: 0 0 24px; font-size: 19px; text-align: center; }
+      .mobile-profile-action-sub { display: block; margin-top: 2px; color: #94a3b8; font-size: 10px; font-weight: 400; }
+      .mobile-profile-account-group {
+        margin-top: 5px;
+        padding-top: 11px;
+        border-top: 1px solid #e2e8f0;
+      }
+      .mobile-profile-account-label { margin-bottom: 7px; color: #94a3b8; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+      .mobile-profile-action-danger { color: #dc2626; border-color: #fecaca; background: #fffafa; }
     }
 
     /* ป๊อบอัพเต็มหน้าจอ (แท็บคะแนน/เช็คชื่อ ฝังใน Smart Classroom) ต้องคลุมทับแถบเมนูมือถือ/
@@ -719,9 +812,9 @@
           <p id="user-name" class="text-sm font-semibold text-gray-800">—</p>
           <p id="user-role-label" class="text-xs text-emerald-500">ครูผู้สอน</p>
         </div>
-        <div id="user-avatar"
+        <div id="user-avatar" role="button" tabindex="0" aria-label="เปิดโปรไฟล์คุณครู" title="เปิดโปรไฟล์คุณครู"
           class="w-8 h-10 bg-gradient-to-tr from-emerald-500 to-teal-500 text-white border border-emerald-300/40
-                 rounded-lg flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden">
+                 rounded-lg flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden cursor-pointer">
           ?
         </div>
       </div>
@@ -777,9 +870,47 @@
       <span class="mobile-nav-group-icon" aria-hidden="true">☰</span><span>เพิ่มเติม</span><span class="mobile-nav-group-badge hidden" data-mobile-badge="more"></span>
     </button>
   </nav>
+  <div id="mobile-profile-backdrop" aria-hidden="true"></div>
+  <section id="mobile-profile-sheet" aria-hidden="true" aria-labelledby="mobile-profile-title">
+    <div class="mobile-nav-sheet-handle" aria-hidden="true"></div>
+    <div class="mobile-nav-sheet-header">
+      <div>
+        <h2 id="mobile-profile-title" class="mobile-nav-sheet-title">โปรไฟล์คุณครู</h2>
+        <p class="mobile-nav-sheet-subtitle">บัญชีผู้ใช้งาน ปพ.5 ออนไลน์</p>
+      </div>
+      <button id="mobile-profile-close" class="mobile-nav-sheet-close" type="button" aria-label="ปิดโปรไฟล์">×</button>
+    </div>
+    <div class="mobile-profile-summary">
+      <div id="mobile-profile-avatar" class="mobile-profile-avatar">?</div>
+      <div class="min-w-0">
+        <div id="mobile-profile-name" class="mobile-profile-name truncate">—</div>
+        <div id="mobile-profile-meta" class="mobile-profile-meta">—</div>
+      </div>
+    </div>
+    <div class="mobile-profile-actions">
+      <button id="mobile-profile-edit" type="button" class="mobile-profile-action">
+        <span class="mobile-profile-action-icon" aria-hidden="true">👤</span>
+        <span>แก้ไขโปรไฟล์<span class="mobile-profile-action-sub">ชื่อ รูปภาพ เบอร์โทร และข้อมูลครู</span></span>
+      </button>
+      <button id="mobile-profile-password" type="button" class="mobile-profile-action">
+        <span class="mobile-profile-action-icon" aria-hidden="true">🔒</span>
+        <span>เปลี่ยนรหัสผ่าน<span class="mobile-profile-action-sub">ตั้งรหัสผ่านใหม่ของบัญชีนี้</span></span>
+      </button>
+      <button id="mobile-profile-contact" type="button" class="mobile-profile-action">
+        <span class="mobile-profile-action-icon" aria-hidden="true">📞</span>
+        <span>ติดต่อแอดมิน<span class="mobile-profile-action-sub">ติดต่อผู้ดูแลระบบหรือส่งเรื่องสอบถาม</span></span>
+      </button>
+      <div class="mobile-profile-account-group">
+        <div class="mobile-profile-account-label">บัญชีผู้ใช้งาน</div>
+        <button id="mobile-profile-logout" type="button" class="mobile-profile-action mobile-profile-action-danger">
+          <span class="mobile-profile-action-icon" aria-hidden="true">🚪</span><span>ออกจากระบบ</span>
+        </button>
+      </div>
+    </div>
+  </section>
 
   <!-- Scripts -->
-  <script type="module" src="js/teacher.js?v=10.22.873"></script>
+  <script type="module" src="js/teacher.js?v=10.22.874"></script>
 
 </body>
 </html>

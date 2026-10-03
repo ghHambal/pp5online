@@ -19,7 +19,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.873'
+import { APP_VERSION } from './version.js?v=10.22.874'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -286,10 +286,10 @@ const MOBILE_NAV_GROUPS = {
   teaching: {
     title: 'งานสอน',
     items: [
+      { selector: '#menu-my-courses', icon: '📖', label: 'คอร์สวิชาของฉัน' },
       { selector: '#menu-my-classes', icon: '🏫', label: 'ห้องเรียนของฉัน' },
       { selector: '#btn-quick-attendance', icon: '✅', label: 'เช็คชื่อ' },
       { selector: '#btn-quick-grades', icon: '📝', label: 'บันทึกคะแนน' },
-      { selector: '#menu-my-courses', icon: '📖', label: 'คอร์สวิชาของฉัน' },
       { selector: '[data-nav="schedule"]', icon: '🗓️', label: 'ตารางสอน' },
       { selector: '[data-nav="requests"]', icon: '🔔', label: 'คำร้องนักเรียน' },
       { selector: '#menu-dashboard', icon: '📈', label: 'Dashboard ห้องเรียน' },
@@ -481,6 +481,75 @@ function _initMobileTeacherNavigation() {
       button.classList.toggle('active', button.dataset.mobileGroup === activeGroup && button.getAttribute('aria-expanded') !== 'true')
     })
   }
+}
+
+function _setMobileProfileOpen(isOpen) {
+  const sheet = document.getElementById('mobile-profile-sheet')
+  const backdrop = document.getElementById('mobile-profile-backdrop')
+  if (!sheet || !backdrop) return
+
+  sheet.classList.toggle('mobile-profile-open', isOpen)
+  backdrop.classList.toggle('mobile-profile-open', isOpen)
+  sheet.setAttribute('aria-hidden', isOpen ? 'false' : 'true')
+  backdrop.setAttribute('aria-hidden', isOpen ? 'false' : 'true')
+  if (!isOpen) return
+
+  const name = _teacher?.full_name || document.getElementById('user-name')?.textContent || 'ครูผู้สอน'
+  const code = _teacher?.teacher_code ? `รหัส ${_teacher.teacher_code}` : ''
+  const category = _teacher?.category || document.getElementById('user-role-label')?.textContent || 'ครูผู้สอน'
+  const nameEl = document.getElementById('mobile-profile-name')
+  const metaEl = document.getElementById('mobile-profile-meta')
+  const avatarEl = document.getElementById('mobile-profile-avatar')
+  if (nameEl) nameEl.textContent = name
+  if (metaEl) metaEl.textContent = [code, category].filter(Boolean).join(' · ') || 'ครูผู้สอน'
+  if (avatarEl) {
+    avatarEl.replaceChildren()
+    const sourceImg = document.querySelector('#user-avatar img')
+    if (sourceImg) {
+      const img = sourceImg.cloneNode(true)
+      img.removeAttribute('class')
+      avatarEl.append(img)
+    } else {
+      avatarEl.textContent = name.trim().charAt(0).toUpperCase() || 'ค'
+    }
+  }
+}
+
+function _initMobileTeacherProfile() {
+  const avatar = document.getElementById('user-avatar')
+  const open = () => _setMobileProfileOpen(true)
+  avatar?.addEventListener('click', open)
+  avatar?.addEventListener('keydown', event => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      open()
+    }
+  })
+  document.getElementById('mobile-profile-close')?.addEventListener('click', () => _setMobileProfileOpen(false))
+  document.getElementById('mobile-profile-backdrop')?.addEventListener('click', () => _setMobileProfileOpen(false))
+  document.getElementById('mobile-profile-edit')?.addEventListener('click', () => {
+    _setMobileProfileOpen(false)
+    navigate('profile')
+  })
+  document.getElementById('mobile-profile-password')?.addEventListener('click', () => {
+    _setMobileProfileOpen(false)
+    window._profileFocus = 'password'
+    navigate('profile')
+  })
+  document.getElementById('mobile-profile-contact')?.addEventListener('click', () => {
+    _setMobileProfileOpen(false)
+    const contactButton = document.getElementById('btn-contact-admin')
+    if (contactButton) contactButton.click()
+    else if (typeof window._openFeedbackWidget === 'function') window._openFeedbackWidget()
+    else showToast('ยังโหลดช่องทางติดต่อไม่เสร็จ กรุณาลองอีกครั้ง', 'info')
+  })
+  document.getElementById('mobile-profile-logout')?.addEventListener('click', () => {
+    _setMobileProfileOpen(false)
+    document.getElementById('btn-logout')?.click()
+  })
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') _setMobileProfileOpen(false)
+  })
 }
 
 let _currentView = 'overview'
@@ -3647,6 +3716,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   })
 
   _initMobileTeacherNavigation()
+  _initMobileTeacherProfile()
 
   // Mobile sidebar toggle
   const sidebar = document.getElementById('sidebar')

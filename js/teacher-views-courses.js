@@ -2270,6 +2270,14 @@ export async function renderProfile(teacher, homeroomRooms = [], onRefresh) {
       </div>
     </div>
   </div>`)
+  if (window._profileFocus === 'password') {
+    window._profileFocus = null
+    requestAnimationFrame(() => {
+      const passwordInput = document.getElementById('prof-pw-new')
+      passwordInput?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      passwordInput?.focus()
+    })
+  }
   if (!teacher) return
   _bindAdvisorRoomChooser()
 
