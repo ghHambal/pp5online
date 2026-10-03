@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.867'
+import { APP_VERSION } from './version.js?v=10.22.869'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.869': [
+    '📝 หน้าบันทึกคะแนน: จัดกลุ่มปุ่มคำสั่งใหม่ เพิ่มค้นหาและกรองนักเรียน โดยไม่เปลี่ยนโครงสร้างตารางหรือการคำนวณคะแนน',
+  ],
   '10.22.868': [
     '🎁 ผู้สนับสนุนเดิม: เพิ่มสิทธิ์ส่วนลดต่ออายุภาคเรียนใหม่ เลือกระดับสูงขึ้นได้ส่วนลด 5/10/15/20/25% และ QR Code คำนวณยอดสุทธิอัตโนมัติ',
   ],

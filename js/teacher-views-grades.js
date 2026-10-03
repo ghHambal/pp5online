@@ -802,35 +802,140 @@ export async function renderGradesGrid(teacher, classData) {
       modal.addEventListener('click',e=>{if(e.target===modal)modal.remove()})
     }
 
+    let gradeFilterQuery = ''
+    let gradeCompletionFilter = 'all'
+    let gradeResultFilter = 'all'
+    let _scoresHidden = false
+    let _savedScoreData = null
+
+    const _studentMatchesGradeFilter = s => {
+      const query = gradeFilterQuery.trim().toLowerCase()
+      if (query) {
+        const haystack = `${s.student_code ?? ''} ${s.full_name ?? ''}`.toLowerCase()
+        if (!haystack.includes(query)) return false
+      }
+      const complete = _isGradeComplete(s.id)
+      if (gradeCompletionFilter === 'incomplete' && complete) return false
+      if (gradeCompletionFilter === 'complete' && !complete) return false
+      if (gradeResultFilter !== 'all') {
+        const forced = String(scoreMap[s.id]?.['__force'] ?? '').trim()
+        const { grade } = _calcGradeRow(s.id)
+        if (gradeResultFilter === 'flagged' && !forced && !(complete && grade === 0)) return false
+        if (gradeResultFilter === 'special' && !forced) return false
+      }
+      return true
+    }
+
+    const _updateGradeFilterUi = () => {
+      const active = !!gradeFilterQuery.trim()
+        || gradeCompletionFilter !== 'all'
+        || gradeResultFilter !== 'all'
+      const badge = document.getElementById('grade-filter-badge')
+      const filterBtn = document.getElementById('btn-grade-filter')
+      if (badge) badge.classList.toggle('hidden', !active)
+      if (filterBtn) {
+        filterBtn.classList.toggle('bg-indigo-50', active)
+        filterBtn.classList.toggle('border-indigo-300', active)
+        filterBtn.classList.toggle('text-indigo-700', active)
+      }
+      const summary = document.getElementById('grade-filter-summary')
+      if (summary) {
+        const visible = students.filter(_studentMatchesGradeFilter).length
+        summary.textContent = active ? `แสดง ${visible} จาก ${students.length} คน` : `ทั้งหมด ${students.length} คน`
+      }
+    }
+
+    const _applyGradeFilters = () => {
+      const wrap = document.getElementById('grade-grid-wrap')
+      if (!wrap) return
+      wrap.querySelectorAll('tr[data-sid]').forEach(row => {
+        const student = students.find(s => Number(s.id) === Number(row.dataset.sid))
+        row.style.display = student && _studentMatchesGradeFilter(student) ? '' : 'none'
+      })
+      _updateGradeFilterUi()
+    }
+
+    const _hideScoreElements = () => {
+      const wrap = document.getElementById('grade-grid-wrap')
+      if (!wrap) return
+      _savedScoreData = []
+      wrap.querySelectorAll('.grade-input').forEach(inp => {
+        _savedScoreData.push({ el: inp, type: 'input', val: inp.value })
+        inp.value = ''
+      })
+      wrap.querySelectorAll('[id^="gmid-"],[id^="gfin-"],[id^="gtotal-"],[id^="ggrade-"],[id^="gkhuna-"],[id^="gread-"],.grade-derived-td').forEach(el => {
+        _savedScoreData.push({ el, type: 'text', val: el.innerHTML })
+        el.innerHTML = '—'
+      })
+      window._pp5HideScores = true
+    }
+
+    const _restoreScoreElements = () => {
+      window._pp5HideScores = false
+      _savedScoreData?.forEach(({ el, type, val }) => {
+        if (type === 'input') el.value = val
+        else el.innerHTML = val
+      })
+      _savedScoreData = null
+    }
+
     const _renderToggleBar = () => {
       const bar = document.getElementById('grade-togglebar')
       if (!bar) return
       bar.innerHTML = `
-        <div class="flex items-center gap-1.5 px-3 py-2 ml-auto flex-wrap justify-end">
-          <button id="btn-round-settings" type="button" class="text-[11px] px-3 py-1.5 rounded-lg font-semibold transition bg-gray-100 text-gray-500 hover:bg-gray-200">🔢 ปัดเลข</button>
-          ${_tBtn('khuna','คุณลักษณะ',toggleKhuna)}
-          ${_tBtn('read','การอ่าน',toggleRead)}
-          ${_tBtn('scoreColors','🎨 จัดสีช่องคะแนน',toggleScoreColors,'bg-emerald-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-gray-200')}
-          <div class="w-px h-5 bg-gray-200 mx-1 self-center"></div>
-          ${_tBtn('forceGrade','บังคับเกรด',toggleForceGrade,'bg-rose-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-gray-200')}
-          ${_tBtn('bonus','⭐ คะแนนเก็บ/พิเศษ',showBonusCols,'bg-amber-500 text-white shadow-sm','bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100')}
-          ${showBonusCols && bonusCols.length ? _tBtn('formula-link','🔗 เชื่อมสูตร',showFormulaLink,'bg-violet-500 text-white shadow-sm','bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100') : ''}
-          <div class="w-px h-5 bg-gray-200 mx-1 self-center"></div>
-          <button id="btn-export-gradeonline-excel" type="button"
-            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-600 text-white shadow-sm hover:bg-teal-700 transition">
-            📥 ดาวน์โหลด Excel GradeOnline
+        <div class="relative flex items-center justify-between gap-3 px-4 py-2 bg-white">
+          <div class="min-w-0">
+            <p class="text-[11px] font-semibold text-gray-500">มุมมองและคำสั่งเพิ่มเติม</p>
+            <p class="text-[10px] text-gray-400 hidden sm:block">คำสั่งเหล่านี้เปลี่ยนการแสดงผลหรือส่งออกข้อมูลเท่านั้น</p>
+          </div>
+          <button id="btn-grade-more" type="button"
+            class="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition">
+            ⚙️ ตัวเลือกเพิ่มเติม <span class="text-[10px]">▾</span>
           </button>
-          ${showRegradeSubmitBtn ? `
-          <div class="w-px h-5 bg-gray-200 mx-1 self-center"></div>
-          <button id="btn-submit-regrade" type="button"
-            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-pink-600 text-white shadow-sm hover:bg-pink-700 transition">
-            📤 ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า
-          </button>
-          <button id="btn-export-gradeonline" type="button"
-            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 text-white shadow-sm hover:bg-purple-700 transition">
-            📤 ส่งคะแนนเข้า GradeOnline
-          </button>` : ''}
+          <div id="grade-more-menu" class="hidden absolute right-4 top-[calc(100%-1px)] z-[70] w-[min(92vw,470px)] max-h-[min(70vh,520px)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl">
+            <div class="mb-3">
+              <p class="px-1 mb-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">การแสดงผล</p>
+              <div class="flex flex-wrap gap-1.5">
+                <button id="btn-hide-scores" type="button" class="text-[11px] px-3 py-1.5 rounded-lg font-semibold transition ${_scoresHidden ? 'bg-amber-50 text-amber-700 border border-amber-300' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}">
+                  👁 ${_scoresHidden ? 'แสดงคะแนน' : 'ซ่อนคะแนน'}
+                </button>
+                <button id="btn-round-settings" type="button" class="text-[11px] px-3 py-1.5 rounded-lg font-semibold transition bg-gray-100 text-gray-500 hover:bg-gray-200">🔢 ปัดเลข</button>
+                ${_tBtn('khuna','คุณลักษณะ',toggleKhuna)}
+                ${_tBtn('read','การอ่าน',toggleRead)}
+                ${_tBtn('scoreColors','🎨 จัดสีช่องคะแนน',toggleScoreColors,'bg-emerald-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-gray-200')}
+                ${_tBtn('forceGrade','บังคับเกรด',toggleForceGrade,'bg-rose-500 text-white shadow-sm','bg-gray-100 text-gray-500 hover:bg-gray-200')}
+                ${_tBtn('bonus','⭐ คะแนนเก็บ/พิเศษ',showBonusCols,'bg-amber-500 text-white shadow-sm','bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-100')}
+                ${showBonusCols && bonusCols.length ? _tBtn('formula-link','🔗 เชื่อมสูตร',showFormulaLink,'bg-violet-500 text-white shadow-sm','bg-violet-50 text-violet-600 border border-violet-200 hover:bg-violet-100') : ''}
+              </div>
+            </div>
+            <div class="border-t border-gray-100 pt-3">
+              <p class="px-1 mb-1.5 text-[10px] font-bold uppercase tracking-wide text-gray-400">ส่งออกและส่งต่อ</p>
+              <div class="flex flex-wrap gap-1.5">
+                <button id="btn-export-gradeonline-excel" type="button" class="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-teal-600 text-white shadow-sm hover:bg-teal-700 transition">📥 ดาวน์โหลด Excel GradeOnline</button>
+                ${showRegradeSubmitBtn ? `
+                <button id="btn-export-gradeonline" type="button" class="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-purple-600 text-white shadow-sm hover:bg-purple-700 transition">📤 ส่งคะแนนเข้า GradeOnline</button>
+                <button id="btn-submit-regrade" type="button" class="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-pink-600 text-white shadow-sm hover:bg-pink-700 transition" title="ส่งรายชื่อนักเรียนที่ติด 0 หรือผลพิเศษเข้าระบบแก้ค้างเก่า">📤 ส่งแก้ค้างเก่า</button>` : ''}
+              </div>
+            </div>
+          </div>
         </div>`
+      document.getElementById('btn-grade-more')?.addEventListener('click', e => {
+        e.stopPropagation()
+        document.getElementById('grade-more-menu')?.classList.toggle('hidden')
+      })
+      document.getElementById('grade-more-menu')?.addEventListener('click', e => e.stopPropagation())
+      document.getElementById('btn-hide-scores')?.addEventListener('click', function() {
+        _scoresHidden = !_scoresHidden
+        const wrap = document.getElementById('grade-grid-wrap')
+        if (!wrap) return
+
+        if (_scoresHidden) {
+          _hideScoreElements()
+        } else {
+          _restoreScoreElements()
+        }
+        _renderToggleBar()
+      })
       document.getElementById('btn-submit-regrade')?.addEventListener('click', async () => {
         const btn = document.getElementById('btn-submit-regrade')
         const failing = students
@@ -850,7 +955,7 @@ export async function renderGradesGrid(teacher, classData) {
         } catch (e) {
           showToast('ส่งไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
         } finally {
-          btn.disabled = false; btn.textContent = '📤 ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า'
+          btn.disabled = false; btn.textContent = '📤 ส่งแก้ค้างเก่า'
         }
       })
       document.getElementById('btn-export-gradeonline-excel')?.addEventListener('click', () => {
@@ -920,7 +1025,7 @@ export async function renderGradesGrid(teacher, classData) {
             }
           }
           if(t==='formula-link') showFormulaLink=!showFormulaLink
-          _saveToggles(); _renderToggleBar(); _renderGrid()
+          _saveToggles(); _renderToggleBar(); _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
         })
       })
     }
@@ -1068,7 +1173,7 @@ export async function renderGradesGrid(teacher, classData) {
           await updateScoreColumn(col.id, { bonus_formula: null, bonus_formula_refs: [] })
           col.bonus_formula = null; col.bonus_formula_refs = []
           showToast('ลบสูตรแล้ว ✅', 'success')
-          pop.remove(); _renderToggleBar(); _renderGrid()
+          pop.remove(); _renderToggleBar(); _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
         } catch { showToast('บันทึกไม่สำเร็จ', 'error') }
       })
 
@@ -1085,7 +1190,7 @@ export async function renderGradesGrid(teacher, classData) {
           await updateScoreColumn(col.id, { bonus_formula: formula, bonus_formula_refs: refs })
           col.bonus_formula = formula; col.bonus_formula_refs = refs
           showToast('บันทึกสูตรแล้ว ✅', 'success')
-          pop.remove(); _renderToggleBar(); _renderGrid()
+          pop.remove(); _renderToggleBar(); _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
         } catch { showToast('บันทึกไม่สำเร็จ', 'error'); btn.disabled=false; btn.textContent='บันทึก' }
       })
     }
@@ -2201,76 +2306,89 @@ export async function renderGradesGrid(teacher, classData) {
 
     setContent(`
     <div class="flex flex-col overflow-hidden animate-fade" style="height:calc(100vh - 64px)">
-      <div class="flex items-center gap-3 px-4 py-3 bg-white border-b shadow-sm flex-shrink-0">
+      <div class="flex items-center gap-3 px-4 py-3 bg-white border-b shadow-sm flex-shrink-0 flex-wrap">
         <button onclick="if(window._backToClasses)window._backToClasses();else window._navTo('my-classes')" class="text-sm text-indigo-600 hover:text-indigo-800 font-medium">← กลับ</button>
         <div class="flex-1 min-w-0">
           <h2 class="font-bold text-gray-800">📝 บันทึกคะแนน</h2>
           <p class="text-xs text-gray-400">${ms?.subject_name??'—'} · ${classData.class_name} · ${students.length} คน</p>
         </div>
         <div id="grade-saving" class="hidden bg-indigo-600 text-white text-xs px-3 py-1.5 rounded-full shadow-lg">💾 กำลังบันทึก...</div>
+        <div class="flex items-center gap-1.5 flex-wrap justify-end">
+        <button id="btn-grade-filter" type="button" class="relative flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition flex-shrink-0">
+          🔍 <span class="hidden sm:inline text-xs">ค้นหา/กรอง</span><span id="grade-filter-badge" class="hidden absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-indigo-500 ring-2 ring-white"></span>
+        </button>
         <button id="btn-scan-score" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-sky-200 text-sm text-sky-600 hover:bg-sky-50 transition flex-shrink-0">
           📷 <span class="hidden sm:inline text-xs">สแกนคะแนน</span>
         </button>
         <button id="btn-copy-cols" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-200 text-sm text-indigo-600 hover:bg-indigo-50 transition flex-shrink-0">
-          📋 <span class="hidden sm:inline text-xs">สำเนาคอลัมน์</span>
+          📋 <span class="hidden sm:inline text-xs">คัดลอกคอลัมน์</span>
         </button>
         <button id="btn-manage-cols" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition flex-shrink-0">
           ⚙️ <span class="hidden sm:inline text-xs">จัดการคอลัมน์</span>
         </button>
-        <button id="btn-hide-scores" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-500 hover:bg-gray-50 hover:border-gray-300 transition flex-shrink-0">
-          👁 <span class="hidden sm:inline text-xs">ซ่อนคะแนน</span>
-        </button>
+        </div>
       </div>
-      <div id="grade-togglebar" class="flex border-b border-gray-100 bg-white flex-shrink-0 overflow-x-auto min-h-[42px]"></div>
+      <div id="grade-filterbar" class="hidden border-b border-indigo-100 bg-indigo-50/50 px-4 py-2.5 flex-shrink-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <label class="relative flex-1 min-w-[190px] max-w-md">
+            <span class="sr-only">ค้นหาชื่อหรือรหัสนักเรียน</span>
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">⌕</span>
+            <input id="grade-filter-search" type="search" autocomplete="off" placeholder="ค้นหาชื่อหรือรหัสนักเรียน" class="w-full rounded-xl border border-indigo-100 bg-white py-2 pl-8 pr-3 text-xs text-gray-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100" />
+          </label>
+          <select id="grade-filter-completion" class="rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs text-gray-600 outline-none focus:border-indigo-400">
+            <option value="all">สถานะคะแนน: ทั้งหมด</option>
+            <option value="incomplete">ยังกรอกไม่ครบ</option>
+            <option value="complete">กรอกครบแล้ว</option>
+          </select>
+          <select id="grade-filter-result" class="rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs text-gray-600 outline-none focus:border-indigo-400">
+            <option value="all">ผลการเรียน: ทั้งหมด</option>
+            <option value="flagged">ติด 0/ผลพิเศษ</option>
+            <option value="special">มีผลพิเศษ</option>
+          </select>
+          <span id="grade-filter-summary" class="text-[11px] font-semibold text-indigo-600 whitespace-nowrap"></span>
+          <button id="grade-filter-clear" type="button" class="px-2.5 py-1.5 rounded-lg text-[11px] font-semibold text-gray-500 hover:bg-white hover:text-indigo-600 transition">ล้างตัวกรอง</button>
+        </div>
+      </div>
+      <div id="grade-togglebar" class="flex border-b border-gray-100 bg-white flex-shrink-0 min-h-[42px]"></div>
       <div class="flex-1 overflow-auto" id="grade-grid-wrap"></div>
     </div>`)
+    document.getElementById('btn-grade-filter')?.addEventListener('click', () => {
+      document.getElementById('grade-filterbar')?.classList.toggle('hidden')
+      document.getElementById('grade-filter-search')?.focus()
+    })
+    document.getElementById('grade-filter-search')?.addEventListener('input', e => {
+      gradeFilterQuery = e.target.value
+      _applyGradeFilters()
+    })
+    document.getElementById('grade-filter-completion')?.addEventListener('change', e => {
+      gradeCompletionFilter = e.target.value
+      _applyGradeFilters()
+    })
+    document.getElementById('grade-filter-result')?.addEventListener('change', e => {
+      gradeResultFilter = e.target.value
+      _applyGradeFilters()
+    })
+    document.getElementById('grade-filter-clear')?.addEventListener('click', () => {
+      gradeFilterQuery = ''
+      gradeCompletionFilter = 'all'
+      gradeResultFilter = 'all'
+      const search = document.getElementById('grade-filter-search')
+      const completion = document.getElementById('grade-filter-completion')
+      const result = document.getElementById('grade-filter-result')
+      if (search) search.value = ''
+      if (completion) completion.value = 'all'
+      if (result) result.value = 'all'
+      _applyGradeFilters()
+    })
     document.getElementById('btn-manage-cols')?.addEventListener('click', _openManageColsModal)
     document.getElementById('btn-copy-cols')?.addEventListener('click', () => _openCopyColsPopup(classData, allMyClasses))
     document.getElementById('btn-scan-score')?.addEventListener('click', () => {
       openScoreScanner({ classId: classData.id, className: classData.class_name })
     })
 
-    // ── Toggle hide scores (ซ่อนค่าคะแนนทั้งหมดเพื่อพิมพ์ปพ.5) ────────────────
-    let _scoresHidden = false
-    let _savedScoreData = null
-    document.getElementById('btn-hide-scores')?.addEventListener('click', function() {
-      _scoresHidden = !_scoresHidden
-      const wrap = document.getElementById('grade-grid-wrap')
-      if (!wrap) return
-
-      if (_scoresHidden) {
-        _savedScoreData = []
-        // ซ่อน input values
-        wrap.querySelectorAll('.grade-input').forEach(inp => {
-          _savedScoreData.push({ el: inp, type: 'input', val: inp.value })
-          inp.value = ''
-        })
-        // ซ่อน summary cells (mid, fin, total, grade, khuna, read, derived)
-        wrap.querySelectorAll('[id^="gmid-"],[id^="gfin-"],[id^="gtotal-"],[id^="ggrade-"],[id^="gkhuna-"],[id^="gread-"],.grade-derived-td').forEach(el => {
-          _savedScoreData.push({ el, type: 'text', val: el.innerHTML })
-          el.innerHTML = '—'
-        })
-        window._pp5HideScores = true
-        this.innerHTML = '👁 <span class="hidden sm:inline text-xs">แสดงคะแนน</span>'
-        this.classList.add('bg-amber-50', 'border-amber-300', 'text-amber-700')
-        this.classList.remove('text-gray-500', 'border-gray-200')
-      } else {
-        window._pp5HideScores = false
-        if (_savedScoreData) {
-          _savedScoreData.forEach(({ el, type, val }) => {
-            if (type === 'input') el.value = val
-            else el.innerHTML = val
-          })
-          _savedScoreData = null
-        }
-        this.innerHTML = '👁 <span class="hidden sm:inline text-xs">ซ่อนคะแนน</span>'
-        this.classList.remove('bg-amber-50', 'border-amber-300', 'text-amber-700')
-        this.classList.add('text-gray-500', 'border-gray-200')
-      }
-    })
-
     _renderToggleBar()
     _renderGrid()
+    _applyGradeFilters()
 
     let realtimeRefreshTimer = null
     _gradebookSyncCleanup = subscribeGradebookUpdates(update => {
