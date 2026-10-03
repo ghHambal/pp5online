@@ -883,13 +883,13 @@ export async function renderGradesGrid(teacher, classData) {
       const bar = document.getElementById('grade-togglebar')
       if (!bar) return
       bar.innerHTML = `
-        <div class="relative flex items-center justify-between gap-3 px-4 py-2 bg-white">
+        <div class="relative flex w-full items-center justify-between gap-3 px-4 py-2 bg-white">
           <div class="min-w-0">
             <p class="text-[11px] font-semibold text-gray-500">มุมมองและคำสั่งเพิ่มเติม</p>
             <p class="text-[10px] text-gray-400 hidden sm:block">คำสั่งเหล่านี้เปลี่ยนการแสดงผลหรือส่งออกข้อมูลเท่านั้น</p>
           </div>
           <button id="btn-grade-more" type="button"
-            class="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition">
+            class="ml-auto flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-xs font-semibold text-gray-600 hover:bg-gray-50 hover:border-gray-300 transition">
             ⚙️ ตัวเลือกเพิ่มเติม <span class="text-[10px]">▾</span>
           </button>
           <div id="grade-more-menu" class="hidden absolute right-4 top-[calc(100%-1px)] z-[70] w-[min(92vw,470px)] max-h-[min(70vh,520px)] overflow-y-auto rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl">
