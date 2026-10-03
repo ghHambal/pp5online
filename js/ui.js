@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.878'
+import { APP_VERSION } from './version.js?v=10.22.879'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.879': [
+    '🗓️ ภาคเรียน: เพิ่มแถบสลับภาคเรียนที่หน้าภาพรวมของครูและนักเรียน เพื่อเปิดดูคะแนน/ปพ.5 ย้อนหลังได้ชัดเจน โดยไม่เปิดงานประจำวันหรือการสร้างห้องเรียนของเทอมเก่า',
+  ],
   '10.22.878': [
     '🧰 คอร์สวิชา: ปรับปุ่มขยายเครื่องมือและเอกสารให้เด่นชัด และย้ายกำหนดการสอน/แผนหน้าเดียวเข้าไว้ในกลุ่มเดียวกัน',
   ],

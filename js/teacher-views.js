@@ -1,8 +1,9 @@
 import {
   getMySubjects, getMasterSubjects, getMyClasses, getDepartments, getTeachers,
   getSystemConfig, getMySchedule, getClassScheduleLinks, getPeriods, getClassrooms,
-  getWorkCalendarEvents, updateTeacher, getExecutiveOverviewStats,
+  getWorkCalendarEvents, updateTeacher, getExecutiveOverviewStats, getAcademicTerms,
 } from './api.js'
+import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
 import { supabase } from './supabase.js'
 import { copySheetTemplate } from './sync.js'
 import { showToast } from './ui.js'
@@ -362,7 +363,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const { getPendingExamRequestCount } = await import('./api.js')
   const { getMyDonationRequests } = await import('./api.js')
   const { getUnreadNotifications } = await import('./api.js')
-  const [subjects, classes, cfg, pendingRequests, donationRequests, svNotifs, todayDuty, dutyGrade, shirtBtnState] = await Promise.all([
+  const [subjects, classes, cfg, pendingRequests, donationRequests, svNotifs, todayDuty, dutyGrade, shirtBtnState, terms] = await Promise.all([
     teacher ? getMySubjects(teacher.id).catch(()=>[]) : getMasterSubjects().catch(()=>[]),
     getMyClasses(teacher?.id ?? null).catch(()=>[]),
     getSystemConfig().catch(()=>({})),
@@ -372,9 +373,17 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     teacher ? getTodayDuty(teacher.teacher_code).catch(()=>[]) : Promise.resolve([]),
     teacher ? getTodayDutyGrade(teacher.teacher_code).catch(()=>null) : Promise.resolve(null),
     teacher ? import('./sports-portals.js?v=10.22.683').then(m => m.getTeacherShirtButtonState(teacher)).catch(() => ({ visible: false, enabled: false })) : Promise.resolve({ visible: false, enabled: false }),
+    window._pp5AcademicTerms?.length ? Promise.resolve(window._pp5AcademicTerms) : getAcademicTerms().catch(() => []),
   ])
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
+  const termRows = collectAcademicTerms(terms, cfg)
+  const currentTermKey = academicTermKey({ academic_year: academicYear, semester })
+  let selectedTermKey = currentTermKey
+  try {
+    const saved = localStorage.getItem(`pp5_teacher_grade_term_${teacher?.id}`)
+    if (termRows.some(term => academicTermKey(term) === saved)) selectedTermKey = saved
+  } catch {}
   const curWeek      = _currentWeek(cfg.semester_start)
 
   if (_todayWidgetTimer)  { clearInterval(_todayWidgetTimer);  _todayWidgetTimer  = null }
@@ -670,7 +679,24 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   // ปุ่ม "ปรับหน้าภาพรวมแบบรวดเร็ว" — เปิดโมดัลซ่อน/แสดง+เรียงลำดับไอคอนกริดด้านบน บันทึกเข้าบัญชีครู
   window._openOverviewCustomizer = () => _openOverviewCustomizerModal(teacher, allTiles, homeroomRooms)
 
+  const overviewTermBar = `<section class="mb-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-white p-4 shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="min-w-0">
+        <h2 class="text-sm font-bold text-indigo-900">🗓️ ภาคเรียนที่กำลังดู</h2>
+        <p class="mt-1 text-xs text-indigo-700">หน้าภาพรวมและงานประจำวันใช้ภาคเรียนปัจจุบัน หากเลือกย้อนหลัง ระบบจะเปิดหน้าคะแนนและเอกสาร ปพ.5 ของเทอมนั้น</p>
+      </div>
+      <label class="flex items-center gap-2 text-xs font-semibold text-indigo-700 whitespace-nowrap">
+        <span>เลือกภาคเรียน</span>
+        <select id="teacher-overview-term-switcher" aria-label="เลือกภาคเรียนจากหน้าภาพรวม"
+          class="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm font-bold text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-200">
+          ${renderAcademicTermOptions(termRows, selectedTermKey, currentTermKey)}
+        </select>
+      </label>
+    </div>
+  </section>`
+
   setContent(`<div class="animate-fade">
+    ${overviewTermBar}
 
     <!-- ส่วนเร่งด่วน: แจ้งเตือนจากหัวหน้า + กำลังสอนอยู่ (ย้ายมาไว้บนสุด เพราะเป็นสิ่งเดียวที่เปลี่ยนตามสถานะจริงเดี๋ยวนั้น) -->
     ${svNotifs.length ? (() => {
@@ -933,6 +959,13 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       </div>`
     document.body.appendChild(pop)
     pop.addEventListener('click', e => { if (e.target === pop) pop.remove() })
+  })
+
+  document.getElementById('teacher-overview-term-switcher')?.addEventListener('change', event => {
+    const value = event.target.value
+    try { localStorage.setItem(`pp5_teacher_grade_term_${teacher?.id}`, value) } catch {}
+    if (value === currentTermKey) window._navTo?.('overview')
+    else window._navTo?.('grades')
   })
 
   // countdown list อัปเดตทุก 30 วิ

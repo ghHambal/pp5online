@@ -24,11 +24,12 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.876'
+import { APP_VERSION } from './version.js?v=10.22.879'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
 import { openMyCertificatesModal } from './student-certificates-modal.js'
+import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
 
 const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
 
@@ -405,7 +406,7 @@ export async function renderStudentOverview(student) {
     </svg>
   </div>`)
 
-  const [classes, requests, dailySched, allAnns, gpaData, cfg, classroomRole, myAssignments] = await Promise.all([
+  const [classes, requests, dailySched, allAnns, gpaData, cfg, classroomRole, myAssignments, terms] = await Promise.all([
     getMyEnrolledClasses(student.id).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
     getStudentDailySchedule(student.id).catch(()=>({ linked:[], unlinked:[] })),
@@ -417,7 +418,18 @@ export async function renderStudentOverview(student) {
     getSystemConfig().catch(()=>({})),
     getStudentClassroomRole(student.main_room).catch(()=>null),
     getMyAllAssignments(student.id).catch(()=>[]),
+    window._pp5StudentAcademicTerms?.length ? Promise.resolve(window._pp5StudentAcademicTerms) : getAcademicTerms().catch(() => []),
   ])
+  const termRows = collectAcademicTerms(terms, cfg)
+  const currentTermKey = academicTermKey({
+    academic_year: Number(cfg.academicYear ?? cfg.academic_year ?? 2568),
+    semester: Number(cfg.semester ?? 1),
+  })
+  let selectedTermKey = currentTermKey
+  try {
+    const saved = localStorage.getItem(`pp5_student_score_term_${student?.id}`)
+    if (termRows.some(term => academicTermKey(term) === saved)) selectedTermKey = saved
+  } catch {}
   const pendingAssignments = myAssignments.filter(_assignmentNeedsAction)
     .sort((x, y) => (x.due_at ? new Date(x.due_at).getTime() : Infinity) - (y.due_at ? new Date(y.due_at).getTime() : Infinity))
   const pending = requests.filter(r => r.status === 'pending')
@@ -510,7 +522,24 @@ export async function renderStudentOverview(student) {
     attendanceDelegateVisible = false
   }
 
+  const overviewTermBar = `<section class="mb-4 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-white p-4 shadow-sm">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="min-w-0">
+        <h2 class="text-sm font-bold text-indigo-900">🗓️ ภาคเรียนที่กำลังดู</h2>
+        <p class="mt-1 text-xs text-indigo-700">ข้อมูลการเรียน งาน และกิจกรรมในหน้าภาพรวมเป็นภาคเรียนปัจจุบัน หากเลือกย้อนหลัง ระบบจะเปิดหน้าคะแนนของเทอมนั้น</p>
+      </div>
+      <label class="flex items-center gap-2 text-xs font-semibold text-indigo-700 whitespace-nowrap">
+        <span>เลือกภาคเรียน</span>
+        <select id="student-overview-term-switcher" aria-label="เลือกภาคเรียนจากหน้าภาพรวม"
+          class="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm font-bold text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-200">
+          ${renderAcademicTermOptions(termRows, selectedTermKey, currentTermKey)}
+        </select>
+      </label>
+    </div>
+  </section>`
+
   setContent(`
+    ${overviewTermBar}
     <!-- Profile card -->
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-6 mb-4 flex items-center gap-4 sm:gap-6">
       <div class="w-14 h-20 rounded-t-2xl rounded-b-lg overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
@@ -1339,6 +1368,13 @@ export async function renderStudentOverview(student) {
     }
     _render()
   }
+
+  document.getElementById('student-overview-term-switcher')?.addEventListener('change', event => {
+    const value = event.target.value
+    try { localStorage.setItem(`pp5_student_score_term_${student?.id}`, value) } catch {}
+    if (value === currentTermKey) window._stuNav?.('overview')
+    else window._stuNav?.('scores')
+  })
 
   // expose เป็น global ให้ _stuBackFromSubject เรียกได้จากทุกหน้า
   window._stuOpenTimetablePopup = _openTimetablePopup

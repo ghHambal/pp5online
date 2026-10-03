@@ -14,7 +14,8 @@ import {
   openEmailLinkPrompt,
   completeGoogleEmailLink,
 } from './student-views.js'
-import { getSystemConfig, updateLastSeen, logLogin, getActiveAnnouncements } from './api.js'
+import { getSystemConfig, getAcademicTerms, updateLastSeen, logLogin, getActiveAnnouncements } from './api.js'
+import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { applyThemeForRole } from './theme.js'
 import { injectFeedbackWidget, showToast, showAnnouncementPopups, showTerangganuUrgentModal, initHeavyLoadBanner } from './ui.js'
@@ -32,6 +33,43 @@ let _activeSportsTab = 'overview'
 let _futsalRegistered = false
 let _studentPollingTimer = null
 let _studentPollingVisibilityHandler = null
+let _studentAcademicTerms = []
+
+function _studentCurrentTermKey(cfg = {}) {
+  return academicTermKey({
+    academic_year: Number(cfg.academicYear ?? cfg.academic_year ?? 2568),
+    semester: Number(cfg.semester ?? 1),
+  })
+}
+
+function _studentSelectedTermKey(cfg = {}) {
+  const currentKey = _studentCurrentTermKey(cfg)
+  let saved = null
+  try { saved = localStorage.getItem(`pp5_student_score_term_${_student?.id}`) } catch {}
+  return _studentAcademicTerms.some(term => academicTermKey(term) === saved) ? saved : currentKey
+}
+
+function _handleStudentTermSelection(value) {
+  if (!value || !_student?.id) return
+  try { localStorage.setItem(`pp5_student_score_term_${_student.id}`, value) } catch {}
+  if (value === _studentCurrentTermKey(window._pp5StudentSystemCfg ?? {})) navigate('overview')
+  else navigate('scores')
+}
+
+function _renderStudentTermSwitcher(cfg) {
+  const wrap = document.getElementById('stu-term-switcher-wrap')
+  if (!wrap || !_studentAcademicTerms.length) return
+  const currentKey = _studentCurrentTermKey(cfg)
+  wrap.classList.remove('hidden')
+  wrap.innerHTML = `<label class="flex items-center gap-1.5 text-[10px] font-semibold text-indigo-700">
+    <span class="hidden sm:inline">ดูคะแนน</span>
+    <select id="stu-term-switcher" aria-label="เลือกภาคเรียนที่ต้องการดู"
+      class="max-w-[128px] rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[10px] font-bold text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-200">
+      ${renderAcademicTermOptions(_studentAcademicTerms, _studentSelectedTermKey(cfg), currentKey)}
+    </select>
+  </label>`
+  wrap.querySelector('select')?.addEventListener('change', event => _handleStudentTermSelection(event.target.value))
+}
 
 async function _loadFutsalVisibility() {
   if (!_student?.id) return
@@ -239,7 +277,14 @@ function _consumeGoogleEmailRedirectParams() {
 
 // ─── Load header info ─────────────────────────────────────────────────────────
 async function _loadHeader() {
-  const cfg = await getSystemConfig().catch(()=>({}))
+  const [cfg, terms] = await Promise.all([
+    getSystemConfig().catch(()=>({})),
+    getAcademicTerms().catch(()=>[]),
+  ])
+  window._pp5StudentSystemCfg = cfg
+  _studentAcademicTerms = collectAcademicTerms(terms, cfg)
+  window._pp5StudentAcademicTerms = _studentAcademicTerms
+  _renderStudentTermSwitcher(cfg)
   const name = _student?.full_name ?? 'นักเรียน'
 
   // school logo by class/room: contains "ปวช." = ปวช, otherwise มัธยม

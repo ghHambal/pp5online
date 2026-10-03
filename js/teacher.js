@@ -3,7 +3,7 @@ import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog,
 import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
          createSubject, updateSubjectAtomic as updateSubject, deleteSubject,
          getCourseDocPage2, saveCourseDocPage2,
-         getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig,
+         getMyHomeroomRooms, upsertHomeroomTeacher, getSystemConfig, getAcademicTerms,
          getPendingExamRequestCount,
          createPaymentRequest, uploadPaymentSlip, getMyPaymentRequests,
          getTeacherPackageAccess, getMyDonationRequests,
@@ -19,7 +19,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.878'
+import { APP_VERSION } from './version.js?v=10.22.879'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -32,6 +32,7 @@ import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, rende
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
+import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
 
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
@@ -42,6 +43,61 @@ let _positionPerms = {}   // { feature: boolean } สำหรับ position �
 let _sportsVisibility = { enabled: true, teacher_menu: true, student_menu: true, public_page: true }
 window._pp5DonorTierIndex = 0
 window._pp5SystemCfg      = {}
+window._pp5AcademicTerms  = []
+
+function _teacherCurrentTermKey(cfg = window._pp5SystemCfg) {
+  return academicTermKey({
+    academic_year: Number(cfg?.academicYear ?? cfg?.academic_year ?? 2568),
+    semester: Number(cfg?.semester ?? 1),
+  })
+}
+
+function _teacherSelectedTermKey() {
+  const currentKey = _teacherCurrentTermKey()
+  let saved = null
+  try { saved = localStorage.getItem(`pp5_teacher_grade_term_${_teacher?.id}`) } catch {}
+  return window._pp5AcademicTerms.some(term => academicTermKey(term) === saved) ? saved : currentKey
+}
+
+function _handleTeacherTermSelection(value) {
+  if (!value || !_teacher?.id) return
+  try { localStorage.setItem(`pp5_teacher_grade_term_${_teacher.id}`, value) } catch {}
+  if (value === _teacherCurrentTermKey()) {
+    navigate('overview')
+    return
+  }
+  showToast('เลือกภาคเรียนย้อนหลังแล้ว — เปิดจากหน้าบันทึกคะแนน/ปพ.5 ได้ที่นี่', 'info')
+  navigate('grades')
+}
+
+function _renderTeacherTermSwitcher() {
+  const title = document.getElementById('page-title')
+  if (!title?.parentElement || !window._pp5AcademicTerms.length) return
+  let wrap = document.getElementById('teacher-term-switcher-wrap')
+  if (!wrap) {
+    wrap = document.createElement('label')
+    wrap.id = 'teacher-term-switcher-wrap'
+    wrap.className = 'hidden sm:flex items-center gap-2 ml-2 text-xs font-semibold text-gray-500'
+    title.parentElement.appendChild(wrap)
+  }
+  const currentKey = _teacherCurrentTermKey()
+  wrap.innerHTML = `<span class="whitespace-nowrap">กำลังดู</span>
+    <select id="teacher-term-switcher" aria-label="เลือกภาคเรียนที่ต้องการดู"
+      class="max-w-[170px] rounded-xl border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-bold text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-200">
+      ${renderAcademicTermOptions(window._pp5AcademicTerms, _teacherSelectedTermKey(), currentKey)}
+    </select>`
+  wrap.querySelector('select')?.addEventListener('change', event => _handleTeacherTermSelection(event.target.value))
+}
+
+async function _loadTeacherAcademicTerms() {
+  const [cfg, terms] = await Promise.all([
+    getSystemConfig().catch(() => ({})),
+    getAcademicTerms().catch(() => []),
+  ])
+  window._pp5SystemCfg = cfg
+  window._pp5AcademicTerms = collectAcademicTerms(terms, cfg)
+  _renderTeacherTermSwitcher()
+}
 
 async function _loadSportsVisibility() {
   try {
@@ -96,6 +152,7 @@ async function loadTeacherInfo(userId) {
 
   await _loadSportsVisibility()
   _renderTeacherSidebarUI(_teacher)
+  await _loadTeacherAcademicTerms()
 }
 
 // แสดงปุ่ม "Dashboard ตามตำแหน่ง" + ข้อมูลครูใน sidebar/header
@@ -3667,6 +3724,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       loadSidebarHeader(_teacher)
       // แสดงปุ่ม Dashboard ตามตำแหน่ง + ข้อมูลครูใน sidebar/header (เหมือน loadTeacherInfo)
       _renderTeacherSidebarUI(_teacher)
+      await _loadTeacherAcademicTerms()
       // แสดง banner
       const banner  = document.getElementById('impersonation-banner')
       const nameEl  = document.getElementById('impersonation-name')
