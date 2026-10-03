@@ -3,7 +3,7 @@ import { isBonus, isGradeColumn, normalizeRounding, scoreForGrade, sortScoreColu
 import {
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   updateColumnSortOrders,
-  getStudentScores, saveStudentScore, getSystemConfig, getMyClasses,
+  getStudentScores, saveStudentScore, getSystemConfig, getAcademicTerms, getMyClasses,
   detectAssignmentKind, getSheetColumnOptionsForTypes,
   getClassStudents, getLifeSkillColumns, fillPrayerScoresForReligionClass,
   syncAutoAttendanceScoreColumns, setColumnAutoAttendanceSync,
@@ -37,9 +37,10 @@ export async function renderGrades(teacher) {
     return
   }
   try {
-    const [classes, cfg] = await Promise.all([
+    const [classes, cfg, terms] = await Promise.all([
       getMyClasses(teacher.id),
       getSystemConfig().catch(() => ({})),
+      getAcademicTerms().catch(() => []),
     ])
     const currentYear = parseInt(cfg.academicYear ?? cfg.academic_year ?? 2568)
     const currentSemester = parseInt(cfg.semester ?? 1)
@@ -49,15 +50,14 @@ export async function renderGrades(teacher) {
       return `ภาคเรียนที่ ${semester}/${year}`
     }
     const currentKey = `${currentYear}:${currentSemester}`
-    const termKeys = [...new Set(classes.map(termKey))].sort((a, b) => {
+    const knownTermKeys = (terms ?? []).map(t => `${t.academic_year}:${t.semester}`)
+    const termKeys = [...new Set([currentKey, ...knownTermKeys, ...classes.map(termKey)])].sort((a, b) => {
       if (a === currentKey) return -1
       if (b === currentKey) return 1
       return b.localeCompare(a, undefined, { numeric: true })
     })
-    if (!termKeys.length) {
-      setContent(`<div class="text-center py-20 text-gray-400"><p class="text-5xl mb-4">📝</p><p>ยังไม่มีห้องเรียนสำหรับบันทึกคะแนน</p></div>`)
-      return
-    }
+    const savedTermKey = localStorage.getItem(`pp5_teacher_grade_term_${teacher.id}`)
+    const initialTermKey = termKeys.includes(savedTermKey) ? savedTermKey : currentKey
 
     const renderTermClasses = selectedKey => {
       const selectedClasses = classes.filter(c => termKey(c) === selectedKey)
@@ -94,9 +94,12 @@ export async function renderGrades(teacher) {
       <div class="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <div><h2 class="font-bold text-indigo-900">📝 บันทึกคะแนน</h2><p class="text-xs text-indigo-600 mt-1">เลือกภาคเรียนเพื่อเปิดคะแนนและเอกสาร ปพ.5 ของภาคเรียนนั้น</p></div>
-          <select id="grade-history-term" class="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-indigo-700">
-            ${termKeys.map(key => `<option value="${_htmlEsc(key)}">${_htmlEsc(termLabel(key))}${key === currentKey ? ' (ปัจจุบัน)' : ' (ย้อนหลัง)'}</option>`).join('')}
-          </select>
+          <label class="flex items-center gap-2 text-xs font-semibold text-indigo-700 whitespace-nowrap">
+            <span>กำลังดู</span>
+            <select id="grade-history-term" class="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-indigo-700">
+              ${termKeys.map(key => `<option value="${_htmlEsc(key)}" ${key === initialTermKey ? 'selected' : ''}>${_htmlEsc(termLabel(key))}${key === currentKey ? ' (ปัจจุบัน)' : ' (ย้อนหลัง)'}</option>`).join('')}
+            </select>
+          </label>
         </div>
       </div>
       <div id="grade-history-note" class="text-xs text-gray-500"></div>
@@ -111,7 +114,11 @@ export async function renderGrades(teacher) {
         : 'โหมดข้อมูลย้อนหลัง: แก้ไขคะแนน ร เป็น 0 ได้ และเปิด/ดาวน์โหลด ปพ.5 ของภาคเรียนเดิมได้ โดยไม่ปะปนกับภาคเรียนปัจจุบัน'
       renderTermClasses(selectedKey)
     }
-    termSelect.addEventListener('change', renderSelected)
+    termSelect.addEventListener('change', () => {
+      localStorage.setItem(`pp5_teacher_grade_term_${teacher.id}`, termSelect.value)
+      renderSelected()
+    })
+    termSelect.value = initialTermKey
     renderSelected()
   } catch (err) {
     console.error('[renderGrades] โหลดรายการห้องเรียนไม่สำเร็จ', err)

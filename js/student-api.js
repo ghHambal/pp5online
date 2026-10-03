@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js'
 import { isMissingFunction } from './supabase-errors.js'
 import { _generateSessions, _dateInputValue } from './teacher-views-utils.js'
-import { getClassSessionDOWs } from './api.js'
+import { getClassSessionDOWs, getSystemConfig } from './api.js'
 import { isGradeColumn, effectiveScore, scoreForGrade } from './score-display.js'
 
 // ─── Student Profile ──────────────────────────────────────────────────────────
@@ -24,23 +24,49 @@ export async function updateStudentEmail(newEmail) {
 }
 
 // ─── Enrolled Classes ─────────────────────────────────────────────────────────
-export async function getMyEnrolledClasses(studentId) {
+export async function getMyEnrolledClasses(studentId, selectedAcademicYear = null, selectedSemester = null) {
+  if (selectedAcademicYear != null && selectedSemester != null) {
+    const cfg = await getSystemConfig().catch(() => ({}))
+    const currentYear = Number(cfg.academicYear ?? cfg.academic_year)
+    const currentSemester = Number(cfg.semester)
+    if (Number(selectedAcademicYear) !== currentYear || Number(selectedSemester) !== currentSemester) {
+      const { data, error } = await supabase.rpc('get_student_enrolled_classes_for_term', {
+        p_student_id: studentId,
+        p_academic_year: Number(selectedAcademicYear),
+        p_semester: Number(selectedSemester),
+      })
+      if (!error && Array.isArray(data)) return data
+      if (error && !isMissingFunction(error, 'get_student_enrolled_classes_for_term')) throw error
+    }
+  }
   const { data: rpcClasses, error: rpcErr } = await supabase
     .rpc('get_student_enrolled_classes', { p_student_id: studentId })
-  if (!rpcErr && Array.isArray(rpcClasses)) {
-    return rpcClasses
+  const rpcHasTermFields = Array.isArray(rpcClasses)
+    && rpcClasses.every(row => row?.academic_year != null && row?.semester != null)
+  if (!rpcErr && Array.isArray(rpcClasses) && rpcHasTermFields) {
+    const cfg = await getSystemConfig().catch(() => ({}))
+    const academicYear = Number(cfg.academicYear ?? cfg.academic_year)
+    const semester = Number(cfg.semester)
+    if (!Number.isInteger(academicYear) || ![1, 2].includes(semester)) return []
+    return rpcClasses.filter(row => Number(row.academic_year) === academicYear && Number(row.semester) === semester)
   }
 
-  if (!isMissingFunction(rpcErr, 'get_student_enrolled_classes')) {
+  if (rpcErr && !isMissingFunction(rpcErr, 'get_student_enrolled_classes')) {
     throw rpcErr ?? new Error('ข้อมูลรายวิชาจากระบบไม่ถูกต้อง')
   }
+
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const academicYear = Number(cfg.academicYear ?? cfg.academic_year)
+  const semester = Number(cfg.semester)
+  if (!Number.isInteger(academicYear) || ![1, 2].includes(semester)) return []
+  const isCurrentTerm = row => Number(row?.academic_year) === academicYear && Number(row?.semester) === semester
 
   const { data, error } = await supabase
     .from('class_students')
     .select(`
       class_id,
       classes (
-        id, class_name, skill_group, google_sheet_id, subject_group_override,
+        id, class_name, skill_group, google_sheet_id, subject_group_override, academic_year, semester,
         day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
         master_subjects (
           id, subject_code, subject_name, dept, grade_level, credit, teacher_id, subject_group,
@@ -50,7 +76,7 @@ export async function getMyEnrolledClasses(studentId) {
     `)
     .eq('student_id', studentId)
   if (!error) {
-    const classes = (data ?? []).map(r => r.classes).filter(Boolean)
+    const classes = (data ?? []).map(r => r.classes).filter(Boolean).filter(isCurrentTerm)
     if (classes.length || !data?.length) return classes
   }
   // Only a missing embed relationship can use the compatibility query.
@@ -73,7 +99,7 @@ export async function getMyEnrolledClasses(studentId) {
   const { data: classes, error: classErr } = await supabase
     .from('classes')
     .select(`
-      id, class_name, skill_group, google_sheet_id, subject_group_override,
+      id, class_name, skill_group, google_sheet_id, subject_group_override, academic_year, semester,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects (
         id, subject_code, subject_name, dept, grade_level, credit, teacher_id, subject_group,
@@ -82,7 +108,7 @@ export async function getMyEnrolledClasses(studentId) {
     `)
     .in('id', classIds)
   if (classErr) throw (error ?? classErr)
-  return classes ?? []
+  return (classes ?? []).filter(isCurrentTerm)
 }
 
 // ─── Scores ───────────────────────────────────────────────────────────────────
@@ -238,11 +264,13 @@ export async function getMyReadingScores(studentId, academicYear, semester) {
   return { columns, scores: scores ?? [] }
 }
 
-export async function getMyPrayerRecords(studentId) {
-  const { data, error } = await supabase.from('prayer_records')
+export async function getMyPrayerRecords(studentId, academicYear = null, semester = null) {
+  let query = supabase.from('prayer_records')
     .select('check_date, status, week_number, location')
     .eq('student_id', studentId)
-    .order('check_date')
+  if (academicYear != null) query = query.eq('academic_year', Number(academicYear))
+  if (semester != null) query = query.eq('semester', Number(semester))
+  const { data, error } = await query.order('check_date')
   if (error) throw error
   return data ?? []
 }
@@ -453,23 +481,31 @@ async function _fetchGpaBatchesSafe(ids, buildQuery, cursorColumn) {
   return { rows, errors }
 }
 
-export async function getStudentGPA(studentId) {
+export async function getStudentGPA(studentId, selectedAcademicYear = null, selectedSemester = null) {
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const academicYear = Number(selectedAcademicYear ?? cfg.academicYear ?? cfg.academic_year)
+  const semester = Number(selectedSemester ?? cfg.semester)
+  if (!Number.isInteger(academicYear) || ![1, 2].includes(semester)) return { samai: [], sasana: [] }
   const enrollment = await _fetchGpaPages(() => supabase
     .from('class_students')
     .select(`
       id,
       class_id,
-      classes(id, subject_group_override, master_subjects(
+      classes(id, academic_year, semester, subject_group_override, master_subjects(
         subject_name, subject_code, credit, subject_group,
         teachers!master_subjects_teacher_id_fkey(full_name, category)
       ))
     `)
     .eq('student_id', studentId), 'id')
-  if (!enrollment?.length) return { samai: [], sasana: [] }
+  const currentEnrollment = enrollment.filter(row =>
+    Number(row.classes?.academic_year) === academicYear
+    && Number(row.classes?.semester) === semester
+  )
+  if (!currentEnrollment.length) return { samai: [], sasana: [] }
 
   // Preserve legacy GPA scope: use the enrolled class, not source_class_id.
   // Following source classes would change GPA behavior and is not part of H1.
-  const classIds = [...new Set(enrollment.filter(e => e.classes?.master_subjects).map(e => e.class_id))]
+  const classIds = [...new Set(currentEnrollment.filter(e => e.classes?.master_subjects).map(e => e.class_id))]
   const columnResult = await _fetchGpaBatchesSafe(classIds, ids => supabase
     .from('class_score_columns')
     .select('id, class_id, assignment_type, max_score, column_type, formula, formula_refs, bonus_formula')
@@ -500,7 +536,7 @@ export async function getStudentGPA(studentId) {
   const failedScoreColumnIds = new Set(scoreResult.errors.flatMap(batch => batch.ids))
   const scoresByColumn = new Map(scoreRows.map(row => [row.assignment_id, row]))
 
-  const results = enrollment.map(e => {
+  const results = currentEnrollment.map(e => {
     const cls = e.classes
     const ms  = cls?.master_subjects
     if (!ms) return null

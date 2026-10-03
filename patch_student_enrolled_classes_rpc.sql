@@ -8,6 +8,12 @@ LANGUAGE sql
 SECURITY DEFINER
 SET search_path = public
 AS $$
+  WITH current_term AS (
+    SELECT
+      COALESCE((MAX(value) FILTER (WHERE key = 'academicYear'))::integer, 2569) AS academic_year,
+      COALESCE((MAX(value) FILTER (WHERE key = 'semester'))::integer, 1) AS semester
+    FROM public.system_config
+  )
   SELECT COALESCE(
     jsonb_agg(
       jsonb_build_object(
@@ -15,6 +21,9 @@ AS $$
         'class_name', c.class_name,
         'skill_group', c.skill_group,
         'google_sheet_id', c.google_sheet_id,
+        'subject_group_override', c.subject_group_override,
+        'academic_year', c.academic_year,
+        'semester', c.semester,
         'day1_date', c.day1_date,
         'day2_date', c.day2_date,
         'day3_date', c.day3_date,
@@ -48,11 +57,14 @@ AS $$
   FROM public.students AS s
   JOIN public.class_students AS cs ON cs.student_id = s.id
   JOIN public.classes AS c ON c.id = cs.class_id
+  CROSS JOIN current_term AS ct
   LEFT JOIN public.master_subjects AS ms ON ms.id = c.course_id
   LEFT JOIN public.teachers AS t ON t.id = ms.teacher_id
   WHERE s.id = p_student_id
     AND s.profile_id = auth.uid()
-    AND s.is_active = true;
+    AND s.is_active = true
+    AND c.academic_year = ct.academic_year
+    AND c.semester = ct.semester;
 $$;
 
 REVOKE ALL ON FUNCTION public.get_student_enrolled_classes(integer) FROM PUBLIC;

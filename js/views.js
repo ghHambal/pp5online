@@ -1,5 +1,5 @@
 import { getStats, getTeachers, getClasses, getStudents,
-         getSystemConfig, updateSystemConfig, startNewSemester, getMasterSubjects,
+         getSystemConfig, getAcademicTerms, updateSystemConfig, previewNewSemester, startNewSemester, getMasterSubjects,
          getDepartments, getPeriods, createSubject,
          updateClass, deleteClass,
          updateStudent, deleteStudent,
@@ -2248,8 +2248,9 @@ export async function renderSettings() {
   </div>`)
 
   try {
-    const [cfg, allDepts, allTeachers] = await Promise.all([
+    const [cfg, terms, allDepts, allTeachers] = await Promise.all([
       getSystemConfig(),
+      getAcademicTerms().catch(() => []),
       getDepartments().catch(() => []),
       getTeachersWithPositions().catch(() => []),
     ])
@@ -2440,10 +2441,39 @@ export async function renderSettings() {
         </div>`
 
       if (tabId === 'general') return [
-        section('ปีการศึกษา', [
-          { key:'semester',    label:'ภาคเรียนที่',   type:'select', options:['1','2'] },
-          { key:'academicYear',label:'ปีการศึกษา (พ.ศ.)', type:'text', placeholder:'เช่น 2568' },
-        ]),
+        `<section class="mb-6 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+          <p class="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-3">ภาคเรียนปัจจุบันของระบบ</p>
+          <div class="flex flex-wrap items-center gap-3">
+            <span class="inline-flex items-center gap-2 rounded-xl bg-white border border-indigo-100 px-4 py-2.5 text-sm font-bold text-indigo-800">
+              📚 ภาคเรียนที่ ${_esc(cfg.semester ?? '—')} / ${_esc(cfg.academicYear ?? cfg.academic_year ?? '—')}
+            </span>
+            <span class="text-xs text-indigo-600">การเปลี่ยนภาคเรียนต้องใช้ปุ่ม “ขึ้นภาคเรียนใหม่” ด้านล่าง เพื่อให้ระบบเก็บประวัติและสร้างพื้นที่ว่างอย่างปลอดภัย</span>
+          </div>
+          <div class="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-indigo-700">
+            <span>เปิดภาคเรียน: ${_esc(cfg.semester_start ?? '—')}</span>
+            <span>ปิดภาคเรียน: ${_esc(cfg.semester_end ?? '—')}</span>
+          </div>
+        </section>
+        <section class="mb-6 rounded-2xl border border-gray-200 bg-white p-4">
+          <div class="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <p class="text-xs font-bold text-gray-500 uppercase tracking-widest">ประวัติภาคเรียน</p>
+              <p class="text-[11px] text-gray-400 mt-1">ใช้สำหรับตรวจสอบและเป็นรายการให้ครู/นักเรียนเลือกดูข้อมูลย้อนหลัง</p>
+            </div>
+            <span class="text-[11px] text-gray-400">${terms.length} ภาคเรียน</span>
+          </div>
+          <div class="space-y-2">
+            ${(terms.length ? terms : [{ academic_year: cfg.academicYear, semester: cfg.semester, start_date: cfg.semester_start, end_date: cfg.semester_end, is_current: true }]).map(term => `
+              <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border ${term.is_current ? 'border-emerald-200 bg-emerald-50/60' : 'border-gray-100 bg-gray-50/60'} px-3 py-2.5">
+                <div class="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                  <span>${term.is_current ? '🟢' : '🗂️'}</span>
+                  <span>ภาค ${_esc(term.semester)}/${_esc(term.academic_year)}</span>
+                  ${term.is_current ? '<span class="text-[10px] rounded-full bg-emerald-100 text-emerald-700 px-2 py-0.5">ปัจจุบัน</span>' : '<span class="text-[10px] rounded-full bg-gray-200 text-gray-500 px-2 py-0.5">ย้อนหลัง</span>'}
+                </div>
+                <span class="text-[11px] text-gray-400">${_esc(term.start_date ?? '—')} ถึง ${_esc(term.end_date ?? '—')}</span>
+              </div>`).join('')}
+          </div>
+        </section>`,
         `<div id="start-new-semester-box" class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
           <p class="text-sm font-bold text-amber-900">🔄 ขึ้นภาคเรียนใหม่</p>
           <p class="text-xs text-amber-800 mt-1.5 leading-relaxed">
@@ -2451,6 +2481,21 @@ export async function renderSettings() {
             ครูผู้สอนจะเป็นผู้สร้างคอร์สและห้องเรียนที่สอนเอง ส่วนข้อมูลภาคเรียนเก่าจะไม่ถูกลบและยังเก็บไว้เป็นประวัติ
           </p>
           <p id="start-new-semester-target" class="text-xs text-amber-700 mt-2 font-mono"></p>
+          <div class="grid sm:grid-cols-2 gap-3 mt-3">
+            <label class="block text-xs font-semibold text-amber-900">
+              วันเปิดภาคเรียนใหม่
+              <input id="start-new-semester-start" type="date"
+                value="${new Date().toISOString().slice(0, 10)}"
+                class="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm text-gray-700" />
+            </label>
+            <label class="block text-xs font-semibold text-amber-900">
+              วันปิดภาคเรียนใหม่
+              <input id="start-new-semester-end" type="date"
+                value="${cfg.semester_end && cfg.semester_end >= new Date().toISOString().slice(0, 10) ? cfg.semester_end : ''}"
+                class="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm text-gray-700" />
+            </label>
+          </div>
+          <p class="text-[11px] text-amber-700 mt-2">ระบบจะไม่ดำเนินการหากยังไม่ระบุวันปิด หรือวันที่ปิดอยู่ก่อนวันเปิด</p>
           <button id="btn-start-new-semester" type="button"
             class="mt-3 inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold shadow-sm">
             🔄 ขึ้นภาคเรียนใหม่
@@ -3295,17 +3340,34 @@ export async function renderSettings() {
         const nextYear = curSem === 1 ? curYear : curYear + 1
         if (startNewSemTarget) startNewSemTarget.textContent = `ตอนนี้: ภาคเรียนที่ ${curSem}/${curYear}  →  จะขึ้นเป็น: ภาคเรียนที่ ${nextSem}/${nextYear}`
         startNewSemBtn.addEventListener('click', async () => {
-          if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nภาคเรียนใหม่จะเริ่มเป็นพื้นที่ว่าง ระบบจะไม่สร้างคอร์สวิชา ห้องเรียน หรือการลงทะเบียนนักเรียนให้อัตโนมัติ\n\nสถานะผู้สนับสนุนและสิทธิ์ห้องฟรีของรอบเดิมจะถูกรีเซ็ต แต่ประวัติการชำระเงินยังเก็บไว้\nครูทั่วไปจะสร้างห้องเรียนได้ไม่จำกัดโดยไม่ต้องขอสิทธิ์เพิ่ม\n\nข้อมูลภาคเรียนเก่าจะไม่ถูกลบและยังเก็บไว้เป็นประวัติ`)) return
+          const semesterStart = document.getElementById('start-new-semester-start')?.value ?? ''
+          const semesterEnd = document.getElementById('start-new-semester-end')?.value ?? ''
+          if (!semesterStart || !semesterEnd || semesterEnd < semesterStart) {
+            showToast('กรุณาระบุวันเปิด-ปิดภาคเรียนใหม่ให้ถูกต้อง', 'warning')
+            return
+          }
           startNewSemBtn.disabled = true
           startNewSemBtn.textContent = '⏳ กำลังดำเนินการ...'
           try {
-            await startNewSemester(nextYear, nextSem)
+            const preview = await previewNewSemester(nextYear, nextSem, semesterStart, semesterEnd)
+            const previewText = [
+              `คอร์สเดิมที่จะถูกเก็บเป็นประวัติ: ${Number(preview?.courses_to_archive ?? 0).toLocaleString()} คอร์ส`,
+              `ห้องเรียนเดิมที่จะถูกเก็บเป็นประวัติ: ${Number(preview?.classes_to_archive ?? 0).toLocaleString()} ห้อง`,
+              `ผู้สนับสนุนที่มีสิทธิ์ส่วนลดต่อเทอมใหม่: ${Number(preview?.eligible_supporters ?? 0).toLocaleString()} คน`,
+            ].join('\n')
+            if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nวันเปิด: ${semesterStart}\nวันปิด: ${semesterEnd}\n\n${previewText}\n\nภาคเรียนใหม่จะเป็นพื้นที่ว่าง ครูต้องสร้างคอร์สและห้องเรียนใหม่เอง\nข้อมูลเดิมจะไม่ถูกลบ และจะไม่สร้างการลงทะเบียนนักเรียนให้อัตโนมัติ`)) {
+              startNewSemBtn.disabled = false
+              startNewSemBtn.textContent = '🔄 ขึ้นภาคเรียนใหม่'
+              return
+            }
+            await startNewSemester(nextYear, nextSem, semesterStart, semesterEnd)
             cfg.semester = String(nextSem)
             cfg.academicYear = String(nextYear)
-            cfg.semester_start = new Date().toISOString().slice(0, 10)
+            cfg.semester_start = semesterStart
+            cfg.semester_end = semesterEnd
             cfg.unlimitedTeacherClassCreation = 'true'
             showToast(`ขึ้นภาคเรียนที่ ${nextSem}/${nextYear} สำเร็จ ✅ ล้างสิทธิ์ผู้สนับสนุนรอบเดิม และเปิดให้ครูสร้างห้องได้ไม่จำกัด`, 'success')
-            renderTab('general')
+            renderSettings()
           } catch (e) {
             showToast('ขึ้นภาคเรียนใหม่ไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
             startNewSemBtn.disabled = false
@@ -3928,8 +3990,11 @@ export async function renderSubjects() {
       ...row,
       _teacher_name: teacherById[row.teacher_id]?.full_name ?? '',
     })
-    const allSubjects = rawSubjects.map(withTeacher)
-    const allClasses = rawClasses.map(c => ({
+    const currentYear = Number(cfg.academicYear ?? cfg.academic_year ?? new Date().getFullYear() + 543)
+    const currentSemester = Number(cfg.semester ?? 1)
+    const isCurrentTerm = row => Number(row?.academic_year) === currentYear && Number(row?.semester) === currentSemester
+    const allSubjects = rawSubjects.filter(isCurrentTerm).map(withTeacher)
+    const allClasses = rawClasses.filter(isCurrentTerm).map(c => ({
       ...c,
       master_subjects: c.master_subjects
         ? {
@@ -9175,9 +9240,9 @@ export async function renderAnnouncements() {
       const sel = m.querySelector('#ann-cal-event-sel')
       if (sel.options.length <= 1) {
         try {
-          const { getWorkCalendarEvents, getSchoolConfig } = await import('./api.js')
+          const { getWorkCalendarEvents, getSystemConfig } = await import('./api.js')
           let ay = new Date().getFullYear() + 543, sm = 1
-          try { const c = await getSchoolConfig(); ay = c.academic_year; sm = c.semester } catch {}
+          try { const c = await getSystemConfig(); ay = c.academicYear ?? c.academic_year ?? ay; sm = c.semester ?? sm } catch {}
           _calEvents = await getWorkCalendarEvents(ay, sm)
           const TYPE_LABEL = { inspection:'🔍', deadline:'⏰', meeting:'📅', other:'📌' }
           _calEvents.forEach(ev => {
@@ -9948,9 +10013,9 @@ export async function renderSupervisorAnnouncements(teacher, isAdmin = false) {
       const sel = m.querySelector('#sann-cal-event-sel')
       if (sel.options.length <= 1) {
         try {
-          const { getWorkCalendarEvents, getSchoolConfig } = await import('./api.js')
+          const { getWorkCalendarEvents, getSystemConfig } = await import('./api.js')
           let ay = new Date().getFullYear() + 543, sm = 1
-          try { const c = await getSchoolConfig(); ay = c.academic_year; sm = c.semester } catch {}
+          try { const c = await getSystemConfig(); ay = c.academicYear ?? c.academic_year ?? ay; sm = c.semester ?? sm } catch {}
           _calEvents = await getWorkCalendarEvents(ay, sm)
           const TYPE_LABEL = { inspection:'🔍', deadline:'⏰', meeting:'📅', other:'📌' }
           _calEvents.forEach(ev => {
@@ -11873,7 +11938,7 @@ export async function renderFeedbackAdmin() {
 
 // ───── ปฏิทินปฏิบัติงาน (teacher read-only view) ─────
 export async function renderWorkCalendarView() {
-  const { getWorkCalendarEvents, getSchoolConfig } = await import('./api.js')
+  const { getWorkCalendarEvents, getSystemConfig } = await import('./api.js')
 
   setActiveNav('work-calendar-view')
   document.getElementById('page-title').textContent = 'ปฏิทินปฏิบัติงาน'
@@ -11890,7 +11955,10 @@ export async function renderWorkCalendarView() {
   const _fmtDateShort = d => new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
 
   let cfg = { academic_year: new Date().getFullYear() + 543, semester: 1 }
-  try { const c = await getSchoolConfig(); cfg = c } catch {}
+  try {
+    const c = await getSystemConfig()
+    cfg = { academic_year: c.academicYear ?? c.academic_year ?? cfg.academic_year, semester: c.semester ?? cfg.semester }
+  } catch {}
 
   setContent(`<div class="animate-fade max-w-2xl mx-auto">
     <div class="mb-6">
@@ -11938,7 +12006,7 @@ export async function renderWorkCalendarView() {
 
 // ───── ปฏิทินปฏิบัติงาน (supervisor manage view) ─────
 export async function renderWorkCalendar(teacher) {
-  const { getWorkCalendarEvents, createWorkCalendarEvent, updateWorkCalendarEvent, deleteWorkCalendarEvent, replaceWorkCalendarItems, getSchoolConfig } = await import('./api.js')
+  const { getWorkCalendarEvents, createWorkCalendarEvent, updateWorkCalendarEvent, deleteWorkCalendarEvent, replaceWorkCalendarItems, getSystemConfig } = await import('./api.js')
 
   setActiveNav('work-calendar')
   document.getElementById('page-title').textContent = 'ปฏิทินปฏิบัติงาน'
@@ -11957,7 +12025,10 @@ export async function renderWorkCalendar(teacher) {
 
   // ดึง config สำหรับปีการศึกษา
   let cfg = { academic_year: new Date().getFullYear() + 543, semester: 1 }
-  try { const c = await getSchoolConfig(); cfg = c } catch {}
+  try {
+    const c = await getSystemConfig()
+    cfg = { academic_year: c.academicYear ?? c.academic_year ?? cfg.academic_year, semester: c.semester ?? cfg.semester }
+  } catch {}
 
   const _ay = cfg.academic_year
   const _sm = cfg.semester

@@ -464,7 +464,9 @@ function openClassTab(classId, tab = 'todo') {
   _activeClassId = classId
   _activeSubjectTab = tab
   _renderSubjectNav(tab)
-  renderStudentSubjectDetail(_student, classId, tab)
+  const selectedTerm = window._stuPendingClassTerm ?? null
+  window._stuPendingClassTerm = null
+  renderStudentSubjectDetail(_student, classId, tab, selectedTerm)
 }
 
 window._stuOpenClass = (classId) => {

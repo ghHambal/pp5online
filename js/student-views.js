@@ -18,13 +18,13 @@ import {
 } from './student-api.js'
 import { getFriendlyErrorMessage } from './ui.js'
 import { getThemeConfig } from './theme.js'
-import { getSystemConfig, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
+import { getSystemConfig, getAcademicTerms, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
 import { isLifeSkillGroup } from './skill-groups.js'
 import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputValue, renderIconTile } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.824'
+import { APP_VERSION } from './version.js?v=10.22.876'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -1367,7 +1367,7 @@ export async function renderStudentOverview(student) {
 }
 
 // ─── My Score Hub ────────────────────────────────────────────────────────────
-export async function renderStudentMyScores(student, activeTab = 'life') {
+export async function renderStudentMyScores(student, activeTab = 'life', selectedTerm = null) {
   setContent(`<div class="flex justify-center py-10 text-gray-300">
     <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -1375,14 +1375,40 @@ export async function renderStudentMyScores(student, activeTab = 'life') {
     </svg>
   </div>`)
 
-  const cfg = await getSystemConfig().catch(()=>({}))
+  const [cfg, terms] = await Promise.all([
+    getSystemConfig().catch(()=>({})),
+    getAcademicTerms().catch(()=>[]),
+  ])
   applyReadingGradesFromConfig(cfg)
-  const year = cfg.academicYear
-  const sem = cfg.semester
-  const [life, reading, prayers] = await Promise.all([
+  const currentYear = Number(cfg.academicYear ?? cfg.academic_year)
+  const currentSemester = Number(cfg.semester)
+  const termRows = Array.isArray(terms) && terms.length ? terms : [{
+    academic_year: currentYear,
+    semester: currentSemester,
+    start_date: cfg.semester_start,
+    end_date: cfg.semester_end,
+    is_current: true,
+  }]
+  const termKey = t => `${Number(t.academic_year)}:${Number(t.semester)}`
+  const currentKey = `${currentYear}:${currentSemester}`
+  const requestedKey = selectedTerm ? `${Number(selectedTerm.academicYear)}:${Number(selectedTerm.semester)}` : null
+  const savedKey = localStorage.getItem(`pp5_student_score_term_${student.id}`)
+  const activeKey = [requestedKey, savedKey, currentKey].find(key => key && termRows.some(t => termKey(t) === key)) ?? currentKey
+  const activeTerm = termRows.find(t => termKey(t) === activeKey) ?? termRows[0]
+  const year = Number(activeTerm.academic_year)
+  const sem = Number(activeTerm.semester)
+  const termCfg = {
+    ...cfg,
+    academicYear: year,
+    semester: sem,
+    semester_start: activeTerm.start_date ?? cfg.semester_start,
+    semester_end: activeTerm.end_date ?? cfg.semester_end,
+  }
+  const [life, reading, prayers, gpaData] = await Promise.all([
     getMyLifeSkillScores(student.id, year, sem).catch(err => ({ columns: [], scores: [], error: err })),
     getMyReadingScores(student.id, year, sem).catch(err => ({ columns: [], scores: [], error: err })),
-    getMyPrayerRecords(student.id).catch(err => Object.assign([], { error: err })),
+    getMyPrayerRecords(student.id, year, sem).catch(err => Object.assign([], { error: err })),
+    getStudentGPA(student.id, year, sem).catch(err => ({ samai: [], sasana: [], error: err })),
   ])
 
   const lifeRows = _scoreRows(life.columns, life.scores)
@@ -1392,11 +1418,33 @@ export async function renderStudentMyScores(student, activeTab = 'life') {
   const readingScore100 = readingMax > 0 ? Math.round((readingTotal / readingMax) * 1000) / 10 : 0
   const readingEval = readingTotal > 0 ? _readingGrade(readingScore100) : null
   const prayerMap = Object.fromEntries((prayers ?? []).map(r => [r.check_date, r.status]))
-  const weeks = _generatePrayerWeeks(cfg.semester_start, prayers ?? [])
+  const weeks = _generatePrayerWeeks(termCfg.semester_start, prayers ?? [])
   const allPrayerDays = weeks.flatMap(w => w.days)
   const prayerEarned = allPrayerDays.reduce((sum, d) => sum + (PRAYER_SCORE[prayerMap[d.ds]]?.score ?? 0), 0)
   const prayerMax = allPrayerDays.length * 2
   const prayerScore = prayerMax ? Math.max(0, Math.round((prayerEarned / prayerMax) * 100) / 10) : 0
+  const subjectRows = [...(gpaData.samai ?? []), ...(gpaData.sasana ?? [])]
+  const subjectGradeCard = `
+    <section class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
+      <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between gap-3">
+        <div>
+          <h3 class="font-bold text-gray-800 text-sm">🎓 ผลการเรียนรายวิชา</h3>
+          <p class="text-[11px] text-gray-400 mt-0.5">ข้อมูลตามภาคเรียนที่เลือก</p>
+        </div>
+        <span class="text-[11px] text-gray-400">${subjectRows.length} วิชา</span>
+      </div>
+      ${subjectRows.length ? `<div class="divide-y divide-gray-50">
+        ${subjectRows.map(row => `
+          <button type="button" class="student-score-course w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-gray-50 transition" data-class-id="${row.classId}" data-term-year="${year}" data-term-semester="${sem}">
+            <div class="min-w-0">
+              <p class="text-[10px] text-gray-400 font-mono truncate">${_esc(row.subjectCode ?? '')}</p>
+              <p class="text-sm font-semibold text-gray-700 truncate">${_esc(row.subjectName ?? '—')}</p>
+              <p class="text-[11px] text-gray-400">${_esc(row.teacherName ?? '—')} · ${row.score != null && row.maxScore != null ? `${row.score}/${row.maxScore}` : `รอคะแนน ${row.scoredCount ?? 0}/${row.totalCols ?? 0}`}</p>
+            </div>
+            <span class="text-lg font-extrabold ${row.grade == null ? 'text-gray-300' : 'text-indigo-600'}">${row.grade == null ? '—' : Number(row.grade).toFixed(1)}</span>
+          </button>`).join('')}
+      </div>` : `<div class="py-8 text-center text-gray-300 text-sm">ยังไม่มีผลการเรียนในภาคเรียนนี้</div>`}
+    </section>`
 
   const scoreCard = (title, icon, rows, color) => `
     <section class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
@@ -1498,11 +1546,38 @@ export async function renderStudentMyScores(student, activeTab = 'life') {
   }[activeTab] ?? scoreCard('คะแนนทักษะชีวิต', '🌱', lifeRows, 'text-emerald-600')
 
   setContent(`
-    <h2 class="font-bold text-gray-800 mb-1">📊 คะแนนของฉัน</h2>
-    <p class="text-xs text-gray-400 mb-2">คะแนนรวมอื่น ๆ นอกเหนือจากคะแนนรายวิชา · ภาค ${sem ?? '—'} / ${year ?? '—'}</p>
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
+      <div>
+        <h2 class="font-bold text-gray-800">📊 คะแนนของฉัน</h2>
+        <p class="text-xs text-gray-400 mt-1">ผลการเรียนและคะแนนประกอบรายภาคเรียน</p>
+      </div>
+      <label class="flex items-center gap-2 text-xs font-semibold text-indigo-700">
+        <span>ภาคเรียน</span>
+        <select id="student-score-term" class="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-indigo-700">
+          ${termRows
+            .slice()
+            .sort((a, b) => termKey(a) === currentKey ? -1 : termKey(b) === currentKey ? 1 : termKey(b).localeCompare(termKey(a), undefined, { numeric: true }))
+            .map(t => `<option value="${_esc(termKey(t))}" ${termKey(t) === activeKey ? 'selected' : ''}>ภาค ${_esc(t.semester)}/${_esc(t.academic_year)}${termKey(t) === currentKey ? ' (ปัจจุบัน)' : ' (ย้อนหลัง)'}</option>`)
+            .join('')}
+        </select>
+      </label>
+    </div>
+    <p class="text-xs text-gray-400 mb-2">ข้อมูลภาค ${sem || '—'} / ${year || '—'} · ${activeKey === currentKey ? 'ภาคเรียนปัจจุบัน' : 'ข้อมูลย้อนหลัง'}</p>
     <p class="text-sm font-semibold text-gray-700 mb-4">${tabTitle}</p>
+    ${subjectGradeCard}
     ${content}
   `)
+  document.getElementById('student-score-term')?.addEventListener('change', event => {
+    const [nextYear, nextSemester] = String(event.target.value).split(':').map(Number)
+    localStorage.setItem(`pp5_student_score_term_${student.id}`, `${nextYear}:${nextSemester}`)
+    renderStudentMyScores(student, activeTab, { academicYear: nextYear, semester: nextSemester })
+  })
+  document.querySelectorAll('.student-score-course').forEach(button => {
+    button.addEventListener('click', () => {
+      window._stuPendingClassTerm = { academicYear: Number(button.dataset.termYear), semester: Number(button.dataset.termSemester) }
+      window._stuOpenClass?.(Number(button.dataset.classId))
+    })
+  })
 }
 
 // ─── Subjects List ────────────────────────────────────────────────────────────
@@ -1856,7 +1931,7 @@ export async function renderStudentAllAssignments(student, group = 'samai') {
 }
 
 // ─── Subject Detail ───────────────────────────────────────────────────────────
-export async function renderStudentSubjectDetail(student, classId, tab = 'todo') {
+export async function renderStudentSubjectDetail(student, classId, tab = 'todo', selectedTerm = null) {
   setContent(`<div class="flex justify-center py-10 text-gray-300">
     <svg class="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
@@ -1864,7 +1939,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo')
     </svg>
   </div>`)
 
-  const classes = await getMyEnrolledClasses(student.id).catch(()=>[])
+  const classes = await getMyEnrolledClasses(student.id, selectedTerm?.academicYear, selectedTerm?.semester).catch(()=>[])
   const cls = classes.find(c => c.id === classId)
   if (!cls) { setContent(`<p class="text-center py-10 text-gray-400">ไม่พบรายวิชา</p>`); return }
 

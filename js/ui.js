@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.874'
+import { APP_VERSION } from './version.js?v=10.22.876'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,12 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.876': [
+    '🗂️ ภาคเรียน: เพิ่มทะเบียนภาคเรียน แถบสลับดูข้อมูลย้อนหลัง และแยกภาคเรียนปัจจุบันออกจากภาคเรียนที่กำลังเปิดดู',
+  ],
+  '10.22.875': [
+    '🔄 ขึ้นภาคเรียนใหม่: เพิ่ม preview ก่อนดำเนินการ บังคับระบุวันเปิด–ปิด แยกคอร์ส/ห้องเรียนตามภาคเรียน และกรองข้อมูลนักเรียนให้ไม่ปะปนกับเทอมเก่า',
+  ],
   '10.22.874': [
     '👤 มือถือ: ซ่อน hamburger และเปิดโปรไฟล์คุณครูจากรูปด้านบน พร้อมทางลัดแก้ไขโปรไฟล์ เปลี่ยนรหัสผ่าน ติดต่อแอดมิน และออกจากระบบ',
   ],

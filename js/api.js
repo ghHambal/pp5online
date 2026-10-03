@@ -60,6 +60,16 @@ async function _getSystemConfig() {
   return Object.fromEntries((data ?? []).map(r => [r.key, r.value]))
 }
 
+export async function getAcademicTerms() {
+  const { data, error } = await supabase
+    .from('academic_terms')
+    .select('id, academic_year, semester, start_date, end_date, status, is_current')
+    .order('academic_year', { ascending: false })
+    .order('semester', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
 export async function updateSystemConfig(key, value) {
   const { error } = await supabase
     .from('system_config')
@@ -69,10 +79,23 @@ export async function updateSystemConfig(key, value) {
 
 // ขึ้นภาคเรียนใหม่ทั้งโรงเรียน — เปลี่ยนปี/เทอมกลางเป็นพื้นที่ว่าง
 // ไม่ clone คอร์ส/ห้องเรียน และไม่ลงทะเบียนนักเรียนอัตโนมัติ
-export async function startNewSemester(newAcademicYear, newSemester) {
+export async function previewNewSemester(newAcademicYear, newSemester, semesterStart, semesterEnd) {
+  const { data, error } = await supabase.rpc('admin_preview_new_semester', {
+    p_new_academic_year: newAcademicYear,
+    p_new_semester: newSemester,
+    p_new_semester_start: semesterStart,
+    p_new_semester_end: semesterEnd,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function startNewSemester(newAcademicYear, newSemester, semesterStart, semesterEnd) {
   const { data, error } = await supabase.rpc('admin_start_new_semester', {
     p_new_academic_year: newAcademicYear,
     p_new_semester: newSemester,
+    p_new_semester_start: semesterStart,
+    p_new_semester_end: semesterEnd,
   })
   if (error) throw error
   return data
@@ -467,7 +490,8 @@ export function getMyClasses(teacherId) {
 
 async function _getMyClasses(teacherId) {
   // ดึงคอร์สก่อน แล้วหา classes ที่ผูกกับคอร์สเหล่านั้น
-  const subjects = await getMySubjects(teacherId)
+  // หน้านี้ต้องคืนทุกภาคเรียน เพราะหน้าบันทึกคะแนนใช้เปิดประวัติย้อนหลัง
+  const subjects = await _getMySubjects(teacherId, false)
   const ids = (subjects ?? []).map(s => s.id)
   if (!ids.length) return []
 
@@ -510,24 +534,31 @@ export async function getClassStudentCount(classId) {
 }
 
 export function getMySubjects(teacherId) {
-  return readInFlight(['teacher-subjects', teacherId, 'all-terms'], () => _getMySubjects(teacherId))
+  return readInFlight(['teacher-subjects', teacherId, 'current-term'], () => _getMySubjects(teacherId))
 }
 
-async function _getMySubjects(teacherId) {
+async function _getMySubjects(teacherId, currentOnly = true) {
   // ไม่มี teacherId = คืน [] เสมอ (fail closed) — ถ้าต้องการวิชาทั้งระบบจริงๆ ให้เรียก getMasterSubjects() ตรงๆ
   // (เดิมคืนทุกวิชาทั้งโรงเรียนถ้า teacherId ว่าง กลายเป็นช่องโหว่ถ้ามีจุดเรียกที่ teacher ยังโหลดไม่เสร็จ)
   if (!teacherId) return []
 
+  const cfg = currentOnly ? await getSystemConfig().catch(() => ({})) : {}
+  const academicYear = Number(cfg.academicYear ?? cfg.academic_year)
+  const semester = Number(cfg.semester)
+  const hasTerm = currentOnly && Number.isInteger(academicYear) && [1, 2].includes(semester)
+  if (currentOnly && !hasTerm) return []
+
   // 1. owned subjects
-  const ownPromise = supabase
+  let ownPromise = supabase
     .from('master_subjects')
-    .select('id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id')
+    .select('id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id, academic_year, semester')
     .eq('teacher_id', teacherId)
+  if (hasTerm) ownPromise = ownPromise.eq('academic_year', academicYear).eq('semester', semester)
 
   // 2. co-taught subjects
   const coPromise = supabase
     .from('subject_co_teachers')
-    .select('subject_id, master_subjects(id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id)')
+    .select('subject_id, master_subjects(id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id, academic_year, semester)')
     .eq('teacher_id', teacherId)
 
   const [ownRes, coRes] = await Promise.all([ownPromise, coPromise])
@@ -536,6 +567,7 @@ async function _getMySubjects(teacherId) {
 
   const ownList = ownRes.data ?? []
   const coList = (coRes.data ?? []).map(x => x.master_subjects).filter(Boolean)
+    .filter(s => !hasTerm || (Number(s.academic_year) === academicYear && Number(s.semester) === semester))
 
   const map = new Map()
   for (const s of ownList) map.set(s.id, s)
@@ -662,7 +694,7 @@ export async function mergeTeacherAccounts(keepId, mergeId) {
 export async function getMasterSubjects() {
   const { data, error } = await supabase
     .from('master_subjects')
-    .select('id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id')
+    .select('id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id, academic_year, semester')
     .order('subject_code')
   if (error) throw error
   return data ?? []
@@ -1966,8 +1998,16 @@ export async function createClass(payload, teacherId = null) {
   const normalizedPayload = Object.prototype.hasOwnProperty.call(payload, 'skill_group')
     ? { ...payload, skill_group: normalizeSkillGroup(payload.skill_group) }
     : payload
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const academicYear = Number(cfg.academicYear ?? cfg.academic_year)
+  const semester = Number(cfg.semester)
+  const termPayload = {
+    ...normalizedPayload,
+    ...(Number.isInteger(academicYear) && !Object.prototype.hasOwnProperty.call(normalizedPayload, 'academic_year') ? { academic_year: academicYear } : {}),
+    ...([1, 2].includes(semester) && !Object.prototype.hasOwnProperty.call(normalizedPayload, 'semester') ? { semester } : {}),
+  }
   const { data, error } = await supabase
-    .from('classes').insert(normalizedPayload).select('id').single()
+    .from('classes').insert(termPayload).select('id').single()
   if (error) throw error
   // อัปเดตโควตา (ไม่ block ถ้า rpc ล้มเหลว)
   if (teacherId) {
@@ -1991,9 +2031,17 @@ export async function createSubject(payload, coTeacherIds = []) {
   const normalizedPayload = Object.prototype.hasOwnProperty.call(payload, 'skill_group')
     ? { ...payload, skill_group: normalizeSkillGroup(payload.skill_group) }
     : payload
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const academicYear = Number(cfg.academicYear ?? cfg.academic_year)
+  const semester = Number(cfg.semester)
+  const termPayload = {
+    ...normalizedPayload,
+    ...(Number.isInteger(academicYear) ? { academic_year: academicYear } : {}),
+    ...([1, 2].includes(semester) ? { semester } : {}),
+  }
   const { data, error } = await supabase
     .from('master_subjects')
-    .insert(normalizedPayload)
+    .insert(termPayload)
     .select('id')
     .single()
   if (error) throw error
