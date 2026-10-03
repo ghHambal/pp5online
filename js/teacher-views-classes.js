@@ -190,7 +190,7 @@ async function _openStudentManagerImpl(teacher, classId) {
       </div>
     </div>`)
 
-    const refresh = () => window._openStudentManager(classId)
+    const refresh = () => window._loadClassTab?.('students') ?? window._openStudentManager(classId)
     // students-back ถูกลบออก (อยู่ใน class detail sticky header แล้ว)
     document.querySelectorAll('[data-special-enrollment]').forEach(sel => {
       sel.addEventListener('change', async () => {

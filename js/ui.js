@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.870'
+import { APP_VERSION } from './version.js?v=10.22.871'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.871': [
+    '👥 จัดการนักเรียน: แก้การสลับมุมมองตาราง/กริดไม่ให้เมนูและแท็บของห้องเรียนหายไป',
+  ],
   '10.22.870': [
     '🧭 หน้าบันทึกคะแนน: จัดปุ่มตัวเลือกเพิ่มเติมให้ชิดขวาของแถบคำสั่งเพื่อให้สอดคล้องกับการใช้งานจริง',
   ],
