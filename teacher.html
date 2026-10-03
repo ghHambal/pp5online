@@ -18,6 +18,34 @@
     /* ซ่อน scrollbar ของ sidebar nav — คงเลื่อนได้แต่ไม่มีแถบ */
     #sidebar nav::-webkit-scrollbar { display: none; }
     #sidebar nav { scrollbar-width: none; -ms-overflow-style: none; }
+    .sidebar-menu-group { margin: 0 0 7px; }
+    .sidebar-menu-group-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      min-height: 34px;
+      padding: 5px 10px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: #86efac;
+      font: inherit;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-align: left;
+      text-transform: uppercase;
+      transition: background .16s ease, color .16s ease;
+    }
+    .sidebar-menu-group-toggle:hover,
+    .sidebar-menu-group-toggle[aria-expanded="true"] { background: rgba(6, 78, 59, .58); color: #fff; }
+    .sidebar-menu-group-toggle-label { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .sidebar-menu-group-chevron { font-size: 12px; transition: transform .18s ease; }
+    .sidebar-menu-group.is-collapsed .sidebar-menu-group-chevron { transform: rotate(-90deg); }
+    .sidebar-menu-group-items { padding-top: 2px; }
+    .sidebar-menu-group.is-collapsed .sidebar-menu-group-items { display: none; }
+    #sidebar .sidebar-group-legacy-label { display: none !important; }
 
     /* โหมดเต็มจอสำหรับ Smart Classroom — ซ่อน sidebar+header ชั่วคราว คืนค่าเมื่อกดย้อนกลับ */
     body.sc-fullscreen #sidebar { display: none !important; }
@@ -910,7 +938,7 @@
   </section>
 
   <!-- Scripts -->
-  <script type="module" src="js/teacher.js?v=10.22.876"></script>
+  <script type="module" src="js/teacher.js?v=10.22.877"></script>
 
 </body>
 </html>

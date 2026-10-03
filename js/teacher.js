@@ -19,7 +19,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.876'
+import { APP_VERSION } from './version.js?v=10.22.877'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -552,6 +552,121 @@ function _initMobileTeacherProfile() {
   })
 }
 
+const SIDEBAR_GROUPS = [
+  {
+    key: 'courses', icon: '📚', title: 'รายวิชาและภาพรวม', defaultOpen: true,
+    selectors: ['[data-nav="overview"]', '#menu-my-courses', '#menu-my-classes', '#menu-dashboard'],
+  },
+  {
+    key: 'teaching', icon: '🧑‍🏫', title: 'งานสอนประจำวัน', defaultOpen: true,
+    selectors: ['#daily-work-section'],
+  },
+  {
+    key: 'students', icon: '👥', title: 'นักเรียน', defaultOpen: false,
+    selectors: ['#menu-advisor-students'],
+  },
+  {
+    key: 'semester', icon: '📋', title: 'งานรายภาคเรียน', defaultOpen: false,
+    selectors: ['#sem-work-section'],
+  },
+  {
+    key: 'sports', icon: '🏆', title: 'ระบบกีฬาสี', defaultOpen: false,
+    selectors: [
+      '#menu-sports-shortcut', '#menu-my-team', '#menu-shirt-summary', '#menu-sports-fund-admin',
+      '#menu-sports-overview-admin', '#menu-sports-competition-manager', '#menu-sports-checkin',
+      '#menu-awards-group', '#menu-sports-evaluation', '#menu-shirt-vote-dashboard', '#menu-qr-reissue-requests',
+    ],
+  },
+  {
+    key: 'general', icon: '📢', title: 'ประกาศและกิจกรรม', defaultOpen: true,
+    selectors: ['[data-nav="announcements-view"]', '[data-nav="work-calendar-view"]', '#btn-sv-mode', '#menu-council', '#menu-terangganu', '#menu-regrade'],
+  },
+  {
+    key: 'tools', icon: '🧰', title: 'เครื่องมือและคู่มือ', defaultOpen: false,
+    selectors: ['[data-nav="certificates"]', '[data-nav="tutorial"]'],
+  },
+]
+
+const _wiredSidebarGroupToggles = new WeakSet()
+const SIDEBAR_ROUTE_GROUPS = {
+  overview: 'courses', 'my-courses': 'courses', 'my-classes': 'courses',
+  attendance: 'teaching', grades: 'teaching', requests: 'teaching', schedule: 'teaching',
+  flashcards: 'teaching', 'quiz-system': 'teaching', 'exam-docs': 'teaching', 'student-qr-print': 'teaching', 'student-leave-scanner': 'teaching',
+  'advisor-students': 'students',
+  'life-skill-score': 'semester', 'reading-score': 'semester', 'prayer-score': 'semester',
+  sports: 'sports', 'shirt-summary': 'sports', 'sports-fund-admin': 'sports', 'sports-overview-admin': 'sports',
+  'sports-competition-manager': 'sports', 'sports-evaluation': 'sports', 'shirt-vote-dashboard': 'sports', 'my-team-workspace': 'sports',
+  'announcements-view': 'general', 'work-calendar-view': 'general',
+  certificates: 'tools', tutorial: 'tools',
+}
+
+function _setSidebarGroupOpen(group, isOpen, persist = true) {
+  group.classList.toggle('is-collapsed', !isOpen)
+  const toggle = group.querySelector('.sidebar-menu-group-toggle')
+  toggle?.setAttribute('aria-expanded', isOpen ? 'true' : 'false')
+  if (persist) {
+    try { localStorage.setItem(`pp5_teacher_sidebar_group_${group.dataset.sidebarGroup}`, isOpen ? '1' : '0') } catch {}
+  }
+}
+
+function _wireSidebarGroupToggle(group) {
+  const toggle = group.querySelector('.sidebar-menu-group-toggle')
+  if (!toggle || _wiredSidebarGroupToggles.has(toggle)) return
+  _wiredSidebarGroupToggles.add(toggle)
+  toggle.addEventListener('click', () => {
+    const isOpen = toggle.getAttribute('aria-expanded') === 'true'
+    _setSidebarGroupOpen(group, !isOpen)
+  })
+}
+
+function _initSidebarGroups() {
+  const nav = document.querySelector('#sidebar nav')
+  if (!nav) return
+
+  if (!nav.querySelector(':scope > .sidebar-menu-group')) {
+    const groupedNodes = new Set()
+    const groups = SIDEBAR_GROUPS.map(config => {
+      const section = document.createElement('section')
+      section.className = 'sidebar-menu-group'
+      section.dataset.sidebarGroup = config.key
+
+      const toggle = document.createElement('button')
+      toggle.type = 'button'
+      toggle.className = 'sidebar-menu-group-toggle'
+      toggle.innerHTML = `<span class="sidebar-menu-group-toggle-label"><span aria-hidden="true">${config.icon}</span><span>${config.title}</span></span><span class="sidebar-menu-group-chevron" aria-hidden="true">⌄</span>`
+
+      const items = document.createElement('div')
+      items.className = 'sidebar-menu-group-items'
+      config.selectors.forEach(selector => {
+        const node = nav.querySelector(selector)
+        if (!node || groupedNodes.has(node)) return
+        groupedNodes.add(node)
+        node.querySelector(':scope > p')?.classList.add('sidebar-group-legacy-label')
+        items.append(node)
+      })
+      section.append(toggle, items)
+      return section
+    }).filter(section => section.querySelector('.sidebar-menu-group-items')?.children.length)
+
+    nav.replaceChildren(...groups)
+  }
+
+  nav.querySelectorAll(':scope > .sidebar-menu-group').forEach(group => {
+    const config = SIDEBAR_GROUPS.find(item => item.key === group.dataset.sidebarGroup)
+    let stored = null
+    try { stored = localStorage.getItem(`pp5_teacher_sidebar_group_${group.dataset.sidebarGroup}`) } catch {}
+    _setSidebarGroupOpen(group, stored === null ? Boolean(config?.defaultOpen) : stored === '1', false)
+    _wireSidebarGroupToggle(group)
+  })
+}
+
+function _syncSidebarGroupActive(view) {
+  const groupKey = SIDEBAR_ROUTE_GROUPS[view]
+  if (!groupKey) return
+  const group = document.querySelector(`#sidebar .sidebar-menu-group[data-sidebar-group="${groupKey}"]`)
+  if (group) _setSidebarGroupOpen(group, true, false)
+}
+
 let _currentView = 'overview'
 async function navigate(view) {
   // กันคลิกช่วงที่ _teacher ยังโหลดไม่เสร็จ/หลุดชั่วคราว (เจอจริง: กด "ห้องเรียน" จากการ์ดหน้าภาพรวม
@@ -582,6 +697,7 @@ async function navigate(view) {
   if (fn) { _currentView = view; fn() }
   _toggleFloatingFabsForView(view)
   window._mobileNavSync?.(view)
+  _syncSidebarGroupActive(view)
 }
 
 // expose to window for onclick in views
@@ -2645,6 +2761,7 @@ function _exitSupervisorMode() {
     _savedNavHTML = null
     // re-bind all nav buttons
     _rebindNav(nav, main)
+    _initSidebarGroups()
   }
   navigate('overview')
 }
@@ -3715,6 +3832,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     openDashboardRoomPicker(_teacher, window._pp5DonorTierIndex ?? 0, window._pp5SystemCfg ?? {})
   })
 
+  _initSidebarGroups()
   _initMobileTeacherNavigation()
   _initMobileTeacherProfile()
 
