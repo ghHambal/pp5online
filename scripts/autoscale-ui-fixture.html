@@ -4,7 +4,7 @@
 <script type="module">
 import { supabase } from '../js/supabase.js';
 import { renderAutoscaleSettings } from '../js/views-autoscale.js';
-let config = { schemaVersion: 1, enabled: false, periods: [] };
+let config = { schemaVersion: 2, enabled: false, timezone: 'Asia/Bangkok', defaultTier: 'ci_micro', rules: [] };
 const state = { mode: 'schedule', currentTier: 'ci_micro', status: 'disabled' };
 supabase.from = () => ({
   select() { return this; }, eq() { return this; },

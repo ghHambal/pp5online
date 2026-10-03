@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import { stripTypeScriptTypes } from 'node:module';
-import { emptySchedule, validateSchedule, scheduledTier } from '../supabase/functions/autoscale-tick/schedule.js';
-import { DEFAULT_GUARDRAIL, evaluateDownscaleGuardrail, holdAfterMediumConfirmation, normalizeGuardrail } from '../supabase/functions/autoscale-tick/guardrail.js';
+import { COMPUTE_TIERS, emptySchedule, isComputeTier, tierLabel, tierRank, validateSchedule, scheduledTier } from '../supabase/functions/autoscale-tick/schedule.js';
+import { DEFAULT_GUARDRAIL, evaluateDownscaleGuardrail, holdAfterMediumConfirmation, holdAfterTierConfirmation, normalizeGuardrail } from '../supabase/functions/autoscale-tick/guardrail.js';
 
 const raw = fs.readFileSync(new URL('../supabase/functions/autoscale-tick/index.ts', import.meta.url), 'utf8');
 const code = stripTypeScriptTypes(raw.replace(/^import .*\n/gm, '').replace('async function notify(title: string, message: string) {', 'async function notify(title: string, message: string) { return;'));
@@ -13,7 +13,7 @@ async function scenario({ config = active, state = {}, tier = 'ci_micro', health
   let reads = 0;
   const store = { ...state };
   const admin = { from: () => ({ select(...args) { return args.length ? this : Promise.resolve({ data: [{ key: 'autoscaleLock' }], error: null }); }, eq(_key, value) { this.key = value; return this; }, lt() { return this; }, update() { return this; }, async maybeSingle() { return { data: { value: JSON.stringify(this.key === 'autoscaleState' ? store : config) }, error: dbError ? new Error('db failed') : null }; }, async upsert(row) { Object.assign(store, JSON.parse(row.value)); return { error: null }; } }) };
-  const sandbox = vm.createContext({ console: { log() {}, error() {}, warn() {} }, Date, JSON, setTimeout, AbortSignal, emptySchedule, validateSchedule, scheduledTier, DEFAULT_GUARDRAIL, evaluateDownscaleGuardrail, holdAfterMediumConfirmation, normalizeGuardrail, createClient: () => admin, Deno: { env: { get: key => key === 'SUPABASE_URL' ? 'https://test.supabase.co' : 'fake' }, serve() {} }, fetch: async (url, options = {}) => {
+  const sandbox = vm.createContext({ console: { log() {}, error() {}, warn() {} }, Date, JSON, setTimeout, AbortSignal, COMPUTE_TIERS, emptySchedule, isComputeTier, tierLabel, tierRank, validateSchedule, scheduledTier, DEFAULT_GUARDRAIL, evaluateDownscaleGuardrail, holdAfterMediumConfirmation, holdAfterTierConfirmation, normalizeGuardrail, createClient: () => admin, Deno: { env: { get: key => key === 'SUPABASE_URL' ? 'https://test.supabase.co' : 'fake' }, serve() {} }, fetch: async (url, options = {}) => {
     if (options.method === 'PATCH') { patches++; return { ok: !failure, status: failure ? 429 : 200, text: async () => failure || '{}' }; }
     reads++;
     if (url.includes('/health')) return { ok: true, text: async () => JSON.stringify([{ status: healthy ? 'ACTIVE_HEALTHY' : 'UNHEALTHY' }]) };

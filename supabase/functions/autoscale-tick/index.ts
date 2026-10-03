@@ -9,16 +9,14 @@
 // หมายเหตุ: secret ชื่อ MANAGEMENT_ACCESS_TOKEN ห้ามขึ้นต้นด้วย SUPABASE_
 import "jsr:@supabase/functions-js/edge-runtime.d.ts"
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { emptySchedule, validateSchedule, scheduledTier } from './schedule.js'
-import { DEFAULT_GUARDRAIL, evaluateDownscaleGuardrail, holdAfterMediumConfirmation, normalizeGuardrail } from './guardrail.js'
+import { COMPUTE_TIERS, emptySchedule, isComputeTier, scheduledTier, tierLabel, tierRank, validateSchedule } from './schedule.js'
+import { DEFAULT_GUARDRAIL, evaluateDownscaleGuardrail, holdAfterTierConfirmation, normalizeGuardrail } from './guardrail.js'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const PAT = Deno.env.get('MANAGEMENT_ACCESS_TOKEN')!
 const PROJECT_REF = SUPABASE_URL.match(/https:\/\/([^.]+)\.supabase\.co/)?.[1] ?? ''
 const MANAGEMENT_API = 'https://api.supabase.com/v1'
-const CEILING_TIER = 'ci_medium'
-const NORMAL_TIER = 'ci_micro'
 const NOTIFY_POSITIONS = ['academic_samai', 'academic_religion', 'academic_pvch', 'executive']
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
@@ -98,12 +96,16 @@ async function checkHealthy() {
   })
 }
 
-async function getCurrentTier() {
+async function getComputeInfo() {
   const addons = await mgmtFetch(`/projects/${PROJECT_REF}/billing/addons`)
   const current = addons?.selected_addons?.find((a: { type: string }) => a.type === 'compute_instance')
   console.log('[selected compute addon]', JSON.stringify(current))
   if (!current?.variant?.id) throw new Error('อ่านระดับเครื่องไม่ได้ หยุดโดยไม่ส่งคำสั่งปรับ')
-  return current.variant.id
+  const available = addons?.available_addons?.find((a: { type: string }) => a.type === 'compute_instance')
+  const availableTiers = Array.isArray(available?.variants)
+    ? available.variants.map((variant: { id?: string }) => variant.id).filter(Boolean)
+    : []
+  return { currentTier: current.variant.id, availableTiers }
 }
 
 async function setComputeTier(tier: string) {
@@ -197,6 +199,7 @@ async function runAutoscale() {
   const guardrail = normalizeGuardrail(config.guardrail || DEFAULT_GUARDRAIL)
   const target = scheduledTier(config)
   state.mode = 'schedule'
+  state.scheduleSchemaVersion = 2
   state.targetTier = target
   state.lastCheckedAt = new Date().toISOString()
   if (!target) {
@@ -204,17 +207,19 @@ async function runAutoscale() {
     await saveState(state)
     return state
   }
-  let currentTier
-  try { currentTier = await getCurrentTier() } catch (error) {
+  let computeInfo
+  try { computeInfo = await getComputeInfo() } catch (error) {
     state.lastError = String(error)
     state.status = 'read_failed'
     await saveState(state)
     return state
   }
+  const currentTier = computeInfo.currentTier
   const previousTier = state.currentTier
   state.currentTier = currentTier
-  if (previousTier === NORMAL_TIER && currentTier === CEILING_TIER && !state.pendingTier) {
-    Object.assign(state, holdAfterMediumConfirmation(state, new Date(), guardrail))
+  if (isComputeTier(previousTier) && isComputeTier(currentTier) && previousTier !== currentTier
+    && tierRank(currentTier) > tierRank(previousTier) && !state.pendingTier) {
+    Object.assign(state, holdAfterTierConfirmation(state, currentTier, new Date(), guardrail))
     state.lastAction = `manual scale-up hold -> ${currentTier} @ ${state.lastScaleUpConfirmedAt}`
     state.lastDecisionReason = 'manual_scale_up_minimum_hold'
   }
@@ -246,13 +251,15 @@ async function runAutoscale() {
   // billing addon อาจเปลี่ยนก่อน restart เสร็จ ตรวจ health ยืนยันในรอบถัดไป
   if (state.pendingTier && currentTier === state.pendingTier && health.known && health.healthy) {
     const confirmed = state.pendingTier
+    const previousRequestedTier = state.pendingFromTier || currentTier
     state.pendingTier = null
+    state.pendingFromTier = null
     state.lastConfirmedAt = new Date().toISOString()
     state.lastAction = `confirmed -> ${confirmed} @ ${state.lastConfirmedAt}`
     state.lastError = null
-    if (confirmed === CEILING_TIER) Object.assign(state, holdAfterMediumConfirmation(state, new Date(), guardrail))
+    if (isComputeTier(confirmed) && tierRank(confirmed) > 1) Object.assign(state, holdAfterTierConfirmation(state, confirmed, new Date(), guardrail))
     await saveState(state)
-    await notify(confirmed === CEILING_TIER ? '⚠️ ระบบ PP5 Online ปรับ compute ตามตารางเวลา' : '✅ ระบบ PP5 Online ลด compute ตามตารางเวลา', `ตรวจยืนยันระดับ ${confirmed === CEILING_TIER ? 'Medium' : 'Micro'} และสุขภาพระบบปกติแล้ว (ตารางเวลาไทย)`)
+    await notify(tierRank(confirmed) > tierRank(previousRequestedTier) ? '⚠️ ระบบ PP5 Online ปรับ compute ตามตารางเวลา' : '✅ ระบบ PP5 Online ลด compute ตามตารางเวลา', `ตรวจยืนยันระดับ ${tierLabel(confirmed)} และสุขภาพระบบปกติแล้ว (ตารางเวลาไทย)`)
   }
   // ไม่ย้อนคำสั่งหรือ retry ถี่ ระหว่าง resize / หลังเพิ่งสั่งเปลี่ยนเครื่อง
   if (Date.now() < Date.parse(state.nextResizeAllowedAt || '1970-01-01')) {
@@ -265,11 +272,11 @@ async function runAutoscale() {
     state.lastError = 'ยังยืนยันการปรับเครื่องไม่ได้ กรุณาตรวจ Supabase Dashboard ก่อนดำเนินการต่อ'
   } else if (currentTier === target) {
     state.status = 'on_target'
-  } else if (![NORMAL_TIER, CEILING_TIER].includes(currentTier)) {
+  } else if (!COMPUTE_TIERS.includes(currentTier)) {
     state.status = 'needs_attention'
-    state.lastError = 'พบระดับเครื่องที่ตั้งเองนอก Micro/Medium ระบบจะไม่เปลี่ยนทับ'
+    state.lastError = 'พบระดับเครื่องที่ระบบยังไม่รองรับ ระบบจะไม่เปลี่ยนทับ'
   } else {
-    const isDownscale = currentTier === CEILING_TIER && target === NORMAL_TIER
+    const isDownscale = tierRank(currentTier) > tierRank(target)
     if (isDownscale) {
       const decision = evaluateDownscaleGuardrail({ state, currentTier, targetTier: target, healthKnown: health.known, healthy: health.healthy, guardrail })
       state.lastDecision = decision.decision
@@ -286,8 +293,15 @@ async function runAutoscale() {
         return state
       }
     }
+    if (computeInfo.availableTiers.length && !computeInfo.availableTiers.includes(target)) {
+      state.status = 'needs_attention'
+      state.lastError = `Supabase ไม่แสดงระดับ ${tierLabel(target)} เป็นตัวเลือกที่ใช้ได้ในขณะนี้ ระบบยังไม่ส่งคำสั่งปรับ`
+      await saveState(state)
+      return state
+    }
     // บันทึกก่อน PATCH: หาก response ขาดตอน จะไม่ยิงซ้ำรอบถัดไป
     state.pendingTier = target
+    state.pendingFromTier = currentTier
     state.lastRequestedAt = new Date().toISOString()
     state.nextResizeAllowedAt = new Date(Date.now() + 15 * 60000).toISOString()
     state.status = 'processing'
@@ -300,10 +314,13 @@ async function runAutoscale() {
       state.lastError = String(error)
       state.lastAction = `resize attempt failed @ ${state.lastRequestedAt}`
       // คำตอบ HTTP ปฏิเสธแน่นอน retry หลัง cooldown; timeout คง pending ไว้
-      if (/HTTP (400|401|403|404|409|422|429):/.test(state.lastError)) state.pendingTier = null
+      if (/HTTP (400|401|403|404|409|422|429):/.test(state.lastError)) {
+        state.pendingTier = null
+        state.pendingFromTier = null
+      }
       state.status = 'resize_failed'
       await saveState(state)
-      await notify('🔴 ระบบ PP5 Online ปรับ compute ตามตารางเวลาไม่สำเร็จ', 'คำสั่งปรับกำลังเครื่องไม่สำเร็จ ระบบเว้นช่วงก่อนลองใหม่ โปรดตรวจสถานะในหน้าตั้งค่ากำลังเครื่องและ Supabase Dashboard')
+      await notify('🔴 ระบบ PP5 Online ปรับ compute ตามตารางเวลาไม่สำเร็จ', `คำสั่งปรับเป็น ${tierLabel(target)} ไม่สำเร็จ ระบบเว้นช่วงก่อนลองใหม่ โปรดตรวจสถานะในหน้าตั้งค่ากำลังเครื่องและ Supabase Dashboard`)
     }
   }
   await saveState(state)

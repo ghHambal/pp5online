@@ -1,5 +1,8 @@
+import { tierLabel, tierRank } from './schedule.js'
+
 export const DEFAULT_GUARDRAIL = {
   minimumMediumHoldMinutes: 60,
+  minimumSmallHoldMinutes: 30,
   healthyStreakRequired: 3,
   recoveryLockMinutes: 60,
 }
@@ -11,6 +14,7 @@ export function normalizeGuardrail(raw = {}) {
   }
   return {
     minimumMediumHoldMinutes: number(raw.minimumMediumHoldMinutes, DEFAULT_GUARDRAIL.minimumMediumHoldMinutes, 0, 24 * 60),
+    minimumSmallHoldMinutes: number(raw.minimumSmallHoldMinutes, DEFAULT_GUARDRAIL.minimumSmallHoldMinutes, 0, 24 * 60),
     healthyStreakRequired: Math.round(number(raw.healthyStreakRequired, DEFAULT_GUARDRAIL.healthyStreakRequired, 1, 12)),
     recoveryLockMinutes: number(raw.recoveryLockMinutes, DEFAULT_GUARDRAIL.recoveryLockMinutes, 0, 24 * 60),
   }
@@ -28,19 +32,36 @@ export function evaluateDownscaleGuardrail({
   const normalized = normalizeGuardrail(guardrail)
   const nowMs = new Date(now).getTime()
   const defer = reason => ({ allow: false, decision: 'downgrade_deferred', reason, guardrail: normalized })
-  if (currentTier !== 'ci_medium' || targetTier !== 'ci_micro') return { allow: true, decision: 'not_a_downscale', reason: null, guardrail: normalized }
+  if (tierRank(currentTier) <= tierRank(targetTier)) return { allow: true, decision: 'not_a_downscale', reason: null, guardrail: normalized }
   if (!healthKnown || !healthy) return defer('health_unknown_or_unhealthy')
   if (state.pendingTier) return defer('resize_in_progress')
   if (state.criticalServiceState) return defer('critical_service_state')
-  if (state.holdUntil && nowMs < Date.parse(state.holdUntil)) return defer('minimum_medium_hold')
+  if (state.holdUntil && nowMs < Date.parse(state.holdUntil)) {
+    return defer(`minimum_${currentTier === 'ci_medium' ? 'medium' : 'small'}_hold`)
+  }
   if (state.recoveryLockUntil && nowMs < Date.parse(state.recoveryLockUntil)) return defer('recovery_lock')
   if (Number(state.consecutiveHealthyChecks || 0) < normalized.healthyStreakRequired) return defer('healthy_streak')
-  if (state.lastFailedHealthAt && nowMs - Date.parse(state.lastFailedHealthAt) < normalized.recoveryLockMinutes * 60 * 1000) return defer('recent_failed_health')
+  if (state.lastFailedHealthAt && nowMs - Date.parse(state.lastFailedHealthAt) < normalized.recoveryLockMinutes * 60 * 1000) {
+    return defer('recent_failed_health')
+  }
   return { allow: true, decision: 'downgrade_allowed', reason: 'guardrail_passed', guardrail: normalized }
 }
 
-export function holdAfterMediumConfirmation(state, now = new Date(), guardrail = DEFAULT_GUARDRAIL) {
+export function holdAfterTierConfirmation(state, tier, now = new Date(), guardrail = DEFAULT_GUARDRAIL) {
   const normalized = normalizeGuardrail(guardrail)
-  const holdUntil = new Date(new Date(now).getTime() + normalized.minimumMediumHoldMinutes * 60 * 1000).toISOString()
-  return { ...state, holdUntil, recoveryLockUntil: holdUntil, lastScaleUpConfirmedAt: new Date(now).toISOString() }
+  const minutes = tier === 'ci_medium' ? normalized.minimumMediumHoldMinutes : normalized.minimumSmallHoldMinutes
+  const confirmedAt = new Date(now).toISOString()
+  const holdUntil = new Date(new Date(now).getTime() + minutes * 60 * 1000).toISOString()
+  return {
+    ...state,
+    holdUntil,
+    recoveryLockUntil: holdUntil,
+    lastScaleUpConfirmedAt: confirmedAt,
+    lastScaleUpTier: tier,
+    lastScaleUpTierLabel: tierLabel(tier),
+  }
+}
+
+export function holdAfterMediumConfirmation(state, now = new Date(), guardrail = DEFAULT_GUARDRAIL) {
+  return holdAfterTierConfirmation(state, 'ci_medium', now, guardrail)
 }

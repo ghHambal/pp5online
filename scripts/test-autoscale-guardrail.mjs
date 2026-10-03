@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { evaluateDownscaleGuardrail, holdAfterMediumConfirmation } from '../supabase/functions/autoscale-tick/guardrail.js'
+import { evaluateDownscaleGuardrail, holdAfterMediumConfirmation, holdAfterTierConfirmation } from '../supabase/functions/autoscale-tick/guardrail.js'
 
 const now = new Date('2026-09-24T00:00:00Z')
 const base = { consecutiveHealthyChecks: 3, lastHealthStatus: 'healthy' }
@@ -11,6 +11,14 @@ const held = holdAfterMediumConfirmation({}, now, { minimumMediumHoldMinutes: 60
 result = evaluateDownscaleGuardrail({ state: { ...base, ...held }, currentTier: 'ci_medium', targetTier: 'ci_micro', now: new Date('2026-09-24T00:30:00Z'), healthKnown: true, healthy: true })
 assert.equal(result.allow, false)
 assert.equal(result.reason, 'minimum_medium_hold')
+
+const smallHeld = holdAfterTierConfirmation({}, 'ci_small', now, { minimumSmallHoldMinutes: 30, healthyStreakRequired: 3, recoveryLockMinutes: 60 })
+result = evaluateDownscaleGuardrail({ state: { ...base, ...smallHeld }, currentTier: 'ci_small', targetTier: 'ci_micro', now: new Date('2026-09-24T00:15:00Z'), healthKnown: true, healthy: true, guardrail: { minimumSmallHoldMinutes: 30, healthyStreakRequired: 3, recoveryLockMinutes: 60 } })
+assert.equal(result.allow, false)
+assert.equal(result.reason, 'minimum_small_hold')
+
+result = evaluateDownscaleGuardrail({ state: base, currentTier: 'ci_medium', targetTier: 'ci_small', now, healthKnown: true, healthy: true })
+assert.equal(result.allow, true)
 
 result = evaluateDownscaleGuardrail({ state: { ...base, consecutiveHealthyChecks: 0 }, currentTier: 'ci_medium', targetTier: 'ci_micro', now, healthKnown: true, healthy: true })
 assert.equal(result.allow, false)

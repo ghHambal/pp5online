@@ -42,7 +42,7 @@ create policy autoscale_no_state_delete on public.system_config as restrictive
 for delete to anon, authenticated using (key not in ('autoscaleState', 'autoscaleLock'));
 
 insert into public.system_config (key, value, updated_at)
-values ('autoscaleSchedule', '{"schemaVersion":1,"enabled":false,"periods":[]}', now()),
+values ('autoscaleSchedule', '{"schemaVersion":2,"enabled":false,"timezone":"Asia/Bangkok","defaultTier":"ci_micro","rules":[]}', now()),
        ('autoscaleLock', '1970-01-01T00:00:00.000Z', now())
 on conflict (key) do nothing;
 commit;
