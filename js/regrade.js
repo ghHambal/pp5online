@@ -14,6 +14,7 @@ import {
   getUnassignedRegradeSubjects, assignSubjectTeacherBulk, assignSubjectTeacherByIds, getRegradeDistinctClassLevels,
   getDepartmentById,
   getClassroomSummary, getClassroomStudents, getStudentSubjectsForExec, getTopStudentsNeedingAttention,
+  runAdminRegradeBatch, getCurrentAcademicTerm,
 } from './regrade-api.js'
 import { getCertificateTemplates, getCertificateTemplate, createCertificateTemplate, updateCertificateTemplateLayout } from './certificates-api.js'
 import { openCertificatePrint } from './certificate-engine.js'
@@ -1713,9 +1714,12 @@ function showSettingsTab(content, key) {
 async function renderSettings() {
   setHeaderTitle('ตั้งค่าระบบ', `⚙️ ตั้งค่า${ctx.cfg.system_name || 'แก้ค้างเก่า'}`)
   const content = document.getElementById('regrade-content')
-  let admins, staff, executives, teacherPicker, classLevels, slipTemplates
+  let admins, staff, executives, teacherPicker, classLevels, slipTemplates, currentTerm
   try {
-    [admins, staff, executives, teacherPicker, classLevels, slipTemplates] = await Promise.all([getRegradeAdmins(), getRegradeRegistrarStaff(), getRegradeExecutives(), getAllTeachersForPicker(), getRegradeDistinctClassLevels(), getCertificateTemplates()])
+    [admins, staff, executives, teacherPicker, classLevels, slipTemplates, currentTerm] = await Promise.all([
+      getRegradeAdmins(), getRegradeRegistrarStaff(), getRegradeExecutives(), getAllTeachersForPicker(),
+      getRegradeDistinctClassLevels(), getCertificateTemplates(), getCurrentAcademicTerm(),
+    ])
   } catch (err) {
     content.innerHTML = `<div class="p-6 text-center text-red-500 text-sm">โหลดข้อมูลไม่สำเร็จ: ${escHtml(err.message)}</div>`
     return
@@ -1851,6 +1855,34 @@ async function renderSettings() {
       </div>
 
       <div data-settings-group="data" class="flex flex-col gap-4">
+        <div class="rg-card p-5 border-2" style="border-color:var(--primary-soft-line);">
+          <p class="text-sm font-bold text-[var(--ink)] mb-1">📤 ส่งสรุปเกรดแบบรวมแทนครูผู้สอน</p>
+          <p class="text-xs text-[var(--muted-2)] leading-relaxed mb-3">
+            ทำงานแยกจากปุ่มส่งผลการเรียนในหน้ากรอกคะแนนของครู ระบบจะอ่านห้องเรียนของภาคเรียนที่เลือก ค้นหานักเรียนที่ติดผลการเรียน แล้วส่งเข้าระบบแก้ค้างเก่าในฐานข้อมูลแบบชุดเดียว
+          </p>
+          <div class="rounded-xl p-3 mb-3 text-[11px] leading-relaxed" style="background:var(--gold-soft);color:var(--gold-ink);border:1px solid var(--gold-soft-line);">
+            ควรตรวจสอบตัวอย่างรายการก่อนยืนยันส่งทุกครั้ง รายการที่มีอยู่แล้วจะไม่ถูกสร้างซ้ำ และข้อมูลการส่งของครูแต่ละห้องยังทำงานแยกตามเดิม
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">ปีการศึกษา</label>
+              <input id="admin-regrade-year" type="number" min="2500" max="2700" value="${escHtml(currentTerm?.academicYear ?? 2569)}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">ภาคเรียน</label>
+              <select id="admin-regrade-semester" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm bg-[var(--surface)]">
+                <option value="1" ${Number(currentTerm?.semester) === 1 ? 'selected' : ''}>1</option>
+                <option value="2" ${Number(currentTerm?.semester) === 2 ? 'selected' : ''}>2</option>
+              </select>
+            </div>
+          </div>
+          <div class="flex flex-col sm:flex-row gap-2">
+            <button id="admin-regrade-preview" type="button" class="flex-1 py-2.5 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--secondary),var(--secondary-dark))">🔎 ตรวจสอบรายการก่อนส่ง</button>
+            <button id="admin-regrade-submit" type="button" class="hidden flex-1 py-2.5 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">📤 ยืนยันส่งทุกห้อง</button>
+          </div>
+          <div id="admin-regrade-batch-result" class="mt-3"></div>
+        </div>
+
         <div class="rg-card p-5">
           <p class="text-sm font-bold text-[var(--ink)] mb-1">นำเข้าข้อมูลย้อนหลัง (CSV)</p>
           <p class="text-xs text-[var(--muted-2)] mb-3">สำหรับรายวิชาค้างของภาคเรียนก่อนหน้าภาคเรียนปัจจุบันเท่านั้น (ภาคเรียนปัจจุบันระบบดึงจากฐานข้อมูล ปพ.5 อัตโนมัติ)</p>
@@ -1929,6 +1961,79 @@ async function renderSettings() {
     btn.dataset.on = on ? '1' : '0'
     btn.style.cssText = on ? 'background:var(--primary);color:#fff;' : 'background:var(--surface-2);color:var(--muted)'
   }))
+
+  const batchResult = content.querySelector('#admin-regrade-batch-result')
+  const batchPreviewBtn = content.querySelector('#admin-regrade-preview')
+  const batchSubmitBtn = content.querySelector('#admin-regrade-submit')
+  let lastBatchPreview = null
+  let lastBatchPreviewTerm = null
+  const renderBatchResult = (result, committed = false) => {
+    const classes = Array.isArray(result?.classes) ? result.classes : []
+    const rows = classes.slice(0, 30).map(row => `
+      <tr class="border-t border-[var(--line-soft)]">
+        <td class="px-2 py-1.5">${escHtml(row.class_name || '-')}</td>
+        <td class="px-2 py-1.5">${escHtml(row.subject_code || '-')} ${escHtml(row.subject_name || '')}</td>
+        <td class="px-2 py-1.5">${escHtml(row.teacher_name || '-')}</td>
+        <td class="px-2 py-1.5 text-right font-bold">${Number(row.failing_count || 0)}</td>
+      </tr>`).join('')
+    batchResult.innerHTML = `
+      <div class="rounded-xl p-3 text-xs" style="background:var(--surface-2);border:1px solid var(--line-soft);">
+        <p class="font-bold text-[var(--ink)]">${committed ? 'ส่งข้อมูลเรียบร้อยแล้ว' : 'ผลการตรวจสอบรายการ'}</p>
+        <p class="mt-1 text-[var(--muted)]">ภาคเรียน ${escHtml(result.semester)}/${escHtml(result.academic_year)} · พบห้องที่มีรายการติด ${Number(result.class_count || 0)} ห้อง · นักเรียนที่ติดทั้งหมด ${Number(result.failing_count || 0)} คน</p>
+        <p class="mt-1 text-[var(--muted-2)]">ระบบจะไม่นับนักเรียนที่ยังไม่มีคะแนนครบทุกช่อง เว้นแต่มีการกำหนดผลพิเศษไว้แล้ว</p>
+        ${committed ? `<p class="mt-1 font-bold" style="color:var(--ok)">เพิ่มรายการใหม่ ${Number(result.submitted || 0)} รายการ</p>` : `<p class="mt-1" style="color:var(--gold-ink)">รายการที่มีอยู่แล้ว ${Number(result.existing_count || 0)} รายการ จะไม่ถูกสร้างซ้ำ</p>`}
+        ${classes.length ? `<div class="overflow-x-auto mt-3"><table class="w-full text-[11px]"><thead><tr class="text-left text-[var(--muted-2)]"><th class="px-2 py-1">ห้อง</th><th class="px-2 py-1">รายวิชา</th><th class="px-2 py-1">ครูผู้สอน</th><th class="px-2 py-1 text-right">ติด</th></tr></thead><tbody>${rows}</tbody></table>${classes.length > 30 ? `<p class="text-center text-[10px] text-[var(--muted-2)] mt-2">แสดง 30 จาก ${classes.length} ห้อง</p>` : ''}</div>` : `<p class="text-center text-[var(--muted-2)] py-3">ไม่พบรายการนักเรียนที่ติดในภาคเรียนนี้</p>`}
+      </div>`
+  }
+  const getBatchTerm = () => ({
+    year: Number(content.querySelector('#admin-regrade-year')?.value),
+    semester: Number(content.querySelector('#admin-regrade-semester')?.value),
+  })
+  const clearBatchPreview = () => {
+    lastBatchPreview = null
+    lastBatchPreviewTerm = null
+    batchSubmitBtn?.classList.add('hidden')
+  }
+  content.querySelector('#admin-regrade-year')?.addEventListener('input', clearBatchPreview)
+  content.querySelector('#admin-regrade-semester')?.addEventListener('change', clearBatchPreview)
+  batchPreviewBtn?.addEventListener('click', async () => {
+    const { year, semester } = getBatchTerm()
+    if (!Number.isInteger(year) || year < 2500 || ![1, 2].includes(semester)) { showToast('กรุณาเลือกปีการศึกษาและภาคเรียนให้ถูกต้อง', 'warning'); return }
+    batchPreviewBtn.disabled = true; batchPreviewBtn.textContent = 'กำลังตรวจสอบ...'
+    try {
+      lastBatchPreview = await runAdminRegradeBatch(year, semester, false)
+      lastBatchPreviewTerm = { year, semester }
+      renderBatchResult(lastBatchPreview)
+      batchSubmitBtn.classList.toggle('hidden', !Number(lastBatchPreview.failing_count))
+    } catch (err) {
+      showToast('ตรวจสอบไม่สำเร็จ: ' + err.message, 'error')
+    } finally {
+      batchPreviewBtn.disabled = false; batchPreviewBtn.textContent = '🔎 ตรวจสอบรายการก่อนส่ง'
+    }
+  })
+  batchSubmitBtn?.addEventListener('click', async () => {
+    const { year, semester } = getBatchTerm()
+    if (!lastBatchPreview?.failing_count || lastBatchPreviewTerm?.year !== year || lastBatchPreviewTerm?.semester !== semester) {
+      showToast('กรุณาตรวจสอบรายการของภาคเรียนที่เลือกใหม่ก่อนส่ง', 'warning')
+      return
+    }
+    const ok = await showRegradeConfirm({
+      title: 'ยืนยันส่งสรุปเกรดทุกห้อง',
+      message: `ส่งนักเรียนที่ติด ${Number(lastBatchPreview.failing_count)} คน ของภาคเรียน ${semester}/${year} เข้าระบบแก้ค้างเก่าใช่หรือไม่? รายการเดิมจะไม่ถูกสร้างซ้ำ`,
+      confirmText: 'ยืนยันส่งทุกห้อง',
+    })
+    if (!ok) return
+    batchSubmitBtn.disabled = true; batchSubmitBtn.textContent = 'กำลังส่ง...'
+    try {
+      const result = await runAdminRegradeBatch(year, semester, true)
+      renderBatchResult(result, true)
+      showToast(`ส่งสำเร็จ เพิ่มรายการใหม่ ${Number(result.submitted || 0)} รายการ ✅`, 'success')
+    } catch (err) {
+      showToast('ส่งข้อมูลไม่สำเร็จ: ' + err.message, 'error')
+    } finally {
+      batchSubmitBtn.disabled = false; batchSubmitBtn.textContent = '📤 ยืนยันส่งทุกห้อง'
+    }
+  })
 
   content.querySelectorAll('[data-remove-admin]').forEach(btn => btn.addEventListener('click', async () => {
     const ok = await showRegradeConfirm({ title: 'ยืนยันถอดสิทธิ์', message: `ถอดสิทธิ์ผู้ดูแลระบบของ "${btn.dataset.name}" ใช่หรือไม่?`, confirmText: 'ยืนยันถอดสิทธิ์' })

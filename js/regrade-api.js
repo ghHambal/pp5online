@@ -33,6 +33,27 @@ export async function submitClassGradesToRegrade(classId, failingList) {
   return data
 }
 
+// ส่งสรุปเกรดแบบรวมโดยแอดมิน — ทำงานแยกจากปุ่มส่งของครูรายห้อง
+export async function runAdminRegradeBatch(academicYear, semester, commit = false) {
+  const { data, error } = await supabase.rpc('admin_regrade_batch', {
+    p_academic_year: Number(academicYear),
+    p_semester: Number(semester),
+    p_commit: !!commit,
+  })
+  if (error) throw error
+  return data ?? {}
+}
+
+export async function getCurrentAcademicTerm() {
+  const { data, error } = await supabase
+    .from('system_config')
+    .select('key,value')
+    .in('key', ['academicYear', 'semester'])
+  if (error) throw error
+  const map = Object.fromEntries((data ?? []).map(row => [row.key, row.value]))
+  return { academicYear: Number(map.academicYear ?? 2569), semester: Number(map.semester ?? 1) }
+}
+
 // ─── ตัวตนผู้ใช้ปัจจุบัน ──────────────────────────────────────────────────────
 export async function getMyStudentRow() {
   const { data: { session } } = await supabase.auth.getSession()

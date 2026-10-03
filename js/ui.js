@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.864'
+import { APP_VERSION } from './version.js?v=10.22.865'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.865': [
+    '📤 แก้ค้างเก่า: เพิ่มปุ่มแอดมินตรวจสอบและส่งสรุปเกรดทุกห้องของภาคเรียนแทนครูได้ในครั้งเดียว แยกจากปุ่มส่งรายห้องของครู และไม่ส่งรายการที่คะแนนยังไม่ครบโดยอัตโนมัติ',
+  ],
   '10.22.864': [
     '📝 ปพ.5: เพิ่มตัวเลือกภาคเรียนในหน้าบันทึกคะแนน เปิดแก้คะแนนย้อนหลัง เช่น เปลี่ยน ร เป็น 0 และเปิด/พิมพ์เอกสารของภาคเรียนเดิมได้ โดยไม่ปะปนกับภาคเรียนปัจจุบัน',
   ],
