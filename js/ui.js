@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.871'
+import { APP_VERSION } from './version.js?v=10.22.872'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.872': [
+    '📱 เมนูมือถือ: เพิ่มแถบเมนูด้านล่าง 5 กลุ่ม พร้อมแผงเมนูย่อยแบบเลื่อนขึ้น ใช้งานง่ายบนหน้าจอมือถือโดยไม่กระทบ sidebar บนคอมพิวเตอร์',
+  ],
   '10.22.871': [
     '👥 จัดการนักเรียน: แก้การสลับมุมมองตาราง/กริดไม่ให้เมนูและแท็บของห้องเรียนหายไป',
   ],

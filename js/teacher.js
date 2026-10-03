@@ -281,6 +281,190 @@ const ROUTES = {
   'setup':       () => import('./teacher-views.js').then(m => m.renderProfileSetup(_teacher, _homeroomRooms, _onSetupComplete)),
 }
 
+// เมนูมือถือใช้แหล่งเมนูเดิมจาก sidebar เพื่อให้สิทธิ์/การซ่อนเมนูตรงกันเสมอ
+const MOBILE_NAV_GROUPS = {
+  teaching: {
+    title: 'งานสอน',
+    items: [
+      { selector: '#menu-my-courses', icon: '📖', label: 'คอร์สวิชาของฉัน' },
+      { selector: '#menu-my-classes', icon: '🏫', label: 'ห้องเรียนของฉัน' },
+      { selector: '#menu-dashboard', icon: '📈', label: 'Dashboard ห้องเรียน' },
+      { selector: '#btn-quick-attendance', icon: '✅', label: 'เช็คชื่อ' },
+      { selector: '#btn-quick-grades', icon: '📝', label: 'บันทึกคะแนน' },
+      { selector: '[data-nav="requests"]', icon: '🔔', label: 'คำร้องนักเรียน' },
+      { selector: '[data-nav="schedule"]', icon: '🗓️', label: 'ตารางสอน' },
+    ],
+  },
+  students: {
+    title: 'นักเรียน',
+    items: [
+      { selector: '#menu-advisor-students', icon: '👥', label: 'นักเรียนที่ปรึกษา' },
+      { selector: '[data-nav="student-leave-scanner"]', icon: '📋', label: 'ตรวจสอบใบอนุญาตออกนอกห้อง' },
+      { selector: '[data-nav="student-qr-print"]', icon: '🖨️', label: 'พิมพ์ QR Code นักเรียน' },
+      { selector: '#btn-quick-leave-scanner', icon: '📷', label: 'สแกนเอกสารนักเรียน' },
+    ],
+  },
+  tools: {
+    title: 'เครื่องมือ',
+    items: [
+      { selector: '[data-nav="flashcards"]', icon: '🃏', label: 'บัตรคำศัพท์' },
+      { selector: '[data-nav="quiz-system"]', icon: '📝', label: 'แบบทดสอบออนไลน์' },
+      { selector: '[data-nav="exam-docs"]', icon: '📄', label: 'เอกสารช่วงสอบ' },
+      { selector: '[data-nav="certificates"]', icon: '🏅', label: 'ระบบเกียรติบัตร' },
+      { selector: '[data-nav="tutorial"]', icon: '📖', label: 'คู่มือการใช้งาน' },
+    ],
+  },
+  more: {
+    title: 'เพิ่มเติม',
+    items: [
+      { selector: '[data-nav="announcements-view"]', icon: '📢', label: 'ประกาศ' },
+      { selector: '[data-nav="work-calendar-view"]', icon: '📅', label: 'ปฏิทินปฏิบัติงาน' },
+      { selector: '[data-nav="life-skill-score"]', icon: '🌱', label: 'คะแนนทักษะชีวิต' },
+      { selector: '[data-nav="reading-score"]', icon: '📖', label: 'คะแนนอ่านคิดวิเคราะห์' },
+      { selector: '[data-nav="prayer-score"]', icon: '🕌', label: 'คะแนนละหมาด' },
+      { selector: '#menu-council', icon: '🏛️', label: 'ระบบสภานักเรียน' },
+      { selector: '#menu-terangganu', icon: '⚜️', label: 'ค่าย TERANGGANU 2026' },
+      { selector: '#menu-regrade', icon: '📋', label: 'แก้ค้างเก่า' },
+      { selector: '#menu-sports-shortcut', icon: '🏆', label: 'ระบบกีฬาสี' },
+      { selector: '#menu-my-team', icon: '🛡️', label: 'จัดการสีของฉัน' },
+      { selector: '#menu-shirt-summary', icon: '📦', label: 'สรุปยอดเสื้อกีฬาสี' },
+      { selector: '#menu-sports-fund-admin', icon: '💰', label: 'บัญชีเงินกีฬาสี' },
+      { selector: '#menu-sports-overview-admin', icon: '📊', label: 'ภาพรวมกีฬาสี' },
+      { selector: '#menu-sports-competition-manager', icon: '🏟️', label: 'รายการแข่งขันของฉัน' },
+      { selector: '#menu-sports-checkin', icon: '📷', label: 'รับรายงานตัวนักกีฬา' },
+      { selector: '#menu-sports-evaluation', icon: '🧑‍⚖️', label: 'ประเมินกีฬาสี' },
+      { selector: '#menu-shirt-vote-dashboard', icon: '🗳️', label: 'ผลโหวตแบบเสื้อ' },
+      { selector: '#menu-qr-reissue-requests', icon: '🎫', label: 'พิมพ์/คำขอ QR Code' },
+    ],
+  },
+}
+
+const MOBILE_NAV_VIEW_GROUPS = {
+  overview: 'home',
+  'my-courses': 'teaching',
+  'my-classes': 'teaching',
+  grades: 'teaching',
+  requests: 'teaching',
+  schedule: 'teaching',
+  'advisor-students': 'students',
+  'student-qr-print': 'students',
+  'student-leave-scanner': 'students',
+  flashcards: 'tools',
+  'quiz-system': 'tools',
+  'exam-docs': 'tools',
+  certificates: 'tools',
+  tutorial: 'tools',
+  'announcements-view': 'more',
+  'work-calendar-view': 'more',
+  'life-skill-score': 'more',
+  'reading-score': 'more',
+  'prayer-score': 'more',
+  sports: 'more',
+  'shirt-summary': 'more',
+  'sports-fund-admin': 'more',
+  'sports-overview-admin': 'more',
+  'sports-competition-manager': 'more',
+  'sports-evaluation': 'more',
+  'shirt-vote-dashboard': 'more',
+  'my-team-workspace': 'more',
+}
+
+function _isMobileNavSourceVisible(source) {
+  if (!source) return false
+  if (source.closest('.hidden') || source.classList.contains('hidden')) return false
+  return window.getComputedStyle(source).display !== 'none'
+}
+
+function _findMobileNavSource(selector) {
+  return [...document.querySelectorAll(selector)].find(_isMobileNavSourceVisible) || null
+}
+
+function _setMobileNavOpen(groupKey = null) {
+  const sheet = document.getElementById('mobile-nav-sheet')
+  const backdrop = document.getElementById('mobile-nav-backdrop')
+  const itemsWrap = document.getElementById('mobile-nav-sheet-items')
+  const title = document.getElementById('mobile-nav-sheet-title')
+  if (!sheet || !backdrop || !itemsWrap || !title) return
+
+  const isOpen = Boolean(groupKey && MOBILE_NAV_GROUPS[groupKey])
+  document.querySelectorAll('[data-mobile-group]').forEach(button => {
+    const active = isOpen && button.dataset.mobileGroup === groupKey
+    button.classList.toggle('active', active)
+    button.setAttribute('aria-expanded', active ? 'true' : 'false')
+  })
+  sheet.classList.toggle('mobile-nav-open', isOpen)
+  backdrop.classList.toggle('mobile-nav-open', isOpen)
+  sheet.setAttribute('aria-hidden', isOpen ? 'false' : 'true')
+  backdrop.setAttribute('aria-hidden', isOpen ? 'false' : 'true')
+  if (!isOpen) return
+
+  const group = MOBILE_NAV_GROUPS[groupKey]
+  title.textContent = group.title
+  itemsWrap.replaceChildren()
+  const visibleItems = group.items
+    .map(item => ({ ...item, source: _findMobileNavSource(item.selector) }))
+    .filter(item => item.source)
+
+  if (!visibleItems.length) {
+    const empty = document.createElement('p')
+    empty.className = 'mobile-nav-sheet-empty'
+    empty.textContent = 'ยังไม่มีเมนูสำหรับบัญชีนี้'
+    itemsWrap.append(empty)
+    return
+  }
+
+  visibleItems.forEach(item => {
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'mobile-nav-sheet-item'
+    button.innerHTML = `<span class="mobile-nav-sheet-item-icon" aria-hidden="true">${item.icon}</span><span>${item.label}</span>`
+    button.addEventListener('click', () => {
+      _setMobileNavOpen()
+      item.source.click()
+    })
+    itemsWrap.append(button)
+  })
+}
+
+function _initMobileTeacherNavigation() {
+  const homeSource = () => _findMobileNavSource('[data-nav="overview"]')
+  document.querySelectorAll('[data-mobile-group]').forEach(button => {
+    button.addEventListener('click', () => {
+      const groupKey = button.dataset.mobileGroup
+      if (groupKey === 'home') {
+        _setMobileNavOpen()
+        homeSource()?.click()
+        return
+      }
+      const isSameGroupOpen = button.getAttribute('aria-expanded') === 'true'
+      _setMobileNavOpen(isSameGroupOpen ? null : groupKey)
+    })
+  })
+  document.getElementById('mobile-nav-backdrop')?.addEventListener('click', () => _setMobileNavOpen())
+  document.getElementById('mobile-nav-sheet-close')?.addEventListener('click', () => _setMobileNavOpen())
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') _setMobileNavOpen()
+  })
+
+  let touchStartY = null
+  document.getElementById('mobile-nav-sheet')?.addEventListener('touchstart', event => {
+    touchStartY = event.touches[0]?.clientY ?? null
+  }, { passive: true })
+  document.getElementById('mobile-nav-sheet')?.addEventListener('touchend', event => {
+    if (touchStartY === null) return
+    const distance = (event.changedTouches[0]?.clientY ?? touchStartY) - touchStartY
+    if (distance > 55) _setMobileNavOpen()
+    touchStartY = null
+  }, { passive: true })
+
+  window._mobileNavSync = view => {
+    const activeGroup = MOBILE_NAV_VIEW_GROUPS[view] || null
+    document.querySelectorAll('[data-mobile-group]').forEach(button => {
+      button.classList.toggle('active', button.dataset.mobileGroup === activeGroup && button.getAttribute('aria-expanded') !== 'true')
+    })
+  }
+}
+
 let _currentView = 'overview'
 async function navigate(view) {
   // กันคลิกช่วงที่ _teacher ยังโหลดไม่เสร็จ/หลุดชั่วคราว (เจอจริง: กด "ห้องเรียน" จากการ์ดหน้าภาพรวม
@@ -310,6 +494,7 @@ async function navigate(view) {
   const fn = ROUTES[view]
   if (fn) { _currentView = view; fn() }
   _toggleFloatingFabsForView(view)
+  window._mobileNavSync?.(view)
 }
 
 // expose to window for onclick in views
@@ -3437,16 +3622,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     openDashboardRoomPicker(_teacher, window._pp5DonorTierIndex ?? 0, window._pp5SystemCfg ?? {})
   })
 
+  _initMobileTeacherNavigation()
+
   // Mobile sidebar toggle
   const sidebar = document.getElementById('sidebar')
   const overlay = document.getElementById('sidebar-overlay')
   document.getElementById('btn-menu')?.addEventListener('click', () => {
     sidebar.classList.toggle('-translate-x-full')
-    overlay.classList.toggle('hidden')
+    const isOpen = !sidebar.classList.contains('-translate-x-full')
+    overlay.classList.toggle('hidden', !isOpen)
+    document.body.classList.toggle('mobile-sidebar-open', isOpen)
   })
   overlay?.addEventListener('click', () => {
     sidebar.classList.add('-translate-x-full')
     overlay.classList.add('hidden')
+    document.body.classList.remove('mobile-sidebar-open')
   })
 
   // Logout
