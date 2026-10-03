@@ -2329,6 +2329,24 @@ export async function renderSettings() {
           }).join('')}
         </select>`, hint)
 
+      if (type === 'choice') {
+        const selected = val || options?.[0]?.value || ''
+        return wrap(`
+          <input type="hidden" ${base} value="${_esc(selected)}" />
+          <div class="flex flex-wrap gap-2" role="group" aria-label="${_esc(label)}">
+            ${(options ?? []).map(o => {
+              const v = typeof o === 'object' ? o.value : o
+              const t = typeof o === 'object' ? o.label : o
+              const active = v === selected
+              return `<button type="button" class="cfg-choice px-3 py-2 rounded-xl border text-sm font-semibold transition ${active
+                ? 'border-indigo-500 bg-indigo-50 text-indigo-700'
+                : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'}" data-choice-key="${_esc(key)}" data-choice-value="${_esc(v)}">
+                ${_esc(t)}
+              </button>`
+            }).join('')}
+          </div>`, hint)
+      }
+
       if (type === 'textarea') return wrap(
         `<textarea ${base} rows="${rows ?? 3}" placeholder="${placeholder ?? ''}"
           class="${INPUT} resize-none">${val ?? ''}</textarea>`, hint)
@@ -2499,6 +2517,12 @@ export async function renderSettings() {
               syncFrom:'registrar_religion', hint:'ใช้ในเอกสารรายวิชาศาสนา (AGM)' },
             { key:'agmRegistrarSignUrl', label:'ลายเซ็นหัวหน้าฝ่ายทะเบียน (ศาสนา)', type:'upload' },
             { key:'agmRegistrarTitle',   label:'ชื่อตำแหน่งที่พิมพ์ในเอกสาร (ศาสนา)', type:'text', placeholder:'หัวหน้างานวัดผลและประเมินผล' },
+            { key:'religionDeptHeadSource', label:'ชื่อหัวหน้ากลุ่มสาระในเอกสาร ปพ.5 (วิชาศาสนา)', type:'choice',
+              options:[
+                { value:'central',  label:'ใช้หัวหน้ากลุ่มสาระกลาง' },
+                { value:'subgroup', label:'ใช้หัวหน้ากลุ่มย่อยของครูผู้สอน' },
+              ],
+              hint:'ใช้กับทั้งศาสนามัธยม (AGM) และศาสนาปวช. (AGMVOC) — หากเลือกหัวหน้ากลุ่มย่อยแต่ยังไม่พบกลุ่มของครู ระบบจะสำรองเป็นหัวหน้ากลุ่มสาระกลาง' },
           ] : []),
         ]
         return `
@@ -2961,6 +2985,23 @@ export async function renderSettings() {
         inner.innerHTML = content ?? ''
       }
       document.getElementById('cfg-save-hint').textContent = ''
+
+      document.querySelectorAll('.cfg-choice').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const key = btn.dataset.choiceKey
+          const input = document.getElementById(`cfg-${key}`)
+          if (input) input.value = btn.dataset.choiceValue
+          btn.parentElement?.querySelectorAll('.cfg-choice').forEach(option => {
+            const active = option === btn
+            option.classList.toggle('border-indigo-500', active)
+            option.classList.toggle('bg-indigo-50', active)
+            option.classList.toggle('text-indigo-700', active)
+            option.classList.toggle('border-gray-200', !active)
+            option.classList.toggle('bg-white', !active)
+            option.classList.toggle('text-gray-500', !active)
+          })
+        })
+      })
 
       // color preview sync
       document.querySelectorAll('#cfg-panel-inner input[type=color]').forEach(inp => {

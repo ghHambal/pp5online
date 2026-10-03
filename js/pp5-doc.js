@@ -4,6 +4,7 @@ import {
   getSystemConfig, getClassStudents, getClassAttendanceAll,
   getScoreColumns, getStudentScores, getCourseDocPage2,
   getHomeroomTeachers, getDepartments, getTeacherById,
+  getReligionGroupLeaderForTeacher,
   getCourseDocLangSettings, getClassSessionDOWs, getSchoolHolidays,
   getLifeSkillColumns, getLifeSkillScores,
   getReadingScoreColumns, getReadingScores,
@@ -494,8 +495,23 @@ async function _loadDocData(classId) {
   }
 
   const deptNameTH = dept?.dept_name ?? ms.dept ?? ''
-  // หัวหน้ากลุ่มสาระที่แสดงในเอกสาร: ใช้ค่าที่ครูกำหนดไว้ในรายวิชา (learning_area) ก่อน ถ้าไม่มีค่อย fallback เป็นหัวหน้ากลุ่มสาระของโรงเรียน
-  const deptHeadName = (ms.learning_area && ms.learning_area.trim()) || dept?.head_name || ''
+  // วิชาศาสนาเลือกได้ว่าจะใช้หัวหน้ากลุ่มสาระกลาง (พฤติกรรมเดิม) หรือหัวหน้ากลุ่มย่อย
+  // ค่าเริ่มต้นเป็น central เพื่อไม่เปลี่ยนเอกสารเดิมจนกว่าแอดมินจะเลือกใช้หัวหน้ากลุ่มย่อย
+  let religionGroupLeader = null
+  if (isRelSubject && cfg.religionDeptHeadSource === 'subgroup' && ms.teacher_id) {
+    religionGroupLeader = await getReligionGroupLeaderForTeacher(ms.teacher_id).catch(err => {
+      console.warn('[pp5-doc] load religion subgroup leader failed', err)
+      return null
+    })
+  }
+  // กลุ่มสามัญต้องคงพฤติกรรมเดิม: ใช้ชื่อกลางที่ผูกไว้กับรายวิชาก่อน แล้ว fallback ไป departments
+  // ส่วนวิชาศาสนาให้ยึด departments เป็นชื่อกลางก่อน เพื่อให้ตัวเลือกกลาง/กลุ่มย่อยทำงานตรงความหมาย
+  const centralDeptHeadName = isRelSubject
+    ? (dept?.head_name || (ms.learning_area && ms.learning_area.trim()) || '')
+    : ((ms.learning_area && ms.learning_area.trim()) || dept?.head_name || '')
+  const deptHeadName = isRelSubject && cfg.religionDeptHeadSource === 'subgroup'
+    ? (religionGroupLeader?.full_name || centralDeptHeadName)
+    : centralDeptHeadName
 
   // สามัญปวช. (ACDMVOC): "คะแนนคุณธรรม" ในเอกสาร ปพ.5 คือคะแนน "ความสะอาด" จากระบบทักษะชีวิต
   // (คนละที่กับคอลัมน์คะแนนของวิชานี้เอง — ผูกกับนักเรียนรายคน ไม่ใช่รายวิชา)

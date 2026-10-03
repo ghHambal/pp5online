@@ -1754,6 +1754,39 @@ export async function getReligionGroups() {
   return data ?? []
 }
 
+// หัวหน้ากลุ่มย่อยของครูผู้สอน — ใช้เลือกชื่อหัวหน้าที่พิมพ์ในเอกสาร ปพ.5 วิชาศาสนา
+// ความสัมพันธ์ของรายวิชากับกลุ่มย่อยอยู่ที่ religion_group_members.teacher_id
+export async function getReligionGroupLeaderForTeacher(teacherId) {
+  if (!teacherId) return null
+
+  const { data: memberships, error: memberErr } = await supabase
+    .from('religion_group_members')
+    .select('group_id')
+    .eq('teacher_id', teacherId)
+  if (memberErr) throw memberErr
+
+  const groupIds = [...new Set((memberships ?? []).map(row => row.group_id).filter(Boolean))]
+  const memberGroupsPromise = groupIds.length
+    ? supabase
+      .from('religion_groups')
+      .select('id, name, leader_id, teachers!leader_id(id, full_name, teacher_code, image_url)')
+      .in('id', groupIds)
+    : Promise.resolve({ data: [], error: null })
+  // หัวหน้ากลุ่มเองอาจไม่ได้ถูกเพิ่มเป็นสมาชิก จึงต้องรองรับกรณีนี้ด้วย
+  const leaderGroupsPromise = supabase
+    .from('religion_groups')
+    .select('id, name, leader_id, teachers!leader_id(id, full_name, teacher_code, image_url)')
+    .eq('leader_id', teacherId)
+
+  const [{ data: memberGroups, error: memberGroupErr }, { data: leaderGroups, error: leaderGroupErr }] =
+    await Promise.all([memberGroupsPromise, leaderGroupsPromise])
+  if (memberGroupErr) throw memberGroupErr
+  if (leaderGroupErr) throw leaderGroupErr
+
+  const groups = [...(memberGroups ?? []), ...(leaderGroups ?? [])]
+  return groups.find(group => group.teachers?.full_name)?.teachers ?? null
+}
+
 export async function createReligionGroup(payload) {
   const { error } = await supabase.from('religion_groups').insert(payload)
   if (error) throw error

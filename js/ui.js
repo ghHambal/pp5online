@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.861'
+import { APP_VERSION } from './version.js?v=10.22.862'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.862': [
+    '📄 ปพ.5: วิชาศาสนา AGM/AGMVOC รองรับการเลือกใช้ชื่อหัวหน้ากลุ่มสาระกลางหรือหัวหน้ากลุ่มย่อย โดยวิชาสามัญยังใช้หัวหน้ากลุ่มสาระกลางเหมือนเดิม',
+  ],
   '10.22.861': [
     '🐛 AZIZGAMES: แก้คะแนนเดินสวนพาเหรดและคะแนนเพจไม่ครบจากข้อจำกัดอ่านข้อมูล 1,000 แถว โดยแบ่งหน้าโหลดคะแนนกรรมการครบทุกแถวทั้งตอนเปิดหน้าและรีเฟรชเรียลไทม์',
   ],
