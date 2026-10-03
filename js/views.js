@@ -1322,9 +1322,16 @@ export async function renderRegisteredTeachers() {
       getClasses().catch(()=>[]),
     ])
     const scheduledSet = new Set(scheduleTeacherIds)
-    const approvedPayments = paymentRequests.filter(r => r.status === 'approved')
+    const semesterStartMs = Date.parse(String(cfg.semester_start ?? ''))
+    const isCurrentPayment = request => {
+      if (!Number.isFinite(semesterStartMs)) return true
+      const requestAtMs = Date.parse(String(request.reviewed_at ?? request.created_at ?? ''))
+      return Number.isFinite(requestAtMs) && requestAtMs >= semesterStartMs
+    }
+    const approvedPayments = paymentRequests.filter(r => r.status === 'approved' && isCurrentPayment(r))
     const classCountByTeacher = new Map()
     classes.forEach(cls => {
+      if (cls.academic_year != null && (+cls.academic_year !== curYear || +cls.semester !== curSem)) return
       const teacherId = cls.master_subjects?.teacher_id
       if (teacherId) classCountByTeacher.set(teacherId, (classCountByTeacher.get(teacherId) ?? 0) + 1)
     })
@@ -3288,14 +3295,16 @@ export async function renderSettings() {
         const nextYear = curSem === 1 ? curYear : curYear + 1
         if (startNewSemTarget) startNewSemTarget.textContent = `ตอนนี้: ภาคเรียนที่ ${curSem}/${curYear}  →  จะขึ้นเป็น: ภาคเรียนที่ ${nextSem}/${nextYear}`
         startNewSemBtn.addEventListener('click', async () => {
-          if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nภาคเรียนใหม่จะเริ่มเป็นพื้นที่ว่าง ระบบจะไม่สร้างคอร์สวิชา ห้องเรียน หรือการลงทะเบียนนักเรียนให้อัตโนมัติ\n\nข้อมูลภาคเรียนเก่าจะไม่ถูกลบและยังเก็บไว้เป็นประวัติ`)) return
+          if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nภาคเรียนใหม่จะเริ่มเป็นพื้นที่ว่าง ระบบจะไม่สร้างคอร์สวิชา ห้องเรียน หรือการลงทะเบียนนักเรียนให้อัตโนมัติ\n\nสถานะผู้สนับสนุนและสิทธิ์ห้องฟรีของรอบเดิมจะถูกรีเซ็ต แต่ประวัติการชำระเงินยังเก็บไว้\nครูทั่วไปจะสร้างห้องเรียนได้ไม่จำกัดโดยไม่ต้องขอสิทธิ์เพิ่ม\n\nข้อมูลภาคเรียนเก่าจะไม่ถูกลบและยังเก็บไว้เป็นประวัติ`)) return
           startNewSemBtn.disabled = true
           startNewSemBtn.textContent = '⏳ กำลังดำเนินการ...'
           try {
             await startNewSemester(nextYear, nextSem)
             cfg.semester = String(nextSem)
             cfg.academicYear = String(nextYear)
-            showToast(`ขึ้นภาคเรียนที่ ${nextSem}/${nextYear} สำเร็จ ✅ เริ่มพื้นที่ว่างสำหรับสร้างคอร์สและห้องเรียนใหม่`, 'success')
+            cfg.semester_start = new Date().toISOString().slice(0, 10)
+            cfg.unlimitedTeacherClassCreation = 'true'
+            showToast(`ขึ้นภาคเรียนที่ ${nextSem}/${nextYear} สำเร็จ ✅ ล้างสิทธิ์ผู้สนับสนุนรอบเดิม และเปิดให้ครูสร้างห้องได้ไม่จำกัด`, 'success')
             renderTab('general')
           } catch (e) {
             showToast('ขึ้นภาคเรียนใหม่ไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')

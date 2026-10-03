@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.866'
+import { APP_VERSION } from './version.js?v=10.22.867'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.867': [
+    '🔄 ขึ้นภาคเรียนใหม่: รีเซ็ตสถานะผู้สนับสนุนและสิทธิ์ห้องฟรีของรอบเดิม เก็บประวัติการชำระเงินไว้ และเปิดให้ครูทั่วไปสร้างห้องเรียนได้ไม่จำกัดโดยไม่ต้องขอสิทธิ์ห้องที่ 4 เป็นต้นไป',
+  ],
   '10.22.866': [
     '⚙️ ตั้งค่ากำลังเครื่องฐานข้อมูลได้ 3 ระดับ Micro / Small / Medium รองรับหลายช่วงเวลา ช่วงข้ามวัน และ guardrail ก่อนลดระดับ',
   ],

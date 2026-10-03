@@ -675,6 +675,7 @@ export async function getClasses() {
     .select(`
       id, class_name, skill_group, google_sheet_id, gas_url, head_student_id, vice_head_student_id,
       head_cert_url, vice_head_cert_url,
+      academic_year, semester,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( subject_code, subject_name, dept, subject_group, grade_level, credit, teacher_id )
     `)
@@ -2283,12 +2284,18 @@ export async function getTeacherPackageAccess(teacherId) {
   if (!teacherId) return { hasSemester: false, paidRoomCount: 0, approvedRequests: [] }
   const { data, error } = await supabase
     .from('payment_requests')
-    .select('id, package_type, room_count, status')
+    .select('id, package_type, room_count, status, created_at, reviewed_at')
     .eq('teacher_id', teacherId)
     .eq('status', 'approved')
   if (error) throw error
 
-  const approvedRequests = data ?? []
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const semesterStartMs = Date.parse(String(cfg.semester_start ?? ''))
+  const approvedRequests = (data ?? []).filter(request => {
+    if (!Number.isFinite(semesterStartMs)) return true
+    const approvedAtMs = Date.parse(String(request.reviewed_at ?? request.created_at ?? ''))
+    return Number.isFinite(approvedAtMs) && approvedAtMs >= semesterStartMs
+  })
   const hasSemester = approvedRequests.some(r =>
     ['semester', 'school_sponsored', 'donation'].includes(r.package_type)
   )
@@ -2361,12 +2368,18 @@ export async function getMyDonationRequests(teacherId) {
   if (!teacherId) return []
   const { data, error } = await supabase
     .from('payment_requests')
-    .select('id, package_type, status, amount, admin_note, created_at')
+    .select('id, package_type, status, amount, admin_note, created_at, reviewed_at')
     .eq('teacher_id', teacherId)
     .in('package_type', ['donation', 'school_sponsored'])
     .order('created_at', { ascending: false })
   if (error) throw error
-  return data ?? []
+  const cfg = await getSystemConfig().catch(() => ({}))
+  const semesterStartMs = Date.parse(String(cfg.semester_start ?? ''))
+  return (data ?? []).filter(request => {
+    if (!Number.isFinite(semesterStartMs)) return true
+    const requestAtMs = Date.parse(String(request.reviewed_at ?? request.created_at ?? ''))
+    return Number.isFinite(requestAtMs) && requestAtMs >= semesterStartMs
+  })
 }
 
 // ─── Classrooms ──────────────────────────────────────────────────────────────

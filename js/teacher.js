@@ -903,9 +903,11 @@ window._openRegisterClass = async (courseId) => {
     getTeacherPackageAccess(_teacher?.id ?? null).catch(()=>({ hasSemester: false, paidRoomCount: 0 })),
   ])
   const freeLimit = parseInt(cfg.freeClassQuota ?? 2)
+  const unlimitedTeacherClassCreation = cfg.unlimitedTeacherClassCreation === true
+    || String(cfg.unlimitedTeacherClassCreation).toLowerCase() === 'true'
   const legacyUnlimited = quota?.is_paid && !quota?.package_type && !packageAccess.hasSemester && !packageAccess.paidRoomCount
   const hasSemester = packageAccess.hasSemester || quota?.package_type === 'semester' || legacyUnlimited
-  const classLimit = hasSemester ? Infinity : freeLimit + packageAccess.paidRoomCount
+  const classLimit = unlimitedTeacherClassCreation || hasSemester ? Infinity : freeLimit + packageAccess.paidRoomCount
 
   if (myClasses.length >= classLimit) {
     _showQuotaPopup(myClasses.length, course, cfg); return
