@@ -53,6 +53,7 @@ $function$;
 
 -- จำกัดสิทธิ์การเรียกให้เฉพาะผู้ใช้ที่ล็อกอินแล้วผ่าน RPC
 revoke all on function public.admin_start_new_semester(integer, integer) from public;
+revoke execute on function public.admin_start_new_semester(integer, integer) from anon;
 grant execute on function public.admin_start_new_semester(integer, integer) to authenticated;
 
 -- ฝั่ง JS ที่ต้องแก้คู่กัน (ทำแล้วในคอมมิตเดียวกับ patch นี้):
