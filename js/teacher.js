@@ -234,7 +234,7 @@ const ROUTES = {
       _pickRoom(rooms, picked => m.renderPrayerRoomMonitor(_teacher, rooms, picked))
     }
   }),
-  'grades':      () => import('./teacher-views.js').then(m => m.renderGrades()),
+  'grades':      () => import('./teacher-views.js').then(m => m.renderGrades(_teacher)),
   'requests':    () => import('./teacher-views.js').then(m => m.renderRequests(_teacher)),
   'schedule':    () => import('./teacher-views.js').then(m => m.renderSchedule(_teacher)),
   'tutorial':    () => renderTutorial(),
@@ -2432,7 +2432,16 @@ async function _showClassQuickPicker(mode) {
   if (!_teacher) return
   let classes = []
   try {
-    classes = await getMyClasses(_teacher.id)
+    const [allClasses, cfg] = await Promise.all([
+      getMyClasses(_teacher.id),
+      getSystemConfig().catch(() => ({})),
+    ])
+    const currentYear = parseInt(cfg.academicYear ?? cfg.academic_year ?? 2568)
+    const currentSemester = parseInt(cfg.semester ?? 1)
+    // เช็คชื่อยังเป็นของภาคเรียนปัจจุบันเท่านั้น ส่วนบันทึกคะแนนเปิดย้อนหลังได้
+    classes = mode === 'attendance'
+      ? allClasses.filter(c => c.academic_year == null || (+c.academic_year === currentYear && +c.semester === currentSemester))
+      : allClasses
     const classIds = classes.map(cls => cls.id).filter(Boolean)
     if (classIds.length) {
       const { data: enrollments, error } = await supabase
@@ -2473,7 +2482,7 @@ async function _showClassQuickPicker(mode) {
         ${classes.map(cls => `
           <button data-cid="${cls.id}" class="qcp-cls w-full text-left px-4 py-3 rounded-xl hover:bg-emerald-50 active:bg-emerald-100 transition border border-gray-100">
             <p class="font-semibold text-gray-800 text-sm">${cls.class_name}</p>
-            <p class="text-xs text-gray-400 mt-0.5">${cls.master_subjects?.subject_name ?? ''} · ${cls._studentCount ?? 0} คน</p>
+            <p class="text-xs text-gray-400 mt-0.5">${cls.master_subjects?.subject_name ?? ''} · ${cls.academic_year ?? currentYear}/${cls.semester ?? currentSemester} · ${cls._studentCount ?? 0} คน</p>
           </button>`).join('')}
       </div>
     </div>`

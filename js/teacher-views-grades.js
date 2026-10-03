@@ -24,14 +24,99 @@ import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _readingGrade, applyReadingGradesFromConfig,
 } from './teacher-views-utils.js'
 
-export function renderGrades() {
+export async function renderGrades(teacher) {
   setActiveNav('grades')
   setTitle('บันทึกคะแนน', 'scores')
-  setContent(`<div class="text-center py-20 text-gray-400">
-    <p class="text-5xl mb-4">📝</p>
-    <p class="font-medium text-gray-600">เลือกห้องเรียนจากเมนู "ห้องเรียนของฉัน"</p>
-    <p class="text-sm mt-2">แล้วกดปุ่ม 📝 คะแนน ที่การ์ดห้องเรียน</p>
-  </div>`)
+  setContent(`<div class="flex justify-center py-20 text-gray-400">
+    <svg class="animate-spin h-6 w-6 mr-3 text-indigo-400" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg> กำลังโหลดรายการห้องเรียน...</div>`)
+  if (!teacher?.id) {
+    setContent(`<div class="text-center py-20 text-gray-400"><p class="text-5xl mb-4">⚠️</p><p>ไม่พบข้อมูลครู กรุณาลองรีเฟรชหน้าใหม่</p></div>`)
+    return
+  }
+  try {
+    const [classes, cfg] = await Promise.all([
+      getMyClasses(teacher.id),
+      getSystemConfig().catch(() => ({})),
+    ])
+    const currentYear = parseInt(cfg.academicYear ?? cfg.academic_year ?? 2568)
+    const currentSemester = parseInt(cfg.semester ?? 1)
+    const termKey = c => `${c.academic_year != null && Number.isFinite(+c.academic_year) ? +c.academic_year : currentYear}:${c.semester != null && Number.isFinite(+c.semester) ? +c.semester : currentSemester}`
+    const termLabel = key => {
+      const [year, semester] = key.split(':')
+      return `ภาคเรียนที่ ${semester}/${year}`
+    }
+    const currentKey = `${currentYear}:${currentSemester}`
+    const termKeys = [...new Set(classes.map(termKey))].sort((a, b) => {
+      if (a === currentKey) return -1
+      if (b === currentKey) return 1
+      return b.localeCompare(a, undefined, { numeric: true })
+    })
+    if (!termKeys.length) {
+      setContent(`<div class="text-center py-20 text-gray-400"><p class="text-5xl mb-4">📝</p><p>ยังไม่มีห้องเรียนสำหรับบันทึกคะแนน</p></div>`)
+      return
+    }
+
+    const renderTermClasses = selectedKey => {
+      const selectedClasses = classes.filter(c => termKey(c) === selectedKey)
+      const isHistory = selectedKey !== currentKey
+      const list = document.getElementById('grade-history-class-list')
+      if (!list) return
+      list.innerHTML = selectedClasses.length ? selectedClasses.map(c => `
+        <article class="rounded-2xl border ${isHistory ? 'border-amber-200 bg-amber-50/30' : 'border-gray-100 bg-white'} p-4 shadow-sm flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-xs text-gray-400 font-mono">${_htmlEsc(c.master_subjects?.subject_code ?? '—')} · ${_htmlEsc(termLabel(selectedKey))}</p>
+            <h3 class="font-bold text-gray-800 truncate mt-1">${_htmlEsc(c.master_subjects?.subject_name ?? '—')}</h3>
+            <p class="text-sm text-gray-500 truncate">ห้อง ${_htmlEsc(c.class_name ?? '—')}</p>
+          </div>
+          <div class="flex gap-2 flex-shrink-0">
+            <button class="grade-history-open px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold" data-class-id="${c.id}">📝 คะแนน</button>
+            <button class="grade-history-pp5 px-3 py-2 rounded-xl border border-violet-200 text-violet-700 hover:bg-violet-50 text-xs font-semibold" data-class-id="${c.id}">📄 ปพ.5</button>
+          </div>
+        </article>`).join('') : `<div class="rounded-2xl border border-dashed border-gray-200 p-10 text-center text-sm text-gray-400">ภาคเรียนนี้ยังไม่มีห้องเรียน</div>`
+
+      list.querySelectorAll('.grade-history-open').forEach(btn => btn.addEventListener('click', () => {
+        const cls = classes.find(c => c.id === Number(btn.dataset.classId))
+        if (!cls) return
+        window._backToClasses = () => renderGrades(teacher)
+        renderGradesGrid(teacher, cls)
+      }))
+      list.querySelectorAll('.grade-history-pp5').forEach(btn => btn.addEventListener('click', async () => {
+        const classId = Number(btn.dataset.classId)
+        const { openPP5Doc } = await import('./pp5-doc.js')
+        await openPP5Doc(classId)
+      }))
+    }
+
+    setContent(`<div class="animate-fade space-y-4">
+      <div class="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div><h2 class="font-bold text-indigo-900">📝 บันทึกคะแนน</h2><p class="text-xs text-indigo-600 mt-1">เลือกภาคเรียนเพื่อเปิดคะแนนและเอกสาร ปพ.5 ของภาคเรียนนั้น</p></div>
+          <select id="grade-history-term" class="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm font-semibold text-indigo-700">
+            ${termKeys.map(key => `<option value="${_htmlEsc(key)}">${_htmlEsc(termLabel(key))}${key === currentKey ? ' (ปัจจุบัน)' : ' (ย้อนหลัง)'}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div id="grade-history-note" class="text-xs text-gray-500"></div>
+      <div id="grade-history-class-list" class="space-y-3"></div>
+    </div>`)
+    const termSelect = document.getElementById('grade-history-term')
+    const renderSelected = () => {
+      const selectedKey = termSelect.value
+      const note = document.getElementById('grade-history-note')
+      if (note) note.textContent = selectedKey === currentKey
+        ? 'แสดงห้องเรียนของภาคเรียนปัจจุบัน'
+        : 'โหมดข้อมูลย้อนหลัง: แก้ไขคะแนน ร เป็น 0 ได้ และเปิด/ดาวน์โหลด ปพ.5 ของภาคเรียนเดิมได้ โดยไม่ปะปนกับภาคเรียนปัจจุบัน'
+      renderTermClasses(selectedKey)
+    }
+    termSelect.addEventListener('change', renderSelected)
+    renderSelected()
+  } catch (err) {
+    console.error('[renderGrades] โหลดรายการห้องเรียนไม่สำเร็จ', err)
+    setContent(`<div class="text-center py-20 text-red-400"><p class="text-4xl mb-3">⚠️</p><p>โหลดรายการห้องเรียนไม่สำเร็จ</p></div>`)
+  }
 }
 
 let _gradebookSyncCleanup = null
@@ -154,8 +239,21 @@ export async function renderGradesGrid(teacher, classData) {
     </svg> กำลังโหลด...</div>`)
 
   try {
-    // ถ้า virtual class (มี source_class_id) → ดึง score columns + scores จาก source
-    const scoreClassId = classData.source_class_id ?? classData.id
+    // ถ้า virtual class มี source ต้องอยู่ภาคเรียนเดียวกันเท่านั้น
+    // ป้องกันการเปิดห้องเก่าแล้วไปอ่าน/แก้คะแนนของ source ในภาคเรียนปัจจุบัน
+    let scoreClassId = classData.id
+    if (classData.source_class_id) {
+      const { data: sourceClass } = await supabase
+        .from('classes').select('id, academic_year, semester')
+        .eq('id', classData.source_class_id).maybeSingle()
+      const targetHasTerm = classData.academic_year != null && classData.semester != null
+      const sourceHasTerm = sourceClass?.academic_year != null && sourceClass?.semester != null
+      if (sourceClass && (!targetHasTerm || (sourceHasTerm
+        && +sourceClass.academic_year === +classData.academic_year
+        && +sourceClass.semester === +classData.semester))) {
+        scoreClassId = sourceClass.id
+      }
+    }
     const columnsPromise = getScoreColumns(scoreClassId)
     const [students, rawCols, rawScoreRows, [midSheetOpts, finSheetOpts, regularSheetOpts], sysCfg, allMyClasses, regradeCfg] = await Promise.all([
       getClassStudents(classData.id),
@@ -166,6 +264,11 @@ export async function renderGradesGrid(teacher, classData) {
       teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
       getRegradeConfig().catch(()=>({})),
     ])
+    const classYear = parseInt(classData.academic_year ?? sysCfg.academicYear ?? 2568)
+    const classSemester = parseInt(classData.semester ?? sysCfg.semester ?? 1)
+    const currentYear = parseInt(sysCfg.academicYear ?? 2568)
+    const currentSemester = parseInt(sysCfg.semester ?? 1)
+    const isHistoricalTerm = classYear !== currentYear || classSemester !== currentSemester
     // ปุ่ม "ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า" โชว์เฉพาะตั้งแต่วันที่แอดมินตั้งไว้ใน regrade_config เท่านั้น
     const showRegradeSubmitBtn = !!regradeCfg.live_submit_open_date
       && new Date().toISOString().slice(0, 10) >= regradeCfg.live_submit_open_date
@@ -175,7 +278,13 @@ export async function renderGradesGrid(teacher, classData) {
     if (classData.course_id && rawCols.length === 0) {
       setTimeout(async () => {
         try {
-          const sameSubject = allMyClasses.filter(c => c.id !== classData.id && c.course_id === classData.course_id)
+          const sameSubject = allMyClasses.filter(c => {
+            if (c.id === classData.id || c.course_id !== classData.course_id) return false
+            const targetYear = classData.academic_year ?? currentYear
+            const targetSemester = classData.semester ?? currentSemester
+            return (c.academic_year ?? currentYear) === targetYear
+              && (c.semester ?? currentSemester) === targetSemester
+          })
           const withCols = (await Promise.all(
             sameSubject.map(async c => {
               const cols = await getScoreColumns(c.id).catch(()=>[])
@@ -237,8 +346,8 @@ export async function renderGradesGrid(teacher, classData) {
     }
 
     // โหลดข้อมูลคะแนนอ่านคิดวิเคราะห์ → สร้าง evalMap ต่อ studentId
-    const _rsYear = parseInt(sysCfg.academicYear ?? 2568)
-    const _rsSem  = parseInt(sysCfg.semester ?? 1)
+    const _rsYear = classYear
+    const _rsSem  = classSemester
     const subjectGroup = ms?.subject_group ?? ''
     const isLifeSkillClass = isLifeSkillGroup(classData?.skill_group)
     const isReligionClass = ['AGM', 'AGMVOC'].includes(subjectGroup)
@@ -252,17 +361,23 @@ export async function renderGradesGrid(teacher, classData) {
         classData.academic_year ?? _rsYear, classData.semester ?? _rsSem, 'สามัญ')
       priorityColumnNames = lifeColumns.slice(0, 3).map(c => c.name)
     } else if (isReligionClass) {
-      const result = await fillPrayerScoresForReligionClass(classData.id, {
-        semesterStart: sysCfg.semester_start,
-        semesterEnd: sysCfg.semester_end,
-        attendanceScoreMode: sysCfg.attendanceScoreMode ?? 'recorded',
-      })
-      priorityColumnNames = result.columnNames ?? ['คะแนนมาเรียน', 'คะแนนละหมาด']
-      scoreRows = await getStudentScores(classData.id)
+      if (isHistoricalTerm) {
+        // ข้อมูลย้อนหลังต้องนิ่ง: ไม่เติมคะแนนจาก prayer_records/attendance ของค่ากลางปัจจุบัน
+        priorityColumnNames = ['คะแนนมาเรียน', 'คะแนนละหมาด']
+      } else {
+        const result = await fillPrayerScoresForReligionClass(classData.id, {
+          semesterStart: sysCfg.semester_start,
+          semesterEnd: sysCfg.semester_end,
+          attendanceScoreMode: sysCfg.attendanceScoreMode ?? 'recorded',
+        })
+        priorityColumnNames = result.columnNames ?? ['คะแนนมาเรียน', 'คะแนนละหมาด']
+        scoreRows = await getStudentScores(classData.id)
+      }
     }
 
     // คอลัมน์คะแนนที่ครูเปิด "ดึงคะแนนจากเช็คชื่ออัตโนมัติ" เอง (ไม่ผูกกับกลุ่มวิชา)
     try {
+    if (!isHistoricalTerm) {
       const autoSyncResult = await syncAutoAttendanceScoreColumns(classData.id, {
         attendanceScoreMode: sysCfg.attendanceScoreMode ?? 'recorded',
       })
@@ -272,6 +387,7 @@ export async function renderGradesGrid(teacher, classData) {
           showToast(`ดึงคะแนนมาเรียนอัตโนมัติแล้ว (ข้าม ${autoSyncResult.skipped} รายการที่เคยแก้คะแนนด้วยมือ)`, 'success')
         }
       }
+    }
     } catch (err) {
       console.error('syncAutoAttendanceScoreColumns failed', err)
     }

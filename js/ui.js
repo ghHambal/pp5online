@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.863'
+import { APP_VERSION } from './version.js?v=10.22.864'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.864': [
+    '📝 ปพ.5: เพิ่มตัวเลือกภาคเรียนในหน้าบันทึกคะแนน เปิดแก้คะแนนย้อนหลัง เช่น เปลี่ยน ร เป็น 0 และเปิด/พิมพ์เอกสารของภาคเรียนเดิมได้ โดยไม่ปะปนกับภาคเรียนปัจจุบัน',
+  ],
   '10.22.863': [
     '🔄 ขึ้นภาคเรียนใหม่: เริ่มพื้นที่ว่างโดยไม่สร้างคอร์ส ห้องเรียน หรือลงทะเบียนนักเรียนอัตโนมัติ และเก็บข้อมูลภาคเรียนเดิมไว้เป็นประวัติ',
   ],

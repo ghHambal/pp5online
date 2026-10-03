@@ -316,16 +316,17 @@ function _gradeToKhunaLabel(grade) {
 // ─── Data Loader ──────────────────────────────────────────────────────────────
 
 async function _loadDocData(classId) {
-  // โหลด cfg ก่อนเพื่อเอา year/semester
-  const cfg = await getSystemConfig()
-  applyReadingGradesFromConfig(cfg)
-  const academicYear = parseInt(cfg.academicYear ?? cfg.academic_year ?? 2568)
-  const semester     = parseInt(cfg.semester ?? 1)
+  // ใช้ cfg สำหรับค่าตั้งค่าเอกสาร แต่ year/semester ต้องยึดจากห้องที่เลือก
+  // เพื่อให้เปิด ปพ.5 ย้อนหลังแล้วไม่แสดง/ดึงข้อมูลของภาคเรียนปัจจุบัน
+  const systemCfg = await getSystemConfig()
+  applyReadingGradesFromConfig(systemCfg)
+  const configuredYear = parseInt(systemCfg.academicYear ?? systemCfg.academic_year ?? 2568)
+  const configuredSemester = parseInt(systemCfg.semester ?? 1)
 
   const { data: cls, error: clsErr } = await supabase
     .from('classes')
     .select(`
-      id, course_id, class_name, skill_group, google_sheet_id,
+      id, course_id, class_name, academic_year, semester, skill_group, google_sheet_id,
       head_student_id, source_class_id,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
       master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id, learning_area ),
@@ -334,6 +335,10 @@ async function _loadDocData(classId) {
     .eq('id', classId)
     .single()
   if (clsErr || !cls) throw new Error('โหลดข้อมูลห้องเรียนไม่สำเร็จ')
+
+  const academicYear = cls.academic_year != null && Number.isFinite(+cls.academic_year) ? +cls.academic_year : configuredYear
+  const semester = cls.semester != null && Number.isFinite(+cls.semester) ? +cls.semester : configuredSemester
+  const cfg = { ...systemCfg, academicYear: String(academicYear), semester: String(semester) }
 
   const ms     = cls.master_subjects ?? {}
   const credit = ms.credit ?? 1
@@ -351,11 +356,20 @@ async function _loadDocData(classId) {
   if (srcClassId) {
     const { data: _src } = await supabase
       .from('classes')
-      .select('id, master_subjects(credit)')
+      .select('id, academic_year, semester, master_subjects(credit)')
       .eq('id', srcClassId)
       .single()
-    if (_src?.master_subjects?.credit) srcCredit = _src.master_subjects.credit
-    srcSessionDOWs = await getClassSessionDOWs(srcClassId).catch(() => [])
+    // ไม่ให้เอกสารภาคเรียนเก่าตาม source ไปอ่านข้อมูลจากอีกภาคเรียนหนึ่ง
+    const sourceHasTerm = _src?.academic_year != null && _src?.semester != null
+    const sameTerm = !_src || (sourceHasTerm
+      && +_src.academic_year === academicYear
+      && +_src.semester === semester)
+    if (!sameTerm) {
+      srcClassId = null
+    } else {
+      if (_src?.master_subjects?.credit) srcCredit = _src.master_subjects.credit
+      srcSessionDOWs = await getClassSessionDOWs(srcClassId).catch(() => [])
+    }
   }
 
   // auto columns ที่ระบบสร้างอัตโนมัติ — ไม่ดึงจาก source (คำนวณใหม่จาก attendance ของวิชานี้)
