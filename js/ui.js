@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.884'
+import { APP_VERSION } from './version.js?v=10.22.885'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.885': [
+    '🖼️ เอกสาร ปพ.5: แสดงโลโก้เต็มภาพ ไม่ตัดขอบวงกลมของไฟล์ที่อัปโหลด',
+  ],
   '10.22.884': [
     '🖼️ การตั้งค่าโลโก้: ป้องกันปุ่มบันทึกเขียนทับ URL ด้วยค่าไฟล์ชั่วคราวหรือ false หลังอัปโหลด',
   ],

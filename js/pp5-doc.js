@@ -642,7 +642,7 @@ function _getCSS() {
       display: flex; align-items: center; justify-content: center;
     }
     .page-p1 .logo-wrap img {
-      width: 110%; height: 110%; margin: -5%; object-fit: contain; display: block;
+      width: 100%; height: 100%; margin: 0; object-fit: contain; display: block;
     }
     .page-p1 .p1-title {
       position: absolute; top: 40.1mm; left: 0; width: 100%; margin: 0;
@@ -760,7 +760,7 @@ function _getCSS() {
     /* ── Page 2 ── */
     .p2-wrap { width: 210mm; min-height: 297mm; padding: 10mm 14mm 10mm 14mm; page-break-after: always; display: flex; flex-direction: column; }
     .p2-logo-wrap { width: 18mm; height: 18mm; border-radius: 50%; overflow: hidden; background: #fff; margin: 0 auto 2mm; display: flex; align-items: center; justify-content: center; }
-    .p2-logo-wrap img { width: 110%; height: 110%; margin: -5%; object-fit: contain; display: block; }
+    .p2-logo-wrap img { width: 100%; height: 100%; margin: 0; object-fit: contain; display: block; }
     .p2-title { text-align: center; font-size: 13pt; font-weight: 700; margin-bottom: 2mm; }
     .p2-hdr { font-size: 9.5pt; margin-bottom: 2mm; display: grid; grid-template-columns: 1fr 1fr; gap: 0 5mm; }
     .p2-hdr-col { display: flex; flex-direction: column; gap: 1.2mm; }
@@ -798,7 +798,7 @@ function _getCSS() {
     /* ── Page 3 attendance ── */
     .att-top   { display: flex; align-items: flex-start; gap: 3mm; margin-bottom: 2mm; }
     .att-logo  { width: 18mm; height: 18mm; flex-shrink: 0; border-radius: 50%; overflow: hidden; background: #fff; display: flex; align-items: center; justify-content: center; }
-    .att-logo img { width: 110%; height: 110%; margin: -5%; object-fit: contain; }
+    .att-logo img { width: 100%; height: 100%; margin: 0; object-fit: contain; }
     .att-info  { flex: 1; font-size: 9pt; }
     .att-title { font-weight: 700; font-size: 10pt; text-align: center; margin-bottom: 1.5mm; }
     .att-hdr-row { display: flex; align-items: baseline; gap: 1.5mm; margin-bottom: 1mm; }
@@ -867,7 +867,7 @@ function _getCSS() {
     /* Page 1 */
     .voc-p1 { padding: 14mm 18mm 10mm; font-size: 16px; }
     .voc-p1 .voc-logo-frame { display: flex; align-items: center; justify-content: center; width: 22mm; height: 22mm; border: .25mm solid #111; border-radius: 50%; margin: 0 auto 1.5mm; overflow: hidden; }
-    .voc-p1 .voc-logo { display: block; width: 110%; height: 110%; margin: -5%; object-fit: cover; }
+    .voc-p1 .voc-logo { display: block; width: 100%; height: 100%; margin: 0; object-fit: contain; }
     .voc-p1 .voc-title1 { font-size: 21px; font-weight: 700; text-align: center; margin: 0 0 3mm; }
     .voc-p1 .voc-title2 { font-size: 20px; font-weight: 700; text-align: center; margin: 0 0 3mm; }
     .voc-p1 .voc-title3 { font-size: 19px; font-weight: 700; text-align: center; margin: 0 0 5mm; }
@@ -1720,7 +1720,7 @@ function _buildPage5(d) {
 
   return `
   <div class="page" style="padding:12mm 10mm 8mm;">
-    ${logoUrl ? `<div style="text-align:center;margin-bottom:2mm;"><div style="width:16mm;height:16mm;border-radius:50%;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;"><img src="${_esc(logoUrl)}" style="width:110%;height:110%;margin:-5%;object-fit:contain;display:block;" alt="โลโก้"/></div></div>` : ''}
+      ${logoUrl ? `<div style="text-align:center;margin-bottom:2mm;"><div style="width:16mm;height:16mm;border-radius:50%;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;"><img src="${_esc(logoUrl)}" style="width:100%;height:100%;margin:0;object-fit:contain;display:block;" alt="โลโก้"/></div></div>` : ''}
     <div style="text-align:center;font-weight:700;font-size:12pt;margin-bottom:3mm;">รายละเอียดสัปดาห์/คาบ/วันที่สอน</div>
     ${row(`<span>รายวิชา</span>${uline('40mm', ms.subject_name??'')}
            <span>&emsp;รหัสวิชา</span>${uline('22mm', ms.subject_code??'')}
