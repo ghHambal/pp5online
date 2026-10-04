@@ -362,10 +362,10 @@ const COURSE_DOC_LANGS = {
     dirLabel: 'ทิศทางข้อความ', dirAuto: 'อัตโนมัติ', dirRTL: 'ขวาไปซ้าย (Arabic)', dirLTR: 'ซ้ายไปขวา',
     signerLabel: 'ผู้ลงนาม', signerPlaceholder: 'หัวหน้ากลุ่มสาระ', signerHint: 'ใช้ตำแหน่งหัวหน้ากลุ่มสาระในเอกสาร',
     tableTitle: 'มาตรฐาน / ตัวชี้วัด / ผลการเรียนรู้', tableHint: 'เลขแถวที่มีข้อความจะกลายเป็นตัวเลือก "ข้อที่" สำหรับกลางภาคและปลายภาค',
-    tplBasic: 'พื้นฐาน 2 คอลัมน์', tplExtra: 'เพิ่มเติม 1 คอลัมน์', addCol: '+ คอลัมน์', addRow: '+ แถว', rowHeader: 'ข้อ', delRow: 'ลบ',
+    tplBasic: 'พื้นฐาน 1 คอลัมน์', tplExtra: 'เพิ่มเติม 1 คอลัมน์', addCol: '+ คอลัมน์', addRow: '+ แถว', rowHeader: 'ข้อ', delRow: 'ลบ',
     objTitle: 'จุดประสงค์วัดผล', objHint: '(คลิกเพื่อเลือกข้อ)', between: 'ระหว่างภาค ข้อที่', mid: 'กลางภาค ข้อที่', final: 'ปลายภาค ข้อที่',
     noOpts: 'ยังไม่มีข้อให้เลือก กรุณาพิมพ์ข้อมูลอย่างน้อย 1 แถวในตารางด้านบน', notSelected: 'ยังไม่เลือก',
-    colsBasic: ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด'], colsExtra: ['ผลการเรียนรู้'], colNew: n => `คอลัมน์ ${n}`,
+    colsBasic: ['รหัสมาตรฐาน/ตัวชี้วัด'], colsExtra: ['ผลการเรียนรู้'], colNew: n => `คอลัมน์ ${n}`,
     pickerTitles: { mid: 'เลือกข้อกลางภาค', between: 'เลือกข้อระหว่างภาค', final: 'เลือกข้อปลายภาค' },
     pickerCancel: 'ยกเลิก', pickerOk: 'ตกลง',
     confirmOverwrite: 'ค้นหลักสูตรแล้วจะทับข้อมูลที่มีอยู่ ดำเนินการต่อหรือไม่?',
@@ -391,10 +391,10 @@ const COURSE_DOC_LANGS = {
     dirLabel: 'Text direction', dirAuto: 'Automatic', dirRTL: 'Right to left', dirLTR: 'Left to right',
     signerLabel: 'Signatory', signerPlaceholder: 'Head of learning area', signerHint: 'Used as the learning-area head in the document',
     tableTitle: 'Standards / Indicators / Learning outcomes', tableHint: 'Rows containing text become selectable assessment items',
-    tplBasic: 'Basic: 2 columns', tplExtra: 'Additional: 1 column', addCol: '+ Column', addRow: '+ Row', rowHeader: 'No.', delRow: 'Delete',
+    tplBasic: 'Basic: 1 column', tplExtra: 'Additional: 1 column', addCol: '+ Column', addRow: '+ Row', rowHeader: 'No.', delRow: 'Delete',
     objTitle: 'Assessment objectives', objHint: '(click to select)', between: 'During term', mid: 'Midterm', final: 'Final',
     noOpts: 'No selectable items yet', notSelected: 'Not selected',
-    colsBasic: ['Learning standards', 'Indicators'], colsExtra: ['Learning outcomes'], colNew: n => `Column ${n}`,
+    colsBasic: ['Standard/indicator code and full text'], colsExtra: ['Learning outcomes'], colNew: n => `Column ${n}`,
     pickerTitles: { mid: 'Select midterm items', between: 'Select during-term items', final: 'Select final items' },
     pickerCancel: 'Cancel', pickerOk: 'OK',
     confirmOverwrite: 'Searching the curriculum will overwrite existing data. Continue?',
@@ -419,10 +419,10 @@ const COURSE_DOC_LANGS = {
     dirLabel: 'اراه تيكس', dirAuto: 'اوتوماتيك', dirRTL: 'كانن ك كيري', dirLTR: 'كيري ك كانن',
     signerLabel: 'ڤناندا تاڠن', signerPlaceholder: 'كتوا كومڤولن مات ڤلاجارن', signerHint: 'ڬوناكن جاواتن كتوا كومڤولن دالم دوكومن',
     tableTitle: 'ڤياوايان / ڤتوك / حاصيل ڤمبلاجارن', tableHint: 'نومبور باريس يڠ برتوليس اكن جادي ڤيليهن',
-    tplBasic: '٢ لاجور اساس', tplExtra: '١ لاجور تمبهن', addCol: '+ لاجور', addRow: '+ باريس', rowHeader: 'بل', delRow: 'ڤادم',
+    tplBasic: '١ لاجور اساس', tplExtra: '١ لاجور تمبهن', addCol: '+ لاجور', addRow: '+ باريس', rowHeader: 'بل', delRow: 'ڤادم',
     objTitle: 'اوبجيكتيف ڤنيلاين', objHint: '(كليك اونتوق ڤيليه)', between: 'سيماس ڤڠڬل', mid: 'ڤرتڠهن ڤڠڬل', final: 'اخير ڤڠڬل',
     noOpts: 'بيلوم ادا ڤيليهن', notSelected: 'بيلوم ڤيليه',
-    colsBasic: ['ڤياوايان ڤمبلاجارن', 'ڤتوك'], colsExtra: ['حاصيل ڤمبلاجارن'], colNew: n => `لاجور ${n}`,
+    colsBasic: ['كود ڤياوايان/ڤتوك دان teks penuh'], colsExtra: ['حاصيل ڤمبلاجارن'], colNew: n => `لاجور ${n}`,
     pickerTitles: { mid: 'ڤيليه ڤرتڠهن', between: 'ڤيليه سيماس', final: 'ڤيليه اخير' },
     pickerCancel: 'بتل', pickerOk: 'اوك',
   },
@@ -438,10 +438,10 @@ const COURSE_DOC_LANGS = {
     dirLabel: 'اتجاه النص', dirAuto: 'تلقائي', dirRTL: 'يمين إلى يسار', dirLTR: 'يسار إلى يمين',
     signerLabel: 'الموقع', signerPlaceholder: 'رئيس القسم', signerHint: 'يستخدم منصب رئيس القسم في الوثيقة',
     tableTitle: 'المعايير / المؤشرات / نتائج التعلم', tableHint: 'أرقام الصفوف التي تحتوي نصا تصبح اختيارات',
-    tplBasic: 'عمودان أساسيان', tplExtra: 'عمود واحد', addCol: '+ عمود', addRow: '+ صف', rowHeader: 'رقم', delRow: 'حذف',
+    tplBasic: 'عمود أساسي واحد', tplExtra: 'عمود واحد', addCol: '+ عمود', addRow: '+ صف', rowHeader: 'رقم', delRow: 'حذف',
     objTitle: 'أهداف التقييم', objHint: '(انقر للاختيار)', between: 'أثناء الفصل', mid: 'منتصف الفصل', final: 'نهاية الفصل',
     noOpts: 'لا توجد بنود للاختيار', notSelected: 'لم يتم الاختيار',
-    colsBasic: ['معايير التعلم', 'المؤشرات'], colsExtra: ['نتائج التعلم'], colNew: n => `عمود ${n}`,
+    colsBasic: ['رمز المعيار/المؤشر والنص الكامل'], colsExtra: ['نتائج التعلم'], colNew: n => `عمود ${n}`,
     pickerTitles: { mid: 'اختر منتصف الفصل', between: 'اختر أثناء الفصل', final: 'اختر نهاية الفصل' },
     pickerCancel: 'إلغاء', pickerOk: 'موافق',
   },
@@ -457,10 +457,10 @@ const COURSE_DOC_LANGS = {
     dirLabel: 'Arah teks', dirAuto: 'Automatik', dirRTL: 'Kanan ke kiri', dirLTR: 'Kiri ke kanan',
     signerLabel: 'Penandatangan', signerPlaceholder: 'Ketua kumpulan mata pelajaran', signerHint: 'Gunakan jawatan ketua kumpulan dalam dokumen',
     tableTitle: 'Piawaian / Petunjuk / Hasil pembelajaran', tableHint: 'Nombor baris yang berisi teks menjadi pilihan item',
-    tplBasic: '2 lajur asas', tplExtra: '1 lajur tambahan', addCol: '+ Lajur', addRow: '+ Baris', rowHeader: 'Item', delRow: 'Padam',
+    tplBasic: '1 lajur asas', tplExtra: '1 lajur tambahan', addCol: '+ Lajur', addRow: '+ Baris', rowHeader: 'Item', delRow: 'Padam',
     objTitle: 'Objektif penilaian', objHint: '(klik untuk pilih)', between: 'Semasa penggal', mid: 'Pertengahan penggal', final: 'Akhir penggal',
     noOpts: 'Tiada item untuk dipilih', notSelected: 'Belum dipilih',
-    colsBasic: ['Piawaian pembelajaran', 'Petunjuk'], colsExtra: ['Hasil pembelajaran'], colNew: n => `Lajur ${n}`,
+    colsBasic: ['Kod piawaian/petunjuk dan teks penuh'], colsExtra: ['Hasil pembelajaran'], colNew: n => `Lajur ${n}`,
     pickerTitles: { mid: 'Pilih pertengahan', between: 'Pilih semasa', final: 'Pilih akhir' },
     pickerCancel: 'Batal', pickerOk: 'OK',
   },
@@ -485,8 +485,8 @@ export async function openCourseDocPage2Modal(teacher, course) {
   ])
 
   const normalizeColumns = value => {
-    const cols = Array.isArray(value) ? value : ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด']
-    return cols.length ? cols.map(c => String(c ?? '')) : ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด']
+    const cols = Array.isArray(value) ? value : ['รหัสมาตรฐาน/ตัวชี้วัด']
+    return cols.length ? cols.map(c => String(c ?? '')) : ['รหัสมาตรฐาน/ตัวชี้วัด']
   }
   const normalizeRows = (value, colCount) => {
     const rows = Array.isArray(value) ? value : []
@@ -502,6 +502,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
   // สามัญปวช. (ACDMVOC): เอกสารหน้า 4 ต้องการ "จุดประสงค์การเรียนรู้/สมรรถนะรายวิชา" + "กำหนดการสอน"
   // ซึ่งเป็นโครงตารางคนละแบบกับ table_columns/table_rows เดิม (ใช้กับหน้า 2 ของสามัญเท่านั้น)
   const isVOC = course.subject_group === 'ACDMVOC'
+  const isBasicSubject = !isVOC && (!course.subject_group || ['ACDM', 'AGM'].includes(course.subject_group))
   const normalizeVocRows = (value, fields, minCount) => {
     const arr = Array.isArray(value) ? value : []
     const fixed = arr.map(row => Object.fromEntries(fields.map(f => [f, String(row?.[f] ?? '')])))
@@ -931,8 +932,8 @@ export async function openCourseDocPage2Modal(teacher, course) {
     },
     description: 'คำอธิบายรายวิชาโดยสรุป...',
     topic_list: ['บทที่ 1 ...', 'บทที่ 2 ...'],
-    table_columns: ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด'],
-    table_rows: [['ค 1.1', 'เข้าใจ...'], ['ค 1.2', 'วิเคราะห์...']],
+    table_columns: ['รหัสมาตรฐาน/ตัวชี้วัด'],
+    table_rows: [['ค 1.1 ม.2/1 : เข้าใจ...'], ['ค 1.2 ม.2/2 : วิเคราะห์...']],
     between_objective_items: [1], between_objective_extra: '',
     midterm_objective_items: [1, 2], midterm_objective_extra: '',
     final_objective_items: [2], final_objective_extra: '',
@@ -944,10 +945,10 @@ export async function openCourseDocPage2Modal(teacher, course) {
   const buildExternalCoursePrompt = () => {
     syncFromDom()
     const L = i18n()
-    const isBasicStructure = !isVOC && columns.length === 2 && (!course.subject_group || ['ACDM', 'AGM'].includes(course.subject_group))
-    const isAdditionalStructure = !isVOC && columns.length === 1
+    const isBasicStructure = isBasicSubject && columns.length === 1
+    const isAdditionalStructure = !isVOC && !isBasicSubject && columns.length === 1
     const structureGuidance = isBasicStructure
-      ? `รูปแบบรายวิชาพื้นฐาน (2 คอลัมน์): ยึดมาตรฐานการเรียนรู้และตัวชี้วัดเป็นหลัก ในคำอธิบายให้เขียนเป็นความเรียงสรุปว่าเรียนอะไร ใช้กระบวนการใด และคาดหวังให้ผู้เรียนเกิดความรู้/ทักษะอะไร ตอนท้ายอาจระบุรหัสตัวชี้วัดที่เกี่ยวข้องได้ แต่ห้ามคัดลอกข้อความตัวชี้วัดทั้งหมดมาเรียงเป็นคำอธิบาย; ในตารางให้ใส่รหัสมาตรฐาน/ตัวชี้วัดและข้อความตัวชี้วัดฉบับเต็ม`
+      ? `รูปแบบรายวิชาพื้นฐาน (1 คอลัมน์): ยึดมาตรฐานการเรียนรู้และตัวชี้วัดเป็นหลัก ในคำอธิบายให้เขียนเป็นความเรียงสรุปว่าเรียนอะไร ใช้กระบวนการใด และคาดหวังให้ผู้เรียนเกิดความรู้/ทักษะอะไร ตอนท้ายอาจระบุรหัสตัวชี้วัดที่เกี่ยวข้องได้ แต่ห้ามคัดลอกข้อความตัวชี้วัดทั้งหมดมาเรียงเป็นคำอธิบาย; ในแต่ละแถวของตารางให้รวมรหัสมาตรฐาน/ตัวชี้วัดกับข้อความตัวชี้วัดฉบับเต็มไว้ในคอลัมน์เดียว เช่น "ค 1.1 ม.2/1 : ..."`
       : isAdditionalStructure
         ? `รูปแบบรายวิชาเพิ่มเติม (1 คอลัมน์): ยึดผลการเรียนรู้เป็นหลัก เขียนคำอธิบายตามลักษณะ เนื้อหา และเป้าหมายของรายวิชา ไม่ใช้มาตรฐาน/ตัวชี้วัดเป็นแกนหลัก; ในตารางให้ใส่ผลการเรียนรู้ที่ตรวจสอบได้`
         : 'รูปแบบคอลัมน์อิสระ: ยึดชื่อคอลัมน์และข้อมูลที่ครูกำหนดเป็นหลัก จัดเนื้อหาให้สอดคล้องกัน โดยยังคงหลักการเขียนคำอธิบายเป็นความเรียงและไม่คัดลอกข้อความหลักสูตรทั้งชุด'
@@ -1124,11 +1125,13 @@ ${JSON.stringify(externalDocExample, null, 2)}`
     }
     return {
       source: 'curriculum',
-      columns: ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด'],
-      rows: records.map((r, i) => [
-        `${r.item_no ?? i + 1}.) ${r.standard_code || r.standard_text || ''}`.trim(),
-        r.indicator_text || r.learning_outcome_text || '',
-      ]),
+      columns: ['รหัสมาตรฐาน/ตัวชี้วัด'],
+      rows: records.map((r, i) => {
+        const code = [r.standard_code, r.indicator_code].filter(Boolean).join(' ')
+        const text = r.indicator_text || r.standard_text || r.learning_outcome_text || ''
+        const fallbackCode = code || String(r.item_no ?? i + 1) + '.'
+        return [(fallbackCode + ' : ' + text).trim()]
+      }),
       description,
       midterm_items: records.slice(0, Math.ceil(records.length / 2)).map((_, i) => i + 1),
       final_items: records.slice(Math.ceil(records.length / 2)).map((_, i) => i + 1 + Math.ceil(records.length / 2)),
@@ -1138,14 +1141,17 @@ ${JSON.stringify(externalDocExample, null, 2)}`
   const generateDocWithGemini = async () => {
     // key อยู่ใน Edge Function — ไม่ต้องส่ง key จาก browser
     const L = i18n()
-    const isExtra = columns.length === 1 || (course.subject_group && !['ACDM', 'AGM'].includes(course.subject_group))
-    const colNames = isExtra ? L.colsExtra : L.colsBasic
-    const tableMode = isExtra
-      ? `single column named "${colNames[0]}"`
-      : `two columns named "${colNames[0]}" and "${colNames[1]}"`
-    const writingGuidance = isExtra
-      ? 'รายวิชาเพิ่มเติม: ใช้ผลการเรียนรู้เป็นหลัก เขียนคำอธิบายตามลักษณะ เนื้อหา และเป้าหมายของรายวิชา ไม่ใช้มาตรฐาน/ตัวชี้วัดเป็นแกนหลัก และให้ตารางสะท้อนผลการเรียนรู้ที่ตรวจสอบได้'
-      : 'รายวิชาพื้นฐาน: ใช้มาตรฐานการเรียนรู้และตัวชี้วัดเป็นหลัก เขียนคำอธิบายเป็นความเรียงสรุปสาระ กระบวนการ และผลที่คาดหวัง ไม่คัดลอกตัวชี้วัดทั้งหมดมาเรียงเป็นคำอธิบาย และให้ตารางมีรหัสพร้อมข้อความตัวชี้วัดฉบับเต็ม'
+    const isBasicStructure = isBasicSubject && columns.length === 1
+    const isAdditionalStructure = !isVOC && !isBasicSubject && columns.length === 1
+    const colNames = isBasicStructure ? L.colsBasic : isAdditionalStructure ? L.colsExtra : columns
+    const tableMode = isBasicStructure || isAdditionalStructure
+      ? 'single column named "' + colNames[0] + '"'
+      : 'custom columns named ' + JSON.stringify(colNames)
+    const writingGuidance = isBasicStructure
+      ? 'รายวิชาพื้นฐาน: ใช้มาตรฐานการเรียนรู้และตัวชี้วัดเป็นหลัก เขียนคำอธิบายเป็นความเรียงสรุปสาระ กระบวนการ และผลที่คาดหวัง ไม่คัดลอกตัวชี้วัดทั้งหมดมาเรียงเป็นคำอธิบาย และให้แต่ละแถวในคอลัมน์เดียวรวมรหัสมาตรฐาน/ตัวชี้วัดกับข้อความตัวชี้วัดฉบับเต็ม เช่น ค 1.1 ม.2/1 : ...'
+      : isAdditionalStructure
+        ? 'รายวิชาเพิ่มเติม: ใช้ผลการเรียนรู้เป็นหลัก เขียนคำอธิบายตามลักษณะ เนื้อหา และเป้าหมายของรายวิชา ไม่ใช้มาตรฐาน/ตัวชี้วัดเป็นแกนหลัก และให้ตารางสะท้อนผลการเรียนรู้ที่ตรวจสอบได้'
+        : 'รูปแบบคอลัมน์อิสระ: ยึดชื่อคอลัมน์และข้อมูลที่ครูกำหนดเป็นหลัก จัดเนื้อหาให้สอดคล้องกัน โดยยังคงหลักการเขียนคำอธิบายเป็นความเรียงและไม่คัดลอกข้อความหลักสูตรทั้งชุด'
     const prompt = `You are an assistant helping a teacher prepare a PP5 course-description document.
 IMPORTANT: Write all generated content in ${L.aiLang}. Do not mix languages unless the source course content requires it.
 
@@ -1329,11 +1335,12 @@ Return JSON object เท่านั้น:
           reader.readAsDataURL(file)
         })
 
-        const isExtra = columns.length === 1 || (course.subject_group && !['ACDM', 'AGM'].includes(course.subject_group))
-        const colNames = isExtra ? L.colsExtra : L.colsBasic
-        const tableMode = isExtra
-          ? `single column named "${colNames[0]}"`
-          : `two columns named "${colNames[0]}" and "${colNames[1]}"`
+        const isBasicStructure = isBasicSubject && columns.length === 1
+        const isAdditionalStructure = !isVOC && !isBasicSubject && columns.length === 1
+        const colNames = isBasicStructure ? L.colsBasic : isAdditionalStructure ? L.colsExtra : columns
+        const tableMode = isBasicStructure || isAdditionalStructure
+          ? 'single column named "' + colNames[0] + '"'
+          : 'custom columns named ' + JSON.stringify(colNames)
 
         const prompt = `You are a teacher assistant. Read this image, which may be a textbook page, curriculum document, or PP5 table.
 Output language: ${L.aiLang}
