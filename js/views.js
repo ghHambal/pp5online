@@ -38,6 +38,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          approveSubjectGroupRequest, rejectSubjectGroupRequest, notifyFeedbackReply } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
+import { createFullBackup, restoreFullBackup } from './term-backup.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect, getFriendlyErrorMessage } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
          openSubjectModal, handleDeleteSubject,
@@ -2262,6 +2263,7 @@ export async function renderSettings() {
     cfg.freeTimerLimit = cfg.freeTimerLimit || '1'
     cfg.freeDashboardLimit = cfg.freeDashboardLimit || '0'
     cfg.freePromptAiLimit = cfg.freePromptAiLimit || '1'
+    window._latestFullBackupId = null
     // รวม dept codes จาก departments table + teachers.dept + ที่รู้จักแน่นอน
     const KNOWN_DEPT_CODES = ['MATH','SC','ENG','THAI','SOC','ART','HEALTH','OCC','VOC',
                               'ISL','ARB','BM','BML','MLB']
@@ -2421,6 +2423,7 @@ export async function renderSettings() {
     // ─── Tab definitions ────────────────────────────────────────────────────────
     const TABS = [
       { id:'general',  icon:'⚙️',  label:'ทั่วไป' },
+      { id:'term-data', icon:'🗃️', label:'ข้อมูลทั้งหมด' },
       { id:'theme',    icon:'🎨',  label:'ธีมสี' },
       { id:'school',   icon:'🏫',  label:'สถานศึกษา' },
       { id:'prayer',   icon:'🕌',  label:'ระบบละหมาด' },
@@ -2442,6 +2445,36 @@ export async function renderSettings() {
           ${title ? `<p class="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">${title}</p>` : ''}
           ${fields.map(fld).join('')}
         </div>`
+
+      if (tabId === 'term-data') return `
+        <section class="mb-6 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5">
+          <p class="text-sm font-bold text-indigo-900">🗃️ สำรองและกู้คืนข้อมูลทั้งหมดของระบบ</p>
+          <p class="text-xs text-indigo-700 mt-2 leading-relaxed">
+            ไฟล์นี้รวมข้อมูลแอปพลิเคชันทั้งหมดของระบบ ปพ.5 และโมดูลที่ใช้งานในฐานข้อมูล เช่น สถานศึกษา ครู นักเรียน รายวิชา ห้องเรียน คะแนน การเข้าเรียน คะแนนละหมาด การชำระเงิน กีฬา และสภานักเรียน
+            รวมไฟล์ใน Supabase Storage เช่น โลโก้ รูปภาพ และเอกสารอัปโหลด โดยไม่รวมรหัสผ่านของผู้ใช้และระบบภายในของ Supabase
+          </p>
+          <div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 leading-relaxed">
+            ⚠️ ไฟล์สำรองอาจมีข้อมูลส่วนบุคคลจำนวนมาก ควรเก็บไว้ในเครื่องหรือไดรฟ์ที่ผู้ดูแลควบคุมเท่านั้น และห้ามส่งต่อโดยไม่จำเป็น
+          </div>
+          <div class="mt-4 flex flex-wrap items-center gap-3">
+            <button id="btn-create-full-backup" type="button" class="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm">
+              ⬇️ สำรองข้อมูลทั้งหมด
+            </button>
+            <span id="full-backup-status" class="text-xs text-gray-500"></span>
+          </div>
+          <p class="text-[11px] text-indigo-700 mt-3 leading-relaxed">💾 หากเบราว์เซอร์รองรับ ระบบจะให้เลือกตำแหน่งจัดเก็บและเขียนไฟล์แบบสตรีมโดยตรง เพื่อรองรับข้อมูลขนาดใหญ่โดยไม่ค้างไว้ในหน่วยความจำหน้าเว็บ</p>
+          <div class="mt-6 border-t border-indigo-100 pt-5">
+            <p class="text-sm font-bold text-gray-800">กู้คืนจากไฟล์สำรอง</p>
+            <p class="text-xs text-gray-500 mt-1 leading-relaxed">ระบบจะตรวจสอบไฟล์และกู้คืนด้วยวิธีเพิ่ม/ปรับข้อมูลเดิม โดยไม่ลบข้อมูลอื่นที่อยู่นอกไฟล์</p>
+            <div class="mt-3 flex flex-wrap items-center gap-3">
+              <input id="full-backup-file" type="file" accept=".gz,application/gzip" class="block max-w-full text-xs text-gray-600" />
+              <button id="btn-restore-full-backup" type="button" disabled class="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-bold shadow-sm">
+                ♻️ กู้คืนข้อมูลทั้งหมด
+              </button>
+            </div>
+            <p id="full-restore-status" class="text-xs text-gray-500 mt-3"></p>
+          </div>
+        </section>`
 
       if (tabId === 'general') return [
         `<section class="mb-6 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
@@ -2481,7 +2514,7 @@ export async function renderSettings() {
           <p class="text-sm font-bold text-amber-900">🔄 ขึ้นภาคเรียนใหม่</p>
           <p class="text-xs text-amber-800 mt-1.5 leading-relaxed">
             เปลี่ยนระบบเป็นปี/ภาคเรียนใหม่แบบพื้นที่ว่าง — <b>ไม่สร้างคอร์สวิชา ห้องเรียน หรือการลงทะเบียนนักเรียนให้อัตโนมัติ</b>
-            ครูผู้สอนจะเป็นผู้สร้างคอร์สและห้องเรียนที่สอนเอง ส่วนข้อมูลภาคเรียนเก่าจะไม่ถูกลบและยังเก็บไว้เป็นประวัติ
+            ครูผู้สอนจะเป็นผู้สร้างคอร์สและห้องเรียนที่สอนเอง คะแนนเดิมจะเก็บเป็นข้อมูลดิบ ส่วนข้อมูลเข้าเรียนและละหมาดจะถูกล้างหลังสำรองข้อมูลทั้งหมดแล้ว
           </p>
           <p id="start-new-semester-target" class="text-xs text-amber-700 mt-2 font-mono"></p>
           <div class="grid sm:grid-cols-2 gap-3 mt-3">
@@ -3041,6 +3074,67 @@ export async function renderSettings() {
       }
       document.getElementById('cfg-save-hint').textContent = ''
 
+      const fullBackupBtn = document.getElementById('btn-create-full-backup')
+      const fullBackupStatus = document.getElementById('full-backup-status')
+      if (fullBackupBtn && !fullBackupBtn.dataset.bound) {
+        fullBackupBtn.dataset.bound = 'true'
+        fullBackupBtn.addEventListener('click', async () => {
+          if (!confirm('ยืนยันสร้างไฟล์สำรองข้อมูลทั้งหมดของระบบ? ไฟล์อาจมีข้อมูลส่วนบุคคลจำนวนมาก')) return
+          fullBackupBtn.disabled = true
+          fullBackupBtn.textContent = '⏳ กำลังสำรองข้อมูลทั้งหมด...'
+          if (fullBackupStatus) fullBackupStatus.textContent = 'กำลังเตรียมรายการตาราง...'
+          try {
+            const result = await createFullBackup({
+              onProgress: (message, count) => {
+                if (fullBackupStatus) fullBackupStatus.textContent = `${message}${count ? ` · ${count.toLocaleString()} รายการ` : ''}`
+              },
+            })
+            window._latestFullBackupId = result.backupId
+            if (fullBackupStatus) fullBackupStatus.textContent = `สำเร็จ: ${result.fileName} · ${Math.round(result.byteSize / 1024 / 1024)} MB · ${result.tableCount} ตาราง`
+            showToast(`สำรองข้อมูลทั้งหมดสำเร็จ และ${result.savedToDisk ? 'บันทึกไฟล์ลงดิสก์แล้ว' : 'ดาวน์โหลดไฟล์แล้ว'} ✅`, 'success')
+          } catch (err) {
+            if (fullBackupStatus) fullBackupStatus.textContent = 'สำรองข้อมูลไม่สำเร็จ'
+            showToast('สำรองข้อมูลไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+          } finally {
+            fullBackupBtn.disabled = false
+            fullBackupBtn.textContent = '⬇️ สำรองข้อมูลทั้งหมด'
+          }
+        })
+      }
+
+      const fullBackupFile = document.getElementById('full-backup-file')
+      const restoreFullBackupBtn = document.getElementById('btn-restore-full-backup')
+      const fullRestoreStatus = document.getElementById('full-restore-status')
+      if (fullBackupFile && restoreFullBackupBtn && !fullBackupFile.dataset.bound) {
+        fullBackupFile.dataset.bound = 'true'
+        fullBackupFile.addEventListener('change', () => {
+          restoreFullBackupBtn.disabled = !fullBackupFile.files?.[0]
+          if (fullRestoreStatus) fullRestoreStatus.textContent = fullBackupFile.files?.[0] ? `เลือกไฟล์: ${fullBackupFile.files[0].name}` : ''
+        })
+        restoreFullBackupBtn.addEventListener('click', async () => {
+          const file = fullBackupFile.files?.[0]
+          if (!file) return
+          if (!confirm('ยืนยันกู้คืนข้อมูลทั้งหมดจากไฟล์นี้? ระบบจะเพิ่มหรือปรับข้อมูลตามไฟล์ และไม่ลบข้อมูลอื่น')) return
+          restoreFullBackupBtn.disabled = true
+          restoreFullBackupBtn.textContent = '⏳ กำลังกู้คืน...'
+          try {
+            const result = await restoreFullBackup(file, {
+              onProgress: (message, count) => {
+                if (fullRestoreStatus) fullRestoreStatus.textContent = `${message} · ${count.toLocaleString()} รายการ`
+              },
+            })
+            if (fullRestoreStatus) fullRestoreStatus.textContent = `กู้คืนสำเร็จ · SHA-256: ${result.sha256.slice(0, 16)}…`
+            showToast('กู้คืนข้อมูลทั้งหมดสำเร็จ ✅', 'success')
+          } catch (err) {
+            if (fullRestoreStatus) fullRestoreStatus.textContent = 'กู้คืนข้อมูลไม่สำเร็จ'
+            showToast('กู้คืนข้อมูลไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+          } finally {
+            restoreFullBackupBtn.disabled = false
+            restoreFullBackupBtn.textContent = '♻️ กู้คืนข้อมูลทั้งหมด'
+          }
+        })
+      }
+
       document.querySelectorAll('.cfg-choice').forEach(btn => {
         btn.addEventListener('click', () => {
           const key = btn.dataset.choiceKey
@@ -3349,6 +3443,11 @@ export async function renderSettings() {
             showToast('กรุณาระบุวันเปิด-ปิดภาคเรียนใหม่ให้ถูกต้อง', 'warning')
             return
           }
+          if (!window._latestFullBackupId) {
+            showToast('กรุณาสำรองข้อมูลทั้งหมดก่อนขึ้นภาคเรียนใหม่', 'warning')
+            document.querySelector('.cfg-tab[data-tab="term-data"]')?.click()
+            return
+          }
           startNewSemBtn.disabled = true
           startNewSemBtn.textContent = '⏳ กำลังดำเนินการ...'
           try {
@@ -3357,19 +3456,21 @@ export async function renderSettings() {
               `คอร์สเดิมที่จะถูกเก็บเป็นประวัติ: ${Number(preview?.courses_to_archive ?? 0).toLocaleString()} คอร์ส`,
               `ห้องเรียนเดิมที่จะถูกเก็บเป็นประวัติ: ${Number(preview?.classes_to_archive ?? 0).toLocaleString()} ห้อง`,
               `ผู้สนับสนุนที่มีสิทธิ์ส่วนลดต่อเทอมใหม่: ${Number(preview?.eligible_supporters ?? 0).toLocaleString()} คน`,
+              `ข้อมูลเข้าเรียนที่จะล้าง: ${Number(preview?.attendances_to_clear ?? 0).toLocaleString()} รายการ`,
+              `ข้อมูลละหมาดที่จะล้าง: ${Number(preview?.prayer_records_to_clear ?? 0).toLocaleString()} รายการ`,
             ].join('\n')
-            if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nวันเปิด: ${semesterStart}\nวันปิด: ${semesterEnd}\n\n${previewText}\n\nภาคเรียนใหม่จะเป็นพื้นที่ว่าง ครูต้องสร้างคอร์สและห้องเรียนใหม่เอง\nข้อมูลเดิมจะไม่ถูกลบ และจะไม่สร้างการลงทะเบียนนักเรียนให้อัตโนมัติ`)) {
+            if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nวันเปิด: ${semesterStart}\nวันปิด: ${semesterEnd}\n\n${previewText}\n\nภาคเรียนใหม่จะเป็นพื้นที่ว่าง ครูต้องสร้างคอร์สและห้องเรียนใหม่เอง\nคะแนนเดิมจะถูกเก็บเป็นข้อมูลดิบ\nข้อมูลเข้าเรียนและละหมาดของภาคเรียนเดิมจะถูกล้าง\nจะไม่สร้างการลงทะเบียนนักเรียนให้อัตโนมัติ`)) {
               startNewSemBtn.disabled = false
               startNewSemBtn.textContent = '🔄 ขึ้นภาคเรียนใหม่'
               return
             }
-            await startNewSemester(nextYear, nextSem, semesterStart, semesterEnd)
+            await startNewSemester(nextYear, nextSem, semesterStart, semesterEnd, window._latestFullBackupId, true)
             cfg.semester = String(nextSem)
             cfg.academicYear = String(nextYear)
             cfg.semester_start = semesterStart
             cfg.semester_end = semesterEnd
             cfg.unlimitedTeacherClassCreation = 'true'
-            showToast(`ขึ้นภาคเรียนที่ ${nextSem}/${nextYear} สำเร็จ ✅ ล้างสิทธิ์ผู้สนับสนุนรอบเดิม และเปิดให้ครูสร้างห้องได้ไม่จำกัด`, 'success')
+            showToast(`ขึ้นภาคเรียนที่ ${nextSem}/${nextYear} สำเร็จ ✅ สำรองข้อมูลแล้ว ล้างข้อมูลเข้าเรียน/ละหมาด และเปิดให้ครูสร้างห้องได้ไม่จำกัด`, 'success')
             renderSettings()
           } catch (e) {
             showToast('ขึ้นภาคเรียนใหม่ไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')

@@ -90,12 +90,14 @@ export async function previewNewSemester(newAcademicYear, newSemester, semesterS
   return data
 }
 
-export async function startNewSemester(newAcademicYear, newSemester, semesterStart, semesterEnd) {
+export async function startNewSemester(newAcademicYear, newSemester, semesterStart, semesterEnd, backupId, clearSourceData = true) {
   const { data, error } = await supabase.rpc('admin_start_new_semester', {
     p_new_academic_year: newAcademicYear,
     p_new_semester: newSemester,
     p_new_semester_start: semesterStart,
     p_new_semester_end: semesterEnd,
+    p_backup_id: backupId,
+    p_clear_source_data: clearSourceData,
   })
   if (error) throw error
   return data
