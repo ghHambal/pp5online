@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.883'
+import { APP_VERSION } from './version.js?v=10.22.884'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.884': [
+    '🖼️ การตั้งค่าโลโก้: ป้องกันปุ่มบันทึกเขียนทับ URL ด้วยค่าไฟล์ชั่วคราวหรือ false หลังอัปโหลด',
+  ],
   '10.22.883': [
     '🖼️ โลโก้สถานศึกษา: แก้พรีวิวและเอกสารแสดงรูปเก่าหลังอัปโหลด โดยเพิ่ม cache-busting ให้ไฟล์โลโก้ใหม่',
   ],

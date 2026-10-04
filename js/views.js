@@ -3519,7 +3519,12 @@ export async function renderSettings() {
     // ─── Save button ─────────────────────────────────────────────────────────────
     document.getElementById('cfg-save-btn').addEventListener('click', async () => {
       const btn = document.getElementById('cfg-save-btn')
-      const inputs = document.querySelectorAll('#cfg-panel-inner [data-key]')
+      // ช่องเลือกไฟล์และปุ่มล้างโลโก้มี data-key เพื่อใช้กับ handler ของตัวเอง
+      // แต่ไม่ใช่ค่าตั้งค่าที่ต้องบันทึก หากรวมเข้าไปจะเขียนทับ URL ด้วย
+      // C:\\fakepath\\... หรือ false หลังจากอัปโหลดสำเร็จ
+      const inputs = document.querySelectorAll(
+        '#cfg-panel-inner [data-key]:not(.cfg-upload-file):not(.cfg-upload-clear)'
+      )
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
         await Promise.all([...inputs].map(el => {
