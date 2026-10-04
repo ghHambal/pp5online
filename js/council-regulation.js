@@ -5,6 +5,11 @@ import {
   getCouncilRegulationContent,
   updateCouncilRegulationClause,
   createCouncilRegulationClause,
+  submitCouncilRegulationForAdvisor,
+  reviewCouncilRegulationAsAdvisor,
+  reviewCouncilRegulationAsStudentAffairs,
+  approveCouncilRegulationAsManagement,
+  publishCouncilRegulation,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -16,7 +21,9 @@ const normalizeSearch = value => String(value ?? '')
   .trim()
 const STATUS_LABEL = {
   draft: 'ฉบับร่าง', pending_approval: 'รออนุมัติ', approved: 'อนุมัติแล้ว',
-  effective: 'มีผลบังคับใช้', superseded: 'ถูกแทนที่ด้วยฉบับใหม่', archived: 'เก็บถาวร',
+  advisor_review: 'รอครูที่ปรึกษาตรวจ', student_affairs_review: 'รอหัวหน้าฝ่ายกิจการนักเรียนตรวจ',
+  management_review: 'รอผู้บริหารอนุมัติ', published: 'ประกาศแล้ว', effective: 'มีผลบังคับใช้',
+  superseded: 'ถูกแทนที่ด้วยฉบับใหม่', archived: 'เก็บถาวร',
 }
 
 let state = {
@@ -128,6 +135,7 @@ function printHtml(version, sections, clauses, scopeLabel = '') {
   }).join('')
   const source = String(version?.source_document_url ?? '').startsWith('http')
     ? '<p class="source">แหล่งต้นฉบับ: <a href="' + esc(version.source_document_url) + '">' + esc(version.source_document_url) + '</a></p>' : ''
+  const isEffective = ['published', 'effective'].includes(version?.status) && (version?.status === 'effective' || (version?.is_active && version?.effective_date && new Date(version.effective_date) <= new Date()))
   return '<!doctype html><html lang="th"><head><meta charset="utf-8"><title>' + esc(version?.title) + '</title><style>'
     + '@page{size:A4;margin:18mm 18mm 16mm}*{box-sizing:border-box}body{font-family:"TH SarabunPSK","TH Sarabun New",Sarabun,sans-serif;color:#111;font-size:16pt;line-height:1.35}'
     + 'h1{text-align:center;font-size:22pt;margin:0 0 3mm;font-weight:700}.meta{text-align:center;font-size:13pt;margin-bottom:7mm}'
@@ -136,7 +144,7 @@ function printHtml(version, sections, clauses, scopeLabel = '') {
     + '</style></head><body><h1>' + esc(version?.title) + '</h1><div class="meta">ฉบับ ' + esc(version?.version_label)
     + ' · สถานะ: ' + esc(STATUS_LABEL[version?.status] || version?.status) + '</div>'
     + (scopeLabel ? '<div class="meta">' + esc(scopeLabel) + ' · ' + clauses.length + ' ข้อ</div>' : '')
-    + (version?.status !== 'effective' ? '<div class="draft">เอกสารฉบับร่าง/เอกสารอ้างอิง ยังไม่ใช่ระเบียบที่มีผลบังคับใช้</div>' : '')
+    + (!isEffective ? '<div class="draft">เอกสารฉบับร่าง/เอกสารอ้างอิง ยังไม่ใช่ระเบียบที่มีผลบังคับใช้</div>' : '')
     + body + source + '</body></html>'
 }
 
@@ -195,7 +203,23 @@ export function renderCouncilRegulationView(ctx, onChange = () => {}) {
   const sectionMap = new Map(sections.map(s => [s.id, s]))
   const filtered = filteredClauses(version, sections, clauses)
   const grouped = sections.map(section => ({ section, clauses: filtered.filter(c => c.section_id === section.id) })).filter(g => g.clauses.length)
-  const canEdit = !!ctx?.isAdmin && ['draft', 'pending_approval'].includes(version.status)
+  const canEdit = !!ctx?.isAdmin && version.status === 'draft'
+  const canSubmit = !!(ctx?.isAdmin || ctx?.isCouncilAdvisor) && version.status === 'draft'
+  const canAdvisorReview = !!(ctx?.isAdmin || ctx?.isCouncilAdvisor) && version.status === 'advisor_review'
+  const canStudentAffairsReview = !!(ctx?.isAdmin || ctx?.isStudentAffairsHead) && version.status === 'student_affairs_review'
+  const canManagementReview = !!(ctx?.isAdmin || ctx?.isSchoolDirector) && version.status === 'management_review'
+  const canPublish = !!(ctx?.isAdmin || ctx?.isSchoolDirector) && version.status === 'approved'
+  const workflowButton = (action, label, cls = 'bg-[var(--primary)] text-white') => `<button type="button" class="regulation-workflow-action px-4 py-2.5 rounded-xl text-xs font-bold ${cls}" data-action="${action}" data-version-id="${version.id}">${label}</button>`
+  const workflowActions = [
+    canSubmit ? workflowButton('submit', '📤 ส่งตรวจ R1') : '',
+    canAdvisorReview ? workflowButton('advisor-pass', '✅ R1 ผ่าน') + workflowButton('advisor-return', '↩️ R1 ขอแก้', 'border border-amber-300 text-amber-700 bg-amber-50') : '',
+    canStudentAffairsReview ? workflowButton('affairs-pass', '✅ R2 ผ่าน') + workflowButton('affairs-return', '↩️ R2 ขอแก้', 'border border-amber-300 text-amber-700 bg-amber-50') : '',
+    canManagementReview ? workflowButton('management-pass', '✅ R3 อนุมัติ', 'bg-emerald-600 text-white') : '',
+    canPublish ? workflowButton('publish', '📢 เผยแพร่ R4', 'bg-emerald-600 text-white') : '',
+  ].join('')
+  const statusMessage = version.status === 'published' && version.is_active && version.effective_date && new Date(version.effective_date) <= new Date()
+    ? 'ฉบับนี้ประกาศและมีผลตามวันที่กำหนด ใช้เป็น gate ของฟีเจอร์ที่ผูกกับระเบียบได้'
+    : 'ฉบับนี้ยังไม่ใช่ระเบียบที่มีผลบังคับใช้ ฟีเจอร์ที่ผูกกับระเบียบจะยังไม่เปิด'
   const hasFilter = Boolean(normalizeSearch(state.query) || state.sectionFilter !== 'all')
   if (state.loading && state.content === null) return '<div class="max-w-5xl mx-auto"><div class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-8 text-center text-sm text-[var(--muted)]">กำลังโหลดฉบับที่เลือก...</div></div>'
   let html = '<div class="max-w-5xl mx-auto space-y-4"><section class="bg-[var(--surface)] border border-[var(--line)] rounded-2xl p-5 md:p-6">'
@@ -205,7 +229,8 @@ export function renderCouncilRegulationView(ctx, onChange = () => {}) {
     + '<div class="flex flex-wrap gap-2"><button type="button" class="regulation-print px-4 py-2.5 rounded-xl bg-[var(--primary)] text-white text-xs font-bold">🖨️ ' + (hasFilter ? 'พิมพ์ผลการค้นหา' : 'พิมพ์ฉบับนี้') + '</button>'
     + (version.source_document_url ? '<a href="' + esc(version.source_document_url) + '" target="_blank" rel="noopener" class="px-4 py-2.5 rounded-xl border border-[var(--line)] text-[var(--ink-2)] text-xs font-bold">🔗 เปิดต้นฉบับ</a>' : '')
     + (canEdit ? '<button type="button" class="regulation-add-clause px-4 py-2.5 rounded-xl border border-[var(--primary-soft-line)] text-[var(--primary)] text-xs font-bold">➕ เพิ่มข้อ</button>' : '')
-    + '</div></div><div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-900"><strong>สถานะสำคัญ:</strong> ฉบับนี้เป็นฉบับร่าง/ฉบับรออนุมัติ ใช้ติดตามและเตรียมงาน ยังไม่ใช่ระเบียบที่มีผลบังคับใช้</div>'
+    + workflowActions
+    + '</div></div><div class="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-6 text-amber-900"><strong>สถานะสำคัญ:</strong> ' + esc(statusMessage) + '</div>'
   if (state.versions.length > 1) {
     html += '<label class="block text-xs font-bold text-[var(--muted)] mt-4">เลือกฉบับ</label><select id="regulation-version-select" class="mt-1 w-full md:max-w-md border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]">'
       + state.versions.map(v => '<option value="' + v.id + '" ' + (v.id === version.id ? 'selected' : '') + '>' + esc(v.version_label) + ' · ' + esc(STATUS_LABEL[v.status] || v.status) + '</option>').join('') + '</select>'
@@ -249,6 +274,38 @@ export function wireCouncilRegulationEvents(ctx, onChange) {
       openHtmlPrintOverlay(printHtml(version, sections, filtered, scopeLabel))
     }
   })
+  document.querySelectorAll('.regulation-workflow-action').forEach(button => button.addEventListener('click', async () => {
+    const action = button.dataset.action
+    const versionId = Number(button.dataset.versionId)
+    const comment = action === 'submit' ? (window.prompt('หมายเหตุการส่งตรวจ (ถ้ามี)') || '') : (window.prompt('หมายเหตุ/ข้อสังเกต') || '')
+    if (['advisor-return', 'affairs-return'].includes(action) && !comment.trim()) {
+      showToast('การขอแก้ไขต้องระบุหมายเหตุ', 'warning')
+      return
+    }
+    let effectiveDate = null
+    if (action === 'publish') {
+      effectiveDate = window.prompt('วันที่มีผล (YYYY-MM-DD)', new Date().toISOString().slice(0, 10))
+      if (!effectiveDate) return
+    }
+    button.disabled = true
+    try {
+      if (action === 'submit') await submitCouncilRegulationForAdvisor(versionId, comment)
+      else if (action === 'advisor-pass') await reviewCouncilRegulationAsAdvisor(versionId, true, comment)
+      else if (action === 'advisor-return') await reviewCouncilRegulationAsAdvisor(versionId, false, comment)
+      else if (action === 'affairs-pass') await reviewCouncilRegulationAsStudentAffairs(versionId, true, comment)
+      else if (action === 'affairs-return') await reviewCouncilRegulationAsStudentAffairs(versionId, false, comment)
+      else if (action === 'management-pass') await approveCouncilRegulationAsManagement(versionId, comment)
+      else if (action === 'publish') await publishCouncilRegulation(versionId, effectiveDate, comment)
+      state.versions = null
+      state.content = null
+      state.selectedVersionId = null
+      showToast('อัปเดต workflow ระเบียบแล้ว', 'success')
+      await loadRegulation(onChange)
+    } catch (error) {
+      showToast('ดำเนินการไม่สำเร็จ: ' + (error.message || error), 'error')
+      button.disabled = false
+    }
+  }))
   if (state.focusRouteClause) {
     window.requestAnimationFrame(() => {
       const target = document.getElementById('regulation-clause-' + state.routeClauseNo)

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.879'
+import { APP_VERSION } from './version.js?v=10.22.880'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.880': [
+    '📘 ศูนย์ระเบียบสภานักเรียน: เพิ่ม workflow ตรวจทาน R1–R4 ตั้งแต่ฉบับร่าง ส่งครูที่ปรึกษา ฝ่ายกิจการนักเรียน ผู้บริหารอนุมัติ จนถึงเผยแพร่ โดยยังไม่เปิดส่วนสถานะนักเรียนในหน้าครู',
+  ],
   '10.22.879': [
     '🗓️ ภาคเรียน: เพิ่มแถบสลับภาคเรียนที่หน้าภาพรวมของครูและนักเรียน เพื่อเปิดดูคะแนน/ปพ.5 ย้อนหลังได้ชัดเจน โดยไม่เปิดงานประจำวันหรือการสร้างห้องเรียนของเทอมเก่า',
   ],

@@ -36,12 +36,59 @@ export async function updateCouncilConfig(updates) {
 
 // ─── ระเบียบ/ประกาศสภานักเรียน — อ่านได้ทุกผู้ใช้ที่ล็อกอิน; แก้ผ่าน RPC เฉพาะผู้ดูแล ───
 export async function getCouncilRegulationVersions() {
-  const { data, error } = await supabase.from('council_regulation_versions')
-    .select('id, regulation_key, version_label, title, status, implementation_mode, source_document_url, effective_date, created_at, updated_at')
+  const query = supabase.from('council_regulation_versions')
+    .select('id, regulation_key, version_label, title, status, implementation_mode, source_document_url, effective_date, is_active, published_at, advisor_review_comment, student_affairs_review_comment, management_approval_comment, created_at, updated_at')
     .neq('status', 'archived')
     .order('created_at', { ascending: false })
+  let { data, error } = await query
+  if (error && ['42703', 'PGRST204'].includes(error.code)) {
+    const fallback = await supabase.from('council_regulation_versions')
+      .select('id, regulation_key, version_label, title, status, implementation_mode, source_document_url, effective_date, created_at, updated_at')
+      .neq('status', 'archived').order('created_at', { ascending: false })
+    data = fallback.data; error = fallback.error
+  }
   if (error) throw error
   return data ?? []
+}
+
+export async function submitCouncilRegulationForAdvisor(versionId, reason = '') {
+  const { data, error } = await supabase.rpc('submit_council_regulation_for_advisor', {
+    p_version_id: versionId, p_reason: reason || null,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function reviewCouncilRegulationAsAdvisor(versionId, approve, comment = '') {
+  const { data, error } = await supabase.rpc('review_council_regulation_as_advisor', {
+    p_version_id: versionId, p_approve: !!approve, p_comment: comment || null,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function reviewCouncilRegulationAsStudentAffairs(versionId, approve, comment = '') {
+  const { data, error } = await supabase.rpc('review_council_regulation_as_student_affairs', {
+    p_version_id: versionId, p_approve: !!approve, p_comment: comment || null,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function approveCouncilRegulationAsManagement(versionId, comment = '') {
+  const { data, error } = await supabase.rpc('approve_council_regulation_as_management', {
+    p_version_id: versionId, p_comment: comment || null,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function publishCouncilRegulation(versionId, effectiveDate, comment = '') {
+  const { data, error } = await supabase.rpc('publish_council_regulation', {
+    p_version_id: versionId, p_effective_date: effectiveDate, p_comment: comment || null,
+  })
+  if (error) throw error
+  return data
 }
 
 export async function getCouncilRegulationContent(versionId) {
