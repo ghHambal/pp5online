@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.882'
+import { APP_VERSION } from './version.js?v=10.22.883'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.883': [
+    '🖼️ โลโก้สถานศึกษา: แก้พรีวิวและเอกสารแสดงรูปเก่าหลังอัปโหลด โดยเพิ่ม cache-busting ให้ไฟล์โลโก้ใหม่',
+  ],
   '10.22.882': [
     '📊 เอกสาร ปพ.5 หน้าคะแนน: ขยายคอลัมน์ประเมินการอ่านให้รองรับคำว่า “ไม่ผ่าน” ในบรรทัดเดียว',
   ],

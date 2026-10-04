@@ -3452,7 +3452,12 @@ export async function renderSettings() {
           const hidden = document.getElementById(`cfg-${key}`)
           fi.disabled = true
           try {
-            const url = await uploadSystemAsset(key, file)
+            const uploadedUrl = await uploadSystemAsset(key, file)
+            // โลโก้ใช้ path เดิมแบบ upsert — เติม query version เพื่อบังคับให้
+            // Browser/CDN ดึงภาพใหม่ ไม่แสดงไฟล์เก่าที่ cache ด้วย URL เดิม
+            const url = /(?:LogoUrl|LogoBwUrl)$/.test(key)
+              ? `${uploadedUrl}${uploadedUrl.includes('?') ? '&' : '?'}v=${Date.now()}`
+              : uploadedUrl
             if (hidden) hidden.value = url
             await updateSystemConfig(key, url)
             showToast(`อัปโหลดสำเร็จ ✅`, 'success')
