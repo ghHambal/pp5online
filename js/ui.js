@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.888'
+import { APP_VERSION } from './version.js?v=10.22.889'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.889': [
+    '🤖 คำอธิบายรายวิชา: เพิ่มเครื่องมือสร้าง Prompt สำหรับใช้กับ AI ภายนอก รองรับวาง JSON ตรวจสอบ และนำเข้าข้อมูลกลับมาให้ครูตรวจทานก่อนบันทึก',
+  ],
   '10.22.888': [
     '📚 ขึ้นภาคเรียนใหม่: ยืนยันว่าบัญชีครู/นักเรียนและข้อมูลประวัติยังคงอยู่ แต่พื้นที่คอร์ส ห้องเรียน และการลงทะเบียนของภาคใหม่เริ่มว่าง',
   ],
