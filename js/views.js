@@ -2369,6 +2369,9 @@ export async function renderSettings() {
             </span>
             <input type="file" accept="image/*" class="hidden cfg-upload-file" data-key="${key}" />
           </label>
+          ${/(?:LogoUrl|LogoBwUrl)$/.test(key) ? `<button type="button"
+            class="cfg-upload-clear ${val ? '' : 'hidden'} flex-shrink-0 px-3 py-2 rounded-lg border border-red-200 bg-white text-xs font-semibold text-red-600 hover:bg-red-50 transition"
+            data-key="${key}">🗑️ ล้างโลโก้</button>` : ''}
           <input type="hidden" ${base} value="${val}" />
         </div>`, hint)
 
@@ -3458,9 +3461,30 @@ export async function renderSettings() {
             const iconEl = fi.closest('.flex')?.querySelector('div.w-14')
             if (imgEl) { imgEl.src = url }
             else if (iconEl) { iconEl.outerHTML = `<img src="${url}" class="h-14 max-w-[140px] object-contain rounded-lg border border-gray-200 bg-white p-1" />` }
+            fi.closest('.flex')?.querySelector('.cfg-upload-clear')?.classList.remove('hidden')
           } catch (err) {
             showToast('อัปโหลดไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
           } finally { fi.disabled = false }
+        })
+      })
+
+      document.querySelectorAll('#cfg-panel-inner .cfg-upload-clear').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const key = btn.dataset.key
+          if (!key || !confirm('ต้องการล้างโลโก้นี้ออกจากการตั้งค่าหรือไม่?')) return
+          btn.disabled = true
+          try {
+            await updateSystemConfig(key, '')
+            const row = btn.closest('.flex')
+            const hidden = document.getElementById(`cfg-${key}`)
+            if (hidden) hidden.value = ''
+            const img = row?.querySelector('img')
+            if (img) img.outerHTML = '<div class="w-14 h-14 rounded-lg bg-gray-200 flex items-center justify-center text-gray-400 text-2xl">🖼️</div>'
+            btn.classList.add('hidden')
+            showToast('ล้างโลโก้แล้ว ✅', 'success')
+          } catch (err) {
+            showToast('ล้างโลโก้ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
+          } finally { btn.disabled = false }
         })
       })
     }

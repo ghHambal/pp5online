@@ -273,6 +273,16 @@ function _configPrefix(subjectGroup) {
   return subjectGroup === 'ACDMVOC' ? 'porwor' : 'samai'
 }
 
+// เลือกโลโก้จากชุด identity ของเอกสารเท่านั้น
+// ห้าม fallback ข้ามจาก porwor ไป samai เพราะจะทำให้เอกสารวิทยาลัย/โรงเรียน
+// แสดงตราของอีกฝั่งเมื่อคีย์หนึ่งยังว่างหรือถูกล้างไว้
+function _documentLogoUrl(cfg = {}, prefix, preferColor = false) {
+  const keys = preferColor
+    ? [`${prefix}LogoUrl`, `${prefix}LogoBwUrl`]
+    : [`${prefix}LogoBwUrl`, `${prefix}LogoUrl`]
+  return keys.map(key => cfg?.[key]).find(Boolean) || ''
+}
+
 // ตัดชื่อห้องเหลือแค่ระดับชั้น เช่น "ม.5/6 Ash-Shafi'i" → "ม.5/6"
 function _shortRoom(name) {
   return String(name ?? '').split(' ')[0]
@@ -946,7 +956,7 @@ function _buildPage1(d) {
   const schoolName    = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
   const schoolAddress = _esc(cfg[`${prefix}SchoolAddress`] ?? cfg.samaiSchoolAddress ?? '')
   // ใช้โลโก้ขาวดำสำหรับเอกสาร
-  const logoUrl = cfg[`${prefix}LogoBwUrl`] || cfg[`${prefix}LogoUrl`] || cfg.samaiLogoBwUrl || cfg.samaiLogoUrl || ''
+  const logoUrl = _documentLogoUrl(cfg, prefix)
 
   const dirName    = _esc(cfg[`${prefix}DirectorName`] ?? '')
   const dirSign    = cfg[`${prefix}DirectorSignUrl`] ?? ''
@@ -1203,7 +1213,7 @@ function _buildPage2(d) {
   const _deptFieldLabel = ms.subject_group === 'ACDMVOC' ? 'สาขาวิชา' : 'กลุ่มสาระการเรียนรู้'
   const _headFieldLabel = ms.subject_group === 'ACDMVOC' ? 'หัวหน้าสาขาวิชา' : 'หัวหน้ากลุ่มสาระฯ'
 
-  const logoUrl  = cfg[`${prefix}LogoBwUrl`] || cfg[`${prefix}LogoUrl`] || cfg.samaiLogoBwUrl || cfg.samaiLogoUrl || ''
+  const logoUrl  = _documentLogoUrl(cfg, prefix)
   const rawRows = Array.isArray(courseDoc?.table_rows) ? courseDoc.table_rows : []
   // ทิศทางข้อความของเนื้อหา (ตั้งโดยครู)
   const contentDir = courseDoc?.text_direction === 'rtl' ? 'rtl'
@@ -1362,7 +1372,7 @@ function _buildPage3(d) {
 
 function _buildAttPage(d, chunk, startNo) {
   const { cls, ms, teacher, academicYear, semester, cfg, prefix } = d
-  const logoUrl = cfg?.[`${prefix}LogoBwUrl`] || cfg?.[`${prefix}LogoUrl`] || cfg?.samaiLogoBwUrl || cfg?.samaiLogoUrl || ''
+  const logoUrl = _documentLogoUrl(cfg, prefix)
   const ATT_COLS = 40
   // adaptive row height: available ≈ 281 - 40 (header) = 241mm ÷ (n + 1 แถวเปล่า)
   const nRows = chunk.length + 1
@@ -1661,7 +1671,7 @@ function _buildPage5(d) {
   const COLS       = 3
   // ยึดจำนวนคาบ/สัปดาห์จริงจาก sessions (มาจากตารางสอนจริง) ให้ตรงกับตอน generate ใน _generateSessions
   const perWeek    = sessions?.length ? Math.round(sessions.length / 20) : Math.max(1, Math.round(credit * 2))
-  const logoUrl    = cfg?.[`${prefix}LogoBwUrl`] || cfg?.[`${prefix}LogoUrl`] || cfg?.samaiLogoBwUrl || cfg?.samaiLogoUrl || ''
+  const logoUrl    = _documentLogoUrl(cfg, prefix)
 
   // แจกคาบลงแต่ละกลุ่ม: col0=คาบ1-40, col1=คาบ41-80, col2=คาบ81-120
   const colData = Array.from({length: COLS}, (_, ci) =>
@@ -1757,7 +1767,7 @@ function _buildPage1VOC(d) {
   const { cls, ms, credit, prefix, cfg, students, scoreColumns, scoreMap, teacher, deptNameTH, deptHeadName: _deptHeadNameRaw, hrSamai, hrReligion, academicYear, semester, sessions, moralScores, moralMax } = d
 
   const schoolName = _esc(cfg[`${prefix}SchoolName`] ?? cfg.samaiSchoolName ?? '')
-  const logoUrl = cfg[`${prefix}LogoUrl`] || cfg[`${prefix}LogoBwUrl`] || cfg.samaiLogoUrl || cfg.samaiLogoBwUrl || ''
+  const logoUrl = _documentLogoUrl(cfg, prefix, true)
 
   const dirName  = _esc(cfg[`${prefix}DirectorName`] ?? '')
   const dirTitle = _esc(cfg[`${prefix}DirectorTitle`] || 'ผู้อำนวยการ')

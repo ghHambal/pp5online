@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.880'
+import { APP_VERSION } from './version.js?v=10.22.881'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.881': [
+    '🖼️ โลโก้เอกสาร ปพ.5: แยกโลโก้โรงเรียนกับวิทยาลัยไม่ให้ fallback ข้ามกัน และเพิ่มปุ่มล้างโลโก้ในหน้าตั้งค่าสถานศึกษา',
+  ],
   '10.22.880': [
     '📘 ศูนย์ระเบียบสภานักเรียน: เพิ่ม workflow ตรวจทาน R1–R4 ตั้งแต่ฉบับร่าง ส่งครูที่ปรึกษา ฝ่ายกิจการนักเรียน ผู้บริหารอนุมัติ จนถึงเผยแพร่ โดยยังไม่เปิดส่วนสถานะนักเรียนในหน้าครู',
   ],
