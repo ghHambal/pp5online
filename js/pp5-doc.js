@@ -828,6 +828,7 @@ function _getCSS() {
     .grade-sheet th { font-weight: 700; }
     .grade-sheet .gs-name { text-align: left; padding-left: 2mm; }
     .grade-sheet .grade-attr { white-space: nowrap; }
+    .grade-sheet .grade-reading { white-space: nowrap; min-width: 13mm; }
     .grade-sheet .v { height: 25mm !important; padding: 0; overflow: visible; }
     .grade-sheet .v > span { writing-mode: vertical-rl; transform: rotate(180deg); display: inline-block; white-space: nowrap; line-height: 1; font-size: 9px; overflow: visible; }
     .grade-sheet .gs-small { font-size: 9px; }
@@ -1533,7 +1534,7 @@ function _buildScorePage(d, chunk, startNo) {
         <td>${_esc(st.student_code??'')}</td>
         <td class="gs-name" style="border-right:2.0px solid #000;">${_esc(st.full_name??'')}</td>
         ${allBetween.map(()=>'<td></td>').join('')}
-        <td></td>
+        <td class="grade-reading"></td>
         ${allFinal.map(()=>'<td></td>').join('')}
         <td></td>
         <td style="border-right:2.0px solid #000;"></td>
@@ -1564,7 +1565,7 @@ function _buildScorePage(d, chunk, startNo) {
       ${fScores.map(v=>`<td>${v}</td>`).join('')}
       <td style="font-weight:700;">${displayScore(d.roundSettings, 'fin_subtotal', fSum)}</td>
       <td style="font-weight:700;border-right:2.0px solid #000;">${displayScore(d.roundSettings, 'total', total)}</td>
-      <td>${_esc(readingEvalMap?.[st.id] ?? '')}</td>
+      <td class="grade-reading">${_esc(readingEvalMap?.[st.id] ?? '')}</td>
       <td class="grade-attr" style="border-right:2.0px solid #000;">${_esc(charLabel)}</td>
       <td style="font-weight:700;${forcedGrade ? `color:${forcedGradeColor === 'red' ? '#c00' : '#000'};` : ''}">${grade}</td>
     </tr>`
@@ -1594,7 +1595,7 @@ function _buildScorePage(d, chunk, startNo) {
         ${allFinal.map(()=>`<col style="width:${fW};"/>`).join('')}
         <col style="width:7mm;"/>
         <col style="width:8mm;"/>
-        <col style="width:8.5mm;"/>
+        <col style="width:13mm;"/>
         <col style="width:11mm;"/>
         <col style="width:6mm;"/>
       </colgroup>

@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.881'
+import { APP_VERSION } from './version.js?v=10.22.882'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.882': [
+    '📊 เอกสาร ปพ.5 หน้าคะแนน: ขยายคอลัมน์ประเมินการอ่านให้รองรับคำว่า “ไม่ผ่าน” ในบรรทัดเดียว',
+  ],
   '10.22.881': [
     '🖼️ โลโก้เอกสาร ปพ.5: แยกโลโก้โรงเรียนกับวิทยาลัยไม่ให้ fallback ข้ามกัน และเพิ่มปุ่มล้างโลโก้ในหน้าตั้งค่าสถานศึกษา',
   ],
