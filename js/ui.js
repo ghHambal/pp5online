@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.887'
+import { APP_VERSION } from './version.js?v=10.22.888'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.888': [
+    '📚 ขึ้นภาคเรียนใหม่: ยืนยันว่าบัญชีครู/นักเรียนและข้อมูลประวัติยังคงอยู่ แต่พื้นที่คอร์ส ห้องเรียน และการลงทะเบียนของภาคใหม่เริ่มว่าง',
+  ],
   '10.22.887': [
     '🗃️ Full Backup ครอบคลุมข้อมูลทุกตารางและไฟล์ Storage พร้อมเขียนไฟล์ขนาดใหญ่แบบสตรีมลงดิสก์',
   ],
