@@ -378,6 +378,35 @@ const COURSE_DOC_LANGS = {
     toastAIDone: 'AI ร่างข้อมูลให้แล้ว - กรุณาตรวจสอบความถูกต้องก่อนบันทึก',
     toastImgDone: 'AI อ่านจากรูปภาพแล้ว - กรุณาตรวจสอบความถูกต้องก่อนบันทึก',
   },
+  en: {
+    key: 'en', dir: 'ltr', aiLang: 'formal English',
+    label: 'English', title: 'Course Description', close: 'Close', save: 'Save', saving: 'Saving...',
+    helpTitle: 'Help me fill this in', helpSub: 'Enter the lessons/topics below, then choose a filling method',
+    topicLabel: 'Lessons / Topics (add multiple)', topicPlaceholder: 'e.g. Statistics, Exponents, Reading comprehension', addTopic: 'Add topic',
+    btnCurriculum: 'Find curriculum', btnCurriculumSub: 'Curriculum database', btnCurriculumLoading: 'Searching...',
+    btnAI: 'Draft with AI', btnAISub: 'Gemini + topics', btnAILoading: 'AI is drafting...',
+    btnExternalAI: 'Use my AI', btnExternalAISub: 'Copy Prompt + paste JSON',
+    btnImg: 'Read image', btnImgSub: 'AI reads image', btnImgLoading: 'Reading...',
+    descLabel: 'Course description / overall learning outcomes', descPlaceholder: 'Write in English or another language; text direction is supported automatically',
+    dirLabel: 'Text direction', dirAuto: 'Automatic', dirRTL: 'Right to left', dirLTR: 'Left to right',
+    signerLabel: 'Signatory', signerPlaceholder: 'Head of learning area', signerHint: 'Used as the learning-area head in the document',
+    tableTitle: 'Standards / Indicators / Learning outcomes', tableHint: 'Rows containing text become selectable assessment items',
+    tplBasic: 'Basic: 2 columns', tplExtra: 'Additional: 1 column', addCol: '+ Column', addRow: '+ Row', rowHeader: 'No.', delRow: 'Delete',
+    objTitle: 'Assessment objectives', objHint: '(click to select)', between: 'During term', mid: 'Midterm', final: 'Final',
+    noOpts: 'No selectable items yet', notSelected: 'Not selected',
+    colsBasic: ['Learning standards', 'Indicators'], colsExtra: ['Learning outcomes'], colNew: n => `Column ${n}`,
+    pickerTitles: { mid: 'Select midterm items', between: 'Select during-term items', final: 'Select final items' },
+    pickerCancel: 'Cancel', pickerOk: 'OK',
+    confirmOverwrite: 'Searching the curriculum will overwrite existing data. Continue?',
+    confirmAIOverwrite: 'Let AI draft new content over the existing data?',
+    confirmImgOverwrite: 'Fill from the image and overwrite existing data?',
+    confirmColChange: 'Change the column format? Existing data will be fitted to the new columns.',
+    toastSaved: 'Course description saved',
+    toastSearchOk: n => `Found ${n} curriculum items - please review before saving`,
+    toastSearchEmpty: 'No curriculum items found - try Draft with AI instead',
+    toastAIDone: 'AI drafted the content - please review it carefully before saving',
+    toastImgDone: 'AI read the image - please review the content before saving',
+  },
   jawi: {
     key: 'jawi', dir: 'rtl', aiLang: 'bahasa Melayu tulisan Jawi. Semua teks mestilah dalam tulisan Jawi, bukan Rumi.',
     label: 'يَاوِي', title: 'كتراڠن مات ڤلاجارن', close: 'توتوڤ', save: 'سيمڤن', saving: 'سداڠ سيمڤن...',
@@ -525,6 +554,31 @@ export async function openCourseDocPage2Modal(teacher, course) {
   modal.id = 'course-doc-page2-modal'
   modal.className = 'fixed inset-0 z-[160] bg-white flex flex-col'
   document.body.appendChild(modal)
+
+  const courseDescriptionGuideUrl = `${import.meta.env.BASE_URL || '/'}course-doc/course-description-guide.png`
+  const openCourseDescriptionGuide = () => {
+    document.getElementById('course-description-guide-modal')?.remove()
+    const guide = document.createElement('div')
+    guide.id = 'course-description-guide-modal'
+    guide.className = 'fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/70 p-3 sm:p-6'
+    guide.innerHTML = `<div role="dialog" aria-modal="true" aria-labelledby="course-description-guide-title" class="relative flex max-h-[96vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div class="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 sm:px-5">
+        <div class="min-w-0"><h3 id="course-description-guide-title" class="truncate text-sm font-extrabold text-gray-800 sm:text-base">📘 คู่มือการเขียนคำอธิบายรายวิชา</h3><p class="mt-0.5 text-[11px] text-gray-400">โปรดอ่านแนวทางก่อนสร้าง Prompt หรือวาง JSON จาก AI</p></div>
+        <button type="button" data-guide-close aria-label="ปิดคู่มือ" class="min-h-[40px] shrink-0 rounded-xl border border-gray-200 px-3 text-sm font-bold text-gray-500 hover:bg-gray-50">ปิด</button>
+      </div>
+      <div class="min-h-0 overflow-y-auto bg-slate-50 p-2 sm:p-4"><img src="${courseDescriptionGuideUrl}" alt="คู่มือการเขียนคำอธิบายรายวิชาพื้นฐานและรายวิชาเพิ่มเติมตามแนวทาง สพฐ." class="mx-auto block h-auto max-h-[calc(96vh-120px)] w-auto max-w-full rounded-xl object-contain shadow-sm" /></div>
+      <div class="flex justify-end border-t border-gray-100 bg-white px-4 py-3 sm:px-5"><button type="button" data-guide-close class="min-h-[42px] rounded-xl bg-emerald-600 px-5 text-sm font-bold text-white hover:bg-emerald-700">เข้าใจแล้ว เริ่มกรอกข้อมูล</button></div>
+    </div>`
+    document.body.appendChild(guide)
+    const close = () => {
+      guide.remove()
+      document.removeEventListener('keydown', onKey)
+    }
+    const onKey = event => { if (event.key === 'Escape') close() }
+    guide.addEventListener('click', event => { if (event.target === guide) close() })
+    guide.querySelectorAll('[data-guide-close]').forEach(button => button.addEventListener('click', close))
+    document.addEventListener('keydown', onKey)
+  }
 
   const dirAttr = () => textDir === 'auto' ? 'auto' : textDir
   const selectedText = (items, extra = '') => {
@@ -889,10 +943,19 @@ export async function openCourseDocPage2Modal(teacher, course) {
 
   const buildExternalCoursePrompt = () => {
     syncFromDom()
+    const L = i18n()
+    const isBasicStructure = !isVOC && columns.length === 2 && (!course.subject_group || ['ACDM', 'AGM'].includes(course.subject_group))
+    const isAdditionalStructure = !isVOC && columns.length === 1
+    const structureGuidance = isBasicStructure
+      ? `รูปแบบรายวิชาพื้นฐาน (2 คอลัมน์): ยึดมาตรฐานการเรียนรู้และตัวชี้วัดเป็นหลัก ในคำอธิบายให้เขียนเป็นความเรียงสรุปว่าเรียนอะไร ใช้กระบวนการใด และคาดหวังให้ผู้เรียนเกิดความรู้/ทักษะอะไร ตอนท้ายอาจระบุรหัสตัวชี้วัดที่เกี่ยวข้องได้ แต่ห้ามคัดลอกข้อความตัวชี้วัดทั้งหมดมาเรียงเป็นคำอธิบาย; ในตารางให้ใส่รหัสมาตรฐาน/ตัวชี้วัดและข้อความตัวชี้วัดฉบับเต็ม`
+      : isAdditionalStructure
+        ? `รูปแบบรายวิชาเพิ่มเติม (1 คอลัมน์): ยึดผลการเรียนรู้เป็นหลัก เขียนคำอธิบายตามลักษณะ เนื้อหา และเป้าหมายของรายวิชา ไม่ใช้มาตรฐาน/ตัวชี้วัดเป็นแกนหลัก; ในตารางให้ใส่ผลการเรียนรู้ที่ตรวจสอบได้`
+        : 'รูปแบบคอลัมน์อิสระ: ยึดชื่อคอลัมน์และข้อมูลที่ครูกำหนดเป็นหลัก จัดเนื้อหาให้สอดคล้องกัน โดยยังคงหลักการเขียนคำอธิบายเป็นความเรียงและไม่คัดลอกข้อความหลักสูตรทั้งชุด'
     const current = {
       subject_code: course.subject_code ?? '', subject_name: course.subject_name ?? '',
       grade_level: course.grade_level ?? '', subject_group: course.subject_group ?? '',
       learning_area: deptThai, credit: course.credit ?? '',
+      target_language: L.aiLang,
       is_voc: isVOC,
       topics: topicList.filter(Boolean), description,
       table_columns: columns, table_rows: rows.filter(row => row.some(cell => String(cell ?? '').trim())),
@@ -900,6 +963,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
       voc_schedule: isVOC ? vocSchedule.filter(row => Object.values(row).some(value => String(value ?? '').trim())) : [],
     }
     return `คุณเป็นผู้ช่วยจัดทำเอกสารคำอธิบายรายวิชา ปพ.5 สำหรับครูผู้สอน
+เขียนค่าข้อมูลทุกช่องที่เป็นเนื้อหาเป็น${L.aiLang} ตามภาษาที่ครูเลือกอยู่ในขณะนี้ ส่วนชื่อ field ใน JSON ต้องคงเป็นภาษาอังกฤษตาม schema
 
 งานที่ต้องทำ:
 1. จัดทำคำอธิบายรายวิชา/ผลการเรียนรู้ภาพรวมให้เป็นภาษาทางการ กระชับ และเหมาะกับระดับชั้น
@@ -913,6 +977,8 @@ ${JSON.stringify(current, null, 2)}
 
 ข้อกำหนดสำคัญ:
 - ใช้ข้อมูลจากหลักสูตร หนังสือเรียน หรือเอกสารที่ผู้ใช้แนบเป็นหลัก และห้ามเดาข้อมูลที่ไม่มีแหล่งอ้างอิง
+- แนวทางการเขียนตามคู่มือ: ${structureGuidance}
+- คำอธิบายรายวิชาต้องสรุปสาระสำคัญ กระบวนการเรียนรู้ และผลที่คาดหวังให้ผู้เรียนเกิดขึ้น ไม่ใช่รายการคัดลอกมาตรฐาน/ตัวชี้วัดหรือผลการเรียนรู้ทั้งหมด
 - table_rows ต้องเป็น array ของ array และจำนวนช่องต้องตรงกับ table_columns
 - หมายเลขใน between_objective_items, midterm_objective_items และ final_objective_items ต้องอ้างถึงแถวที่มีอยู่จริง
 - ตอบกลับเป็น JSON ตาม schema นี้เท่านั้น โดยครูจะนำ JSON กลับมาวางในระบบเพื่อให้ตรวจสอบก่อนบันทึก
@@ -1077,6 +1143,9 @@ ${JSON.stringify(externalDocExample, null, 2)}`
     const tableMode = isExtra
       ? `single column named "${colNames[0]}"`
       : `two columns named "${colNames[0]}" and "${colNames[1]}"`
+    const writingGuidance = isExtra
+      ? 'รายวิชาเพิ่มเติม: ใช้ผลการเรียนรู้เป็นหลัก เขียนคำอธิบายตามลักษณะ เนื้อหา และเป้าหมายของรายวิชา ไม่ใช้มาตรฐาน/ตัวชี้วัดเป็นแกนหลัก และให้ตารางสะท้อนผลการเรียนรู้ที่ตรวจสอบได้'
+      : 'รายวิชาพื้นฐาน: ใช้มาตรฐานการเรียนรู้และตัวชี้วัดเป็นหลัก เขียนคำอธิบายเป็นความเรียงสรุปสาระ กระบวนการ และผลที่คาดหวัง ไม่คัดลอกตัวชี้วัดทั้งหมดมาเรียงเป็นคำอธิบาย และให้ตารางมีรหัสพร้อมข้อความตัวชี้วัดฉบับเต็ม'
     const prompt = `You are an assistant helping a teacher prepare a PP5 course-description document.
 IMPORTANT: Write all generated content in ${L.aiLang}. Do not mix languages unless the source course content requires it.
 
@@ -1093,6 +1162,7 @@ IMPORTANT: Write all generated content in ${L.aiLang}. Do not mix languages unle
 2. สร้างรายการในตารางตามรูปแบบนี้: ${tableMode}
 3. สร้างประมาณ 5-8 ข้อที่ใช้เป็นตัวเลือกข้อจุดประสงค์วัดผล
 4. เลือกข้อสำหรับกลางภาคและปลายภาคอย่างเหมาะสม
+5. แนวทางการเขียน: ${writingGuidance}
 
 Return JSON object เท่านั้น:
 {
@@ -1423,6 +1493,7 @@ Output language: ${L.aiLang}
   }
 
   render()
+  openCourseDescriptionGuide()
 }
 
 // ─── Course Registration Form (2.1) ──────────────────────────────────────────
