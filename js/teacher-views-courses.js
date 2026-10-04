@@ -356,6 +356,7 @@ const COURSE_DOC_LANGS = {
     topicLabel: 'บท / เรื่องที่สอน (เพิ่มได้หลายบท)', topicPlaceholder: 'เช่น สถิติ, เลขกำลัง, การอ่านจับใจความ', addTopic: 'เพิ่มบท',
     btnCurriculum: 'ค้นหลักสูตร', btnCurriculumSub: 'ฐานข้อมูลแกนกลาง', btnCurriculumLoading: 'กำลังค้น...',
     btnAI: 'ให้ AI ร่าง', btnAISub: 'Gemini + บทที่ระบุ', btnAILoading: 'AI กำลังร่าง...',
+    btnExternalAI: 'ใช้ AI ของฉัน', btnExternalAISub: 'คัดลอก Prompt + วาง JSON',
     btnImg: 'อ่านจากรูป', btnImgSub: 'AI อ่านภาพถ่าย', btnImgLoading: 'กำลังอ่าน...',
     descLabel: 'คำอธิบายรายวิชา / ผลการเรียนรู้ภาพรวม', descPlaceholder: 'พิมพ์ภาษาไทย อาหรับ หรือภาษาอื่นได้ ระบบจะรองรับทิศทางข้อความอัตโนมัติ',
     dirLabel: 'ทิศทางข้อความ', dirAuto: 'อัตโนมัติ', dirRTL: 'ขวาไปซ้าย (Arabic)', dirLTR: 'ซ้ายไปขวา',
@@ -593,8 +594,8 @@ export async function openCourseDocPage2Modal(teacher, course) {
               </button>
             </div>
 
-            <!-- 3 action buttons grid -->
-            <div class="grid grid-cols-3 gap-2 mt-4">
+            <!-- AI / curriculum action buttons -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
               <div class="flex flex-col items-center gap-1">
                 <button id="cd2-search-curriculum"
                   class="w-full py-2.5 rounded-xl bg-teal-600 text-white text-xs font-semibold hover:bg-teal-700 disabled:opacity-50 flex items-center justify-center gap-1">
@@ -618,6 +619,13 @@ export async function openCourseDocPage2Modal(teacher, course) {
                   <input type="file" id="cd2-img-input" accept="image/*" class="hidden" />
                 </label>
                 <span class="text-[10px] text-gray-400 text-center">${L.btnImgSub}</span>
+              </div>
+              <div class="flex flex-col items-center gap-1">
+                <button id="cd2-external-ai" type="button"
+                  class="w-full py-2.5 rounded-xl bg-violet-600 text-white text-xs font-semibold hover:bg-violet-700 flex items-center justify-center gap-1">
+                  🤖 ${L.btnExternalAI || 'ใช้ AI ของฉัน'}
+                </button>
+                <span class="text-[10px] text-gray-400 text-center">${L.btnExternalAISub || 'คัดลอก Prompt + วาง JSON'}</span>
               </div>
             </div>
 
@@ -856,6 +864,186 @@ export async function openCourseDocPage2Modal(teacher, course) {
     if (!finalItems.length)   finalItems   = opts.slice(-Math.min(3, opts.length))
   }
 
+  const stripJsonFence = value => String(value ?? '').trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+
+  const externalDocExample = {
+    schema_version: 'pp5.course_description.v1',
+    type: 'course_description',
+    course: {
+      subject_code: course.subject_code ?? '', subject_name: course.subject_name ?? '',
+      grade_level: course.grade_level ?? '', learning_area: deptThai,
+    },
+    description: 'คำอธิบายรายวิชาโดยสรุป...',
+    topic_list: ['บทที่ 1 ...', 'บทที่ 2 ...'],
+    table_columns: ['มาตรฐานการเรียนรู้', 'ตัวชี้วัด'],
+    table_rows: [['ค 1.1', 'เข้าใจ...'], ['ค 1.2', 'วิเคราะห์...']],
+    between_objective_items: [1], between_objective_extra: '',
+    midterm_objective_items: [1, 2], midterm_objective_extra: '',
+    final_objective_items: [2], final_objective_extra: '',
+    signer_name: '', text_direction: 'auto',
+    voc_objectives: [{ objective: '', competency: '' }],
+    voc_schedule: [{ week: '1', content: '', note: '' }],
+  }
+
+  const buildExternalCoursePrompt = () => {
+    syncFromDom()
+    const current = {
+      subject_code: course.subject_code ?? '', subject_name: course.subject_name ?? '',
+      grade_level: course.grade_level ?? '', subject_group: course.subject_group ?? '',
+      learning_area: deptThai, credit: course.credit ?? '',
+      is_voc: isVOC,
+      topics: topicList.filter(Boolean), description,
+      table_columns: columns, table_rows: rows.filter(row => row.some(cell => String(cell ?? '').trim())),
+      voc_objectives: isVOC ? vocObjectives.filter(row => Object.values(row).some(value => String(value ?? '').trim())) : [],
+      voc_schedule: isVOC ? vocSchedule.filter(row => Object.values(row).some(value => String(value ?? '').trim())) : [],
+    }
+    return `คุณเป็นผู้ช่วยจัดทำเอกสารคำอธิบายรายวิชา ปพ.5 สำหรับครูผู้สอน
+
+งานที่ต้องทำ:
+1. จัดทำคำอธิบายรายวิชา/ผลการเรียนรู้ภาพรวมให้เป็นภาษาทางการ กระชับ และเหมาะกับระดับชั้น
+2. จัดทำรายการบท/หัวข้อการเรียนรู้ใน topic_list
+3. จัดทำตารางมาตรฐานการเรียนรู้ ตัวชี้วัด หรือผลการเรียนรู้ ให้สอดคล้องกับข้อมูลหลักสูตรที่แนบหรือผู้ใช้ให้มา
+4. เลือกหมายเลขแถวที่เหมาะสมสำหรับการประเมินระหว่างภาค กลางภาค และปลายภาค
+5. ${isVOC ? 'สำหรับ ACDMVOC ให้จัดทำ voc_objectives และ voc_schedule ด้วย โดยไม่ต้องสร้างรหัสมาตรฐานขึ้นเอง' : 'หากไม่มีข้อมูลมาตรฐาน/ตัวชี้วัดที่เชื่อถือได้ ให้ระบุข้อความที่ต้องตรวจสอบเพิ่มเติมแทนการแต่งรหัสขึ้นเอง'}
+
+ข้อมูลรายวิชาจากระบบ PP5:
+${JSON.stringify(current, null, 2)}
+
+ข้อกำหนดสำคัญ:
+- ใช้ข้อมูลจากหลักสูตร หนังสือเรียน หรือเอกสารที่ผู้ใช้แนบเป็นหลัก และห้ามเดาข้อมูลที่ไม่มีแหล่งอ้างอิง
+- table_rows ต้องเป็น array ของ array และจำนวนช่องต้องตรงกับ table_columns
+- หมายเลขใน between_objective_items, midterm_objective_items และ final_objective_items ต้องอ้างถึงแถวที่มีอยู่จริง
+- ตอบกลับเป็น JSON ตาม schema นี้เท่านั้น โดยครูจะนำ JSON กลับมาวางในระบบเพื่อให้ตรวจสอบก่อนบันทึก
+- ต้องตอบเป็นโค้ด JSON เพียงกล่องเดียวชนิด json ห้ามมีคำอธิบายก่อนหรือหลังกล่อง
+
+ตัวอย่าง schema:
+${JSON.stringify(externalDocExample, null, 2)}`
+  }
+
+  const parseExternalCourseDoc = raw => {
+    let data
+    try { data = JSON.parse(stripJsonFence(raw)) } catch {
+      throw new Error('JSON ไม่ถูกต้อง กรุณาตรวจเครื่องหมายปีกกาและเครื่องหมายคำพูด')
+    }
+    if (data?.type !== 'course_description') throw new Error('ต้องเป็น JSON ประเภท course_description')
+    if (!String(data.description ?? '').trim()) throw new Error('ยังไม่มี description คำอธิบายรายวิชา')
+    const hasTable = Array.isArray(data.table_columns) && data.table_columns.length && Array.isArray(data.table_rows)
+    if (!isVOC && !hasTable) throw new Error('ต้องมี table_columns และ table_rows สำหรับรายวิชานี้')
+    if (hasTable && !data.table_rows.some(row => Array.isArray(row) && row.some(cell => String(cell ?? '').trim()))) {
+      throw new Error('ต้องมี table_rows อย่างน้อย 1 แถวที่มีข้อมูล')
+    }
+    if (hasTable && data.table_rows.some(row => !Array.isArray(row) || row.length !== data.table_columns.length)) {
+      throw new Error('จำนวนช่องใน table_rows ต้องตรงกับจำนวน table_columns')
+    }
+    if (data.text_direction && !['auto', 'rtl', 'ltr'].includes(data.text_direction)) throw new Error('text_direction ต้องเป็น auto, rtl หรือ ltr')
+    const maxRow = data.table_rows?.length ?? 0
+    for (const field of ['between_objective_items', 'midterm_objective_items', 'final_objective_items']) {
+      if (data[field] != null && (!maxRow || !Array.isArray(data[field]) || data[field].some(n => !Number.isInteger(Number(n)) || Number(n) < 1 || Number(n) > maxRow))) {
+        throw new Error(`${field} ต้องเป็นหมายเลขแถวที่มีอยู่จริง`)
+      }
+    }
+    if (isVOC) {
+      if (!Array.isArray(data.voc_objectives) || !data.voc_objectives.length) throw new Error('รายวิชา ACDMVOC ต้องมี voc_objectives')
+      if (!Array.isArray(data.voc_schedule) || !data.voc_schedule.length) throw new Error('รายวิชา ACDMVOC ต้องมี voc_schedule')
+    }
+    return data
+  }
+
+  const applyExternalCourseDoc = data => {
+    if (Array.isArray(data.table_columns) && data.table_columns.length && Array.isArray(data.table_rows)) {
+      applyGeneratedDoc({
+        description: data.description,
+        columns: data.table_columns,
+        rows: data.table_rows,
+        midterm_items: data.midterm_objective_items,
+        between_items: data.between_objective_items,
+        final_items: data.final_objective_items,
+      })
+    } else {
+      description = String(data.description ?? '')
+    }
+    if (Array.isArray(data.topic_list)) {
+      topicList = data.topic_list.map(value => String(value ?? '').trim()).filter(Boolean)
+      if (!topicList.length) topicList = ['']
+    }
+    if (data.between_objective_extra != null) betweenExtra = String(data.between_objective_extra)
+    if (data.midterm_objective_extra != null) midExtra = String(data.midterm_objective_extra)
+    if (data.final_objective_extra != null) finalExtra = String(data.final_objective_extra)
+    if (data.signer_name != null) signerName = String(data.signer_name)
+    if (data.text_direction && ['auto', 'rtl', 'ltr'].includes(data.text_direction)) textDir = data.text_direction
+    if (isVOC) {
+      vocObjectives = normalizeVocRows(data.voc_objectives, ['objective', 'competency'], 10)
+      vocSchedule = normalizeVocRows(data.voc_schedule, ['week', 'content', 'note'], 20)
+    }
+  }
+
+  const openExternalCourseAIModal = () => {
+    document.getElementById('cd2-external-ai-modal')?.remove()
+    const external = document.createElement('div')
+    external.id = 'cd2-external-ai-modal'
+    external.className = 'fixed inset-0 z-[190] flex items-center justify-center bg-black/60 p-3'
+    external.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
+      <div class="flex items-start justify-between gap-3 mb-4">
+        <div><span class="inline-flex px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 text-[10px] font-extrabold mb-2">🤖 AI ของครูเอง</span><h3 class="font-extrabold text-gray-800 text-lg">สร้างคำอธิบายรายวิชาด้วย AI ของคุณ</h3><p class="text-xs text-gray-400 mt-1">คัดลอก Prompt ไปใช้กับ ChatGPT, Gemini หรือ AI อื่น แล้วนำ JSON กลับมาวางเพื่อตรวจสอบและเติมลงแบบฟอร์ม</p></div>
+        <button data-external-close type="button" class="w-10 h-10 rounded-xl border text-gray-400 hover:bg-gray-50">✕</button>
+      </div>
+      <div class="rounded-2xl border border-violet-100 bg-violet-50/70 p-4 mb-4">
+        <p class="text-sm font-extrabold text-violet-900">ขั้นตอนใช้งาน</p>
+        <ol class="mt-2 space-y-1 text-xs text-violet-800 list-decimal list-inside">
+          <li>กดคัดลอก Prompt แล้วนำไปวางใน AI ที่คุณใช้ พร้อมแนบเอกสารหลักสูตร/หนังสือเรียนถ้ามี</li>
+          <li>ให้ AI ตอบกลับเป็น JSON ตามคำสั่ง แล้วคัดลอก JSON มาวางในช่องด้านล่าง</li>
+          <li>กดตรวจ JSON และนำเข้าข้อมูล จากนั้นตรวจทานในแบบฟอร์มก่อนกดบันทึก</li>
+        </ol>
+      </div>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><div class="grid grid-cols-2 gap-2 sm:flex"><button id="cd2-external-generate" type="button" class="min-h-[40px] px-3 rounded-xl bg-violet-700 text-white text-xs font-bold">⚡ สร้าง Prompt ใหม่</button><button id="cd2-external-copy" type="button" class="min-h-[40px] px-3 rounded-xl border border-violet-200 text-violet-700 bg-violet-50 text-xs font-bold">📋 คัดลอก Prompt</button></div></div>
+      <textarea id="cd2-external-prompt" rows="12" readonly class="w-full border rounded-xl p-3 text-[11px] font-mono bg-gray-50"></textarea>
+      <div class="mt-4 pt-4 border-t">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">วาง JSON ที่ได้จาก AI</label><div class="grid grid-cols-2 gap-2 sm:flex"><button id="cd2-external-validate" type="button" class="min-h-[40px] px-3 rounded-xl border border-violet-200 text-violet-700 font-bold text-xs">🔎 ตรวจ JSON</button><button id="cd2-external-import" type="button" class="min-h-[40px] px-3 rounded-xl bg-emerald-600 text-white font-bold text-xs">📥 นำเข้าแบบฟอร์ม</button></div></div>
+        <textarea id="cd2-external-json" rows="10" class="w-full border rounded-xl p-3 text-[11px] font-mono" placeholder='วาง { "schema_version": "pp5.course_description.v1", "type": "course_description", ... } ที่นี่'></textarea>
+        <div id="cd2-external-result" class="hidden mt-2 rounded-xl px-3 py-2 text-xs"></div>
+      </div>
+    </div>`
+    document.body.appendChild(external)
+    const promptText = () => buildExternalCoursePrompt()
+    const showExternalResult = (message, ok) => {
+      const box = external.querySelector('#cd2-external-result')
+      box.className = `mt-2 rounded-xl px-3 py-2 text-xs ${ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'}`
+      box.textContent = message
+    }
+    external.querySelector('#cd2-external-prompt').value = promptText()
+    const close = () => external.remove()
+    external.addEventListener('click', event => { if (event.target === external) close() })
+    external.querySelector('[data-external-close]').addEventListener('click', close)
+    external.querySelector('#cd2-external-generate').addEventListener('click', () => {
+      external.querySelector('#cd2-external-prompt').value = promptText()
+      showToast('สร้าง Prompt แล้ว', 'success')
+    })
+    external.querySelector('#cd2-external-copy').addEventListener('click', async () => {
+      const text = promptText()
+      external.querySelector('#cd2-external-prompt').value = text
+      try { await navigator.clipboard.writeText(text); showToast('คัดลอก Prompt แล้ว', 'success') }
+      catch { external.querySelector('#cd2-external-prompt').select(); document.execCommand('copy'); showToast('คัดลอก Prompt แล้ว', 'success') }
+    })
+    external.querySelector('#cd2-external-validate').addEventListener('click', () => {
+      try {
+        const data = parseExternalCourseDoc(external.querySelector('#cd2-external-json').value)
+        showExternalResult(`JSON ถูกต้อง${data.table_rows?.length ? `: ${data.table_rows.length} แถว` : ''}${isVOC ? ` · ${data.voc_schedule.length} สัปดาห์` : ''}`, true)
+      } catch (err) { showExternalResult(err.message, false) }
+    })
+    external.querySelector('#cd2-external-import').addEventListener('click', () => {
+      try {
+        const data = parseExternalCourseDoc(external.querySelector('#cd2-external-json').value)
+        applyExternalCourseDoc(data)
+        close()
+        aiStatusText = '✅ นำเข้าข้อมูลจาก AI ภายนอกแล้ว — กรุณาตรวจสอบก่อนบันทึก'
+        render()
+        showToast('นำเข้าคำอธิบายรายวิชาแล้ว กรุณาตรวจสอบก่อนบันทึก', 'success')
+      } catch (err) { showExternalResult(err.message, false) }
+    })
+  }
+
   const buildDocFromCurriculum = records => {
     const hasOutcome = records.some(r => String(r.learning_outcome_text ?? '').trim())
     if (hasOutcome) {
@@ -1001,6 +1189,7 @@ Return JSON object เท่านั้น:
       textDir = e.target.value
       render()
     })
+    modal.querySelector('#cd2-external-ai').addEventListener('click', openExternalCourseAIModal)
     // ── ค้นหลักสูตรแกนกลาง (DB เท่านั้น) ─────────────────────────────────────
     modal.querySelector('#cd2-search-curriculum').addEventListener('click', async () => {
       syncFromDom()
