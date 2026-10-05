@@ -3,7 +3,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          getDepartments, getPeriods, createSubject,
          updateClass, deleteClass,
          updateStudent, deleteStudent,
-         getHomeroomTeachers, assignHomeroomTeacher, deleteHomeroomTeacher,
+         getHomeroomTeachers, assignHomeroomTeacher, upsertHomeroomTeachersBatch, deleteHomeroomTeacher,
          getAllCouncilRepNominations,
          getScoreColumnConfig, upsertScoreColumnConfig,
          getUniqueRooms, getUniqueReligionRooms, unlinkTeacherAccount, mergeTeacherAccounts,
@@ -84,6 +84,38 @@ const _esc = value => String(value ?? '')
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;')
+
+function _advisorNameKey(value) {
+  return String(value ?? '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/^(ว่าที่ร้อยตรี|ว่าที่ร้อยโท|ว่าที่ร้อยเอก|นางสาว|น.ส.|นาย|นาง|ดร\.?|คุณ)\s*/u, '')
+    .replace(/[\s._,()\[\]{}\-–—:;"'`]/g, '')
+}
+
+function _advisorEditDistance(a, b) {
+  const aa = [..._advisorNameKey(a)], bb = [..._advisorNameKey(b)]
+  const prev = Array.from({ length: bb.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= aa.length; i++) {
+    const curr = [i]
+    for (let j = 1; j <= bb.length; j++) {
+      curr[j] = Math.min(
+        curr[j - 1] + 1,
+        prev[j] + 1,
+        prev[j - 1] + (aa[i - 1] === bb[j - 1] ? 0 : 1),
+      )
+    }
+    for (let j = 0; j <= bb.length; j++) prev[j] = curr[j]
+  }
+  return prev[bb.length]
+}
+
+function _advisorNameSimilarity(a, b) {
+  const aa = _advisorNameKey(a), bb = _advisorNameKey(b)
+  if (!aa || !bb) return 0
+  if (aa === bb) return 1
+  return 1 - (_advisorEditDistance(aa, bb) / Math.max(aa.length, bb.length))
+}
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 function setActiveNav(viewName) {
@@ -4607,14 +4639,20 @@ export async function renderHomeroom() {
   const curSem    = parseInt(cfg.semester ?? 1)
 
   setContent(`<div class="max-w-5xl mx-auto animate-fade">
-    <div class="flex items-center justify-between mb-5">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
         <p class="text-xs text-gray-400 mt-0.5">ภาคเรียน ${curSem}/${curYear}</p>
       </div>
-      <button id="hr-export-csv"
-        class="text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition">
-        ⬇️ ดาวน์โหลด CSV
-      </button>
+      <div class="flex flex-wrap items-center gap-2">
+        <button id="hr-ai-import" type="button"
+          class="text-xs font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-100 px-4 py-2 rounded-xl transition">
+          🤖 นำเข้าจากคำสั่งแต่งตั้ง (AI)
+        </button>
+        <button id="hr-export-csv"
+          class="text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-xl transition">
+          ⬇️ ดาวน์โหลด CSV
+        </button>
+      </div>
     </div>
 
     <div class="flex gap-2 mb-4">
@@ -4796,6 +4834,292 @@ export async function renderHomeroom() {
     })
     renderResults(allTeachers)
   }
+
+  const _advisorAiPrompt = () => `ฉันจะแนบภาพหรือ PDF คำสั่งแต่งตั้งครูที่ปรึกษาให้คุณอ่าน
+กรุณาอ่านเฉพาะข้อมูลห้องเรียนและชื่อครูที่ปรึกษาจากเอกสาร แล้วส่งผลลัพธ์เป็น JSON เท่านั้น ห้ามใส่ Markdown และห้ามใส่คำอธิบายนอก JSON
+
+ข้อสำคัญ:
+- คัดลอกชื่อครูตามที่ปรากฏในคำสั่งลงใน teacher_name_from_order ห้ามเดาหรือแก้ชื่อให้ถูกเอง
+- หากอ่านชื่อหรือห้องไม่ได้ ให้ใส่ค่าว่างและเพิ่มข้อความใน note
+- หากเอกสารมีหลายหน้า ให้รวมข้อมูลทุกหน้า
+- ห้ามสร้าง teacher_id หรือ teacher_code ขึ้นเอง
+- ใช้ category เป็น "สามัญ" หรือ "ศาสนา" เท่านั้น
+
+รูปแบบ JSON ที่ต้องส่งกลับ:
+{
+  "academic_year": ${curYear},
+  "semester": ${curSem},
+  "assignments": [
+    {
+      "main_room": "ม.1/1 Amanah",
+      "category": "สามัญ",
+      "teacher_name_from_order": "ชื่อครูตามเอกสาร",
+      "teacher_code_from_order": "ถ้ามีให้ระบุ ถ้าไม่มีใส่ค่าว่าง",
+      "source_page": 1,
+      "note": "ข้อสังเกตเกี่ยวกับการอ่านเอกสาร"
+    }
+  ]
+}
+
+ตรวจสอบให้ครบทุกห้องในคำสั่ง และรักษาการสะกดชื่อในเอกสารตามต้นฉบับ แม้จะสงสัยว่าสะกดผิดก็ตาม`
+
+  const _openAdvisorAiImport = () => {
+    document.getElementById('hr-ai-import-modal')?.remove()
+    const m = document.createElement('div')
+    m.id = 'hr-ai-import-modal'
+    m.className = 'fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+    m.innerHTML = `
+      <div class="bg-white w-full sm:max-w-5xl max-h-[94vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-2xl">
+        <div class="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-gray-100 px-5 sm:px-7 py-4 flex items-start justify-between gap-4">
+          <div>
+            <h3 class="font-bold text-gray-800">🤖 นำเข้าครูที่ปรึกษาจากคำสั่งแต่งตั้ง</h3>
+            <p class="text-xs text-gray-500 mt-1">ให้ AI อ่านเอกสารและสร้าง JSON จากนั้นระบบจะจับคู่กับชื่อครูจริงใน ปพ.5</p>
+          </div>
+          <button id="hr-ai-close" type="button" class="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+        </div>
+
+        <div class="p-5 sm:p-7 space-y-5">
+          <div class="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-xs text-violet-900 leading-relaxed">
+            <b>หลักการตรวจสอบ:</b> ระบบจะยึดชื่อครูและรหัสครูในฐานข้อมูล ปพ.5 เป็นข้อมูลหลัก ชื่อที่ AI อ่านได้จะใช้เป็นเพียงข้อมูลสำหรับจับคู่เท่านั้น และจะไม่บันทึกจนกว่าจะตรวจสอบและยืนยัน
+          </div>
+
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <section class="rounded-2xl border border-gray-200 p-4">
+              <div class="flex items-center justify-between gap-2 mb-2">
+                <div>
+                  <h4 class="font-semibold text-sm text-gray-800">1) คำสั่งสำหรับ AI</h4>
+                  <p class="text-[11px] text-gray-400 mt-0.5">คัดลอกคำสั่งนี้ แล้วแนบเอกสารคำสั่งแต่งตั้งให้ AI</p>
+                </div>
+                <button id="hr-ai-copy-prompt" type="button" class="text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg">📋 คัดลอก</button>
+              </div>
+              <textarea id="hr-ai-prompt" readonly rows="15" class="w-full ${SELECT_CLS} text-xs leading-5 resize-y bg-gray-50"></textarea>
+            </section>
+
+            <section class="rounded-2xl border border-gray-200 p-4">
+              <h4 class="font-semibold text-sm text-gray-800">2) วาง JSON ที่ AI สร้าง</h4>
+              <p class="text-[11px] text-gray-400 mt-0.5 mb-2">รองรับ JSON ที่ครอบด้วยเครื่องหมาย \`\`\`json ... \`\`\` ด้วย</p>
+              <textarea id="hr-ai-json" rows="15" class="w-full ${SELECT_CLS} text-xs leading-5 resize-y font-mono" placeholder="วาง JSON ที่ได้จาก AI ที่นี่"></textarea>
+              <button id="hr-ai-parse" type="button" class="w-full mt-3 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold">🔍 ตรวจสอบและจับคู่ชื่อครู</button>
+              <p id="hr-ai-error" class="hidden text-xs text-red-600 mt-2 whitespace-pre-wrap"></p>
+            </section>
+          </div>
+
+          <section id="hr-ai-preview-wrap" class="hidden rounded-2xl border border-gray-200 overflow-hidden">
+            <div class="bg-gray-50 px-4 py-3 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 class="font-semibold text-sm text-gray-800">3) ตรวจสอบรายการก่อนบันทึก</h4>
+                <p id="hr-ai-summary" class="text-xs text-gray-500 mt-0.5"></p>
+              </div>
+              <span class="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-1.5">ชื่อสีเหลืองต้องตรวจสอบด้วยตนเอง</span>
+            </div>
+            <div id="hr-ai-preview" class="p-4 space-y-3 max-h-[42vh] overflow-y-auto"></div>
+          </section>
+        </div>
+
+        <div class="sticky bottom-0 bg-white/95 backdrop-blur border-t border-gray-100 px-5 sm:px-7 py-4 flex flex-col-reverse sm:flex-row justify-end gap-2">
+          <button id="hr-ai-cancel" type="button" class="px-5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+          <button id="hr-ai-apply" type="button" disabled class="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed">✅ ยืนยันนำเข้าและบันทึก</button>
+        </div>
+      </div>`
+    document.body.appendChild(m)
+
+    const promptText = _advisorAiPrompt()
+    m.querySelector('#hr-ai-prompt').value = promptText
+    const close = () => m.remove()
+    m.querySelector('#hr-ai-close').addEventListener('click', close)
+    m.querySelector('#hr-ai-cancel').addEventListener('click', close)
+    m.addEventListener('click', e => { if (e.target === m) close() })
+    m.querySelector('#hr-ai-copy-prompt').addEventListener('click', async e => {
+      try {
+        await navigator.clipboard.writeText(promptText)
+        e.currentTarget.textContent = 'คัดลอกแล้ว ✅'
+        setTimeout(() => { if (document.body.contains(e.currentTarget)) e.currentTarget.textContent = '📋 คัดลอก' }, 1500)
+      } catch { showToast('คัดลอกไม่สำเร็จ กรุณาคัดลอกจากช่องข้อความแทน', 'warning') }
+    })
+
+    let previewRows = []
+    const errorEl = m.querySelector('#hr-ai-error')
+    const previewWrap = m.querySelector('#hr-ai-preview-wrap')
+    const previewEl = m.querySelector('#hr-ai-preview')
+    const applyBtn = m.querySelector('#hr-ai-apply')
+    const summaryEl = m.querySelector('#hr-ai-summary')
+
+    const _cleanJson = text => String(text ?? '').trim()
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim()
+
+    const _findTeacher = (name, code) => {
+      const codeKey = String(code ?? '').trim().toLowerCase()
+      if (codeKey) {
+        const codeMatches = allTeachers.filter(t => String(t.teacher_code ?? '').trim().toLowerCase() === codeKey)
+        if (codeMatches.length === 1) return { teacher: codeMatches[0], status: 'exact', score: 1 }
+        if (codeMatches.length > 1) return { teacher: codeMatches[0], status: 'ambiguous', score: 1 }
+      }
+      const nameKey = _advisorNameKey(name)
+      const exact = allTeachers.filter(t => _advisorNameKey(t.full_name) === nameKey)
+      if (exact.length === 1) return { teacher: exact[0], status: 'exact', score: 1 }
+      if (exact.length > 1) return { teacher: exact[0], status: 'ambiguous', score: 1 }
+      const ranked = allTeachers
+        .map(t => ({ teacher: t, score: _advisorNameSimilarity(name, t.full_name) }))
+        .sort((a, b) => b.score - a.score)
+      const best = ranked[0]
+      return best && best.score >= 0.72
+        ? { ...best, status: 'suggested' }
+        : { teacher: null, status: 'unmatched', score: best?.score ?? 0 }
+    }
+
+    const _findRoom = (raw, category) => {
+      const roomText = String(raw ?? '').trim().replace(/^ห้อง\s*/u, '')
+      const rooms = category === 'ศาสนา' ? religionRooms : samaiRooms
+      const key = roomText.replace(/\s+/g, '').toLowerCase()
+      return rooms.find(room => String(room).replace(/\s+/g, '').toLowerCase() === key) ?? null
+    }
+
+    const _statusMeta = row => {
+      if (!row.teacherId || !row.mainRoom) return { label: 'ไม่พบข้อมูล ต้องเลือกเอง', cls: 'text-red-700 bg-red-50 border-red-100' }
+      const teacherReady = row.matchStatus === 'exact' || row.teacherReviewed
+      const roomReady = row.roomExact || row.roomReviewed
+      if (teacherReady && roomReady) return { label: row.matchStatus === 'exact' && row.roomExact ? 'ตรงกับฐานข้อมูล' : 'ตรวจสอบแล้ว', cls: 'text-emerald-700 bg-emerald-50 border-emerald-100' }
+      return { label: 'โปรดตรวจสอบ', cls: 'text-amber-700 bg-amber-50 border-amber-100' }
+    }
+
+    const _refreshApplyState = () => {
+      const missing = previewRows.filter(r => !r.mainRoom || !r.teacherId)
+      const needsReview = previewRows.filter(r => (r.matchStatus !== 'exact' && !r.teacherReviewed) || (!r.roomExact && !r.roomReviewed))
+      applyBtn.disabled = !previewRows.length || missing.length > 0 || needsReview.length > 0
+      if (!previewRows.length) summaryEl.textContent = ''
+      else if (missing.length) summaryEl.textContent = `ทั้งหมด ${previewRows.length} รายการ · ยังเลือกข้อมูลไม่ครบ ${missing.length} รายการ`
+      else if (needsReview.length) summaryEl.textContent = `ทั้งหมด ${previewRows.length} รายการ · กรุณาตรวจสอบอีก ${needsReview.length} รายการ`
+      else summaryEl.textContent = `ทั้งหมด ${previewRows.length} รายการ · พร้อมบันทึก`
+    }
+
+    const _renderPreview = () => {
+      previewEl.innerHTML = previewRows.map((row, index) => {
+        const meta = _statusMeta(row)
+        const rooms = row.category === 'ศาสนา' ? religionRooms : samaiRooms
+        const teacherOptions = [...allTeachers].sort((a, b) => String(a.full_name ?? '').localeCompare(String(b.full_name ?? ''), 'th'))
+        return `<div class="ai-advisor-row rounded-2xl border border-gray-200 p-3 sm:p-4" data-ai-row="${index}">
+          <div class="flex flex-wrap items-start justify-between gap-2 mb-3">
+            <div>
+              <p class="text-sm font-bold text-gray-800">รายการที่ ${index + 1}</p>
+              <p class="text-xs text-gray-500 mt-1">ชื่อในคำสั่ง: <span class="font-medium text-gray-700">${_esc(row.sourceName || 'ไม่ระบุ')}</span>${row.sourceCode ? ` · รหัสในคำสั่ง: ${_esc(row.sourceCode)}` : ''}</p>
+              ${row.note ? `<p class="text-[11px] text-gray-400 mt-1">หมายเหตุ AI: ${_esc(row.note)}</p>` : ''}
+            </div>
+            <span class="ai-row-status text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${meta.cls}">${meta.label}</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <label class="text-xs text-gray-500">ประเภท
+              <select data-ai-category="${index}" class="${SELECT_CLS} w-full mt-1">
+                <option value="สามัญ" ${row.category === 'สามัญ' ? 'selected' : ''}>สามัญ</option>
+                <option value="ศาสนา" ${row.category === 'ศาสนา' ? 'selected' : ''}>ศาสนา</option>
+              </select>
+            </label>
+            <label class="text-xs text-gray-500">ห้องเรียน
+              <select data-ai-room="${index}" class="${SELECT_CLS} w-full mt-1">
+                <option value="">— เลือกห้อง —</option>
+                ${rooms.map(room => `<option value="${_esc(room)}" ${room === row.mainRoom ? 'selected' : ''}>${_esc(room)}</option>`).join('')}
+              </select>
+            </label>
+            <label class="text-xs text-gray-500">ชื่อครูในระบบ ปพ.5
+              <select data-ai-teacher="${index}" class="${SELECT_CLS} w-full mt-1">
+                <option value="">— เลือกครู —</option>
+                ${teacherOptions.map(t => `<option value="${_esc(t.id)}" ${String(t.id) === String(row.teacherId ?? '') ? 'selected' : ''}>${_esc(t.full_name)}${t.teacher_code ? ` (${_esc(t.teacher_code)})` : ''}</option>`).join('')}
+              </select>
+            </label>
+          </div>
+        </div>`
+      }).join('')
+
+      previewEl.querySelectorAll('[data-ai-category]').forEach(select => select.addEventListener('change', e => {
+        const row = previewRows[Number(e.currentTarget.dataset.aiCategory)]
+        row.category = e.currentTarget.value
+        row.mainRoom = null
+        row.roomExact = false
+        row.roomReviewed = true
+        _renderPreview(); _refreshApplyState()
+      }))
+      previewEl.querySelectorAll('[data-ai-room]').forEach(select => select.addEventListener('change', e => {
+        const row = previewRows[Number(e.currentTarget.dataset.aiRoom)]
+        row.mainRoom = e.currentTarget.value || null
+        row.roomReviewed = true
+        _renderPreview(); _refreshApplyState()
+      }))
+      previewEl.querySelectorAll('[data-ai-teacher]').forEach(select => select.addEventListener('change', e => {
+        const row = previewRows[Number(e.currentTarget.dataset.aiTeacher)]
+        row.teacherId = e.currentTarget.value ? Number(e.currentTarget.value) : null
+        row.teacherReviewed = true
+        _renderPreview(); _refreshApplyState()
+      }))
+      _refreshApplyState()
+    }
+
+    m.querySelector('#hr-ai-parse').addEventListener('click', () => {
+      errorEl.classList.add('hidden')
+      try {
+        const parsed = JSON.parse(_cleanJson(m.querySelector('#hr-ai-json').value))
+        const list = Array.isArray(parsed) ? parsed : (parsed.assignments ?? parsed.homeroom_assignments ?? parsed.data ?? parsed.rows)
+        if (!Array.isArray(list) || !list.length) throw new Error('ไม่พบรายการ assignments ใน JSON')
+        const seenKeys = new Set()
+        previewRows = list.map((item, index) => {
+          const category = ['สามัญ', 'ศาสนา'].includes(item.category) ? item.category : activeCategory
+          const sourceName = item.teacher_name_from_order ?? item.teacher_name ?? item.teacher ?? item.advisor_name ?? ''
+          const sourceCode = item.teacher_code_from_order ?? item.teacher_code ?? item.code ?? ''
+          const roomRaw = item.main_room ?? item.room ?? item.class_name ?? item.classroom ?? ''
+          const mainRoom = _findRoom(roomRaw, category)
+          const match = _findTeacher(sourceName, sourceCode)
+          const key = `${category}|${mainRoom ?? String(roomRaw).trim()}`
+          const duplicate = seenKeys.has(key)
+          seenKeys.add(key)
+          return {
+            category, sourceName, sourceCode, note: item.note ?? '', sourcePage: item.source_page ?? '',
+            mainRoom, roomExact: !!mainRoom, roomReviewed: false,
+            teacherId: match.teacher?.id ?? null, teacherReviewed: false,
+            matchStatus: duplicate ? 'ambiguous' : match.status,
+            matchScore: match.score,
+          }
+        })
+        previewWrap.classList.remove('hidden')
+        _renderPreview()
+      } catch (err) {
+        errorEl.textContent = `อ่าน JSON ไม่สำเร็จ: ${err.message}`
+        errorEl.classList.remove('hidden')
+        previewWrap.classList.add('hidden')
+        previewRows = []
+        _refreshApplyState()
+      }
+    })
+
+    applyBtn.addEventListener('click', async () => {
+      if (applyBtn.disabled) return
+      const current = await getHomeroomTeachers(curYear, curSem).catch(() => [])
+      const changed = previewRows.filter(row => {
+        const old = current.find(r => r.main_room === row.mainRoom && r.category === row.category)
+        return !old || Number(old.teacher_id) !== Number(row.teacherId)
+      }).length
+      if (!confirm(`ยืนยันนำเข้าครูที่ปรึกษา ${previewRows.length} รายการ?\n\nระบบจะเพิ่มหรือเปลี่ยนรายการที่แตกต่างจำนวน ${changed} รายการ ในภาคเรียน ${curSem}/${curYear}`)) return
+      applyBtn.disabled = true
+      applyBtn.textContent = 'กำลังบันทึก...'
+      try {
+        const saved = await upsertHomeroomTeachersBatch(previewRows.map(row => ({
+          teacher_id: row.teacherId,
+          main_room: row.mainRoom,
+          category: row.category,
+          academic_year: curYear,
+          semester: curSem,
+        })))
+        showToast(`นำเข้าครูที่ปรึกษาสำเร็จ ${saved.length} รายการ ✅`, 'success')
+        close()
+        await _renderTable()
+      } catch (err) {
+        showToast(`บันทึกไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error')
+        applyBtn.disabled = false
+        applyBtn.textContent = '✅ ยืนยันนำเข้าและบันทึก'
+      }
+    })
+  }
+
+  document.getElementById('hr-ai-import')?.addEventListener('click', _openAdvisorAiImport)
 
   document.querySelectorAll('.hr-tab').forEach(btn => {
     btn.addEventListener('click', async () => {

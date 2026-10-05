@@ -1490,6 +1490,26 @@ export async function assignHomeroomTeacher(payload) {
   if (error) throw error
 }
 
+// Bulk import for the admin AI-assisted homeroom workflow. The unique room/
+// category/term index lets Supabase apply the whole preview in one upsert
+// statement instead of deleting and inserting each room one by one.
+export async function upsertHomeroomTeachersBatch(rows) {
+  const payload = (rows ?? []).map(row => ({
+    teacher_id: row.teacher_id,
+    main_room: row.main_room,
+    category: row.category,
+    academic_year: row.academic_year,
+    semester: row.semester,
+  }))
+  if (!payload.length) return []
+  const { data, error } = await supabase
+    .from('homeroom_teachers')
+    .upsert(payload, { onConflict: 'main_room,category,academic_year,semester' })
+    .select('id, main_room, category, teacher_id, academic_year, semester')
+  if (error) throw error
+  return data ?? []
+}
+
 export async function deleteHomeroomTeacher(id) {
   const { error } = await supabase.from('homeroom_teachers').delete().eq('id', id)
   if (error) throw error
@@ -3969,7 +3989,7 @@ export async function getAllAnnouncements() {
 export async function getActiveAnnouncements(forRole = null, viewerId = null) {
   // เฉพาะประกาศจากแอดมิน/ผู้บริหาร (ไม่ใช่ประกาศห้องเรียนของครู)
   let q = supabase.from('announcements')
-    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, file_url, video_url, audience, target_teacher_ids, target_student_ids, teachers(id, full_name)')
+    .select('id, title, body, priority, created_at, creator_role, requires_ack, due_date, ann_type, event_date, event_periods, event_location, file_url, attachment_urls, video_url, audience, target_teacher_ids, target_student_ids, teachers(id, full_name)')
     .eq('is_active', true)
     .is('target_class_ids', null)
   if (forRole === 'teacher') {
