@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 
-const PAGE_SIZE = 1000
+const PAGE_SIZE = 5000
 const BATCH_SIZE = 250
 const FORMAT = 'pp5-full-backup'
 const VERSION = 1
@@ -241,7 +241,7 @@ export async function getFullBackupResumeInfo() {
     tableIndex: session.tableIndex ?? 0,
     tableCount: session.catalog?.length ?? 0,
     tableName: session.catalog?.[session.tableIndex]?.table_name ?? null,
-    rowOffset: session.tableOffset ?? 0,
+    rowOffset: session.tableCount ?? session.tableOffset ?? 0,
     storageIndex: session.storageIndex ?? 0,
     storageCount: session.storageObjects?.length ?? 0,
   }
@@ -331,14 +331,21 @@ async function readCatalog() {
   return topoSort(catalog)
 }
 
-async function readTablePage(table, offset) {
-  const { data, error } = await supabase.rpc('admin_full_backup_read', {
+async function readTablePage(table, cursor) {
+  const { data, error } = await supabase.rpc('admin_full_backup_read_cursor', {
     p_table: table,
-    p_offset: offset,
+    p_cursor: cursor || null,
     p_limit: PAGE_SIZE,
   })
   if (error) throw error
-  return Array.isArray(data) ? data : []
+  const result = data && typeof data === 'object' && !Array.isArray(data)
+    ? data
+    : { rows: Array.isArray(data) ? data : [], next_cursor: null, has_more: false }
+  return {
+    rows: Array.isArray(result.rows) ? result.rows : [],
+    nextCursor: result.next_cursor || null,
+    hasMore: Boolean(result.has_more),
+  }
 }
 
 async function readStorageCatalog() {
@@ -395,7 +402,7 @@ export async function createFullBackup({ onProgress } = {}) {
       resumable = true
       session = {
         id: 'active', status: 'running', fileName, fileHandle, catalog,
-        phase: 'tables', tableIndex: 0, tableOffset: 0, tableCount: 0,
+        paginationVersion: 2, phase: 'tables', tableIndex: 0, tableCursor: null, tableCount: 0,
         storageObjects: null, storageIndex: 0, counts: {}, headerWritten: false,
         endWritten: false, byteOffset: 0,
       }
@@ -429,26 +436,27 @@ export async function createFullBackup({ onProgress } = {}) {
     const startTable = resumable ? (session.tableIndex ?? 0) : 0
     for (let tableIndex = startTable; tableIndex < catalog.length; tableIndex += 1) {
       const item = catalog[tableIndex]
-      let offset = resumable && tableIndex === startTable ? (session.tableOffset ?? 0) : 0
+      let cursor = resumable && tableIndex === startTable ? (session.tableCursor ?? null) : null
       let tableCount = resumable && tableIndex === startTable ? (session.tableCount ?? 0) : 0
       while (true) {
-        const rows = await retryBackupRequest(
-          () => readTablePage(item.table_name, offset),
+        const page = await retryBackupRequest(
+          () => readTablePage(item.table_name, cursor),
           `ข้อมูล ${item.table_name}`,
           onProgress,
         )
+        const rows = page.rows
         if (rows.length) {
           const payload = rows.map(row => JSON.stringify({ kind: 'row', table: item.table_name, row })).join('\n') + '\n'
           await writer.write(payload)
-          offset += rows.length
+          cursor = page.nextCursor
           tableCount += rows.length
-          await checkpoint({ phase: 'tables', tableIndex, tableOffset: offset, tableCount })
+          await checkpoint({ phase: 'tables', tableIndex, tableCursor: cursor, tableCount })
         }
         onProgress?.(`สำรอง ${item.table_name} (${tableIndex + 1}/${catalog.length})`, tableCount)
-        if (rows.length < PAGE_SIZE) break
+        if (!page.hasMore) break
       }
       counts[item.table_name] = tableCount
-      await checkpoint({ phase: 'tables', tableIndex: tableIndex + 1, tableOffset: 0, tableCount: 0, counts })
+      await checkpoint({ phase: 'tables', tableIndex: tableIndex + 1, tableCursor: null, tableCount: 0, counts })
     }
 
     let storageObjects = session?.storageObjects
