@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.894'
+import { APP_VERSION } from './version.js?v=10.22.895'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
