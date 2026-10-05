@@ -1,9 +1,11 @@
 import { supabase } from './supabase.js'
 
-const PAGE_SIZE = 500
+const PAGE_SIZE = 1000
 const BATCH_SIZE = 250
 const FORMAT = 'pp5-full-backup'
 const VERSION = 1
+const BACKUP_STATE_DB = 'pp5-full-backup-state'
+const BACKUP_STATE_STORE = 'sessions'
 const SHA256_K = [
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -133,6 +135,118 @@ function downloadBlob(blob, fileName) {
   setTimeout(() => URL.revokeObjectURL(url), 1500)
 }
 
+function openBackupStateDb() {
+  return new Promise((resolve, reject) => {
+    if (typeof indexedDB === 'undefined') return resolve(null)
+    const request = indexedDB.open(BACKUP_STATE_DB, 1)
+    request.onupgradeneeded = () => request.result.createObjectStore(BACKUP_STATE_STORE, { keyPath: 'id' })
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error ?? new Error('เปิดพื้นที่บันทึกจุดสำรองข้อมูลไม่สำเร็จ'))
+  })
+}
+
+async function readBackupSession() {
+  const db = await openBackupStateDb()
+  if (!db) return null
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(BACKUP_STATE_STORE, 'readonly').objectStore(BACKUP_STATE_STORE).get('active')
+    request.onsuccess = () => { db.close(); resolve(request.result ?? null) }
+    request.onerror = () => { db.close(); reject(request.error) }
+  })
+}
+
+async function saveBackupSession(session) {
+  const db = await openBackupStateDb()
+  if (!db) return false
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(BACKUP_STATE_STORE, 'readwrite').objectStore(BACKUP_STATE_STORE).put({ ...session, id: 'active' })
+    request.onsuccess = () => { db.close(); resolve(true) }
+    request.onerror = () => { db.close(); reject(request.error) }
+  })
+}
+
+async function clearBackupSession() {
+  const db = await openBackupStateDb()
+  if (!db) return
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(BACKUP_STATE_STORE, 'readwrite').objectStore(BACKUP_STATE_STORE).delete('active')
+    request.onsuccess = () => { db.close(); resolve() }
+    request.onerror = () => { db.close(); reject(request.error) }
+  })
+}
+
+async function ensureFileHandleAccess(handle) {
+  if (!handle) throw new Error('ไม่พบไฟล์สำรองเดิมสำหรับทำต่อ')
+  const options = { mode: 'readwrite' }
+  if (typeof handle.queryPermission === 'function' && await handle.queryPermission(options) !== 'granted') {
+    if (typeof handle.requestPermission !== 'function' || await handle.requestPermission(options) !== 'granted') {
+      throw new Error('ไม่ได้รับสิทธิ์เขียนไฟล์สำรองเดิม กรุณาอนุญาตการเข้าถึงไฟล์แล้วลองใหม่')
+    }
+  }
+}
+
+async function gzipMember(value) {
+  if (typeof CompressionStream === 'undefined') throw new Error('เบราว์เซอร์นี้ไม่รองรับการบีบอัดไฟล์สำรอง')
+  const stream = new CompressionStream('gzip')
+  const writer = stream.writable.getWriter()
+  await writer.write(new TextEncoder().encode(value))
+  await writer.close()
+  return new Uint8Array(await new Response(stream.readable).arrayBuffer())
+}
+
+// เขียน gzip member ทีละช่วงและปิดไฟล์ทุกช่วง เพื่อให้ไฟล์ที่เขียนเสร็จแล้ว
+// ยังคงอยู่แม้ RPC ครั้งถัดไปหลุด และสามารถเปิดไฟล์เดิมทำต่อได้
+async function createResumableFileWriter(handle, startOffset = 0) {
+  let offset = startOffset
+  return {
+    get offset() { return offset },
+    async write(value) {
+      const bytes = await gzipMember(value)
+      const writable = await handle.createWritable({ keepExistingData: true })
+      try {
+        await writable.truncate(offset)
+        await writable.seek(offset)
+        await writable.write(bytes)
+        await writable.close()
+        offset += bytes.byteLength
+      } catch (error) {
+        try { await writable.abort() } catch (_) { /* best effort */ }
+        throw error
+      }
+    },
+    async close() {},
+    async abort() {},
+  }
+}
+
+async function retryBackupRequest(task, label, onProgress) {
+  const maxAttempts = 4
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await task()
+    } catch (error) {
+      if (attempt >= maxAttempts) throw error
+      onProgress?.(`เชื่อมต่อ ${label} ไม่สำเร็จ กำลังลองใหม่ครั้งที่ ${attempt}/${maxAttempts - 1}...`)
+      await new Promise(resolve => setTimeout(resolve, 750 * (2 ** (attempt - 1))))
+    }
+  }
+}
+
+export async function getFullBackupResumeInfo() {
+  const session = await readBackupSession().catch(() => null)
+  if (!session) return null
+  return {
+    fileName: session.fileName,
+    phase: session.phase,
+    tableIndex: session.tableIndex ?? 0,
+    tableCount: session.catalog?.length ?? 0,
+    tableName: session.catalog?.[session.tableIndex]?.table_name ?? null,
+    rowOffset: session.tableOffset ?? 0,
+    storageIndex: session.storageIndex ?? 0,
+    storageCount: session.storageObjects?.length ?? 0,
+  }
+}
+
 function topoSort(catalog) {
   const byName = new Map(catalog.map(x => [x.table_name, x]))
   const state = new Map()
@@ -252,63 +366,153 @@ function base64ToBlob(base64, contentType = 'application/octet-stream') {
 
 /** สำรองข้อมูลทั้งหมดของระบบแอปใน public schema เป็น JSONL gzip */
 export async function createFullBackup({ onProgress } = {}) {
-  const catalog = await readCatalog()
-  const fileName = `pp5-full-backup-${safeFilePart(new Date().toISOString().replace(/[:.]/g, '-'))}.jsonl.gz`
-  const writer = await createGzipWriter(fileName)
-  const counts = {}
-  await writer.write(JSON.stringify({
-    format: FORMAT,
-    version: VERSION,
-    created_at: new Date().toISOString(),
-    scope: 'all-public-application-tables',
-    note: 'รวมข้อมูลแอปพลิเคชันทั้งหมดใน public schema และไฟล์ใน Supabase Storage ไม่รวม auth.users รหัสผ่าน และระบบภายใน Supabase',
-    catalog: catalog.map(x => ({ table_name: x.table_name, depends_on: x.depends_on ?? [] })),
-  }) + '\n')
+  let session = await readBackupSession().catch(() => null)
+  let catalog
+  let fileName
+  let writer
+  let fileHandle = null
+  let resumable = false
 
-  for (const [tableIndex, item] of catalog.entries()) {
-    let offset = 0
-    let tableCount = 0
-    while (true) {
-      const rows = await readTablePage(item.table_name, offset)
-      for (const row of rows) {
-        await writer.write(JSON.stringify({ kind: 'row', table: item.table_name, row }) + '\n')
-        tableCount += 1
+  if (session?.fileHandle) {
+    await ensureFileHandleAccess(session.fileHandle)
+    catalog = session.catalog ?? await readCatalog()
+    fileName = session.fileName
+    fileHandle = session.fileHandle
+    resumable = true
+    writer = await createResumableFileWriter(fileHandle, session.byteOffset ?? 0)
+    session.status = 'running'
+    await saveBackupSession(session)
+    onProgress?.(`กำลังทำสำรองต่อจาก ${session.tableName ?? 'จุดล่าสุด'}`)
+  } else {
+    catalog = await retryBackupRequest(readCatalog, 'รายการตาราง', onProgress)
+    fileName = `pp5-full-backup-${safeFilePart(new Date().toISOString().replace(/[:.]/g, '-'))}.jsonl.gz`
+    if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
+      fileHandle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [{ description: 'ไฟล์สำรอง ปพ.5', accept: { 'application/gzip': ['.jsonl.gz'] } }],
+      })
+      await ensureFileHandleAccess(fileHandle)
+      resumable = true
+      session = {
+        id: 'active', status: 'running', fileName, fileHandle, catalog,
+        phase: 'tables', tableIndex: 0, tableOffset: 0, tableCount: 0,
+        storageObjects: null, storageIndex: 0, counts: {}, headerWritten: false,
+        endWritten: false, byteOffset: 0,
       }
-      onProgress?.(`สำรอง ${item.table_name} (${tableIndex + 1}/${catalog.length})`, tableCount)
-      if (rows.length < PAGE_SIZE) break
-      offset += rows.length
+      await saveBackupSession(session)
+      writer = await createResumableFileWriter(fileHandle, 0)
+    } else {
+      writer = await createGzipWriter(fileName)
     }
-    counts[item.table_name] = tableCount
   }
-  const storage = await readStorageCatalog()
-  for (const [fileIndex, object] of (storage.objects ?? []).entries()) {
-    const { data: blob, error } = await supabase.storage.from(object.bucket_id).download(object.name)
-    if (error) throw new Error(`สำรองไฟล์ Storage ${object.bucket_id}/${object.name} ไม่สำเร็จ: ${error.message}`)
-    const base64 = await blobToBase64(blob)
-    await writer.write(JSON.stringify({
-      kind: 'storage',
-      bucket: object.bucket_id,
-      name: object.name,
-      content_type: blob.type || object.metadata?.mimetype || 'application/octet-stream',
-      data: base64,
-    }) + '\n')
-    const key = `storage:${object.bucket_id}`
-    counts[key] = (counts[key] ?? 0) + 1
-    onProgress?.(`สำรองไฟล์ ${object.bucket_id} (${fileIndex + 1}/${storage.objects.length})`, counts[key])
-  }
-  await writer.write(JSON.stringify({ kind: 'end', counts }) + '\n')
 
-  const output = await writer.close()
-  const sha256 = output.sha256
-  const { data, error } = await supabase.rpc('admin_record_full_backup', {
-    p_file_name: fileName,
-    p_byte_size: blob.size,
-    p_sha256: sha256,
-    p_table_counts: counts,
-  })
-  if (error) throw error
-  if (output.blob) downloadBlob(output.blob, fileName)
-  return { backupId: data?.id, fileName, byteSize: output.byteSize, sha256, counts, tableCount: catalog.length, savedToDisk: output.savedToDisk }
+  const counts = session?.counts ?? {}
+  const checkpoint = async (patch = {}) => {
+    if (!resumable || !session) return
+    Object.assign(session, patch, { byteOffset: writer.offset ?? session.byteOffset ?? 0, updatedAt: new Date().toISOString() })
+    await saveBackupSession(session)
+  }
+
+  try {
+    if (!session?.headerWritten) {
+      await writer.write(JSON.stringify({
+        format: FORMAT,
+        version: VERSION,
+        created_at: new Date().toISOString(),
+        scope: 'all-public-application-tables',
+        note: 'รวมข้อมูลแอปพลิเคชันทั้งหมดใน public schema และไฟล์ใน Supabase Storage ไม่รวม auth.users รหัสผ่าน และระบบภายใน Supabase',
+        catalog: catalog.map(x => ({ table_name: x.table_name, depends_on: x.depends_on ?? [] })),
+      }) + '\n')
+      await checkpoint({ headerWritten: true })
+    }
+
+    const startTable = resumable ? (session.tableIndex ?? 0) : 0
+    for (let tableIndex = startTable; tableIndex < catalog.length; tableIndex += 1) {
+      const item = catalog[tableIndex]
+      let offset = resumable && tableIndex === startTable ? (session.tableOffset ?? 0) : 0
+      let tableCount = resumable && tableIndex === startTable ? (session.tableCount ?? 0) : 0
+      while (true) {
+        const rows = await retryBackupRequest(
+          () => readTablePage(item.table_name, offset),
+          `ข้อมูล ${item.table_name}`,
+          onProgress,
+        )
+        if (rows.length) {
+          const payload = rows.map(row => JSON.stringify({ kind: 'row', table: item.table_name, row })).join('\n') + '\n'
+          await writer.write(payload)
+          offset += rows.length
+          tableCount += rows.length
+          await checkpoint({ phase: 'tables', tableIndex, tableOffset: offset, tableCount })
+        }
+        onProgress?.(`สำรอง ${item.table_name} (${tableIndex + 1}/${catalog.length})`, tableCount)
+        if (rows.length < PAGE_SIZE) break
+      }
+      counts[item.table_name] = tableCount
+      await checkpoint({ phase: 'tables', tableIndex: tableIndex + 1, tableOffset: 0, tableCount: 0, counts })
+    }
+
+    let storageObjects = session?.storageObjects
+    if (!storageObjects) {
+      const storage = await retryBackupRequest(readStorageCatalog, 'รายการไฟล์ Storage', onProgress)
+      storageObjects = storage.objects ?? []
+      await checkpoint({ phase: 'storage', storageObjects, storageIndex: 0 })
+    }
+    const startStorage = resumable ? (session.storageIndex ?? 0) : 0
+    for (let fileIndex = startStorage; fileIndex < storageObjects.length; fileIndex += 1) {
+      const object = storageObjects[fileIndex]
+      const blob = await retryBackupRequest(
+        async () => {
+          const { data, error } = await supabase.storage.from(object.bucket_id).download(object.name)
+          if (error) throw new Error(`สำรองไฟล์ Storage ${object.bucket_id}/${object.name} ไม่สำเร็จ: ${error.message}`)
+          return data
+        },
+        `ไฟล์ ${object.bucket_id}/${object.name}`,
+        onProgress,
+      )
+      const base64 = await blobToBase64(blob)
+      await writer.write(JSON.stringify({
+        kind: 'storage',
+        bucket: object.bucket_id,
+        name: object.name,
+        content_type: blob.type || object.metadata?.mimetype || 'application/octet-stream',
+        data: base64,
+      }) + '\n')
+      const key = `storage:${object.bucket_id}`
+      counts[key] = (counts[key] ?? 0) + 1
+      await checkpoint({ phase: 'storage', storageIndex: fileIndex + 1, counts })
+      onProgress?.(`สำรองไฟล์ ${object.bucket_id} (${fileIndex + 1}/${storageObjects.length})`, counts[key])
+    }
+
+    if (!session?.endWritten) {
+      await writer.write(JSON.stringify({ kind: 'end', counts }) + '\n')
+      await checkpoint({ phase: 'finalizing', endWritten: true, counts })
+    }
+
+    let output
+    if (resumable) {
+      const savedFile = await fileHandle.getFile()
+      output = { blob: null, sha256: await sha256Hex(savedFile), byteSize: savedFile.size, savedToDisk: true }
+    } else {
+      output = await writer.close()
+    }
+    const { data, error } = await supabase.rpc('admin_record_full_backup', {
+      p_file_name: fileName,
+      p_byte_size: output.byteSize,
+      p_sha256: output.sha256,
+      p_table_counts: counts,
+    })
+    if (error) throw error
+    if (output.blob) downloadBlob(output.blob, fileName)
+    await clearBackupSession()
+    return { backupId: data?.id, fileName, byteSize: output.byteSize, sha256: output.sha256, counts, tableCount: catalog.length, savedToDisk: output.savedToDisk }
+  } catch (error) {
+    if (resumable && session) {
+      session.status = 'paused'
+      await saveBackupSession(session).catch(() => {})
+    }
+    await writer?.abort?.().catch?.(() => {})
+    throw error
+  }
 }
 
 async function* lineReader(file) {

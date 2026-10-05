@@ -38,7 +38,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          approveSubjectGroupRequest, rejectSubjectGroupRequest, notifyFeedbackReply } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
-import { createFullBackup, restoreFullBackup } from './term-backup.js'
+import { createFullBackup, getFullBackupResumeInfo, restoreFullBackup } from './term-backup.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect, getFriendlyErrorMessage } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
          openSubjectModal, handleDeleteSubject,
@@ -3076,6 +3076,20 @@ export async function renderSettings() {
 
       const fullBackupBtn = document.getElementById('btn-create-full-backup')
       const fullBackupStatus = document.getElementById('full-backup-status')
+      const updateFullBackupResumeUi = async () => {
+          const resume = await getFullBackupResumeInfo().catch(() => null)
+        if (!fullBackupBtn || !resume) return
+        fullBackupBtn.textContent = '▶️ สำรองต่อจากจุดล่าสุด'
+        if (fullBackupStatus) {
+          const location = resume.phase === 'finalizing'
+            ? 'กำลังตรวจสอบไฟล์สำรอง'
+            : resume.phase === 'storage'
+            ? `ไฟล์ Storage ${resume.storageIndex.toLocaleString()}/${resume.storageCount.toLocaleString()}`
+            : `${resume.tableName ?? 'ตาราง'} ${resume.tableIndex + 1}/${resume.tableCount}`
+          fullBackupStatus.textContent = `พบงานสำรองที่หยุดไว้ · ${location}${resume.phase === 'storage' || resume.phase === 'finalizing' ? '' : ` · ${resume.rowOffset.toLocaleString()} รายการ`}`
+        }
+      }
+      updateFullBackupResumeUi()
       if (fullBackupBtn && !fullBackupBtn.dataset.bound) {
         fullBackupBtn.dataset.bound = 'true'
         fullBackupBtn.addEventListener('click', async () => {
@@ -3090,14 +3104,19 @@ export async function renderSettings() {
               },
             })
             window._latestFullBackupId = result.backupId
+            try { localStorage.setItem('pp5_latest_full_backup_id', result.backupId ?? '') } catch (_) { /* best effort */ }
             if (fullBackupStatus) fullBackupStatus.textContent = `สำเร็จ: ${result.fileName} · ${Math.round(result.byteSize / 1024 / 1024)} MB · ${result.tableCount} ตาราง`
             showToast(`สำรองข้อมูลทั้งหมดสำเร็จ และ${result.savedToDisk ? 'บันทึกไฟล์ลงดิสก์แล้ว' : 'ดาวน์โหลดไฟล์แล้ว'} ✅`, 'success')
           } catch (err) {
-            if (fullBackupStatus) fullBackupStatus.textContent = 'สำรองข้อมูลไม่สำเร็จ'
+            const resume = await getFullBackupResumeInfo().catch(() => null)
+            if (fullBackupStatus) fullBackupStatus.textContent = resume
+              ? `หยุดไว้ชั่วคราว · กดปุ่มเดิมเพื่อสำรองต่อจาก ${resume.tableName ?? 'จุดล่าสุด'}`
+              : 'สำรองข้อมูลไม่สำเร็จ'
             showToast('สำรองข้อมูลไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
           } finally {
             fullBackupBtn.disabled = false
-            fullBackupBtn.textContent = '⬇️ สำรองข้อมูลทั้งหมด'
+            const resume = await getFullBackupResumeInfo().catch(() => null)
+            fullBackupBtn.textContent = resume ? '▶️ สำรองต่อจากจุดล่าสุด' : '⬇️ สำรองข้อมูลทั้งหมด'
           }
         })
       }
