@@ -27,10 +27,32 @@ export async function updateRegradeConfig(updates) {
 export async function submitClassGradesToRegrade(classId, failingList) {
   const { data, error } = await supabase.rpc('submit_class_grades_to_regrade', {
     p_class_id: classId,
-    p_failing: failingList,
+    // เก็บพารามิเตอร์เดิมไว้เพื่อความเข้ากันได้กับหน้าบันทึกคะแนนเก่า
+    // แต่ RPC รุ่นใหม่จะคำนวณรายชื่อนักเรียนจากฐานข้อมูลฝั่งเซิร์ฟเวอร์เอง
+    p_failing: failingList ?? [],
   })
   if (error) throw error
   return data
+}
+
+// พรีวิวจากกติกาเดียวกับตอนส่งจริง — ใช้ในปุ่มบนการ์ดห้องเรียน
+export async function previewClassGradesToRegrade(classId) {
+  const { data, error } = await supabase.rpc('preview_class_grades_to_regrade', {
+    p_class_id: Number(classId),
+  })
+  if (error) throw error
+  return data ?? { ok: false, students: [] }
+}
+
+// โหลดสถานะการส่งระดับห้องเรียนแบบชุดเดียว เพื่อนำไปแสดงบนการ์ด
+export async function getTeacherRegradeSubmissionStatuses(classIds) {
+  const ids = (classIds ?? []).map(Number).filter(Number.isInteger)
+  if (!ids.length) return []
+  const { data, error } = await supabase.rpc('get_teacher_regrade_submission_statuses', {
+    p_class_ids: ids,
+  })
+  if (error) throw error
+  return Array.isArray(data) ? data : []
 }
 
 // ส่งสรุปเกรดแบบรวมโดยแอดมิน — ทำงานแยกจากปุ่มส่งของครูรายห้อง

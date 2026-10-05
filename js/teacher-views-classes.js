@@ -30,6 +30,12 @@ import QRCode from 'qrcode'
 import { copySheetTemplate, getCopyTemplateForClass } from './sync.js'
 import { supabase } from './supabase.js'
 import { showToast, showDangerConfirm, getFriendlyErrorMessage } from './ui.js'
+import {
+  getRegradeConfig,
+  getTeacherRegradeSubmissionStatuses,
+  previewClassGradesToRegrade,
+  submitClassGradesToRegrade,
+} from './regrade-api.js'
 import { openPP5Doc } from './pp5-doc.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import { uploadQrIssuerSignature } from './storage.js'
@@ -51,6 +57,83 @@ import {
 } from './teacher-views-utils.js'
 
 const EXAM_DOC_PENDING_CLASS_KEY = 'pp5_exam_docs_pending_class_id'
+
+async function _openTeacherRegradePreview(classData, currentStatus, onSubmitted) {
+  document.getElementById('teacher-regrade-preview-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'teacher-regrade-preview-modal'
+  modal.className = 'fixed inset-0 z-[240] flex items-center justify-center bg-black/55 p-4'
+  modal.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[88vh] flex flex-col overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-[11px] font-bold text-pink-600">📤 ส่งเข้าระบบแก้ค้างเก่า</p>
+        <h3 class="mt-1 font-extrabold text-gray-800 truncate">กำลังตรวจสอบรายชื่อนักเรียน...</h3>
+        <p class="text-xs text-gray-400 mt-1">${_htmlEsc(classData.master_subjects?.subject_name ?? '')} · ห้อง ${_htmlEsc(classData.class_name ?? '')}</p>
+      </div>
+      <button data-regrade-preview-close type="button" class="w-9 h-9 flex-shrink-0 rounded-xl border border-gray-200 text-gray-400 hover:text-gray-700">✕</button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-5 text-center text-sm text-gray-400">กำลังคำนวณเกรดจากข้อมูลล่าสุด...</div>
+  </div>`
+  document.body.appendChild(modal)
+  const close = () => modal.remove()
+  modal.querySelector('[data-regrade-preview-close]').addEventListener('click', close)
+  modal.addEventListener('click', e => { if (e.target === modal) close() })
+  try {
+    const preview = await previewClassGradesToRegrade(classData.id)
+    if (preview.already_submitted || currentStatus?.status === 'submitted') {
+      close()
+      showToast('ห้องเรียนนี้ส่งเข้าระบบแก้ค้างเก่าแล้ว', 'info')
+      return
+    }
+    const students = Array.isArray(preview.students) ? preview.students : []
+    const body = modal.querySelector('.flex-1')
+    body.className = 'flex-1 overflow-y-auto p-5 space-y-4'
+    body.innerHTML = `
+      <div class="rounded-xl border ${students.length ? 'border-amber-200 bg-amber-50' : 'border-emerald-200 bg-emerald-50'} p-3">
+        <p class="text-sm font-bold ${students.length ? 'text-amber-800' : 'text-emerald-800'}">
+          ${students.length ? `พบ ${students.length} คนที่มีผลการเรียนไม่ปกติ` : 'ไม่พบผู้เรียนที่มีผลการเรียนไม่ปกติ'}
+        </p>
+        <p class="text-xs mt-1 ${students.length ? 'text-amber-700' : 'text-emerald-700'}">
+          ระบบจะส่งสรุปของห้องนี้เข้าระบบแก้ค้างเก่า และบันทึกสถานะการส่งไว้ที่การ์ดวิชา
+        </p>
+      </div>
+      ${students.length ? `<div class="rounded-xl border border-gray-200 overflow-hidden">
+        <div class="bg-gray-50 px-3 py-2 text-xs font-bold text-gray-600">รายชื่อนักเรียนที่ต้องตรวจสอบ</div>
+        <div class="divide-y divide-gray-100 max-h-64 overflow-y-auto">
+          ${students.map((s, i) => `<div class="px-3 py-2.5 flex items-center justify-between gap-3 text-sm">
+            <div class="min-w-0"><span class="text-xs text-gray-400 mr-2">${i + 1}.</span><span class="font-semibold text-gray-800">${_htmlEsc(s.full_name ?? 'ไม่ระบุชื่อ')}</span><span class="block ml-5 text-[11px] text-gray-400">รหัส ${_htmlEsc(s.student_code ?? '—')}</span></div>
+            <span class="flex-shrink-0 px-2 py-1 rounded-lg text-xs font-bold ${s.special_result ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}">${_htmlEsc(s.grade_failed_at ?? '0')}</span>
+          </div>`).join('')}
+        </div>
+      </div>` : ''}
+      <div class="rounded-xl bg-blue-50 border border-blue-100 px-3 py-2.5 text-xs text-blue-800">
+        ℹ️ การส่งจะใช้ข้อมูลเกรดล่าสุดจากฐานข้อมูล และจะไม่ส่งซ้ำรายการเดิม
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button data-regrade-preview-cancel type="button" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+        <button data-regrade-preview-submit type="button" class="flex-1 py-2.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white text-sm font-bold">ยืนยันส่งข้อมูล</button>
+      </div>`
+    body.querySelector('[data-regrade-preview-cancel]').addEventListener('click', close)
+    body.querySelector('[data-regrade-preview-submit]').addEventListener('click', async e => {
+      const button = e.currentTarget
+      button.disabled = true
+      button.textContent = 'กำลังส่งข้อมูล...'
+      try {
+        const result = await submitClassGradesToRegrade(classData.id, [])
+        close()
+        showToast(`ส่งข้อมูลสำเร็จ ✅ พบ ${result.total_failing ?? students.length} คน · เพิ่มรายการใหม่ ${result.submitted ?? 0} คน`, 'success')
+        await onSubmitted?.(result)
+      } catch (err) {
+        showToast('ส่งข้อมูลไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+        button.disabled = false
+        button.textContent = 'ยืนยันส่งข้อมูล'
+      }
+    })
+  } catch (err) {
+    modal.querySelector('.flex-1').innerHTML = `<div class="text-center py-8"><p class="text-3xl mb-2">⚠️</p><p class="text-sm text-red-600">ตรวจสอบข้อมูลไม่สำเร็จ</p><p class="text-xs text-gray-400 mt-1">${_htmlEsc(getFriendlyErrorMessage(err))}</p><button data-regrade-preview-error-close type="button" class="mt-4 px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-600">ปิด</button></div>`
+    modal.querySelector('[data-regrade-preview-error-close]').addEventListener('click', close)
+  }
+}
 
 function _openExamDocsForClass(classId) {
   window._pendingExamDocClassId = String(classId)
@@ -419,11 +502,12 @@ export async function renderMyClasses(teacher) {
     </svg> กำลังโหลด...
   </div>`)
   try {
-    const [classes, copyCfg, roomColorRows, classrooms] = await Promise.all([
+    const [classes, copyCfg, roomColorRows, classrooms, regradeCfg] = await Promise.all([
       getMyClasses(teacher?.id ?? null),
       getSystemConfig().catch(() => ({})),
       teacher?.id ? getTeacherRoomColors(teacher.id).catch(() => []) : Promise.resolve([]),
       getClassrooms().catch(() => []),
+      getRegradeConfig().catch(() => ({})),
     ])
     const classroomMap = Object.fromEntries(classrooms.map(r => [r.id, r]))
     const academicYear = parseInt(copyCfg.academicYear ?? 2568)
@@ -446,6 +530,12 @@ export async function renderMyClasses(teacher) {
     // ประวัติคะแนนของภาคเรียนก่อนหน้าให้เปิดจากหน้า "บันทึกคะแนน" โดยตรง
     const isCurrentTerm = c => c.academic_year == null || (+c.academic_year === academicYear && +c.semester === semester)
     const visibleClasses = classes.filter(isCurrentTerm)
+    const regradeOpenDate = regradeCfg?.live_submit_open_date
+    const regradeSubmitOpen = !!regradeOpenDate && new Date().toISOString().slice(0, 10) >= regradeOpenDate
+    const regradeStatuses = regradeSubmitOpen
+      ? await getTeacherRegradeSubmissionStatuses(visibleClasses.map(c => c.id)).catch(() => [])
+      : []
+    const regradeStatusMap = new Map((regradeStatuses ?? []).map(row => [Number(row.class_id), row]))
     window._classCache  = Object.fromEntries(visibleClasses.map(c => [c.id, c]))
     window._classesFlat = visibleClasses
     const courseGroupMap = new Map()
@@ -536,6 +626,18 @@ export async function renderMyClasses(teacher) {
               return `<span class="text-[11px] text-blue-600">⏱ สอนในอีก ${h} ชม. ${m} นาที</span>`
             return `<span class="text-[11px] text-gray-500">⏱ สอนในอีก ${Math.floor(h/24)} วัน</span>`
           })()
+          const regradeStatus = regradeSubmitOpen ? regradeStatusMap.get(Number(c.id)) : null
+          const regradeCardAction = regradeSubmitOpen
+            ? regradeStatus?.status === 'submitted'
+              ? `<div class="mt-3 pt-2.5 border-t border-white/60 flex items-center justify-between gap-2">
+                  <span class="text-[11px] font-semibold text-emerald-700">✅ ส่งแก้ค้างเก่าแล้ว${regradeStatus.submitted_at ? ` · ${new Date(regradeStatus.submitted_at).toLocaleDateString('th-TH')}` : ''}</span>
+                  <span class="text-[10px] text-gray-400">${Number(regradeStatus.failing_count ?? 0)} คน</span>
+                </div>`
+              : `<div class="mt-3 pt-2.5 border-t border-white/60 flex items-center justify-between gap-2">
+                  <span class="text-[11px] font-semibold text-amber-700">⏳ ยังไม่ส่งแก้ค้างเก่า</span>
+                  <button type="button" data-card-regrade-submit="${c.id}" class="px-2.5 py-1.5 rounded-lg bg-pink-600 hover:bg-pink-700 text-white text-[10px] font-bold shadow-sm" onclick="event.stopPropagation()">📤 ส่งข้อมูล</button>
+                </div>`
+            : ''
 
           return `
           <div class="rounded-2xl border shadow-sm hover:shadow-md transition cursor-pointer group"
@@ -574,14 +676,22 @@ export async function renderMyClasses(teacher) {
                 ${countdown}
                 <span class="text-[11px] text-gray-400 group-hover:text-indigo-500 transition">เปิดห้องเรียน →</span>
               </div>
+              ${regradeCardAction}
             </div>
           </div>`
-        }).join('')}
+    }).join('')}
             </div>
           </section>`
         }).join('')}
-      </div>`}
+    </div>`}
     </div>`)
+    document.querySelectorAll('[data-card-regrade-submit]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const classData = window._classCache?.[Number(btn.dataset.cardRegradeSubmit)]
+        if (!classData) return
+        _openTeacherRegradePreview(classData, regradeStatusMap.get(Number(classData.id)), () => renderMyClasses(teacher))
+      })
+    })
     window._openPP5Doc     = (classId) => openPP5Doc(classId)
     window._openExamDocsForClass = (classId) => _openExamDocsForClass(classId)
     window._openClassDetail = (classId) => renderClassDetail(teacher, classId, { classes, scheduleMap, linksByClass, periodMap, classrooms, copyCfg })

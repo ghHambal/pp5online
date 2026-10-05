@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.892'
+import { APP_VERSION } from './version.js?v=10.22.893'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.893': [
+    '📤 ห้องเรียนของฉัน: แสดงสถานะการส่งเกรดเข้าระบบแก้ค้างเก่าบนการ์ดวิชา พร้อมพรีวิวรายชื่อนักเรียนและยืนยันก่อนส่งโดยไม่ต้องเปิดหน้ากรอกคะแนน',
+  ],
   '10.22.892': [
     '🗓️ ตารางสอน: เพิ่มผู้ช่วย AI ภายนอกสำหรับอ่านภาพตารางจากระบบโรงเรียน สร้าง JSON ตรวจสอบ และนำเข้าตาราง พร้อมย้ำให้แคปตารางครบทุกวันรวมวันศุกร์',
   ],
