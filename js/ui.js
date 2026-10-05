@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.901'
+import { APP_VERSION } from './version.js?v=10.22.903'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.903': [
+    '💾 สำรองข้อมูลทั้งหมด: เพิ่มตัวนับเวลารอและยกเลิก/ลองคำขอฐานข้อมูลใหม่เมื่อไม่ตอบกลับ เพื่อไม่ให้สถานะค้างเงียบที่ 0%',
+  ],
   '10.22.902': [
     '🗑️ ปฏิทิน AI: เพิ่มปุ่มลบรายการที่ข้อมูลไม่ครบในหน้าตรวจสอบก่อนนำเข้า เพื่อให้แก้ชุดข้อมูลต่อได้',
   ],

@@ -2,6 +2,7 @@ import { supabase } from './supabase.js'
 
 const PAGE_SIZE = 5000
 const BATCH_SIZE = 250
+const BACKUP_RPC_TIMEOUT_MS = 60000
 const FORMAT = 'pp5-full-backup'
 const VERSION = 1
 const BACKUP_STATE_DB = 'pp5-full-backup-state'
@@ -229,15 +230,33 @@ async function createResumableFileWriter(handle, startOffset = 0) {
   }
 }
 
-async function retryBackupRequest(task, label, onProgress) {
+async function retryBackupRequest(task, label, onProgress, { timeoutMs = BACKUP_RPC_TIMEOUT_MS } = {}) {
   const maxAttempts = 4
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null
+    const startedAt = Date.now()
+    let timeoutId
+    let heartbeatId
     try {
-      return await task()
+      onProgress?.(`กำลังติดต่อฐานข้อมูล: ${label} · ครั้งที่ ${attempt}/${maxAttempts}`)
+      if (timeoutMs > 0 && controller) {
+        timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+      }
+      heartbeatId = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - startedAt) / 1000)
+        onProgress?.(`กำลังรอฐานข้อมูลตอบกลับ: ${label} · ${elapsed} วินาที · ครั้งที่ ${attempt}/${maxAttempts}`)
+      }, 10000)
+      return await task(controller?.signal)
     } catch (error) {
-      if (attempt >= maxAttempts) throw error
-      onProgress?.(`เชื่อมต่อ ${label} ไม่สำเร็จ กำลังลองใหม่ครั้งที่ ${attempt}/${maxAttempts - 1}...`)
+      const requestError = controller?.signal.aborted
+        ? new Error(`รอฐานข้อมูลตอบกลับเกิน ${Math.round(timeoutMs / 1000)} วินาที (${label})`)
+        : error
+      if (attempt >= maxAttempts) throw requestError
+      onProgress?.(`${requestError?.message || `เชื่อมต่อ ${label} ไม่สำเร็จ`} · กำลังลองใหม่ครั้งที่ ${attempt}/${maxAttempts - 1}...`)
       await new Promise(resolve => setTimeout(resolve, 750 * (2 ** (attempt - 1))))
+    } finally {
+      clearTimeout(timeoutId)
+      clearInterval(heartbeatId)
     }
   }
 }
@@ -379,20 +398,20 @@ async function createGzipWriter(fileName) {
   }
 }
 
-async function readCatalog() {
-  const { data, error } = await supabase.rpc('admin_full_backup_catalog')
+async function readCatalog(signal) {
+  const { data, error } = await supabase.rpc('admin_full_backup_catalog').abortSignal(signal)
   if (error) throw error
   const catalog = Array.isArray(data) ? data : []
   if (!catalog.length) throw new Error('ไม่พบรายการข้อมูลสำหรับสำรอง')
   return topoSort(catalog)
 }
 
-async function readTablePage(table, cursor) {
+async function readTablePage(table, cursor, signal) {
   const { data, error } = await supabase.rpc('admin_full_backup_read_cursor', {
     p_table: table,
     p_cursor: cursor || null,
     p_limit: PAGE_SIZE,
-  })
+  }).abortSignal(signal)
   if (error) throw error
   const result = data && typeof data === 'object' && !Array.isArray(data)
     ? data
@@ -410,8 +429,8 @@ function reportBackupProgress(onProgress, session, catalog, message, count, over
   onProgress(message, count, getBackupProgress(state, overrides))
 }
 
-async function readStorageCatalog() {
-  const { data, error } = await supabase.rpc('admin_full_backup_storage_catalog')
+async function readStorageCatalog(signal) {
+  const { data, error } = await supabase.rpc('admin_full_backup_storage_catalog').abortSignal(signal)
   if (error) throw error
   return data ?? { buckets: [], objects: [] }
 }
@@ -446,7 +465,7 @@ export async function createFullBackup({ onProgress } = {}) {
     await ensureFileHandleAccess(session.fileHandle)
     catalog = session.catalog ?? await readCatalog()
     if (catalog.some(item => item.estimated_rows == null)) {
-      const refreshedCatalog = await retryBackupRequest(readCatalog, 'สถิติรายการตาราง', onProgress)
+      const refreshedCatalog = await retryBackupRequest(signal => readCatalog(signal), 'สถิติรายการตาราง', onProgress)
       const sameCatalog = refreshedCatalog.length === catalog.length
         && refreshedCatalog.every((item, index) => item.table_name === catalog[index]?.table_name)
       if (sameCatalog) {
@@ -462,7 +481,7 @@ export async function createFullBackup({ onProgress } = {}) {
     await saveBackupSession(session)
     onProgress?.(`กำลังทำสำรองต่อจาก ${session.tableName ?? 'จุดล่าสุด'}`)
   } else {
-    catalog = await retryBackupRequest(readCatalog, 'รายการตาราง', onProgress)
+    catalog = await retryBackupRequest(signal => readCatalog(signal), 'รายการตาราง', onProgress)
     fileName = `pp5-full-backup-${safeFilePart(new Date().toISOString().replace(/[:.]/g, '-'))}.jsonl.gz`
     if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
       fileHandle = await window.showSaveFilePicker({
@@ -511,7 +530,7 @@ export async function createFullBackup({ onProgress } = {}) {
       let tableCount = resumable && tableIndex === startTable ? (session.tableCount ?? 0) : 0
       while (true) {
         const page = await retryBackupRequest(
-          () => readTablePage(item.table_name, cursor),
+          signal => readTablePage(item.table_name, cursor, signal),
           `ข้อมูล ${item.table_name}`,
           onProgress,
         )
@@ -534,7 +553,7 @@ export async function createFullBackup({ onProgress } = {}) {
 
     let storageObjects = session?.storageObjects
     if (!storageObjects) {
-      const storage = await retryBackupRequest(readStorageCatalog, 'รายการไฟล์ Storage', onProgress)
+      const storage = await retryBackupRequest(signal => readStorageCatalog(signal), 'รายการไฟล์ Storage', onProgress)
       storageObjects = storage.objects ?? []
       await checkpoint({ phase: 'storage', storageObjects, storageIndex: 0 })
     }
@@ -549,6 +568,7 @@ export async function createFullBackup({ onProgress } = {}) {
         },
         `ไฟล์ ${object.bucket_id}/${object.name}`,
         onProgress,
+        { timeoutMs: 0 },
       )
       const base64 = await blobToBase64(blob)
       await writer.write(JSON.stringify({
