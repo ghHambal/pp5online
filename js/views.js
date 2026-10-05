@@ -3178,14 +3178,22 @@ export async function renderSettings() {
         fullBackupBtn.dataset.bound = 'true'
         fullBackupBtn.addEventListener('click', async () => {
           if (!confirm('ยืนยันสร้างไฟล์สำรองข้อมูลทั้งหมดของระบบ? ไฟล์อาจมีข้อมูลส่วนบุคคลจำนวนมาก')) return
+          let lastBackupUpdateAt = Date.now()
+          const backupStartedAt = lastBackupUpdateAt
           fullBackupBtn.disabled = true
           if (fullBackupResetBtn) fullBackupResetBtn.disabled = true
           fullBackupBtn.textContent = '⏳ กำลังสำรองข้อมูลทั้งหมด...'
           if (fullBackupStatus) fullBackupStatus.textContent = 'กำลังเตรียมรายการตาราง...'
           setFullBackupProgress({ percent: 0, tableIndex: 0, tableCount: 0, completedRows: 0, estimatedTotalRows: 0, storageIndex: 0, storageCount: 0 })
+          const backupWatchdog = setInterval(() => {
+            if (!fullBackupStatus || Date.now() - lastBackupUpdateAt < 15000) return
+            const elapsed = Math.floor((Date.now() - backupStartedAt) / 1000)
+            fullBackupStatus.textContent = `ยังรอการตอบกลับจากเซิร์ฟเวอร์ · ${elapsed.toLocaleString()} วินาที · กำลังตรวจการเชื่อมต่อ`
+          }, 5000)
           try {
             const result = await createFullBackup({
               onProgress: (message, count, progress) => {
+                lastBackupUpdateAt = Date.now()
                 if (fullBackupStatus) fullBackupStatus.textContent = `${message}${count ? ` · ${count.toLocaleString()} รายการ` : ''}`
                 setFullBackupProgress(progress)
               },
@@ -3205,6 +3213,7 @@ export async function renderSettings() {
             }
             showToast('สำรองข้อมูลไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
           } finally {
+            clearInterval(backupWatchdog)
             fullBackupBtn.disabled = false
             const resume = await getFullBackupResumeInfo().catch(() => null)
             fullBackupBtn.textContent = resume ? '▶️ สำรองต่อจากจุดล่าสุด' : '⬇️ สำรองข้อมูลทั้งหมด'

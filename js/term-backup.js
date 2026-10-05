@@ -239,17 +239,26 @@ async function retryBackupRequest(task, label, onProgress, { timeoutMs = BACKUP_
     let heartbeatId
     try {
       onProgress?.(`กำลังติดต่อฐานข้อมูล: ${label} · ครั้งที่ ${attempt}/${maxAttempts}`)
-      if (timeoutMs > 0 && controller) {
-        timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+      const request = Promise.resolve().then(() => task(controller?.signal))
+      let timeout
+      if (timeoutMs > 0) {
+        timeout = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            controller?.abort()
+            const error = new Error(`รอฐานข้อมูลตอบกลับเกิน ${Math.round(timeoutMs / 1000)} วินาที (${label})`)
+            error.code = 'BACKUP_REQUEST_TIMEOUT'
+            reject(error)
+          }, timeoutMs)
+        })
       }
       heartbeatId = setInterval(() => {
         const elapsed = Math.floor((Date.now() - startedAt) / 1000)
         onProgress?.(`กำลังรอฐานข้อมูลตอบกลับ: ${label} · ${elapsed} วินาที · ครั้งที่ ${attempt}/${maxAttempts}`)
       }, 10000)
-      return await task(controller?.signal)
+      return await (timeout ? Promise.race([request, timeout]) : request)
     } catch (error) {
       const requestError = controller?.signal.aborted
-        ? new Error(`รอฐานข้อมูลตอบกลับเกิน ${Math.round(timeoutMs / 1000)} วินาที (${label})`)
+        ? Object.assign(new Error(`รอฐานข้อมูลตอบกลับเกิน ${Math.round(timeoutMs / 1000)} วินาที (${label})`), { code: 'BACKUP_REQUEST_TIMEOUT' })
         : error
       if (attempt >= maxAttempts) throw requestError
       onProgress?.(`${requestError?.message || `เชื่อมต่อ ${label} ไม่สำเร็จ`} · กำลังลองใหม่ครั้งที่ ${attempt}/${maxAttempts - 1}...`)
