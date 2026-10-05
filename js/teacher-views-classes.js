@@ -36,6 +36,7 @@ import { uploadQrIssuerSignature } from './storage.js'
 import { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 import { renderScoreColumns } from './teacher-score-columns.js'
 import { SCHEDULE_COLOR_PRESETS, colorMetaForHex, resolveScheduleColor, roomColorKey } from './teacher-schedule-colors.js'
+import { openExternalScheduleAI } from './teacher-schedule-ai.js'
 import { renderGradesGrid } from './teacher-views-grades.js'
 import { renderAttendanceGrid } from './teacher-views-attendance.js'
 import { openTimerModal } from './timer-overlay.js'
@@ -3567,6 +3568,10 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
         <p class="text-xs text-gray-400 mt-0.5">ภาค ${semester} / ${academicYear} — คลิกช่องเพื่อกำหนดวิชา</p>
       </div>
       <div class="flex gap-2">
+        <button id="btn-external-schedule-ai"
+          class="px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition flex items-center gap-2">
+          ✨ ใช้ AI ของฉัน
+        </button>
         ${visionOn && geminiKey ? `
         <button id="btn-upload-schedule"
           class="px-4 py-2 rounded-xl bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition flex items-center gap-2">
@@ -3583,7 +3588,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
     <div class="mb-4 bg-sky-50 border border-sky-200 rounded-2xl px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
       <div class="min-w-0">
         <p class="text-sm font-semibold text-sky-800">📅 ตารางสอนของโรงเรียน</p>
-        <p class="text-xs text-sky-600 mt-0.5 leading-relaxed">เปิดดูตารางสอนจากระบบโรงเรียน แล้วแคปหน้าจอมาอัปโหลดผ่านปุ่ม "🤖 อัปโหลดรูปตาราง" เพื่อให้ AI กรอกข้อมูลให้อัตโนมัติ</p>
+        <p class="text-xs text-sky-600 mt-0.5 leading-relaxed">เปิดดูตารางสอนจากระบบโรงเรียน แล้วแคปหน้าจอให้เห็นตารางทั้งหมด รวมคอลัมน์คาบ/เวลาและทุกวัน หากมีคาบวันศุกร์ต้องเห็นวันศุกร์ด้วย จากนั้นเลือก "✨ ใช้ AI ของฉัน" เพื่อรับ Prompt ไปใช้กับ AI ที่ครูเลือก</p>
       </div>
       <a href="http://azizstan.ac.th/2026/Teacher/" target="_blank" rel="noopener"
          class="flex-shrink-0 px-4 py-2 bg-sky-600 text-white rounded-xl font-bold text-sm hover:bg-sky-700 transition whitespace-nowrap">
@@ -3679,9 +3684,15 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
   })
 
   // ─── Upload รูป + Gemini Vision ───────────────────────────────────────────
-  document.getElementById('btn-upload-schedule')?.addEventListener('click', () => {
-    _openVisionUpload(teacher, subjects, periods, academicYear, semester, geminiKey, cfg)
+  document.getElementById('btn-external-schedule-ai')?.addEventListener('click', () => {
+    openExternalScheduleAI({
+      teacher, subjects, periods, academicYear, semester, cfg,
+      onImport: groups => _openVisionUpload(teacher, subjects, periods, academicYear, semester, geminiKey, cfg, groups),
+    })
   })
+ document.getElementById('btn-upload-schedule')?.addEventListener('click', () => {
+   _openVisionUpload(teacher, subjects, periods, academicYear, semester, geminiKey, cfg)
+ })
 }
 
 // ─── Popup กำหนดวิชาลงช่องตาราง (Group Card format) ─────────────────────────
@@ -3908,7 +3919,7 @@ async function _openSchedulePopup({ teacher, dow, period, periods, subjects, ent
 }
 
 // ─── Vision Upload — Gemini วิเคราะห์รูปตาราง ────────────────────────────────
-async function _openVisionUpload(teacher, subjects, periods, academicYear, semester, geminiKey, cfg) {
+async function _openVisionUpload(teacher, subjects, periods, academicYear, semester, geminiKey, cfg, initialGroups = []) {
   document.getElementById('vision-upload')?.remove()
 
   // โหลด rooms สำหรับ suggest class_name
@@ -3941,7 +3952,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
               เปิดตารางสอน ↗
             </a>
           </div>
-          <p class="text-xs text-sky-700 leading-relaxed">ระบบมีเครื่องมือช่วยกรอกตารางสอนอัตโนมัติ — เปิดตารางสอนจากระบบโรงเรียน แล้วแคปหน้าจอมาอัปโหลดที่นี่ AI จะเติมข้อมูลให้</p>
+          <p class="text-xs text-sky-700 leading-relaxed">ระบบมีเครื่องมือช่วยกรอกตารางสอนอัตโนมัติ — เปิดตารางสอนจากระบบโรงเรียน แล้วแคปให้เห็นตารางทั้งหมด หากมีคาบสอนวันศุกร์ต้องเห็นคอลัมน์วันศุกร์ด้วย จากนั้นอัปโหลดที่นี่เพื่อให้ AI เติมข้อมูล</p>
         </div>
 
         <!-- คำแนะนำแคปหน้าจอ -->
@@ -3949,7 +3960,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
           <p class="font-semibold">📸 วิธีแคปหน้าจอให้ถูกต้อง</p>
           <ul class="space-y-1 leading-relaxed">
             <li>• ให้เห็น <b>คอลัมน์ซ้ายสุด</b> (คาบ / ช่วงเวลา) ครบทุกคาบ</li>
-            <li>• ให้เห็น <b>แถวบนสุด</b> (วัน อาทิตย์ – ศุกร์) ครบทุกวัน</li>
+            <li>• ให้เห็น <b>หัววันครบทุกวัน</b> และถ้าครูมีคาบสอนวันศุกร์ ต้องเห็น <b>คอลัมน์วันศุกร์</b> ด้วย</li>
             <li>• แคปเฉพาะ<b>ส่วนตาราง</b> ตัดส่วนหัวหน้าเว็บออก</li>
           </ul>
           <div class="mt-2 pt-2 border-t border-amber-200">
@@ -4005,7 +4016,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
   let imgBase64 = null
   let imgMimeType = 'image/jpeg'
   // groups: [{key, subject_name, class_name, teacher_name, subject_id, sessions:[{dow,period,span}]}]
-  let groups = []
+  let groups = Array.isArray(initialGroups) ? initialGroups.map(group => ({ ...group, sessions: (group.sessions ?? []).map(session => ({ ...session })) })) : []
 
   const DAY_NAMES  = ['อาทิตย์','จันทร์','อังคาร','พุธ','พฤหัส','ศุกร์']
   const PERIOD_NOS = periods.map(p => p.period_no)
@@ -4212,6 +4223,15 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
   }
 
   // ─── Upload file ──────────────────────────────────────────────────────────
+  if (groups.length) {
+    wrap.querySelector('#vision-result').classList.remove('hidden')
+    wrap.querySelector('#vision-save').classList.remove('hidden')
+    wrap.querySelector('#vision-analyze').classList.add('hidden')
+    wrap.querySelector('#vision-status').textContent = '✅ นำเข้าข้อมูลจาก AI ภายนอกแล้ว — กรุณาตรวจสอบก่อนบันทึก'
+    wrap.querySelector('#vision-status').classList.remove('hidden')
+    _renderGroups()
+  }
+
   wrap.querySelector('#vision-file').addEventListener('change', e => {
     const file = e.target.files[0]; if (!file) return
     imgMimeType = file.type || 'image/jpeg'

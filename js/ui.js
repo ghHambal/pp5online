@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.891'
+import { APP_VERSION } from './version.js?v=10.22.892'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.892': [
+    '🗓️ ตารางสอน: เพิ่มผู้ช่วย AI ภายนอกสำหรับอ่านภาพตารางจากระบบโรงเรียน สร้าง JSON ตรวจสอบ และนำเข้าตาราง พร้อมย้ำให้แคปตารางครบทุกวันรวมวันศุกร์',
+  ],
   '10.22.891': [
     '📘 แก้รูปแบบรายวิชาพื้นฐานให้ใช้ 1 คอลัมน์ รวมรหัสมาตรฐาน/ตัวชี้วัดกับข้อความเต็มไว้ในแต่ละแถวตามคู่มือ',
   ],
