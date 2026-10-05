@@ -1170,7 +1170,7 @@ IMPORTANT: Write all generated content in ${L.aiLang}. Do not mix languages unle
 4. เลือกข้อสำหรับกลางภาคและปลายภาคอย่างเหมาะสม
 5. แนวทางการเขียน: ${writingGuidance}
 
-Return JSON object เท่านั้น:
+Return exactly one JSON object wrapped in a single fenced Markdown code block using \`\`\`json and \`\`\`. No text before or after the code block. This makes the AI response show a clear copy-code button:
 {
   "description": "...",
   "columns": ["..."],
@@ -1351,7 +1351,7 @@ Output language: ${L.aiLang}
 2. รายการมาตรฐานการเรียนรู้ / ตัวชี้วัด / ผลการเรียนรู้ (${tableMode})
 3. แนะนำข้อที่ควรวัดผลกลางภาคและปลายภาค
 
-ตอบเป็น JSON เท่านั้น (ไม่มีข้อความอื่น):
+ตอบกลับเป็น JSON โดยครอบผลลัพธ์ทั้งหมดไว้ในกล่องโค้ด Markdown ชนิด json เพียงกล่องเดียว (เปิดด้วย \`\`\`json และปิดด้วย \`\`\`) เพื่อให้ครูเห็นปุ่มคัดลอกโค้ดได้ชัดเจน ห้ามมีข้อความก่อนหรือหลังกล่อง:
 {
   "description": "...",
   "columns": ${JSON.stringify(colNames)},

@@ -4374,7 +4374,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
 
 สำคัญ: จัดกลุ่มตามวิชา+ห้องเรียน เช่น MATH ม.5/Ash-Shafi'i ที่สอนหลายวัน ให้อยู่ในกลุ่มเดียวกัน
 
-Return JSON array เท่านั้น (ไม่มีข้อความอื่น):
+ตอบกลับเป็น JSON array โดยครอบผลลัพธ์ทั้งหมดไว้ในกล่องโค้ด Markdown ชนิด json เพียงกล่องเดียว (เปิดด้วย \`\`\`json และปิดด้วย \`\`\`) เพื่อให้ครูเห็นปุ่มคัดลอกโค้ดได้ชัดเจน ห้ามมีข้อความก่อนหรือหลังกล่อง:
 [{
   "subject_name": "MATH",
   "class_name": "M.5 Ash-Shafi'i",

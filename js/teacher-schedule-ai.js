@@ -45,7 +45,7 @@ function buildPrompt({ teacher, subjects, periods, academicYear, semester, hasFr
     'คาบที่ระบบรองรับ: ' + JSON.stringify(periodCatalog),
     'รายวิชาที่ครูมีในระบบ: ' + JSON.stringify(courseCatalog),
     '',
-    'ตอบกลับเป็น JSON เพียงกล่องเดียว ห้ามมีคำอธิบายก่อนหรือหลัง JSON ตาม schema นี้:',
+    'ตอบกลับเป็น JSON โดยครอบผลลัพธ์ทั้งหมดไว้ในกล่องโค้ด Markdown ชนิด json เพียงกล่องเดียว (เปิดด้วย ```json และปิดด้วย ```) เพื่อให้ครูเห็นปุ่มคัดลอกโค้ดได้ชัดเจน ห้ามมีคำอธิบายก่อนหรือหลังกล่อง ตาม schema นี้:',
     JSON.stringify({
       schema_version: SCHEMA_VERSION, type: 'teacher_schedule', academic_year: academicYear, semester,
       groups: [{ subject_name: 'คณิตศาสตร์พื้นฐาน', class_name: 'ม.6/2', teacher_name: text(teacher?.full_name), sessions: [{ day_of_week: 1, period_no: 1, span_periods: 2 }] }],

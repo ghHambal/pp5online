@@ -423,7 +423,7 @@ function _buildAIPrompt({ topic, count, choicesCount, difficulty }) {
   return [
     `Generate a JSON array of exactly ${count} Thai multiple-choice quiz questions about: "${topic}".`,
     difficulty ? `All questions should be "${difficulty}" difficulty.` : 'Mix of difficulty levels is fine.',
-    'Reply with a JSON Array ONLY. No markdown, no text outside JSON.',
+    'Reply with exactly one JSON array wrapped in a single fenced Markdown code block using ```json and ``` so the AI response shows a clear copy-code button. No text before or after the code block.',
     '',
     'Each object must have:',
     '1. "question_text" — the question, in Thai',

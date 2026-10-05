@@ -1787,7 +1787,7 @@ async function _renderDeckForm(teacher, deck = null) {
       const lang = langMap[selectedLang] || langMap.thai
       const prompt = [
         'Generate flashcard JSON for topic: "' + topic + '". About 10-12 cards.',
-        'Reply with a JSON Array ONLY. No markdown, no text outside JSON.',
+        'Reply with exactly one JSON array wrapped in a single fenced Markdown code block using ```json and ``` so the AI response shows a clear copy-code button. No text before or after the code block.',
         '',
         'Language rule: ' + lang.rule,
         '',

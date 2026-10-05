@@ -4955,7 +4955,7 @@ export async function renderHomeroom() {
       .map((teacher, index) => `${index + 1}. ${teacher.teacher_code ?? 'ไม่มีรหัส'} | ${teacher.full_name ?? 'ไม่มีชื่อ'} | ${teacher.category ?? 'ไม่ระบุประเภท'}`)
       .join('\n')
     return `ฉันจะแนบภาพหรือ PDF คำสั่งแต่งตั้งครูที่ปรึกษาให้คุณอ่าน
-กรุณาอ่านเฉพาะข้อมูลห้องเรียนและชื่อครูที่ปรึกษาจากเอกสาร แล้วส่งผลลัพธ์เป็น JSON เท่านั้น ห้ามใส่ Markdown และห้ามใส่คำอธิบายนอก JSON
+กรุณาอ่านเฉพาะข้อมูลห้องเรียนและชื่อครูที่ปรึกษาจากเอกสาร แล้วส่งผลลัพธ์เป็น JSON โดยครอบ JSON ทั้งหมดไว้ในกล่องโค้ด Markdown ชนิด json เพียงกล่องเดียว (เปิดด้วย \`\`\`json และปิดด้วย \`\`\`) เพื่อให้ครูเห็นปุ่มคัดลอกโค้ดได้ชัดเจน ห้ามมีคำอธิบายก่อนหรือหลังกล่อง
 
 ข้อสำคัญ:
 - คัดลอกชื่อครูตามที่ปรากฏในคำสั่งลงใน teacher_name_from_order ห้ามเดาหรือแก้ชื่อให้ถูกเอง
@@ -12658,7 +12658,7 @@ function _workCalendarMonthKeys(events) {
 
 function _workCalendarPrompt(academicYear, semester) {
   return `ฉันจะแนบ PDF หรือภาพปฏิทินการปฏิบัติงานของโรงเรียนให้คุณอ่าน
-กรุณาอ่านข้อมูลจากทุกหน้า และส่งผลลัพธ์เป็น JSON เท่านั้น ห้ามใส่ Markdown หรือคำอธิบายนอก JSON
+กรุณาอ่านข้อมูลจากทุกหน้า และส่งผลลัพธ์เป็น JSON โดยครอบ JSON ทั้งหมดไว้ในกล่องโค้ด Markdown ชนิด json เพียงกล่องเดียว (เปิดด้วย \`\`\`json และปิดด้วย \`\`\`) เพื่อให้ครูเห็นปุ่มคัดลอกโค้ดได้ชัดเจน ห้ามมีคำอธิบายก่อนหรือหลังกล่อง
 
 บริบทเอกสาร: ปีการศึกษา ${academicYear} ภาคเรียนที่ ${semester}
 
@@ -12769,7 +12769,7 @@ function _workCalendarMonthMarkup(monthKey, events, index, { manager = false } =
       <div class="overflow-x-auto"><table class="w-full text-xs min-w-[680px]"><thead><tr class="text-gray-500 text-left"><th class="py-2 px-2 w-[18%]">วัน/เดือน/ปี</th><th class="py-2 px-2">กิจกรรม/งาน</th><th class="py-2 px-2 w-[22%]">ผู้รับผิดชอบ</th><th class="py-2 px-2 w-[12%]">สัปดาห์</th><th class="py-2 px-2 w-[16%]">หมายเหตุ</th>${manager ? '<th class="py-2 px-2 w-[86px]">จัดการ</th>' : ''}</tr></thead><tbody class="divide-y divide-white/80">${monthEvents.length ? monthEvents.map(event => {
         const dateText = event.end_date && event.end_date !== event.event_date ? `${_workCalendarFormatDate(event.event_date, true)} – ${_workCalendarFormatDate(event.end_date, true)}` : _workCalendarFormatDate(event.event_date, true)
         const holiday = event.is_holiday ? `<span class="ml-1 text-rose-600 font-bold">วันหยุด</span>` : ''
-        return `<tr class="align-top"><td class="py-2 px-2 font-semibold ${event.is_holiday ? 'text-rose-600' : 'text-gray-700'}">${dateText}${holiday}</td><td class="py-2 px-2"><div class="font-bold text-gray-800">${_workCalendarEsc(event.label)}</div>${event.description ? `<div class="text-gray-500 mt-0.5">${_workCalendarEsc(event.description)}</div>` : ''}</td><td class="py-2 px-2 text-gray-600">${_workCalendarEsc(event.responsible_unit || '—')}</td><td class="py-2 px-2 text-gray-600">${event.week_number ? `สัปดาห์ที่ ${event.week_number}` : '—'}</td><td class="py-2 px-2 text-gray-500">${_workCalendarEsc(event.holiday_note || event.note || '—')}</td>${manager ? `<td class="py-2 px-2 whitespace-nowrap"><button class="wcal-edit-btn text-indigo-600 hover:text-indigo-800 mr-2" data-ev-id="${event.id}">แก้ไข</button><button class="wcal-del-btn text-rose-500 hover:text-rose-700" data-ev-id="${event.id}">ลบ</button></td>` : ''}</tr>`
+        return `<tr class="align-top"><td class="py-2 px-2 font-semibold ${event.is_holiday ? 'text-rose-600' : 'text-gray-700'}">${dateText}${holiday}</td><td class="py-2 px-2"><div class="font-bold text-gray-800">${_workCalendarEsc(event.label)}</div>${event.description ? `<div class="text-gray-500 mt-0.5">${_workCalendarEsc(event.description)}</div>` : ''}</td><td class="py-2 px-2 text-gray-600">${_workCalendarEsc(event.responsible_unit || '—')}</td><td class="py-2 px-2 text-gray-600">${event.week_number ? `สัปดาห์ที่ ${event.week_number}` : '—'}</td><td class="py-2 px-2 text-gray-500">${_workCalendarEsc(event.holiday_note || event.note || '—')}</td>${manager ? `<td class="py-2 px-2 whitespace-nowrap"><div class="flex flex-wrap gap-1.5"><button type="button" class="wcal-edit-btn inline-flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50 px-2 py-1 text-[11px] font-bold text-indigo-700 hover:bg-indigo-100" data-ev-id="${event.id}" title="แก้ไขกิจกรรม">✏️ แก้ไข</button><button type="button" class="wcal-del-btn inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700 hover:bg-rose-100" data-ev-id="${event.id}" title="ลบกิจกรรม">🗑️ ลบ</button></div></td>` : ''}</tr>`
       }).join('') : `<tr><td colspan="${manager ? 6 : 5}" class="py-6 text-center text-gray-400">ยังไม่มีรายการในเดือนนี้</td></tr>`}</tbody></table></div>
     </div>
   </section>`
