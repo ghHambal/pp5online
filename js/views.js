@@ -4635,13 +4635,28 @@ export async function renderHomeroom() {
   document.getElementById('page-title').textContent = 'ครูที่ปรึกษา'
 
   const cfg       = await getSystemConfig().catch(()=>({}))
-  const curYear   = parseInt(cfg.academicYear ?? new Date().getFullYear()+543)
-  const curSem    = parseInt(cfg.semester ?? 1)
+  const cfgYear   = parseInt(cfg.academicYear ?? new Date().getFullYear()+543)
+  const cfgSem    = parseInt(cfg.semester ?? 1)
+  const registeredTerms = await getAcademicTerms().catch(() => [])
+  const termMap = new Map()
+  for (const term of registeredTerms) {
+    const year = parseInt(term.academic_year), semester = parseInt(term.semester)
+    if (Number.isInteger(year) && Number.isInteger(semester)) termMap.set(`${semester}/${year}`, { ...term, academic_year: year, semester })
+  }
+  if (!termMap.has(`${cfgSem}/${cfgYear}`)) termMap.set(`${cfgSem}/${cfgYear}`, {
+    academic_year: cfgYear, semester: cfgSem, is_current: true, status: 'current',
+  })
+  const termOptions = [...termMap.values()].sort((a, b) =>
+    Number(b.academic_year) - Number(a.academic_year) || Number(b.semester) - Number(a.semester))
+  const currentRegistered = termOptions.find(t => t.academic_year === cfgYear && t.semester === cfgSem)
+    ?? termOptions.find(t => t.is_current) ?? termOptions[0]
+  let curYear = currentRegistered.academic_year
+  let curSem = currentRegistered.semester
 
   setContent(`<div class="max-w-5xl mx-auto animate-fade">
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
-        <p class="text-xs text-gray-400 mt-0.5">ภาคเรียน ${curSem}/${curYear}</p>
+        <p id="hr-term-label" class="text-xs text-gray-400 mt-0.5">ภาคเรียน ${curSem}/${curYear}</p>
       </div>
       <div class="flex flex-wrap items-center gap-2">
         <button id="hr-ai-import" type="button"
@@ -4653,6 +4668,11 @@ export async function renderHomeroom() {
           ⬇️ ดาวน์โหลด CSV
         </button>
       </div>
+    </div>
+
+    <div id="hr-term-tabs" class="flex flex-wrap gap-2 mb-4">
+      ${termOptions.map(term => `<button type="button" data-hr-term="${term.semester}/${term.academic_year}"
+        class="hr-term-tab px-4 py-2 rounded-xl text-xs font-semibold transition">ภาคเรียน ${term.semester}/${term.academic_year}${term.is_current ? ' (ปัจจุบัน)' : ''}</button>`).join('')}
     </div>
 
     <div class="flex gap-2 mb-4">
@@ -4685,6 +4705,17 @@ export async function renderHomeroom() {
   ])
   let activeCategory = 'สามัญ'
 
+  const _setTermTabUI = () => {
+    document.querySelectorAll('.hr-term-tab').forEach(btn => {
+      const active = btn.dataset.hrTerm === `${curSem}/${curYear}`
+      btn.className = active
+        ? 'hr-term-tab px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 text-white transition'
+        : 'hr-term-tab px-4 py-2 rounded-xl text-xs font-semibold bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 transition'
+    })
+    const label = document.getElementById('hr-term-label')
+    if (label) label.textContent = `ภาคเรียน ${curSem}/${curYear}`
+  }
+
   const _assignmentMap = rows => Object.fromEntries(
     rows
       .filter(r => r.category === activeCategory)
@@ -4701,6 +4732,7 @@ export async function renderHomeroom() {
   }
 
   const _renderTable = async () => {
+    _setTermTabUI()
     _setTabUI()
     const rows = await getHomeroomTeachers(curYear, curSem)
     const assigned = _assignmentMap(rows)
@@ -4835,11 +4867,18 @@ export async function renderHomeroom() {
     renderResults(allTeachers)
   }
 
-  const _advisorAiPrompt = () => `ฉันจะแนบภาพหรือ PDF คำสั่งแต่งตั้งครูที่ปรึกษาให้คุณอ่าน
+  const _advisorAiPrompt = () => {
+    const teacherRoster = [...allTeachers]
+      .sort((a, b) => String(a.full_name ?? '').localeCompare(String(b.full_name ?? ''), 'th'))
+      .map((teacher, index) => `${index + 1}. ${teacher.teacher_code ?? 'ไม่มีรหัส'} | ${teacher.full_name ?? 'ไม่มีชื่อ'} | ${teacher.category ?? 'ไม่ระบุประเภท'}`)
+      .join('\n')
+    return `ฉันจะแนบภาพหรือ PDF คำสั่งแต่งตั้งครูที่ปรึกษาให้คุณอ่าน
 กรุณาอ่านเฉพาะข้อมูลห้องเรียนและชื่อครูที่ปรึกษาจากเอกสาร แล้วส่งผลลัพธ์เป็น JSON เท่านั้น ห้ามใส่ Markdown และห้ามใส่คำอธิบายนอก JSON
 
 ข้อสำคัญ:
 - คัดลอกชื่อครูตามที่ปรากฏในคำสั่งลงใน teacher_name_from_order ห้ามเดาหรือแก้ชื่อให้ถูกเอง
+- ใช้รายชื่อครูอ้างอิงด้านล่างเพื่อช่วยหาชื่อที่ตรงกัน หากพบชื่อใกล้เคียง ให้ใส่ชื่อที่ตรงจากรายการลงใน teacher_name_suggestion
+- teacher_name_suggestion และ teacher_code_suggestion เป็นเพียงคำแนะนำจากรายการอ้างอิง ระบบจะตรวจสอบซ้ำอีกครั้ง ห้ามถือว่าเป็นข้อมูลยืนยัน
 - หากอ่านชื่อหรือห้องไม่ได้ ให้ใส่ค่าว่างและเพิ่มข้อความใน note
 - หากเอกสารมีหลายหน้า ให้รวมข้อมูลทุกหน้า
 - ห้ามสร้าง teacher_id หรือ teacher_code ขึ้นเอง
@@ -4855,13 +4894,19 @@ export async function renderHomeroom() {
       "category": "สามัญ",
       "teacher_name_from_order": "ชื่อครูตามเอกสาร",
       "teacher_code_from_order": "ถ้ามีให้ระบุ ถ้าไม่มีใส่ค่าว่าง",
+      "teacher_name_suggestion": "ชื่อที่ตรงจากรายชื่ออ้างอิง หรือใส่ค่าว่าง",
+      "teacher_code_suggestion": "รหัสที่ตรงจากรายชื่ออ้างอิง หรือใส่ค่าว่าง",
       "source_page": 1,
       "note": "ข้อสังเกตเกี่ยวกับการอ่านเอกสาร"
     }
   ]
 }
 
-ตรวจสอบให้ครบทุกห้องในคำสั่ง และรักษาการสะกดชื่อในเอกสารตามต้นฉบับ แม้จะสงสัยว่าสะกดผิดก็ตาม`
+ตรวจสอบให้ครบทุกห้องในคำสั่ง และรักษาการสะกดชื่อในเอกสารตามต้นฉบับ แม้จะสงสัยว่าสะกดผิดก็ตาม
+
+รายชื่อครูทั้งหมดในระบบ ปพ.5 สำหรับใช้อ้างอิงเท่านั้น:
+${teacherRoster || 'ไม่พบรายชื่อครู'}`
+  }
 
   const _openAdvisorAiImport = () => {
     document.getElementById('hr-ai-import-modal')?.remove()
@@ -5004,6 +5049,7 @@ export async function renderHomeroom() {
             <div>
               <p class="text-sm font-bold text-gray-800">รายการที่ ${index + 1}</p>
               <p class="text-xs text-gray-500 mt-1">ชื่อในคำสั่ง: <span class="font-medium text-gray-700">${_esc(row.sourceName || 'ไม่ระบุ')}</span>${row.sourceCode ? ` · รหัสในคำสั่ง: ${_esc(row.sourceCode)}` : ''}</p>
+              ${row.suggestedName ? `<p class="text-[11px] text-indigo-500 mt-1">AI แนะนำจากรายชื่อระบบ: ${_esc(row.suggestedName)}${row.suggestedCode ? ` (${_esc(row.suggestedCode)})` : ''}</p>` : ''}
               ${row.note ? `<p class="text-[11px] text-gray-400 mt-1">หมายเหตุ AI: ${_esc(row.note)}</p>` : ''}
             </div>
             <span class="ai-row-status text-[11px] font-semibold px-2.5 py-1 rounded-lg border ${meta.cls}">${meta.label}</span>
@@ -5065,14 +5111,20 @@ export async function renderHomeroom() {
           const category = ['สามัญ', 'ศาสนา'].includes(item.category) ? item.category : activeCategory
           const sourceName = item.teacher_name_from_order ?? item.teacher_name ?? item.teacher ?? item.advisor_name ?? ''
           const sourceCode = item.teacher_code_from_order ?? item.teacher_code ?? item.code ?? ''
+          const suggestedName = item.teacher_name_suggestion ?? item.matched_teacher_name ?? ''
+          const suggestedCode = item.teacher_code_suggestion ?? item.matched_teacher_code ?? ''
           const roomRaw = item.main_room ?? item.room ?? item.class_name ?? item.classroom ?? ''
           const mainRoom = _findRoom(roomRaw, category)
-          const match = _findTeacher(sourceName, sourceCode)
+          const rawMatch = _findTeacher(sourceName, sourceCode)
+          const suggestedMatch = _findTeacher(suggestedName, suggestedCode)
+          const match = rawMatch.status === 'exact'
+            ? rawMatch
+            : (suggestedMatch.teacher ? { ...suggestedMatch, status: 'suggested' } : rawMatch)
           const key = `${category}|${mainRoom ?? String(roomRaw).trim()}`
           const duplicate = seenKeys.has(key)
           seenKeys.add(key)
           return {
-            category, sourceName, sourceCode, note: item.note ?? '', sourcePage: item.source_page ?? '',
+            category, sourceName, sourceCode, suggestedName, suggestedCode, note: item.note ?? '', sourcePage: item.source_page ?? '',
             mainRoom, roomExact: !!mainRoom, roomReviewed: false,
             teacherId: match.teacher?.id ?? null, teacherReviewed: false,
             matchStatus: duplicate ? 'ambiguous' : match.status,
@@ -5120,6 +5172,16 @@ export async function renderHomeroom() {
   }
 
   document.getElementById('hr-ai-import')?.addEventListener('click', _openAdvisorAiImport)
+
+  document.querySelectorAll('.hr-term-tab').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const [semester, academicYear] = String(btn.dataset.hrTerm ?? '').split('/').map(Number)
+      if (!Number.isInteger(semester) || !Number.isInteger(academicYear)) return
+      curSem = semester
+      curYear = academicYear
+      await _renderTable()
+    })
+  })
 
   document.querySelectorAll('.hr-tab').forEach(btn => {
     btn.addEventListener('click', async () => {
@@ -11561,10 +11623,11 @@ export async function renderCouncilRepNominationSummary() {
 
   const cfg = await getSystemConfig().catch(() => ({}))
   const academicYear = String(cfg.academicYear ?? cfg.academic_year ?? (new Date().getFullYear() + 543))
+  const semester = Number(cfg.semester ?? 1)
 
   const [homeroomRooms, nominations] = await Promise.all([
-    getHomeroomTeachers(academicYear).catch(() => []),
-    getAllCouncilRepNominations(academicYear).catch(() => []),
+    getHomeroomTeachers(academicYear, semester).catch(() => []),
+    getAllCouncilRepNominations(academicYear, semester).catch(() => []),
   ])
 
   const gradeOf = (room) => (room || '').match(/^ม\.\d+/)?.[0] ?? null

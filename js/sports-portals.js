@@ -765,6 +765,7 @@ async function _renderAdvisorCouncilNominateTab(body,teacher,roomNames) {
     const { getSystemConfig, getCouncilRepNominationsForRoom, addCouncilRepNomination, removeCouncilRepNomination } = await import('./api.js')
     const cfg = await getSystemConfig().catch(() => ({}))
     const academicYear = cfg.academicYear ?? cfg.academic_year ?? (new Date().getFullYear() + 543)
+    const semester = Number(cfg.semester ?? 1)
     const eligibleGrades = ['ม.3', 'ม.4', 'ม.5']
     const gradeOf = (room) => (room || '').match(/^ม\.\d+/)?.[0] ?? null
     const eligibleRooms = roomNames.filter(r => eligibleGrades.includes(gradeOf(r)))
@@ -781,7 +782,7 @@ async function _renderAdvisorCouncilNominateTab(body,teacher,roomNames) {
     const [studentsRes, ...nomRes] = await Promise.all([
       supabase.from('students').select('id,student_code,full_name,gender,image_url,photo_url,main_room')
         .in('main_room', eligibleRooms).eq('is_active', true).order('main_room').order('student_code'),
-      ...eligibleRooms.map(r => getCouncilRepNominationsForRoom(r, String(academicYear)).catch(() => [])),
+      ...eligibleRooms.map(r => getCouncilRepNominationsForRoom(r, String(academicYear), semester).catch(() => [])),
     ])
     if (studentsRes.error) throw studentsRes.error
     const studentsByRoom = {}
@@ -849,8 +850,8 @@ async function _renderAdvisorCouncilNominateTab(body,teacher,roomNames) {
           await removeCouncilRepNomination(nomId)
           nominatedByRoom[room] = nominatedByRoom[room].filter(n => n.id !== nomId)
         } else {
-          await addCouncilRepNomination({ mainRoom: room, studentId, teacherId: teacher.id, academicYear: String(academicYear) })
-          nominatedByRoom[room] = await getCouncilRepNominationsForRoom(room, String(academicYear))
+          await addCouncilRepNomination({ mainRoom: room, studentId, teacherId: teacher.id, academicYear: String(academicYear), semester })
+          nominatedByRoom[room] = await getCouncilRepNominationsForRoom(room, String(academicYear), semester)
         }
       } catch (e2) {
         toast(getFriendlyErrorMessage(e2), 'error')

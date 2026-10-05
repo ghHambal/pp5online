@@ -9,8 +9,9 @@ CREATE TABLE IF NOT EXISTS public.council_rep_nominations (
   student_id integer NOT NULL REFERENCES public.students(id) ON DELETE CASCADE,
   nominated_by_teacher_id integer NOT NULL REFERENCES public.teachers(id) ON DELETE CASCADE,
   academic_year text NOT NULL,
+  semester integer NOT NULL DEFAULT 1 CHECK (semester IN (1, 2)),
   created_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (main_room, student_id, academic_year)
+  UNIQUE (main_room, student_id, academic_year, semester)
 );
 COMMENT ON TABLE public.council_rep_nominations IS
   'รายชื่อนักเรียนที่ครูที่ปรึกษาสามัญเสนอเป็นตัวแทนสภานักเรียน (ห้องละ 2 คน ตามบันทึกข้อความ) — เครื่องมือเก็บรายชื่อเฉพาะ ไม่ผูกกับ council_members/council_applications จริง';
@@ -24,7 +25,8 @@ CREATE POLICY "council_rep_nominations_homeroom_teacher" ON public.council_rep_n
     EXISTS (
       SELECT 1 FROM homeroom_teachers ht JOIN teachers t ON t.id = ht.teacher_id
       WHERE ht.main_room = council_rep_nominations.main_room
-        AND ht.category = 'สามัญ' AND t.profile_id = auth.uid()
+        AND ht.category = 'สามัญ' AND ht.academic_year::text = council_rep_nominations.academic_year
+        AND ht.semester = council_rep_nominations.semester AND t.profile_id = auth.uid()
     )
     OR (get_user_role() = 'admin')
   )
@@ -32,7 +34,8 @@ CREATE POLICY "council_rep_nominations_homeroom_teacher" ON public.council_rep_n
     EXISTS (
       SELECT 1 FROM homeroom_teachers ht JOIN teachers t ON t.id = ht.teacher_id
       WHERE ht.main_room = council_rep_nominations.main_room
-        AND ht.category = 'สามัญ' AND t.profile_id = auth.uid()
+        AND ht.category = 'สามัญ' AND ht.academic_year::text = council_rep_nominations.academic_year
+        AND ht.semester = council_rep_nominations.semester AND t.profile_id = auth.uid()
         AND t.id = council_rep_nominations.nominated_by_teacher_id
     )
     OR (get_user_role() = 'admin')

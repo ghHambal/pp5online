@@ -793,14 +793,16 @@ export async function deleteStudent(id) {
 
 // ─── Homeroom Teachers ────────────────────────────────────────────────────────
 export async function getHomeroomTeachers(academicYear, semester) {
+  const year = Number(academicYear)
+  const term = Number(semester)
+  if (!Number.isInteger(year) || !Number.isInteger(term)) return []
   let q = supabase
     .from('homeroom_teachers')
     .select('id, main_room, category, academic_year, semester, teacher_id, teachers(full_name, teacher_code, phone)')
     .order('main_room')
     .order('category')
     .order('id', { ascending: false })
-  if (academicYear) q = q.eq('academic_year', academicYear)
-  if (semester)     q = q.eq('semester', semester)
+  q = q.eq('academic_year', year).eq('semester', term)
   const { data, error } = await q
   if (error) throw error
 
@@ -834,12 +836,22 @@ export async function getUniqueReligionRooms() {
   return [...new Set((data ?? []).map(s => s.religion_room).filter(Boolean))].sort()
 }
 
-export async function getMyHomeroomRooms(teacherId) {
+export async function getMyHomeroomRooms(teacherId, academicYear, semester) {
   if (!teacherId) return []
+  let year = Number(academicYear)
+  let term = Number(semester)
+  if (!Number.isInteger(year) || !Number.isInteger(term)) {
+    const cfg = await getSystemConfig().catch(() => ({}))
+    year = Number(cfg.academicYear ?? cfg.academic_year)
+    term = Number(cfg.semester)
+  }
+  if (!Number.isInteger(year) || !Number.isInteger(term)) return []
   const { data, error } = await supabase
     .from('homeroom_teachers')
     .select('id, main_room, category, academic_year, semester')
     .eq('teacher_id', teacherId)
+    .eq('academic_year', year)
+    .eq('semester', term)
   if (error) throw error
   return data ?? []
 }
@@ -847,18 +859,18 @@ export async function getMyHomeroomRooms(teacherId) {
 // ─── เสนอชื่อตัวแทนสภานักเรียน (ครูที่ปรึกษาสามัญ ม.3-ม.5, ห้องละ 2 คน ตามบันทึกข้อความ) ──
 // เครื่องมือเก็บรายชื่อเฉพาะ ไม่ผูกกับ council_members/council_applications จริง (ดูเหตุผลใน
 // patch_council_rep_nominations.sql)
-export async function getCouncilRepNominationsForRoom(mainRoom, academicYear) {
+export async function getCouncilRepNominationsForRoom(mainRoom, academicYear, semester) {
   const { data, error } = await supabase.from('council_rep_nominations')
-    .select('id, student_id, students(full_name, student_code, image_url, photo_url, gender)')
-    .eq('main_room', mainRoom).eq('academic_year', academicYear)
+    .select('id, student_id, academic_year, semester, students(full_name, student_code, image_url, photo_url, gender)')
+    .eq('main_room', mainRoom).eq('academic_year', academicYear).eq('semester', semester)
   if (error) throw error
   return data ?? []
 }
 
-export async function addCouncilRepNomination({ mainRoom, studentId, teacherId, academicYear }) {
+export async function addCouncilRepNomination({ mainRoom, studentId, teacherId, academicYear, semester }) {
   const { error } = await supabase.from('council_rep_nominations').insert({
     main_room: mainRoom, student_id: studentId,
-    nominated_by_teacher_id: teacherId, academic_year: academicYear,
+    nominated_by_teacher_id: teacherId, academic_year: academicYear, semester,
   })
   if (error) throw error
 }
@@ -869,10 +881,10 @@ export async function removeCouncilRepNomination(id) {
 }
 
 // สำหรับหน้าสรุปแอดมิน — join ครูผู้เสนอมาด้วยในคิวรีเดียว
-export async function getAllCouncilRepNominations(academicYear) {
+export async function getAllCouncilRepNominations(academicYear, semester) {
   const { data, error } = await supabase.from('council_rep_nominations')
-    .select('id, main_room, created_at, students(full_name, student_code, gender), teachers:nominated_by_teacher_id(full_name)')
-    .eq('academic_year', academicYear)
+    .select('id, main_room, created_at, academic_year, semester, students(full_name, student_code, gender), teachers:nominated_by_teacher_id(full_name)')
+    .eq('academic_year', academicYear).eq('semester', semester)
     .order('main_room')
   if (error) throw error
   return data ?? []
