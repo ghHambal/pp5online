@@ -183,6 +183,16 @@ async function ensureFileHandleAccess(handle) {
       throw new Error('ไม่ได้รับสิทธิ์เขียนไฟล์สำรองเดิม กรุณาอนุญาตการเข้าถึงไฟล์แล้วลองใหม่')
     }
   }
+  try {
+    await handle.getFile()
+  } catch (error) {
+    if (error?.name === 'NotFoundError') {
+      const missing = new Error('ไม่พบไฟล์สำรองเดิมแล้ว กรุณาล้างงานสำรองค้างและเลือกตำแหน่งไฟล์ใหม่')
+      missing.code = 'BACKUP_FILE_MISSING'
+      throw missing
+    }
+    throw error
+  }
 }
 
 async function gzipMember(value) {
@@ -247,6 +257,11 @@ export async function getFullBackupResumeInfo() {
     storageCount: session.storageObjects?.length ?? 0,
     progress,
   }
+}
+
+/** ล้างเฉพาะจุดสำรองค้างในเบราว์เซอร์ ไม่ลบข้อมูลในฐานข้อมูลหรือไฟล์อื่น */
+export async function clearFullBackupResume() {
+  await clearBackupSession()
 }
 
 function getBackupProgress(session, overrides = {}) {

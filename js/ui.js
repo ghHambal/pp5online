@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.898'
+import { APP_VERSION } from './version.js?v=10.22.899'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.899': [
+    '🧹 สำรองข้อมูลทั้งหมด: เพิ่มปุ่มล้างงานสำรองค้างในเบราว์เซอร์ เพื่อเลือกตำแหน่งไฟล์ใหม่เมื่อไฟล์เดิมถูกลบหรือใช้งานต่อไม่ได้',
+  ],
   '10.22.898': [
     '🏷️ หน้าต่างแจ้งการปรับปรุง: แสดงหมายเลขเวอร์ชันปัจจุบันให้ตรวจสอบได้ชัดเจน พร้อมรายการอัปเดตของระบบสำรองข้อมูล',
   ],

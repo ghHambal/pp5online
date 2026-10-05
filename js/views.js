@@ -38,7 +38,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          approveSubjectGroupRequest, rejectSubjectGroupRequest, notifyFeedbackReply } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
-import { createFullBackup, getFullBackupResumeInfo, restoreFullBackup } from './term-backup.js'
+import { clearFullBackupResume, createFullBackup, getFullBackupResumeInfo, restoreFullBackup } from './term-backup.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect, getFriendlyErrorMessage } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
          openSubjectModal, handleDeleteSubject,
@@ -2492,6 +2492,9 @@ export async function renderSettings() {
             <button id="btn-create-full-backup" type="button" class="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold shadow-sm">
               ⬇️ สำรองข้อมูลทั้งหมด
             </button>
+            <button id="btn-reset-full-backup" type="button" class="hidden inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold">
+              🧹 ล้างงานสำรองค้าง
+            </button>
             <span id="full-backup-status" class="text-xs text-gray-500"></span>
           </div>
           <div id="full-backup-progress-wrap" class="hidden mt-4 rounded-xl border border-indigo-100 bg-white/80 p-3" role="status" aria-live="polite">
@@ -3117,6 +3120,7 @@ export async function renderSettings() {
       document.getElementById('cfg-save-hint').textContent = ''
 
       const fullBackupBtn = document.getElementById('btn-create-full-backup')
+      const fullBackupResetBtn = document.getElementById('btn-reset-full-backup')
       const fullBackupStatus = document.getElementById('full-backup-status')
       const fullBackupProgressWrap = document.getElementById('full-backup-progress-wrap')
       const fullBackupProgressLabel = document.getElementById('full-backup-progress-label')
@@ -3153,6 +3157,10 @@ export async function renderSettings() {
       }
       const updateFullBackupResumeUi = async () => {
           const resume = await getFullBackupResumeInfo().catch(() => null)
+        if (fullBackupResetBtn) {
+          fullBackupResetBtn.classList.toggle('hidden', !resume)
+          fullBackupResetBtn.disabled = false
+        }
         if (!fullBackupBtn || !resume) return
         fullBackupBtn.textContent = '▶️ สำรองต่อจากจุดล่าสุด'
         if (fullBackupStatus) {
@@ -3171,6 +3179,7 @@ export async function renderSettings() {
         fullBackupBtn.addEventListener('click', async () => {
           if (!confirm('ยืนยันสร้างไฟล์สำรองข้อมูลทั้งหมดของระบบ? ไฟล์อาจมีข้อมูลส่วนบุคคลจำนวนมาก')) return
           fullBackupBtn.disabled = true
+          if (fullBackupResetBtn) fullBackupResetBtn.disabled = true
           fullBackupBtn.textContent = '⏳ กำลังสำรองข้อมูลทั้งหมด...'
           if (fullBackupStatus) fullBackupStatus.textContent = 'กำลังเตรียมรายการตาราง...'
           setFullBackupProgress({ percent: 0, tableIndex: 0, tableCount: 0, completedRows: 0, estimatedTotalRows: 0, storageIndex: 0, storageCount: 0 })
@@ -3191,11 +3200,37 @@ export async function renderSettings() {
             if (fullBackupStatus) fullBackupStatus.textContent = resume
               ? `หยุดไว้ชั่วคราว · กดปุ่มเดิมเพื่อสำรองต่อจาก ${resume.tableName ?? 'จุดล่าสุด'}`
               : 'สำรองข้อมูลไม่สำเร็จ'
+            if (err?.code === 'BACKUP_FILE_MISSING' && fullBackupStatus) {
+              fullBackupStatus.textContent = 'ไม่พบไฟล์เดิมแล้ว · กด “ล้างงานสำรองค้าง” แล้วเริ่มสำรองใหม่'
+            }
             showToast('สำรองข้อมูลไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
           } finally {
             fullBackupBtn.disabled = false
             const resume = await getFullBackupResumeInfo().catch(() => null)
             fullBackupBtn.textContent = resume ? '▶️ สำรองต่อจากจุดล่าสุด' : '⬇️ สำรองข้อมูลทั้งหมด'
+            if (fullBackupResetBtn) {
+              fullBackupResetBtn.classList.toggle('hidden', !resume)
+              fullBackupResetBtn.disabled = false
+            }
+          }
+        })
+      }
+
+      if (fullBackupResetBtn && !fullBackupResetBtn.dataset.bound) {
+        fullBackupResetBtn.dataset.bound = 'true'
+        fullBackupResetBtn.addEventListener('click', async () => {
+          if (!confirm('ล้างเฉพาะงานสำรองค้างในเบราว์เซอร์ใช่หรือไม่? การทำงานนี้จะไม่ลบข้อมูลในฐานข้อมูลหรือไฟล์อื่น')) return
+          fullBackupResetBtn.disabled = true
+          try {
+            await clearFullBackupResume()
+            if (fullBackupStatus) fullBackupStatus.textContent = 'ล้างงานสำรองค้างแล้ว · กด “สำรองข้อมูลทั้งหมด” เพื่อเลือกตำแหน่งไฟล์ใหม่'
+            if (fullBackupProgressWrap) fullBackupProgressWrap.classList.add('hidden')
+            if (fullBackupBtn) fullBackupBtn.textContent = '⬇️ สำรองข้อมูลทั้งหมด'
+            fullBackupResetBtn.classList.add('hidden')
+            showToast('ล้างงานสำรองค้างแล้ว สามารถเริ่มไฟล์ใหม่ได้ ✅', 'success')
+          } catch (err) {
+            fullBackupResetBtn.disabled = false
+            showToast('ล้างงานสำรองค้างไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
           }
         })
       }
