@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.895'
+import { APP_VERSION } from './version.js?v=10.22.898'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.898': [
+    '🏷️ หน้าต่างแจ้งการปรับปรุง: แสดงหมายเลขเวอร์ชันปัจจุบันให้ตรวจสอบได้ชัดเจน พร้อมรายการอัปเดตของระบบสำรองข้อมูล',
+  ],
   '10.22.894': [
     '💾 สำรองข้อมูลทั้งหมด: ทำต่อจากจุดล่าสุดได้เมื่อการเชื่อมต่อหลุด พร้อมลองเชื่อมต่อใหม่อัตโนมัติ',
   ],
@@ -4401,7 +4404,7 @@ export function checkAndShowChangelog(userId, forceShow = false, hasAdminAccess 
           ✨
         </div>
         <h3 class="font-extrabold text-gray-800 text-base mb-1">มีอะไรใหม่ในเวอร์ชันนี้!</h3>
-        <p class="text-xs text-gray-400 mb-4 font-medium">รายการปรับปรุงและฟีเจอร์ใหม่สำหรับผู้ดูแลระบบ</p>
+        <p class="text-xs text-gray-400 mb-4 font-medium">เวอร์ชัน v${currentVersion} · รายการปรับปรุงและฟีเจอร์ใหม่สำหรับผู้ดูแลระบบ</p>
         
         <div class="bg-gray-50 border border-gray-100 rounded-2xl p-4 mb-5 max-h-60 overflow-y-auto text-left">
           ${changelogHTML || '<p class="text-xs text-gray-400 text-center">ไม่มีการเปลี่ยนแปลงล่าสุด</p>'}
