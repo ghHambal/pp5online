@@ -12559,335 +12559,388 @@ export async function renderFeedbackAdmin() {
   await _load()
 }
 
-// ───── ปฏิทินปฏิบัติงาน (teacher read-only view) ─────
-export async function renderWorkCalendarView() {
-  const { getWorkCalendarEvents, getSystemConfig } = await import('./api.js')
+// ───── ปฏิทินปฏิบัติงาน (official calendar + reviewed AI JSON import) ─────
+const WORK_CALENDAR_EVENT_TYPES = {
+  inspection: '🔍 รอบตรวจ', deadline: '⏰ กำหนดส่ง', meeting: '📅 ประชุม', other: '📌 อื่นๆ',
+}
+const WORK_CALENDAR_CATEGORIES = {
+  opening: { label: 'เปิด–ปิดภาคเรียน', icon: '🚪', chip: 'bg-emerald-50 text-emerald-700 border-emerald-100' },
+  exam: { label: 'การสอบ', icon: '📝', chip: 'bg-violet-50 text-violet-700 border-violet-100' },
+  student_activity: { label: 'กิจกรรมนักเรียน', icon: '🎒', chip: 'bg-cyan-50 text-cyan-700 border-cyan-100' },
+  staff: { label: 'ครูและบุคลากร', icon: '👥', chip: 'bg-amber-50 text-amber-700 border-amber-100' },
+  holiday: { label: 'วันหยุด/วันสำคัญ', icon: '🔴', chip: 'bg-rose-50 text-rose-700 border-rose-100' },
+  deadline: { label: 'กำหนดส่งเอกสาร', icon: '📤', chip: 'bg-orange-50 text-orange-700 border-orange-100' },
+  meeting: { label: 'ประชุม', icon: '🤝', chip: 'bg-blue-50 text-blue-700 border-blue-100' },
+  other: { label: 'อื่นๆ', icon: '📌', chip: 'bg-gray-50 text-gray-600 border-gray-100' },
+}
+const WORK_CALENDAR_MONTH_TONES = [
+  { header: 'bg-emerald-700', soft: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-800' },
+  { header: 'bg-violet-700', soft: 'bg-violet-50', border: 'border-violet-200', text: 'text-violet-800' },
+  { header: 'bg-cyan-700', soft: 'bg-cyan-50', border: 'border-cyan-200', text: 'text-cyan-800' },
+  { header: 'bg-blue-700', soft: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-800' },
+  { header: 'bg-amber-600', soft: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800' },
+  { header: 'bg-rose-700', soft: 'bg-rose-50', border: 'border-rose-200', text: 'text-rose-800' },
+  { header: 'bg-orange-700', soft: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-800' },
+]
+const WORK_CALENDAR_WEEKDAYS = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส']
 
-  setActiveNav('work-calendar-view')
-  document.getElementById('page-title').textContent = 'ปฏิทินปฏิบัติงาน'
+function _workCalendarEsc(value) {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
 
-  const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-  const EVENT_TYPE_LABEL = { inspection: '🔍 รอบตรวจ', deadline: '⏰ กำหนดส่ง', meeting: '📅 ประชุม', other: '📌 อื่นๆ' }
-  const EVENT_TYPE_COLOR = {
-    inspection: 'bg-indigo-100 text-indigo-700',
-    deadline: 'bg-rose-100 text-rose-700',
-    meeting: 'bg-amber-100 text-amber-700',
-    other: 'bg-gray-100 text-gray-600',
-  }
-  const _fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
-  const _fmtDateShort = d => new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+function _workCalendarDate(value) {
+  return String(value ?? '').slice(0, 10)
+}
 
-  let cfg = { academic_year: new Date().getFullYear() + 543, semester: 1 }
-  try {
-    const c = await getSystemConfig()
-    cfg = { academic_year: c.academicYear ?? c.academic_year ?? cfg.academic_year, semester: c.semester ?? cfg.semester }
-  } catch {}
+function _workCalendarFormatDate(value, short = false) {
+  const d = _workCalendarDate(value)
+  if (!d) return '—'
+  return new Date(`${d}T00:00:00`).toLocaleDateString('th-TH', short
+    ? { day: 'numeric', month: 'short', year: 'numeric' }
+    : { day: 'numeric', month: 'long', year: 'numeric' })
+}
 
-  setContent(`<div class="animate-fade max-w-2xl mx-auto">
-    <div class="mb-6">
-      <p class="text-xs text-gray-400 mt-0.5">ปีการศึกษา ${cfg.academic_year} ภาคเรียนที่ ${cfg.semester}</p>
-    </div>
-    <div id="wcalv-list" class="space-y-3">
-      <div class="flex justify-center py-12 text-gray-400 text-sm">กำลังโหลด...</div>
-    </div>
-  </div>`)
+function _workCalendarMonthKey(value) {
+  return _workCalendarDate(value).slice(0, 7)
+}
 
-  try {
-    const events = await getWorkCalendarEvents(cfg.academic_year, cfg.semester)
-    const list = document.getElementById('wcalv-list')
-    if (!events.length) {
-      list.innerHTML = '<div class="text-center py-12 text-gray-400 text-sm">ยังไม่มีกิจกรรมในปฏิทิน</div>'
-      return
-    }
-    const today = _dateInputValue(new Date())
-    list.innerHTML = events.map(ev => {
-      const items = (ev.work_calendar_items || []).sort((a,b)=>a.sort_order-b.sort_order)
-      const isPast = ev.event_date < today
-      const roundBadge = ev.event_type === 'inspection' && ev.round_number
-        ? `<span class="ml-1 px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[11px] font-bold">ครั้งที่ ${ev.round_number}</span>`
-        : ''
-      return `<div class="bg-white rounded-2xl border ${isPast?'border-gray-100 opacity-60':'border-gray-100'} shadow-sm p-4">
-        <div class="flex flex-wrap items-center gap-1.5 mb-1">
-          <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${EVENT_TYPE_COLOR[ev.event_type]}">${EVENT_TYPE_LABEL[ev.event_type]}</span>
-          ${roundBadge}
-          ${isPast?'<span class="text-[11px] text-gray-400">ผ่านมาแล้ว</span>':'<span class="text-[11px] font-semibold text-emerald-600">กำลังจะมาถึง</span>'}
-          <span class="text-xs text-gray-400 ml-auto">${ev.end_date && ev.end_date !== ev.event_date ? `${_fmtDateShort(ev.event_date)} – ${_fmtDate(ev.end_date)}` : _fmtDate(ev.event_date)}</span>
-        </div>
-        <p class="font-semibold text-gray-800 text-sm">${_esc(ev.label)}</p>
-        ${ev.description ? `<p class="text-xs text-gray-500 mt-0.5">${_esc(ev.description)}</p>` : ''}
-        ${items.length ? `<div class="mt-2 border-t border-gray-50 pt-2">
-          <p class="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">สิ่งที่จะตรวจ</p>
-          <ul class="space-y-0.5">${items.map(it=>`<li class="text-xs text-gray-600 flex gap-1.5"><span class="text-indigo-400">☑</span>${_esc(it.item_label)}</li>`).join('')}</ul>
-        </div>` : ''}
-      </div>`
-    }).join('')
-  } catch(err) {
-    const _esc2 = v => String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    document.getElementById('wcalv-list').innerHTML = `<div class="text-center py-8 text-red-400 text-sm">โหลดไม่สำเร็จ: ${_esc2(err.message)}</div>`
+function _workCalendarMonthLabel(monthKey) {
+  const d = new Date(`${monthKey}-01T00:00:00`)
+  return d.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
+}
+
+function _workCalendarCategory(event) {
+  if (event.is_holiday) return 'holiday'
+  if (WORK_CALENDAR_CATEGORIES[event.category]) return event.category
+  if (event.event_type === 'deadline') return 'deadline'
+  if (event.event_type === 'meeting') return 'meeting'
+  if (/สอบ|คัดเลือก|วัดความรู้|TGAT|TPAT|A-level|I-Net|O-NET/i.test(event.label ?? '')) return 'exam'
+  if (/เปิดเรียน|ปิดภาค|ลงทะเบียน/i.test(event.label ?? '')) return 'opening'
+  return 'other'
+}
+
+function _workCalendarNormaliseEvent(event) {
+  return {
+    ...event,
+    event_date: _workCalendarDate(event.event_date),
+    end_date: event.end_date ? _workCalendarDate(event.end_date) : null,
+    category: _workCalendarCategory(event),
+    work_calendar_items: (event.work_calendar_items ?? []).slice().sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)),
   }
 }
 
-// ───── ปฏิทินปฏิบัติงาน (supervisor manage view) ─────
-export async function renderWorkCalendar(teacher) {
-  const { getWorkCalendarEvents, createWorkCalendarEvent, updateWorkCalendarEvent, deleteWorkCalendarEvent, replaceWorkCalendarItems, getSystemConfig } = await import('./api.js')
-
-  setActiveNav('work-calendar')
-  document.getElementById('page-title').textContent = 'ปฏิทินปฏิบัติงาน'
-
-  const _esc = v => String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-
-  const EVENT_TYPE_LABEL = { inspection: '🔍 รอบตรวจ', deadline: '⏰ กำหนดส่ง', meeting: '📅 ประชุม', other: '📌 อื่นๆ' }
-  const EVENT_TYPE_COLOR = {
-    inspection: 'bg-indigo-100 text-indigo-700',
-    deadline: 'bg-rose-100 text-rose-700',
-    meeting: 'bg-amber-100 text-amber-700',
-    other: 'bg-gray-100 text-gray-600',
-  }
-  const _fmtDate = d => new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
-  const _fmtDateShort = d => new Date(d + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
-
-  // ดึง config สำหรับปีการศึกษา
-  let cfg = { academic_year: new Date().getFullYear() + 543, semester: 1 }
-  try {
-    const c = await getSystemConfig()
-    cfg = { academic_year: c.academicYear ?? c.academic_year ?? cfg.academic_year, semester: c.semester ?? cfg.semester }
-  } catch {}
-
-  const _ay = cfg.academic_year
-  const _sm = cfg.semester
-
-  setContent(`<div class="animate-fade max-w-2xl mx-auto">
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <p class="text-xs text-gray-400 mt-0.5">ปีการศึกษา ${_ay} ภาคเรียนที่ ${_sm}</p>
-      </div>
-      <button id="wcal-create-btn"
-        class="px-4 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition shadow-sm flex items-center gap-2">
-        <span class="text-base">＋</span> เพิ่มกิจกรรม
-      </button>
-    </div>
-    <div id="wcal-list" class="space-y-3">
-      <div class="flex justify-center py-12 text-gray-400 text-sm">กำลังโหลด...</div>
-    </div>
-  </div>
-
-  <!-- Modal สร้าง/แก้ไข event -->
-  <div id="wcal-modal" class="hidden fixed inset-0 z-[80] flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="wcal-modal-backdrop"></div>
-    <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-      <div class="p-6">
-        <h3 id="wcal-modal-title" class="text-lg font-bold text-gray-800 mb-4">เพิ่มกิจกรรม</h3>
-        <div class="space-y-4">
-          <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">ประเภทกิจกรรม</label>
-            <div class="flex flex-wrap gap-2" id="wcal-type-pills">
-              ${Object.entries(EVENT_TYPE_LABEL).map(([k,v]) => `
-                <button data-type="${k}" class="wcal-type-pill px-3 py-1.5 rounded-full text-sm font-medium border transition ${k==='inspection'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}">${v}</button>
-              `).join('')}
-            </div>
-          </div>
-          <div id="wcal-round-row">
-            <label class="block text-xs font-semibold text-gray-500 mb-1">รอบที่ <span class="text-gray-400 font-normal">(เฉพาะรอบตรวจ)</span></label>
-            <input id="wcal-round" type="number" min="1" placeholder="เช่น 1, 2, 3" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">ช่วงวันที่ <span class="text-rose-500">*</span></label>
-            <div class="flex items-center gap-2">
-              <input id="wcal-date" type="date" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-              <span class="text-gray-400 text-sm shrink-0">ถึง</span>
-              <input id="wcal-end-date" type="date" placeholder="(ไม่บังคับ)" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-            </div>
-            <p class="text-[11px] text-gray-400 mt-1">วันสิ้นสุดไม่บังคับ — ใส่เมื่อกิจกรรมมีช่วงเวลา</p>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">ชื่อกิจกรรม <span class="text-rose-500">*</span></label>
-            <input id="wcal-label" type="text" maxlength="120" placeholder="เช่น ตรวจ ปพ.5 รอบที่ 1" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">รายละเอียด</label>
-            <textarea id="wcal-desc" rows="2" maxlength="500" placeholder="รายละเอียดเพิ่มเติม (ถ้ามี)" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-300"></textarea>
-          </div>
-          <div>
-            <label class="block text-xs font-semibold text-gray-500 mb-1">สิ่งที่จะตรวจ / checklist</label>
-            <div id="wcal-items-list" class="space-y-2 mb-2"></div>
-            <button id="wcal-add-item" class="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1">＋ เพิ่มรายการ</button>
-          </div>
-        </div>
-        <div class="flex gap-3 mt-6">
-          <button id="wcal-modal-cancel" class="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-50 transition">ยกเลิก</button>
-          <button id="wcal-modal-save" class="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold hover:bg-indigo-700 transition">บันทึก</button>
-        </div>
-      </div>
-    </div>
-  </div>`)
-
-  let _events = []
-  let _editId = null
-
-  // ── helpers ──
-  function _renderList() {
-    const list = document.getElementById('wcal-list')
-    if (!_events.length) {
-      list.innerHTML = '<div class="text-center py-12 text-gray-400 text-sm">ยังไม่มีกิจกรรม<br><span class="text-xs">กดปุ่ม + เพิ่มกิจกรรม เพื่อเริ่มต้น</span></div>'
-      return
-    }
-    list.innerHTML = _events.map(ev => {
-      const items = (ev.work_calendar_items || []).sort((a,b)=>a.sort_order-b.sort_order)
-      const roundBadge = ev.event_type === 'inspection' && ev.round_number
-        ? `<span class="ml-1 px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[11px] font-bold">ครั้งที่ ${ev.round_number}</span>`
-        : ''
-      return `<div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 hover:shadow-md transition" data-ev-id="${ev.id}">
-        <div class="flex items-start justify-between gap-3">
-          <div class="flex-1 min-w-0">
-            <div class="flex flex-wrap items-center gap-1.5 mb-1">
-              <span class="px-2 py-0.5 rounded-full text-[11px] font-semibold ${EVENT_TYPE_COLOR[ev.event_type]}">${EVENT_TYPE_LABEL[ev.event_type]}</span>
-              ${roundBadge}
-              <span class="text-xs text-gray-400">${ev.end_date && ev.end_date !== ev.event_date ? `${_fmtDateShort(ev.event_date)} – ${_fmtDate(ev.end_date)}` : _fmtDate(ev.event_date)}</span>
-            </div>
-            <p class="font-semibold text-gray-800 text-sm">${_esc(ev.label)}</p>
-            ${ev.description ? `<p class="text-xs text-gray-500 mt-0.5">${_esc(ev.description)}</p>` : ''}
-            ${items.length ? `<ul class="mt-2 space-y-0.5">${items.map(it=>`<li class="text-xs text-gray-500 flex gap-1.5"><span class="text-indigo-400 mt-0.5">☑</span>${_esc(it.item_label)}</li>`).join('')}</ul>` : ''}
-          </div>
-          <div class="flex gap-1.5 shrink-0">
-            <button class="wcal-edit-btn p-2 rounded-xl bg-gray-50 hover:bg-indigo-50 text-gray-500 hover:text-indigo-600 transition text-sm" data-ev-id="${ev.id}" title="แก้ไข">✏️</button>
-            <button class="wcal-del-btn p-2 rounded-xl bg-gray-50 hover:bg-rose-50 text-gray-500 hover:text-rose-600 transition text-sm" data-ev-id="${ev.id}" title="ลบ">🗑️</button>
-          </div>
-        </div>
-      </div>`
-    }).join('')
-  }
-
-  function _addItemRow(val = '') {
-    const wrap = document.getElementById('wcal-items-list')
-    const row = document.createElement('div')
-    row.className = 'flex gap-2 items-center'
-    row.innerHTML = `<input type="text" maxlength="100" value="${_esc(val)}" placeholder="เช่น ตรวจโปรไฟล์ครูครบถ้วน" class="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-      <button class="p-1.5 text-gray-400 hover:text-rose-500 transition wcal-remove-item">✕</button>`
-    row.querySelector('.wcal-remove-item').onclick = () => row.remove()
-    wrap.appendChild(row)
-  }
-
-  function _openModal(ev = null) {
-    _editId = ev?.id ?? null
-    const modal = document.getElementById('wcal-modal')
-    document.getElementById('wcal-modal-title').textContent = ev ? 'แก้ไขกิจกรรม' : 'เพิ่มกิจกรรม'
-
-    // reset pills
-    document.querySelectorAll('.wcal-type-pill').forEach(p => {
-      const active = p.dataset.type === (ev?.event_type ?? 'inspection')
-      p.className = `wcal-type-pill px-3 py-1.5 rounded-full text-sm font-medium border transition ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`
-    })
-
-    document.getElementById('wcal-round').value = ev?.round_number ?? ''
-    document.getElementById('wcal-date').value = ev?.event_date ?? ''
-    document.getElementById('wcal-end-date').value = ev?.end_date ?? ''
-    document.getElementById('wcal-label').value = ev?.label ?? ''
-    document.getElementById('wcal-desc').value = ev?.description ?? ''
-
-    document.getElementById('wcal-items-list').innerHTML = ''
-    ;(ev?.work_calendar_items || []).sort((a,b)=>a.sort_order-b.sort_order).forEach(it => _addItemRow(it.item_label))
-
-    _toggleRoundRow()
-    modal.classList.remove('hidden')
-    setTimeout(() => document.getElementById('wcal-label').focus(), 50)
-  }
-
-  function _closeModal() {
-    document.getElementById('wcal-modal').classList.add('hidden')
-    _editId = null
-  }
-
-  function _getSelectedType() {
-    return document.querySelector('.wcal-type-pill.bg-indigo-600')?.dataset.type ?? 'inspection'
-  }
-
-  function _toggleRoundRow() {
-    const row = document.getElementById('wcal-round-row')
-    row.classList.toggle('hidden', _getSelectedType() !== 'inspection')
-  }
-
-  // ── event listeners ──
-  document.getElementById('wcal-create-btn').addEventListener('click', () => _openModal())
-  document.getElementById('wcal-modal-cancel').addEventListener('click', _closeModal)
-  document.getElementById('wcal-modal-backdrop').addEventListener('click', _closeModal)
-  document.getElementById('wcal-add-item').addEventListener('click', () => _addItemRow())
-
-  document.getElementById('wcal-type-pills').addEventListener('click', e => {
-    const btn = e.target.closest('.wcal-type-pill')
-    if (!btn) return
-    document.querySelectorAll('.wcal-type-pill').forEach(p => {
-      p.className = `wcal-type-pill px-3 py-1.5 rounded-full text-sm font-medium border transition bg-white text-gray-600 border-gray-200 hover:border-indigo-300`
-    })
-    btn.className = `wcal-type-pill px-3 py-1.5 rounded-full text-sm font-medium border transition bg-indigo-600 text-white border-indigo-600`
-    _toggleRoundRow()
+function _workCalendarEventsForDay(events, day) {
+  return events.filter(event => {
+    const end = event.end_date || event.event_date
+    return event.event_date <= day && end >= day
   })
+}
 
-  document.getElementById('wcal-list').addEventListener('click', e => {
-    const editBtn = e.target.closest('.wcal-edit-btn')
-    const delBtn = e.target.closest('.wcal-del-btn')
-    if (editBtn) {
-      const ev = _events.find(x => x.id === +editBtn.dataset.evId)
-      if (ev) _openModal(ev)
+function _workCalendarEventOverlapsMonth(event, monthKey) {
+  const monthStart = `${monthKey}-01`
+  const date = new Date(`${monthStart}T00:00:00`)
+  const monthEnd = `${monthKey}-${String(new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()).padStart(2, '0')}`
+  const eventEnd = event.end_date || event.event_date
+  return event.event_date <= monthEnd && eventEnd >= monthStart
+}
+
+function _workCalendarMonthKeys(events) {
+  const dates = events.flatMap(event => [event.event_date, event.end_date || event.event_date]).filter(Boolean).sort()
+  if (!dates.length) return [_workCalendarMonthKey(_dateInputValue(new Date()))]
+  const start = new Date(`${dates[0].slice(0, 7)}-01T00:00:00`)
+  const end = new Date(`${dates.at(-1).slice(0, 7)}-01T00:00:00`)
+  const keys = []
+  for (const cursor = new Date(start); cursor <= end; cursor.setMonth(cursor.getMonth() + 1)) {
+    keys.push(`${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`)
+  }
+  return keys
+}
+
+function _workCalendarPrompt(academicYear, semester) {
+  return `ฉันจะแนบ PDF หรือภาพปฏิทินการปฏิบัติงานของโรงเรียนให้คุณอ่าน
+กรุณาอ่านข้อมูลจากทุกหน้า และส่งผลลัพธ์เป็น JSON เท่านั้น ห้ามใส่ Markdown หรือคำอธิบายนอก JSON
+
+บริบทเอกสาร: ปีการศึกษา ${academicYear} ภาคเรียนที่ ${semester}
+
+กติกาสำคัญ:
+- อ่านกิจกรรมทุกแถว รวมกิจกรรมที่เป็นช่วงวันที่ และหมายเหตุวันหยุด/วันสำคัญ
+- ต้องเห็นวัน เดือน ปี ให้ครบ หากเป็น พ.ศ. ให้แปลงเป็นวันที่ ISO ค.ศ. เช่น 17 ต.ค. 2569 = 2026-10-17
+- ห้ามเดาวันหรือชื่อกิจกรรม หากอ่านไม่ได้ให้ใส่ note และคงข้อมูลที่อ่านได้
+- รักษาข้อความกิจกรรมและชื่อฝ่ายรับผิดชอบตามเอกสาร
+- source_page คือเลขหน้าของ PDF ที่พบข้อมูล
+- category เลือกได้เท่านั้น: opening, exam, student_activity, staff, holiday, deadline, meeting, other
+- วันหยุดให้ is_holiday เป็น true และใส่ holiday_note
+
+รูปแบบ JSON ที่ต้องส่งกลับ:
+{
+  "academic_year": ${academicYear},
+  "semester": ${semester},
+  "source_title": "ปฏิทินการปฏิบัติงานโรงเรียนมูลนิธิอาซิซสถาน",
+  "source_revision": "วันที่ปรับปรุงตามเอกสาร",
+  "source_document_name": "ชื่อไฟล์เอกสาร",
+  "events": [
+    {
+      "event_date": "2026-10-17",
+      "end_date": null,
+      "label": "ชื่อกิจกรรมตามเอกสาร",
+      "description": "รายละเอียดเพิ่มเติม",
+      "category": "opening",
+      "responsible_unit": "ฝ่าย/กลุ่มสาระผู้รับผิดชอบ",
+      "week_number": 1,
+      "is_holiday": false,
+      "holiday_note": "",
+      "event_type": "other",
+      "round_number": null,
+      "source_page": 1,
+      "note": "ข้อสังเกตจากการอ่านเอกสาร"
     }
-    if (delBtn) {
-      const ev = _events.find(x => x.id === +delBtn.dataset.evId)
-      if (!ev) return
-      if (!confirm(`ลบ "${ev.label}" ใช่ไหม?\nความคิดเห็น/บันทึกที่อ้างอิงกิจกรรมนี้จะไม่ถูกลบ แต่จะสูญเสียการอ้างอิง`)) return
-      deleteWorkCalendarEvent(ev.id).then(() => {
-        _events = _events.filter(x => x.id !== ev.id)
-        _renderList()
-      }).catch(err => alert('ลบไม่สำเร็จ: ' + err.message))
-    }
-  })
+  ]
+}
 
-  document.getElementById('wcal-modal-save').addEventListener('click', async () => {
-    const type = _getSelectedType()
-    const round = parseInt(document.getElementById('wcal-round').value) || null
-    const date = document.getElementById('wcal-date').value
-    const endDate = document.getElementById('wcal-end-date').value || null
-    const label = document.getElementById('wcal-label').value.trim()
-    const desc = document.getElementById('wcal-desc').value.trim()
-    if (!date || !label) { alert('กรุณากรอกวันที่และชื่อกิจกรรม'); return }
-    if (endDate && endDate < date) { alert('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น'); return }
+ห้ามสร้างรายการซ้ำ ห้ามตัดรายการที่อยู่หลังช่วงเปิดเรียน และห้ามตัดกิจกรรมต่อเนื่องหลังสิ้นสุดภาคเรียน เช่น งานในเดือนเมษายน ให้ใส่เข้ามาตามเอกสารทั้งหมด`
+}
 
-    const items = [...document.querySelectorAll('#wcal-items-list input')].map(i => i.value.trim()).filter(Boolean)
+function _workCalendarCleanJson(value) {
+  return String(value ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+}
 
-    const btn = document.getElementById('wcal-modal-save')
-    btn.textContent = 'กำลังบันทึก...'
-    btn.disabled = true
+function _workCalendarNormaliseDate(value) {
+  const raw = String(value ?? '').trim()
+  const match = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (!match) return ''
+  let year = Number(match[1])
+  if (year > 2400) year -= 543
+  const month = Number(match[2]), day = Number(match[3])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return ''
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function _workCalendarNormaliseAiEvent(item) {
+  const eventDate = _workCalendarNormaliseDate(item.event_date ?? item.start_date ?? item.date)
+  const endDate = item.end_date ? _workCalendarNormaliseDate(item.end_date) : null
+  const label = String(item.label ?? item.title ?? item.activity ?? '').trim()
+  const category = WORK_CALENDAR_CATEGORIES[item.category] ? item.category : 'other'
+  return {
+    event_date: eventDate,
+    end_date: endDate || null,
+    label,
+    description: String(item.description ?? item.details ?? '').trim(),
+    category,
+    responsible_unit: String(item.responsible_unit ?? item.responsible ?? item.owner ?? '').trim(),
+    week_number: Number.isInteger(Number(item.week_number)) ? Number(item.week_number) : null,
+    is_holiday: item.is_holiday === true || item.is_holiday === 'true',
+    holiday_note: String(item.holiday_note ?? item.holiday ?? '').trim(),
+    event_type: WORK_CALENDAR_EVENT_TYPES[item.event_type] ? item.event_type : 'other',
+    round_number: Number.isInteger(Number(item.round_number)) ? Number(item.round_number) : null,
+    source_page: Number.isInteger(Number(item.source_page)) ? Number(item.source_page) : null,
+    note: String(item.note ?? '').trim(),
+  }
+}
+
+function _workCalendarEventChip(event, compact = false) {
+  const meta = WORK_CALENDAR_CATEGORIES[event.category] || WORK_CALENDAR_CATEGORIES.other
+  return `<div class="${compact ? 'text-[10px]' : 'text-xs'} rounded-lg border px-2 py-1 ${meta.chip} truncate" title="${_workCalendarEsc(event.label)}">${meta.icon} ${_workCalendarEsc(event.label)}</div>`
+}
+
+function _workCalendarMonthMarkup(monthKey, events, index, { manager = false } = {}) {
+  const tone = WORK_CALENDAR_MONTH_TONES[index % WORK_CALENDAR_MONTH_TONES.length]
+  const d = new Date(`${monthKey}-01T00:00:00`)
+  const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
+  const firstDay = d.getDay()
+  const cells = []
+  for (let i = 0; i < firstDay; i++) cells.push('<div class="min-h-[74px] bg-gray-50/50"></div>')
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dayValue = `${monthKey}-${String(day).padStart(2, '0')}`
+    const dayEvents = _workCalendarEventsForDay(events, dayValue)
+    cells.push(`<div class="min-h-[74px] p-1.5 border-t border-r border-gray-100 bg-white ${dayEvents.some(e => e.is_holiday) ? 'bg-rose-50/60' : ''}">
+      <div class="flex items-center justify-between gap-1 mb-1"><span class="text-[11px] font-bold ${dayEvents.some(e => e.is_holiday) ? 'text-rose-600' : 'text-gray-500'}">${day}</span>${dayEvents.length ? `<span class="text-[9px] text-gray-400">${dayEvents.length}</span>` : ''}</div>
+      <div class="space-y-1">${dayEvents.slice(0, 3).map(event => _workCalendarEventChip(event, true)).join('')}${dayEvents.length > 3 ? `<div class="text-[10px] text-gray-400 px-1">+ อีก ${dayEvents.length - 3}</div>` : ''}</div>
+    </div>`)
+  }
+  const monthEvents = events.filter(event => _workCalendarEventOverlapsMonth(event, monthKey))
+  return `<section class="rounded-3xl border ${tone.border} bg-white shadow-sm overflow-hidden work-calendar-month" data-wcal-month="${monthKey}">
+    <div class="${tone.header} text-white px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-2">
+      <div><h2 class="font-extrabold text-base">${_workCalendarEsc(_workCalendarMonthLabel(monthKey))}</h2><p class="text-[11px] text-white/80">ปฏิทินกิจกรรมและกำหนดการ</p></div>
+      <span class="text-xs bg-white/15 rounded-full px-3 py-1">${monthEvents.length} รายการ</span>
+    </div>
+    <div class="grid grid-cols-7 border-l border-gray-100">${WORK_CALENDAR_WEEKDAYS.map(day => `<div class="text-center text-[10px] sm:text-xs font-bold ${tone.text} ${tone.soft} py-2 border-t border-r border-gray-100">${day}</div>`).join('')}${cells.join('')}</div>
+    <div class="border-t ${tone.border} ${tone.soft} p-3 sm:p-4">
+      <div class="overflow-x-auto"><table class="w-full text-xs min-w-[680px]"><thead><tr class="text-gray-500 text-left"><th class="py-2 px-2 w-[18%]">วัน/เดือน/ปี</th><th class="py-2 px-2">กิจกรรม/งาน</th><th class="py-2 px-2 w-[22%]">ผู้รับผิดชอบ</th><th class="py-2 px-2 w-[12%]">สัปดาห์</th><th class="py-2 px-2 w-[16%]">หมายเหตุ</th>${manager ? '<th class="py-2 px-2 w-[86px]">จัดการ</th>' : ''}</tr></thead><tbody class="divide-y divide-white/80">${monthEvents.length ? monthEvents.map(event => {
+        const dateText = event.end_date && event.end_date !== event.event_date ? `${_workCalendarFormatDate(event.event_date, true)} – ${_workCalendarFormatDate(event.end_date, true)}` : _workCalendarFormatDate(event.event_date, true)
+        const holiday = event.is_holiday ? `<span class="ml-1 text-rose-600 font-bold">วันหยุด</span>` : ''
+        return `<tr class="align-top"><td class="py-2 px-2 font-semibold ${event.is_holiday ? 'text-rose-600' : 'text-gray-700'}">${dateText}${holiday}</td><td class="py-2 px-2"><div class="font-bold text-gray-800">${_workCalendarEsc(event.label)}</div>${event.description ? `<div class="text-gray-500 mt-0.5">${_workCalendarEsc(event.description)}</div>` : ''}</td><td class="py-2 px-2 text-gray-600">${_workCalendarEsc(event.responsible_unit || '—')}</td><td class="py-2 px-2 text-gray-600">${event.week_number ? `สัปดาห์ที่ ${event.week_number}` : '—'}</td><td class="py-2 px-2 text-gray-500">${_workCalendarEsc(event.holiday_note || event.note || '—')}</td>${manager ? `<td class="py-2 px-2 whitespace-nowrap"><button class="wcal-edit-btn text-indigo-600 hover:text-indigo-800 mr-2" data-ev-id="${event.id}">แก้ไข</button><button class="wcal-del-btn text-rose-500 hover:text-rose-700" data-ev-id="${event.id}">ลบ</button></td>` : ''}</tr>`
+      }).join('') : `<tr><td colspan="${manager ? 6 : 5}" class="py-6 text-center text-gray-400">ยังไม่มีรายการในเดือนนี้</td></tr>`}</tbody></table></div>
+    </div>
+  </section>`
+}
+
+function _workCalendarPromptModal({ academicYear, semester, events, teacher, importEvents }) {
+  document.getElementById('wcal-ai-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'wcal-ai-modal'
+  modal.className = 'fixed inset-0 z-[120] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4'
+  modal.innerHTML = `<div class="bg-white w-full sm:max-w-6xl max-h-[95vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl shadow-2xl">
+    <div class="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-gray-100 px-5 sm:px-7 py-4 flex items-start justify-between gap-4"><div><h3 class="font-bold text-gray-800">🤖 เพิ่มปฏิทินจาก JSON ที่ AI สร้าง</h3><p class="text-xs text-gray-500 mt-1">อัปโหลด PDF/ภาพให้ AI ภายนอก แล้วนำ JSON กลับมาตรวจสอบที่นี่ก่อนบันทึก</p></div><button id="wcal-ai-close" class="text-gray-400 hover:text-gray-700 text-xl">✕</button></div>
+    <div class="p-5 sm:p-7 space-y-5">
+      <div class="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-xs text-violet-900 leading-relaxed"><b>ความปลอดภัย:</b> ระบบจะไม่ส่งข้อมูลเข้า database จาก JSON ทันที ต้องตรวจสอบรายการและกดยืนยันก่อนทุกครั้ง รายการวันที่และชื่อซ้ำจะถูกข้ามโดยไม่เขียนทับข้อมูลเดิม</div>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4"><section class="rounded-2xl border border-gray-200 p-4"><div class="flex items-center justify-between gap-2 mb-2"><div><h4 class="font-semibold text-sm text-gray-800">1) Prompt สำหรับ AI</h4><p class="text-[11px] text-gray-400 mt-0.5">คัดลอกคำสั่งนี้ แล้วแนบเอกสารต้นฉบับให้ AI</p></div><button id="wcal-ai-copy" class="text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg">📋 คัดลอก</button></div><textarea id="wcal-ai-prompt" readonly rows="18" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs leading-5 resize-y bg-gray-50"></textarea></section>
+      <section class="rounded-2xl border border-gray-200 p-4"><h4 class="font-semibold text-sm text-gray-800">2) วาง JSON ที่ AI สร้าง</h4><p class="text-[11px] text-gray-400 mt-0.5 mb-2">รองรับ JSON ที่ครอบด้วย \`\`\`json ... \`\`\`</p><textarea id="wcal-ai-json" rows="18" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs leading-5 resize-y font-mono" placeholder="วาง JSON ที่ได้จาก AI ที่นี่"></textarea><button id="wcal-ai-parse" class="w-full mt-3 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold">🔍 ตรวจสอบ JSON และแสดงตัวอย่าง</button><p id="wcal-ai-error" class="hidden text-xs text-red-600 mt-2 whitespace-pre-wrap"></p></section></div>
+      <section id="wcal-ai-preview-wrap" class="hidden rounded-2xl border border-gray-200 overflow-hidden"><div class="bg-gray-50 px-4 py-3 border-b border-gray-200"><h4 class="font-semibold text-sm text-gray-800">3) ตรวจสอบก่อนนำเข้า</h4><p id="wcal-ai-summary" class="text-xs text-gray-500 mt-0.5"></p></div><div id="wcal-ai-preview" class="p-4 space-y-2 max-h-[40vh] overflow-y-auto"></div></section>
+    </div><div class="sticky bottom-0 bg-white/95 backdrop-blur border-t border-gray-100 px-5 sm:px-7 py-4 flex flex-col-reverse sm:flex-row justify-end gap-2"><button id="wcal-ai-cancel" class="px-5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button><button id="wcal-ai-apply" disabled class="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-40">✅ ยืนยันนำเข้าปฏิทิน</button></div></div>`
+  document.body.appendChild(modal)
+  const promptText = _workCalendarPrompt(academicYear, semester)
+  modal.querySelector('#wcal-ai-prompt').value = promptText
+  const close = () => modal.remove()
+  modal.querySelector('#wcal-ai-close').onclick = close
+  modal.querySelector('#wcal-ai-cancel').onclick = close
+  modal.addEventListener('click', event => { if (event.target === modal) close() })
+  modal.querySelector('#wcal-ai-copy').onclick = async event => {
+    try { await navigator.clipboard.writeText(promptText); event.currentTarget.textContent = 'คัดลอกแล้ว ✅'; setTimeout(() => { if (document.body.contains(event.currentTarget)) event.currentTarget.textContent = '📋 คัดลอก' }, 1500) }
+    catch { showToast('คัดลอกไม่สำเร็จ กรุณาคัดลอกจากช่องข้อความแทน', 'warning') }
+  }
+
+  const errorEl = modal.querySelector('#wcal-ai-error')
+  const previewWrap = modal.querySelector('#wcal-ai-preview-wrap')
+  const previewEl = modal.querySelector('#wcal-ai-preview')
+  const summaryEl = modal.querySelector('#wcal-ai-summary')
+  const applyBtn = modal.querySelector('#wcal-ai-apply')
+  let previewRows = []
+  const renderPreview = () => {
+    const invalid = previewRows.filter(row => !row.event_date || !row.label || (row.end_date && row.end_date < row.event_date))
+    const duplicates = previewRows.filter(row => row.duplicate)
+    summaryEl.textContent = `ทั้งหมด ${previewRows.length} รายการ · ซ้ำ ${duplicates.length} รายการ · ${invalid.length ? `ข้อมูลไม่ครบ ${invalid.length} รายการ` : 'พร้อมตรวจสอบและนำเข้า'}`
+    applyBtn.disabled = !previewRows.length || invalid.length > 0
+    previewEl.innerHTML = previewRows.map((row, index) => `<div class="rounded-2xl border ${row.duplicate ? 'border-amber-200 bg-amber-50/50' : 'border-gray-200 bg-white'} p-3"><div class="flex flex-wrap items-start justify-between gap-2"><div><p class="font-bold text-sm text-gray-800">${index + 1}. ${_workCalendarEsc(row.label || 'ไม่พบชื่อกิจกรรม')}</p><p class="text-xs text-gray-500 mt-1">${row.event_date ? _workCalendarFormatDate(row.event_date, true) : 'ไม่พบวันที่'}${row.end_date ? ` – ${_workCalendarFormatDate(row.end_date, true)}` : ''} · ${_workCalendarEsc((WORK_CALENDAR_CATEGORIES[row.category] || WORK_CALENDAR_CATEGORIES.other).label)}</p><p class="text-xs text-gray-500 mt-1">ผู้รับผิดชอบ: ${_workCalendarEsc(row.responsible_unit || '—')} · สัปดาห์: ${row.week_number || '—'} · หน้า ${row.source_page || '—'}</p>${row.note ? `<p class="text-[11px] text-amber-700 mt-1">หมายเหตุ AI: ${_workCalendarEsc(row.note)}</p>` : ''}</div><span class="text-[11px] font-semibold px-2.5 py-1 rounded-lg ${row.duplicate ? 'bg-amber-100 text-amber-700' : !row.event_date || !row.label ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}">${row.duplicate ? 'รายการซ้ำ จะข้าม' : !row.event_date || !row.label ? 'ข้อมูลไม่ครบ' : 'ผ่านการตรวจรูปแบบ'}</span></div></div>`).join('')
+  }
+  modal.querySelector('#wcal-ai-parse').onclick = () => {
+    errorEl.classList.add('hidden')
     try {
-      let saved
-      if (_editId) {
-        saved = await updateWorkCalendarEvent(_editId, { eventType: type, roundNumber: round, eventDate: date, endDate, label, description: desc })
-        await replaceWorkCalendarItems(_editId, items)
-        saved.work_calendar_items = items.map((item_label, sort_order) => ({ item_label, sort_order }))
-        _events = _events.map(x => x.id === _editId ? saved : x)
-      } else {
-        saved = await createWorkCalendarEvent({ eventType: type, roundNumber: round, eventDate: date, endDate, label, description: desc, academicYear: _ay, semester: _sm, createdByTeacherId: teacher?.id })
-        await replaceWorkCalendarItems(saved.id, items)
-        saved.work_calendar_items = items.map((item_label, sort_order) => ({ item_label, sort_order }))
-        _events.push(saved)
-        _events.sort((a,b) => a.event_date.localeCompare(b.event_date))
-      }
-      _renderList()
-      _closeModal()
-    } catch (err) {
-      alert('บันทึกไม่สำเร็จ: ' + err.message)
-    } finally {
-      btn.textContent = 'บันทึก'
-      btn.disabled = false
+      const parsed = JSON.parse(_workCalendarCleanJson(modal.querySelector('#wcal-ai-json').value))
+      const list = Array.isArray(parsed) ? parsed : (parsed.events ?? parsed.calendar_events ?? parsed.items ?? parsed.data)
+      if (!Array.isArray(list) || !list.length) throw new Error('ไม่พบรายการ events ใน JSON')
+      const jsonYear = Number(parsed.academic_year ?? academicYear)
+      const jsonSem = Number(parsed.semester ?? semester)
+      if (jsonYear !== Number(academicYear) || jsonSem !== Number(semester)) throw new Error(`JSON ระบุภาคเรียน ${jsonSem}/${jsonYear} แต่หน้าปัจจุบันคือ ${semester}/${academicYear}`)
+      const sourceTitle = parsed.source_title || parsed.title || 'ปฏิทินปฏิบัติงาน'
+      previewRows = list.map(item => ({ ..._workCalendarNormaliseAiEvent(item), source_title: sourceTitle, source_revision: parsed.source_revision || '', source_document_name: parsed.source_document_name || '' }))
+      previewRows.forEach(row => { row.duplicate = events.some(event => event.event_date === row.event_date && String(event.label).trim().toLowerCase() === row.label.toLowerCase()) })
+      previewWrap.classList.remove('hidden')
+      renderPreview()
+      modal.dataset.sourceTitle = sourceTitle
+      modal.dataset.sourceRevision = parsed.source_revision || ''
+      modal.dataset.sourceDocumentName = parsed.source_document_name || ''
+    } catch (error) {
+      errorEl.textContent = `อ่าน JSON ไม่สำเร็จ: ${error.message}`
+      errorEl.classList.remove('hidden')
+      previewWrap.classList.add('hidden')
+      previewRows = []
+      applyBtn.disabled = true
     }
-  })
-
-  // ── load ──
-  try {
-    _events = await getWorkCalendarEvents(_ay, _sm)
-  } catch (err) {
-    document.getElementById('wcal-list').innerHTML = `<div class="text-center py-8 text-red-400 text-sm">โหลดไม่สำเร็จ: ${_esc(err.message)}</div>`
-    return
   }
-  _renderList()
+  applyBtn.onclick = async () => {
+    if (applyBtn.disabled) return
+    if (!confirm(`ยืนยันนำเข้ากิจกรรม ${previewRows.length} รายการในภาคเรียน ${semester}/${academicYear}?\nรายการที่ซ้ำจะถูกข้าม และข้อมูลเดิมจะไม่ถูกเขียนทับ`)) return
+    applyBtn.disabled = true; applyBtn.textContent = 'กำลังบันทึก...'
+    try {
+      const result = await importEvents({ academicYear, semester, sourceTitle: modal.dataset.sourceTitle || 'ปฏิทินปฏิบัติงาน', sourceRevision: modal.dataset.sourceRevision || '', sourceDocumentName: modal.dataset.sourceDocumentName || '', rawPayload: JSON.parse(_workCalendarCleanJson(modal.querySelector('#wcal-ai-json').value)), events: previewRows, createdByTeacherId: teacher?.id })
+      showToast(`นำเข้าสำเร็จ ${result?.inserted_count ?? previewRows.length} รายการ${result?.skipped_count ? ` · ข้ามรายการซ้ำ ${result.skipped_count} รายการ` : ''} ✅`, 'success')
+      close()
+      await window._reloadWorkCalendar?.()
+    } catch (error) {
+      showToast(`นำเข้าไม่สำเร็จ: ${error.message}`, 'error')
+      applyBtn.disabled = false; applyBtn.textContent = '✅ ยืนยันนำเข้าปฏิทิน'
+    }
+  }
 }
+
+async function _renderWorkCalendarSurface({ manager = false, teacher = null } = {}) {
+  const { getWorkCalendarEvents, getAcademicTerms, getSystemConfig, createWorkCalendarEvent, updateWorkCalendarEvent, deleteWorkCalendarEvent, replaceWorkCalendarItems, importWorkCalendarEvents } = await import('./api.js')
+  setActiveNav(manager ? 'work-calendar' : 'work-calendar-view')
+  document.getElementById('page-title').textContent = 'ปฏิทินปฏิบัติงาน'
+  const config = await getSystemConfig().catch(() => ({}))
+  const defaultYear = Number(config.academicYear ?? config.academic_year ?? new Date().getFullYear() + 543)
+  const defaultSemester = Number(config.semester ?? 1)
+  const termRows = await getAcademicTerms().catch(() => [])
+  const terms = [...termRows, { academic_year: defaultYear, semester: 1 }, { academic_year: defaultYear, semester: 2 }, { academic_year: defaultYear, semester: defaultSemester, is_current: true }]
+    .filter((term, index, rows) => rows.findIndex(other => Number(other.academic_year) === Number(term.academic_year) && Number(other.semester) === Number(term.semester)) === index)
+    .sort((a, b) => Number(b.academic_year) - Number(a.academic_year) || Number(b.semester) - Number(a.semester))
+  let selectedYear = defaultYear
+  let selectedSemester = defaultSemester
+  const termOptions = terms.map(term => `<option value="${Number(term.academic_year)}-${Number(term.semester)}" ${Number(term.academic_year) === selectedYear && Number(term.semester) === selectedSemester ? 'selected' : ''}>ภาคเรียนที่ ${Number(term.semester)}/${Number(term.academic_year)}${term.is_current ? ' (ปัจจุบัน)' : ''}</option>`).join('')
+
+  setContent(`<div class="animate-fade max-w-7xl mx-auto pb-8"><div class="flex flex-wrap items-start justify-between gap-3 mb-5"><div><p class="text-xs text-gray-400 mb-1">ปฏิทินทางการของโรงเรียน · แสดงตามเดือนและตารางกิจกรรม</p><div class="flex flex-wrap items-center gap-2"><select id="wcal-term" class="border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-xl px-3 py-2 text-sm font-bold outline-none">${termOptions}</select><span id="wcal-period" class="text-xs text-gray-500"></span></div></div>${manager ? `<div class="flex flex-wrap gap-2"><button id="wcal-ai-import" class="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold shadow-sm">🤖 นำเข้าจาก AI JSON</button><button id="wcal-create-btn" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold shadow-sm">＋ เพิ่มกิจกรรม</button></div>` : ''}</div>
+    <div class="rounded-3xl border border-sky-100 bg-sky-50 p-4 sm:p-5 mb-5"><div class="flex flex-wrap items-start gap-3"><div class="text-2xl">📅</div><div class="flex-1 min-w-[240px]"><h2 class="font-extrabold text-sky-900">ปฏิทินการปฏิบัติงานโรงเรียน</h2><p class="text-xs text-sky-700 mt-1">รูปแบบนี้ยึดโครงสร้างปฏิทินฝ่ายวิชาการ: ปฏิทินรายเดือน กิจกรรม ผู้รับผิดชอบ สัปดาห์ และวันหยุดสำคัญ</p></div><span id="wcal-source-badge" class="text-[11px] font-semibold text-sky-700 bg-white/70 border border-sky-100 rounded-full px-3 py-1.5">ยังไม่ได้ระบุเอกสารต้นทาง</span></div></div>
+    <div id="wcal-summary" class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5"></div>
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 sm:p-4 mb-5"><div class="grid grid-cols-1 md:grid-cols-[1fr_180px_180px] gap-2"><input id="wcal-search" class="border border-gray-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200" placeholder="🔎 ค้นหากิจกรรม ผู้รับผิดชอบ หรือหมายเหตุ"><select id="wcal-category" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"><option value="">ทุกประเภท</option>${Object.entries(WORK_CALENDAR_CATEGORIES).map(([key, meta]) => `<option value="${key}">${meta.icon} ${meta.label}</option>`).join('')}</select><select id="wcal-month" class="border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white"><option value="">ทุกเดือน</option></select></div></div>
+    <div id="wcal-body"><div class="flex justify-center py-16 text-gray-400 text-sm">กำลังโหลด...</div></div>
+  </div>${manager ? `<div id="wcal-modal" class="hidden fixed inset-0 z-[80] flex items-center justify-center p-4"><div class="absolute inset-0 bg-black/40 backdrop-blur-sm" id="wcal-modal-backdrop"></div><div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto"><div class="p-5 sm:p-6"><h3 id="wcal-modal-title" class="text-lg font-bold text-gray-800 mb-4">เพิ่มกิจกรรม</h3><div class="grid grid-cols-1 sm:grid-cols-2 gap-3"><label class="text-xs font-semibold text-gray-500">ประเภทกิจกรรม<select id="wcal-event-type" class="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">${Object.entries(WORK_CALENDAR_EVENT_TYPES).map(([key, label]) => `<option value="${key}">${label}</option>`).join('')}</select></label><label class="text-xs font-semibold text-gray-500">หมวดหมู่<select id="wcal-event-category" class="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white">${Object.entries(WORK_CALENDAR_CATEGORIES).map(([key, meta]) => `<option value="${key}">${meta.icon} ${meta.label}</option>`).join('')}</select></label><label class="text-xs font-semibold text-gray-500">วันที่เริ่มต้น *<input id="wcal-date" type="date" class="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm"></label><label class="text-xs font-semibold text-gray-500">วันที่สิ้นสุด<input id="wcal-end-date" type="date" class="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm"></label><label class="text-xs font-semibold text-gray-500 sm:col-span-2">ชื่อกิจกรรม *<input id="wcal-label" maxlength="180" class="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="เช่น เปิดเรียนภาคเรียนที่ 2/2569"></label><label class="text-xs font-semibold text-gray-500">ผู้รับผิดชอบ<input id="wcal-responsible" maxlength="180" class="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="ฝ่ายวิชาการ"></label><label class="text-xs font-semibold text-gray-500">สัปดาห์ที่<input id="wcal-week" type="number" min="1" max="99" class="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm" placeholder="เช่น 1"></label><label class="text-xs font-semibold text-gray-500 sm:col-span-2">รายละเอียด<textarea id="wcal-desc" rows="2" maxlength="800" class="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm resize-y"></textarea></label><label class="text-xs font-semibold text-gray-500 sm:col-span-2">หมายเหตุ/วันหยุด<textarea id="wcal-note" rows="2" maxlength="500" class="w-full mt-1 border border-gray-200 rounded-xl px-3 py-2 text-sm resize-y"></textarea></label><label class="sm:col-span-2 flex items-center gap-2 text-sm text-rose-700"><input id="wcal-holiday" type="checkbox" class="w-4 h-4"> ทำเครื่องหมายเป็นวันหยุด/วันสำคัญ</label></div><div class="mt-4"><p class="text-xs font-semibold text-gray-500 mb-2">Checklist เดิม (ถ้ามี)</p><div id="wcal-items-list" class="space-y-2"></div><button id="wcal-add-item" class="mt-2 text-indigo-600 text-sm font-semibold">＋ เพิ่มรายการ</button></div><div class="flex gap-3 mt-6"><button id="wcal-modal-cancel" class="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-semibold text-gray-600">ยกเลิก</button><button id="wcal-modal-save" class="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-semibold">บันทึก</button></div></div></div></div>` : ''}`)
+
+  let events = []
+  let editId = null
+  const load = async () => {
+    const body = document.getElementById('wcal-body')
+    body.innerHTML = '<div class="flex justify-center py-16 text-gray-400 text-sm">กำลังโหลด...</div>'
+    try { events = (await getWorkCalendarEvents(selectedYear, selectedSemester)).map(_workCalendarNormaliseEvent); render() }
+    catch (error) { body.innerHTML = `<div class="text-center py-12 text-red-500 text-sm">โหลดไม่สำเร็จ: ${_workCalendarEsc(error.message)}</div>` }
+  }
+  const render = () => {
+    const query = String(document.getElementById('wcal-search')?.value ?? '').trim().toLowerCase()
+    const category = document.getElementById('wcal-category')?.value ?? ''
+    const month = document.getElementById('wcal-month')?.value ?? ''
+    const filtered = events.filter(event => {
+      const haystack = [event.label, event.description, event.responsible_unit, event.note, event.holiday_note].join(' ').toLowerCase()
+      return (!query || haystack.includes(query)) && (!category || event.category === category) && (!month || _workCalendarMonthKey(event.event_date) === month || _workCalendarMonthKey(event.end_date || event.event_date) === month)
+    })
+    const months = _workCalendarMonthKeys(filtered.length ? filtered : events)
+    const monthSelect = document.getElementById('wcal-month')
+    const previousMonth = monthSelect?.value
+    if (monthSelect) {
+      monthSelect.innerHTML = `<option value="">ทุกเดือน</option>${months.map(key => `<option value="${key}">${_workCalendarEsc(_workCalendarMonthLabel(key))}</option>`).join('')}`
+      if (months.includes(previousMonth)) monthSelect.value = previousMonth
+      else if (month) monthSelect.value = month
+    }
+    const summary = document.getElementById('wcal-summary')
+    const today = _dateInputValue(new Date())
+    const upcoming = events.filter(event => (event.end_date || event.event_date) >= today).length
+    const exams = events.filter(event => event.category === 'exam').length
+    const holidays = events.filter(event => event.is_holiday || event.category === 'holiday').length
+    summary.innerHTML = [
+      ['📋', events.length, 'กิจกรรมทั้งหมด', 'bg-indigo-50 text-indigo-700'],
+      ['⏳', upcoming, 'กิจกรรมที่ยังไม่สิ้นสุด', 'bg-emerald-50 text-emerald-700'],
+      ['📝', exams, 'รายการสอบ', 'bg-violet-50 text-violet-700'],
+      ['🔴', holidays, 'วันหยุด/วันสำคัญ', 'bg-rose-50 text-rose-700'],
+    ].map(([icon, count, label, cls]) => `<div class="rounded-2xl border border-gray-100 bg-white shadow-sm px-4 py-3 flex items-center gap-3"><span class="w-10 h-10 rounded-xl ${cls} flex items-center justify-center text-lg">${icon}</span><div><p class="text-xl font-extrabold text-gray-800">${count}</p><p class="text-[11px] text-gray-500">${label}</p></div></div>`).join('')
+    const source = events.find(event => event.source_document_name || event.source_revision)
+    const sourceBadge = document.getElementById('wcal-source-badge')
+    if (sourceBadge) sourceBadge.textContent = source ? `📄 ${source.source_document_name || 'เอกสารฝ่ายวิชาการ'}${source.source_revision ? ` · ฉบับ ${source.source_revision}` : ''}` : '📝 เพิ่มด้วยมือ/ข้อมูลเดิม'
+    const period = document.getElementById('wcal-period')
+    if (period) period.textContent = events.length ? `${_workCalendarFormatDate(events[0].event_date, true)} – ${_workCalendarFormatDate(events.at(-1).end_date || events.at(-1).event_date, true)}` : 'ยังไม่มีช่วงวันที่'
+    document.getElementById('wcal-body').innerHTML = filtered.length ? `<div class="space-y-5">${months.map((key, index) => _workCalendarMonthMarkup(key, filtered.filter(event => _workCalendarEventOverlapsMonth(event, key)), index, { manager })).join('')}</div>` : '<div class="rounded-3xl border border-dashed border-gray-200 bg-white text-center py-16 text-gray-400 text-sm">ไม่พบกิจกรรมตามตัวกรอง</div>'
+  }
+  window._reloadWorkCalendar = load
+  document.getElementById('wcal-term')?.addEventListener('change', async event => { const [year, semester] = event.target.value.split('-').map(Number); selectedYear = year; selectedSemester = semester; await load() })
+  document.getElementById('wcal-search')?.addEventListener('input', render)
+  document.getElementById('wcal-category')?.addEventListener('change', render)
+  document.getElementById('wcal-month')?.addEventListener('change', render)
+
+  if (manager) {
+    const addItemRow = value => { const wrap = document.getElementById('wcal-items-list'); const row = document.createElement('div'); row.className = 'flex gap-2 items-center'; row.innerHTML = `<input maxlength="150" value="${_workCalendarEsc(value)}" class="flex-1 border border-gray-200 rounded-xl px-3 py-1.5 text-sm"><button class="wcal-remove-item text-gray-400 hover:text-rose-500">✕</button>`; row.querySelector('button').onclick = () => row.remove(); wrap.appendChild(row) }
+    const closeModal = () => { document.getElementById('wcal-modal').classList.add('hidden'); editId = null }
+    const openModal = event => { editId = event?.id ?? null; document.getElementById('wcal-modal-title').textContent = event ? 'แก้ไขกิจกรรม' : 'เพิ่มกิจกรรม'; document.getElementById('wcal-event-type').value = event?.event_type ?? 'other'; document.getElementById('wcal-event-category').value = event?.category ?? 'other'; document.getElementById('wcal-date').value = event?.event_date ?? ''; document.getElementById('wcal-end-date').value = event?.end_date ?? ''; document.getElementById('wcal-label').value = event?.label ?? ''; document.getElementById('wcal-responsible').value = event?.responsible_unit ?? ''; document.getElementById('wcal-week').value = event?.week_number ?? ''; document.getElementById('wcal-desc').value = event?.description ?? ''; document.getElementById('wcal-note').value = event?.holiday_note ?? event?.note ?? ''; document.getElementById('wcal-holiday').checked = Boolean(event?.is_holiday); document.getElementById('wcal-items-list').innerHTML = ''; (event?.work_calendar_items ?? []).forEach(item => addItemRow(item.item_label)); document.getElementById('wcal-modal').classList.remove('hidden') }
+    document.getElementById('wcal-create-btn').onclick = () => openModal()
+    document.getElementById('wcal-modal-cancel').onclick = closeModal
+    document.getElementById('wcal-modal-backdrop').onclick = closeModal
+    document.getElementById('wcal-add-item').onclick = () => addItemRow('')
+    document.getElementById('wcal-body').addEventListener('click', async event => { const edit = event.target.closest('.wcal-edit-btn'); const del = event.target.closest('.wcal-del-btn'); if (edit) { const item = events.find(row => Number(row.id) === Number(edit.dataset.evId)); if (item) openModal(item) } if (del) { const item = events.find(row => Number(row.id) === Number(del.dataset.evId)); if (!item || !confirm(`ลบ “${item.label}” ใช่ไหม?`)) return; try { await deleteWorkCalendarEvent(item.id); showToast('ลบกิจกรรมแล้ว', 'success'); await load() } catch (error) { showToast(`ลบไม่สำเร็จ: ${error.message}`, 'error') } } })
+    document.getElementById('wcal-modal-save').onclick = async () => { const type = document.getElementById('wcal-event-type').value; const category = document.getElementById('wcal-event-category').value; const date = document.getElementById('wcal-date').value; const endDate = document.getElementById('wcal-end-date').value || null; const label = document.getElementById('wcal-label').value.trim(); if (!date || !label) return showToast('กรุณากรอกวันที่และชื่อกิจกรรม', 'warning'); if (endDate && endDate < date) return showToast('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น', 'warning'); const payload = { eventType: type, eventDate: date, endDate, label, description: document.getElementById('wcal-desc').value.trim(), category, responsibleUnit: document.getElementById('wcal-responsible').value.trim(), weekNumber: Number(document.getElementById('wcal-week').value) || null, isHoliday: document.getElementById('wcal-holiday').checked, holidayNote: document.getElementById('wcal-note').value.trim() }; const button = document.getElementById('wcal-modal-save'); button.disabled = true; button.textContent = 'กำลังบันทึก...'; try { let saved; if (editId) { saved = await updateWorkCalendarEvent(editId, payload); await replaceWorkCalendarItems(editId, [...document.querySelectorAll('#wcal-items-list input')].map(input => input.value.trim()).filter(Boolean)); } else { saved = await createWorkCalendarEvent({ ...payload, academicYear: selectedYear, semester: selectedSemester, createdByTeacherId: teacher?.id }); await replaceWorkCalendarItems(saved.id, [...document.querySelectorAll('#wcal-items-list input')].map(input => input.value.trim()).filter(Boolean)); } closeModal(); showToast('บันทึกกิจกรรมแล้ว', 'success'); await load() } catch (error) { showToast(`บันทึกไม่สำเร็จ: ${error.message}`, 'error') } finally { button.disabled = false; button.textContent = 'บันทึก' } }
+    document.getElementById('wcal-ai-import').onclick = () => _workCalendarPromptModal({ academicYear: selectedYear, semester: selectedSemester, events, teacher, importEvents: args => importWorkCalendarEvents(args) })
+  }
+  await load()
+}
+
+export async function renderWorkCalendarView() { return _renderWorkCalendarSurface({ manager: false }) }
+export async function renderWorkCalendar(teacher) { return _renderWorkCalendarSurface({ manager: true, teacher }) }
 
 // ─── View: Religion Groups (กลุ่มรายวิชาศาสนา) ──────────────────────────────
 // กรองเฉพาะครูศาสนา (category หรือ subject_group ที่เกี่ยวข้อง)

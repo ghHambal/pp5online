@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.899'
+import { APP_VERSION } from './version.js?v=10.22.900'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.900': [
+    '📅 ปฏิทินปฏิบัติงาน: ปรับเป็นปฏิทินรายเดือนตามเอกสารฝ่ายวิชาการ พร้อมตารางกิจกรรม ผู้รับผิดชอบ สัปดาห์ และวันหยุดสำคัญ',
+    '🤖 ปฏิทินปฏิบัติงาน: เพิ่ม Prompt สำหรับ AI และนำเข้า JSON แบบมีพรีวิว ตรวจรายการซ้ำ และยืนยันก่อนบันทึก',
+  ],
   '10.22.899': [
     '🧹 สำรองข้อมูลทั้งหมด: เพิ่มปุ่มล้างงานสำรองค้างในเบราว์เซอร์ เพื่อเลือกตำแหน่งไฟล์ใหม่เมื่อไฟล์เดิมถูกลบหรือใช้งานต่อไม่ได้',
   ],

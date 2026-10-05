@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { readInFlight } from './read-requests.js'
-import { isMissingColumn } from './supabase-errors.js'
+import { isMissingColumn, isMissingFunction } from './supabase-errors.js'
 import { normalizeSkillGroup, isLifeSkillGroup } from './skill-groups.js'
 
 export async function getClassScoreRounding(classId) {
@@ -4253,54 +4253,114 @@ export async function assignStudentsHouseColor(studentIds, colorName) {
 
 // ───── Work Calendar ─────
 
+const WORK_CALENDAR_SELECT = `id, event_type, round_number, event_date, end_date, label, description,
+  academic_year, semester, created_by_teacher_id, created_at, category, responsible_unit,
+  week_number, is_holiday, holiday_note, source_revision, source_document_name, source_page, note, import_id,
+  work_calendar_items(id, item_label, sort_order)`
+const WORK_CALENDAR_SELECT_BASE = `id, event_type, round_number, event_date, end_date, label, description,
+  academic_year, semester, created_by_teacher_id, created_at,
+  work_calendar_items(id, item_label, sort_order)`
+
+function _isWorkCalendarMetadataMissing(error) {
+  return ['category', 'responsible_unit', 'week_number', 'is_holiday', 'source_revision', 'import_id']
+    .some(column => isMissingColumn(error, column))
+}
+
 export async function getWorkCalendarEvents(academicYear, semester) {
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('work_calendar_events')
-    .select(`id, event_type, round_number, event_date, end_date, label, description, academic_year, semester, created_by_teacher_id,
-      work_calendar_items(id, item_label, sort_order)`)
+    .select(WORK_CALENDAR_SELECT)
     .eq('academic_year', academicYear)
     .eq('semester', semester)
     .order('event_date', { ascending: true })
+  if (error && _isWorkCalendarMetadataMissing(error)) {
+    ;({ data, error } = await supabase
+      .from('work_calendar_events')
+      .select(WORK_CALENDAR_SELECT_BASE)
+      .eq('academic_year', academicYear)
+      .eq('semester', semester)
+      .order('event_date', { ascending: true }))
+  }
   if (error) throw error
   return data
 }
 
-export async function createWorkCalendarEvent({ eventType, roundNumber, eventDate, endDate, label, description, academicYear, semester, createdByTeacherId }) {
-  const { data, error } = await supabase
+export async function createWorkCalendarEvent({ eventType, roundNumber, eventDate, endDate, label, description, academicYear, semester, createdByTeacherId, category, responsibleUnit, weekNumber, isHoliday, holidayNote, sourceRevision, sourceDocumentName, sourcePage, note, importId }) {
+  const payload = {
+    event_type: eventType,
+    round_number: roundNumber || null,
+    event_date: eventDate,
+    end_date: endDate || null,
+    label,
+    description: description || null,
+    academic_year: academicYear,
+    semester,
+    created_by_teacher_id: createdByTeacherId,
+    category: category || 'other',
+    responsible_unit: responsibleUnit || null,
+    week_number: weekNumber || null,
+    is_holiday: Boolean(isHoliday),
+    holiday_note: holidayNote || null,
+    source_revision: sourceRevision || null,
+    source_document_name: sourceDocumentName || null,
+    source_page: sourcePage || null,
+    note: note || null,
+    import_id: importId || null,
+  }
+  let { data, error } = await supabase
     .from('work_calendar_events')
-    .insert({
-      event_type: eventType,
-      round_number: roundNumber || null,
-      event_date: eventDate,
-      end_date: endDate || null,
-      label,
-      description: description || null,
-      academic_year: academicYear,
-      semester,
-      created_by_teacher_id: createdByTeacherId,
-    })
-    .select(`id, event_type, round_number, event_date, end_date, label, description, academic_year, semester, created_by_teacher_id,
-      work_calendar_items(id, item_label, sort_order)`)
+    .insert(payload)
+    .select(WORK_CALENDAR_SELECT)
     .single()
+  if (error && _isWorkCalendarMetadataMissing(error)) {
+    const basePayload = { ...payload }
+    ;['category', 'responsible_unit', 'week_number', 'is_holiday', 'holiday_note', 'source_revision', 'source_document_name', 'source_page', 'note', 'import_id']
+      .forEach(key => delete basePayload[key])
+    ;({ data, error } = await supabase
+      .from('work_calendar_events')
+      .insert(basePayload)
+      .select(WORK_CALENDAR_SELECT_BASE)
+      .single())
+  }
   if (error) throw error
   return data
 }
 
-export async function updateWorkCalendarEvent(id, { eventType, roundNumber, eventDate, endDate, label, description }) {
-  const { data, error } = await supabase
+export async function updateWorkCalendarEvent(id, { eventType, roundNumber, eventDate, endDate, label, description, category, responsibleUnit, weekNumber, isHoliday, holidayNote, sourceRevision, sourceDocumentName, sourcePage, note }) {
+  const payload = {
+    event_type: eventType,
+    round_number: roundNumber || null,
+    event_date: eventDate,
+    end_date: endDate || null,
+    label,
+    description: description || null,
+    category: category || 'other',
+    responsible_unit: responsibleUnit || null,
+    week_number: weekNumber || null,
+    is_holiday: Boolean(isHoliday),
+    holiday_note: holidayNote || null,
+    source_revision: sourceRevision || null,
+    source_document_name: sourceDocumentName || null,
+    source_page: sourcePage || null,
+    note: note || null,
+  }
+  let { data, error } = await supabase
     .from('work_calendar_events')
-    .update({
-      event_type: eventType,
-      round_number: roundNumber || null,
-      event_date: eventDate,
-      end_date: endDate || null,
-      label,
-      description: description || null,
-    })
+    .update(payload)
     .eq('id', id)
-    .select(`id, event_type, round_number, event_date, end_date, label, description, academic_year, semester, created_by_teacher_id,
-      work_calendar_items(id, item_label, sort_order)`)
+    .select(WORK_CALENDAR_SELECT)
     .single()
+  if (error && _isWorkCalendarMetadataMissing(error)) {
+    const basePayload = { ...payload }
+    ;['category', 'responsible_unit', 'week_number', 'is_holiday', 'holiday_note', 'source_revision', 'source_document_name', 'source_page', 'note']
+      .forEach(key => delete basePayload[key])
+    ;({ data, error } = await supabase
+      .from('work_calendar_events')
+      .update(basePayload)
+      .eq('id', id)
+      .select(WORK_CALENDAR_SELECT_BASE)
+      .single())
+  }
   if (error) throw error
   return data
 }
@@ -4321,6 +4381,55 @@ export async function replaceWorkCalendarItems(eventId, items) {
     .select()
   if (error) throw error
   return data
+}
+
+export async function importWorkCalendarEvents({ academicYear, semester, sourceTitle, sourceRevision, sourceDocumentName, rawPayload, events, createdByTeacherId }) {
+  const { data, error } = await supabase.rpc('import_work_calendar_events', {
+    p_academic_year: academicYear,
+    p_semester: semester,
+    p_source_title: sourceTitle || 'ปฏิทินปฏิบัติงาน',
+    p_source_revision: sourceRevision || null,
+    p_source_document_name: sourceDocumentName || null,
+    p_raw_payload: rawPayload || {},
+    p_created_by_teacher_id: createdByTeacherId || null,
+    p_events: events || [],
+  })
+  if (!error) return data
+  if (!isMissingFunction(error, 'import_work_calendar_events')) throw error
+
+  // Compatibility fallback for a deployment where the UI was released before the migration.
+  const existing = await getWorkCalendarEvents(academicYear, semester)
+  let insertedCount = 0
+  let skippedCount = 0
+  for (const event of events || []) {
+    const label = String(event.label || event.title || '').trim()
+    if (existing.some(row => row.event_date === event.event_date && String(row.label || '').trim().toLowerCase() === label.toLowerCase())) {
+      skippedCount += 1
+      continue
+    }
+    await createWorkCalendarEvent({
+      eventType: event.event_type || 'other',
+      roundNumber: event.round_number,
+      eventDate: event.event_date,
+      endDate: event.end_date,
+      label: event.label || event.title,
+      description: event.description || event.details,
+      academicYear,
+      semester,
+      createdByTeacherId,
+      category: event.category,
+      responsibleUnit: event.responsible_unit || event.responsible,
+      weekNumber: event.week_number,
+      isHoliday: event.is_holiday,
+      holidayNote: event.holiday_note || event.holiday,
+      sourceRevision,
+      sourceDocumentName,
+      sourcePage: event.source_page,
+      note: event.note,
+    })
+    insertedCount += 1
+  }
+  return { import_id: null, inserted_count: insertedCount, skipped_count: skippedCount, compatibility_fallback: true }
 }
 
 export async function getClassByIdFull(classId) {
