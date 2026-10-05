@@ -235,6 +235,7 @@ async function retryBackupRequest(task, label, onProgress) {
 export async function getFullBackupResumeInfo() {
   const session = await readBackupSession().catch(() => null)
   if (!session) return null
+  const progress = getBackupProgress(session)
   return {
     fileName: session.fileName,
     phase: session.phase,
@@ -244,6 +245,46 @@ export async function getFullBackupResumeInfo() {
     rowOffset: session.tableCount ?? session.tableOffset ?? 0,
     storageIndex: session.storageIndex ?? 0,
     storageCount: session.storageObjects?.length ?? 0,
+    progress,
+  }
+}
+
+function getBackupProgress(session, overrides = {}) {
+  const catalog = session?.catalog ?? []
+  const counts = session?.counts ?? {}
+  const phase = overrides.phase ?? session?.phase ?? 'tables'
+  const tableIndex = overrides.tableIndex ?? session?.tableIndex ?? 0
+  const tableRows = overrides.tableCount ?? session?.tableCount ?? 0
+  const storageIndex = overrides.storageIndex ?? session?.storageIndex ?? 0
+  const storageCount = overrides.storageCount ?? session?.storageObjects?.length ?? 0
+  const estimates = catalog.map(item => Math.max(Number(item.estimated_rows) || 0, 0))
+  const estimatedTotalRows = estimates.reduce((sum, count) => sum + count, 0)
+  const completedEstimatedRows = estimates
+    .slice(0, tableIndex)
+    .reduce((sum, estimate, index) => sum + (estimate || Number(counts[catalog[index]?.table_name]) || 0), 0)
+  const currentEstimate = estimates[tableIndex] || 0
+  const tableRatio = estimatedTotalRows > 0
+    ? Math.min(1, (completedEstimatedRows + Math.min(tableRows, currentEstimate || tableRows)) / estimatedTotalRows)
+    : catalog.length > 0
+    ? Math.min(1, (tableIndex + (tableRows > 0 ? 0.5 : 0)) / catalog.length)
+    : 0
+  const percent = phase === 'tables'
+    ? Math.min(89, Math.round(tableRatio * 90))
+    : phase === 'storage'
+    ? Math.min(99, 90 + (storageCount > 0 ? Math.round((storageIndex / storageCount) * 9) : 0))
+    : phase === 'finalizing'
+    ? 99
+    : 0
+  return {
+    percent,
+    estimatedTotalRows,
+    completedRows: completedEstimatedRows + tableRows,
+    currentTableRows: tableRows,
+    currentTableEstimate: currentEstimate,
+    tableIndex,
+    tableCount: catalog.length,
+    storageIndex,
+    storageCount,
   }
 }
 
@@ -348,6 +389,12 @@ async function readTablePage(table, cursor) {
   }
 }
 
+function reportBackupProgress(onProgress, session, catalog, message, count, overrides = {}) {
+  if (!onProgress) return
+  const state = session ?? { catalog, counts: {} }
+  onProgress(message, count, getBackupProgress(state, overrides))
+}
+
 async function readStorageCatalog() {
   const { data, error } = await supabase.rpc('admin_full_backup_storage_catalog')
   if (error) throw error
@@ -383,6 +430,15 @@ export async function createFullBackup({ onProgress } = {}) {
   if (session?.fileHandle) {
     await ensureFileHandleAccess(session.fileHandle)
     catalog = session.catalog ?? await readCatalog()
+    if (catalog.some(item => item.estimated_rows == null)) {
+      const refreshedCatalog = await retryBackupRequest(readCatalog, 'สถิติรายการตาราง', onProgress)
+      const sameCatalog = refreshedCatalog.length === catalog.length
+        && refreshedCatalog.every((item, index) => item.table_name === catalog[index]?.table_name)
+      if (sameCatalog) {
+        catalog = refreshedCatalog
+        session.catalog = refreshedCatalog
+      }
+    }
     fileName = session.fileName
     fileHandle = session.fileHandle
     resumable = true
@@ -452,7 +508,9 @@ export async function createFullBackup({ onProgress } = {}) {
           tableCount += rows.length
           await checkpoint({ phase: 'tables', tableIndex, tableCursor: cursor, tableCount })
         }
-        onProgress?.(`สำรอง ${item.table_name} (${tableIndex + 1}/${catalog.length})`, tableCount)
+        reportBackupProgress(onProgress, session, catalog, `สำรอง ${item.table_name} (${tableIndex + 1}/${catalog.length})`, tableCount, {
+          phase: 'tables', tableIndex, tableCount,
+        })
         if (!page.hasMore) break
       }
       counts[item.table_name] = tableCount
@@ -488,7 +546,9 @@ export async function createFullBackup({ onProgress } = {}) {
       const key = `storage:${object.bucket_id}`
       counts[key] = (counts[key] ?? 0) + 1
       await checkpoint({ phase: 'storage', storageIndex: fileIndex + 1, counts })
-      onProgress?.(`สำรองไฟล์ ${object.bucket_id} (${fileIndex + 1}/${storageObjects.length})`, counts[key])
+      reportBackupProgress(onProgress, session, catalog, `สำรองไฟล์ ${object.bucket_id} (${fileIndex + 1}/${storageObjects.length})`, counts[key], {
+        phase: 'storage', storageIndex: fileIndex + 1, storageCount: storageObjects.length,
+      })
     }
 
     if (!session?.endWritten) {

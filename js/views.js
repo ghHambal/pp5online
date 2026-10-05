@@ -2494,6 +2494,16 @@ export async function renderSettings() {
             </button>
             <span id="full-backup-status" class="text-xs text-gray-500"></span>
           </div>
+          <div id="full-backup-progress-wrap" class="hidden mt-4 rounded-xl border border-indigo-100 bg-white/80 p-3" role="status" aria-live="polite">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span id="full-backup-progress-label" class="font-bold text-indigo-800">ความคืบหน้าโดยประมาณ 0%</span>
+              <span id="full-backup-progress-detail" class="text-indigo-600"></span>
+            </div>
+            <div class="mt-2 h-2.5 overflow-hidden rounded-full bg-indigo-100" role="progressbar" aria-label="ความคืบหน้าการสำรองข้อมูล" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <div id="full-backup-progress-bar" class="h-full rounded-full bg-indigo-600 transition-all duration-300" style="width:0%"></div>
+            </div>
+            <p id="full-backup-progress-note" class="mt-2 text-[11px] text-gray-500"></p>
+          </div>
           <p class="text-[11px] text-indigo-700 mt-3 leading-relaxed">💾 หากเบราว์เซอร์รองรับ ระบบจะให้เลือกตำแหน่งจัดเก็บและเขียนไฟล์แบบสตรีมโดยตรง เพื่อรองรับข้อมูลขนาดใหญ่โดยไม่ค้างไว้ในหน่วยความจำหน้าเว็บ</p>
           <div class="mt-6 border-t border-indigo-100 pt-5">
             <p class="text-sm font-bold text-gray-800">กู้คืนจากไฟล์สำรอง</p>
@@ -3108,6 +3118,39 @@ export async function renderSettings() {
 
       const fullBackupBtn = document.getElementById('btn-create-full-backup')
       const fullBackupStatus = document.getElementById('full-backup-status')
+      const fullBackupProgressWrap = document.getElementById('full-backup-progress-wrap')
+      const fullBackupProgressLabel = document.getElementById('full-backup-progress-label')
+      const fullBackupProgressDetail = document.getElementById('full-backup-progress-detail')
+      const fullBackupProgressBar = document.getElementById('full-backup-progress-bar')
+      const fullBackupProgressNote = document.getElementById('full-backup-progress-note')
+      const setFullBackupProgress = progress => {
+        if (!fullBackupProgressWrap || !progress) return
+        fullBackupProgressWrap.classList.remove('hidden')
+        const percent = Math.max(0, Math.min(100, Number(progress.percent) || 0))
+        if (fullBackupProgressLabel) fullBackupProgressLabel.textContent = `ความคืบหน้าโดยประมาณ ${percent}%`
+        if (fullBackupProgressBar) {
+          fullBackupProgressBar.style.width = `${percent}%`
+          fullBackupProgressBar.parentElement?.setAttribute('aria-valuenow', String(percent))
+        }
+        if (fullBackupProgressDetail) {
+          const tableText = progress.tableCount
+            ? `ตาราง ${Math.min(progress.tableIndex + 1, progress.tableCount).toLocaleString()}/${progress.tableCount.toLocaleString()}`
+            : ''
+          const rowText = progress.estimatedTotalRows
+            ? `ข้อมูลประมาณ ${progress.completedRows.toLocaleString()}/${progress.estimatedTotalRows.toLocaleString()} รายการ`
+            : ''
+          fullBackupProgressDetail.textContent = [tableText, rowText].filter(Boolean).join(' · ')
+        }
+        if (fullBackupProgressNote) {
+          if (progress.storageCount > 0 && progress.percent >= 90) {
+            fullBackupProgressNote.textContent = `กำลังสำรองไฟล์ Storage ${progress.storageIndex.toLocaleString()}/${progress.storageCount.toLocaleString()}`
+          } else if (progress.currentTableEstimate > 0) {
+            fullBackupProgressNote.textContent = `ตารางปัจจุบัน: ${progress.currentTableRows.toLocaleString()}/${progress.currentTableEstimate.toLocaleString()} รายการ (ตัวเลขโดยประมาณจากสถิติฐานข้อมูล)`
+          } else {
+            fullBackupProgressNote.textContent = 'กำลังอ่านและเขียนข้อมูลเป็นช่วง ๆ สามารถสำรองต่อจากจุดล่าสุดได้หากการเชื่อมต่อหลุด'
+          }
+        }
+      }
       const updateFullBackupResumeUi = async () => {
           const resume = await getFullBackupResumeInfo().catch(() => null)
         if (!fullBackupBtn || !resume) return
@@ -3119,6 +3162,7 @@ export async function renderSettings() {
             ? `ไฟล์ Storage ${resume.storageIndex.toLocaleString()}/${resume.storageCount.toLocaleString()}`
             : `${resume.tableName ?? 'ตาราง'} ${resume.tableIndex + 1}/${resume.tableCount}`
           fullBackupStatus.textContent = `พบงานสำรองที่หยุดไว้ · ${location}${resume.phase === 'storage' || resume.phase === 'finalizing' ? '' : ` · ${resume.rowOffset.toLocaleString()} รายการ`}`
+          setFullBackupProgress(resume.progress)
         }
       }
       updateFullBackupResumeUi()
@@ -3129,15 +3173,18 @@ export async function renderSettings() {
           fullBackupBtn.disabled = true
           fullBackupBtn.textContent = '⏳ กำลังสำรองข้อมูลทั้งหมด...'
           if (fullBackupStatus) fullBackupStatus.textContent = 'กำลังเตรียมรายการตาราง...'
+          setFullBackupProgress({ percent: 0, tableIndex: 0, tableCount: 0, completedRows: 0, estimatedTotalRows: 0, storageIndex: 0, storageCount: 0 })
           try {
             const result = await createFullBackup({
-              onProgress: (message, count) => {
+              onProgress: (message, count, progress) => {
                 if (fullBackupStatus) fullBackupStatus.textContent = `${message}${count ? ` · ${count.toLocaleString()} รายการ` : ''}`
+                setFullBackupProgress(progress)
               },
             })
             window._latestFullBackupId = result.backupId
             try { localStorage.setItem('pp5_latest_full_backup_id', result.backupId ?? '') } catch (_) { /* best effort */ }
             if (fullBackupStatus) fullBackupStatus.textContent = `สำเร็จ: ${result.fileName} · ${Math.round(result.byteSize / 1024 / 1024)} MB · ${result.tableCount} ตาราง`
+            setFullBackupProgress({ percent: 100, tableIndex: result.tableCount, tableCount: result.tableCount, completedRows: 0, estimatedTotalRows: 0, storageIndex: 0, storageCount: 0 })
             showToast(`สำรองข้อมูลทั้งหมดสำเร็จ และ${result.savedToDisk ? 'บันทึกไฟล์ลงดิสก์แล้ว' : 'ดาวน์โหลดไฟล์แล้ว'} ✅`, 'success')
           } catch (err) {
             const resume = await getFullBackupResumeInfo().catch(() => null)
