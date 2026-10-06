@@ -38,7 +38,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          approveSubjectGroupRequest, rejectSubjectGroupRequest, notifyFeedbackReply } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
-import { clearFullBackupResume, createFullBackup, getFullBackupResumeInfo, requestFullBackupSaveTarget, restoreFullBackup } from './term-backup.js'
+import { clearFullBackupResume, clearTermBackupResume, createFullBackup, createTermBackup, getFullBackupResumeInfo, getLatestVerifiedBackupId, getTermBackupResumeInfo, requestFullBackupSaveTarget, requestTermBackupSaveTarget, restoreFullBackup } from './term-backup.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect, getFriendlyErrorMessage } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
          openSubjectModal, handleDeleteSubject,
@@ -2479,6 +2479,20 @@ export async function renderSettings() {
         </div>`
 
       if (tabId === 'term-data') return `
+        <section class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5">
+          <p class="text-sm font-bold text-emerald-900">🔄 สำรองข้อมูลที่กำลังจะล้างก่อนขึ้นภาคเรียน</p>
+          <p class="text-xs text-emerald-800 mt-2 leading-relaxed">สำรองเฉพาะข้อมูลการเข้าเรียนและคะแนนละหมาดของภาคเรียนปัจจุบัน ไม่รวมข้อมูลคอร์ส ห้องเรียน คะแนน หรือไฟล์ Storage</p>
+          <div class="mt-4 flex flex-wrap items-center gap-3">
+            <button id="btn-create-term-backup" type="button" class="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold shadow-sm">⬇️ สำรองข้อมูลก่อนขึ้นภาคเรียน</button>
+            <button id="btn-resume-term-backup" type="button" class="hidden inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50 text-sm font-bold">▶️ ทำสำรองภาคเรียนต่อ</button>
+            <button id="btn-clear-term-backup" type="button" class="hidden inline-flex items-center justify-center px-4 py-2.5 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100 text-xs font-bold">🧹 ล้างจุดสำรองค้าง</button>
+            <span id="term-backup-status" class="text-xs text-gray-600"></span>
+          </div>
+          <div id="term-backup-progress-wrap" class="hidden mt-3 rounded-xl border border-emerald-100 bg-white/80 p-3" role="status" aria-live="polite">
+            <div class="flex items-center justify-between gap-2 text-xs"><span id="term-backup-progress-label" class="font-bold text-emerald-800">เตรียมสำรองข้อมูล</span><span id="term-backup-progress-count" class="text-emerald-700"></span></div>
+            <div class="mt-2 h-2.5 overflow-hidden rounded-full bg-emerald-100"><div id="term-backup-progress-bar" class="h-full rounded-full bg-emerald-600 transition-all duration-300" style="width:0%"></div></div>
+          </div>
+        </section>
         <section class="mb-6 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5">
           <p class="text-sm font-bold text-indigo-900">🗃️ สำรองและกู้คืนข้อมูลทั้งหมดของระบบ</p>
           <p class="text-xs text-indigo-700 mt-2 leading-relaxed">
@@ -2510,11 +2524,11 @@ export async function renderSettings() {
           <p class="text-[11px] text-indigo-700 mt-3 leading-relaxed">💾 หากเบราว์เซอร์รองรับ ระบบจะให้เลือกตำแหน่งจัดเก็บและเขียนไฟล์แบบสตรีมโดยตรง เพื่อรองรับข้อมูลขนาดใหญ่โดยไม่ค้างไว้ในหน่วยความจำหน้าเว็บ</p>
           <div class="mt-6 border-t border-indigo-100 pt-5">
             <p class="text-sm font-bold text-gray-800">กู้คืนจากไฟล์สำรอง</p>
-            <p class="text-xs text-gray-500 mt-1 leading-relaxed">ระบบจะตรวจสอบไฟล์และกู้คืนด้วยวิธีเพิ่ม/ปรับข้อมูลเดิม โดยไม่ลบข้อมูลอื่นที่อยู่นอกไฟล์</p>
+            <p class="text-xs text-gray-500 mt-1 leading-relaxed">รองรับทั้งไฟล์สำรองทั้งหมดและไฟล์เฉพาะข้อมูลเข้าเรียน/ละหมาด ระบบตรวจ SHA-256 ก่อนกู้คืน และไม่ลบข้อมูลอื่นที่อยู่นอกไฟล์</p>
             <div class="mt-3 flex flex-wrap items-center gap-3">
               <input id="full-backup-file" type="file" accept=".gz,application/gzip" class="block max-w-full text-xs text-gray-600" />
               <button id="btn-restore-full-backup" type="button" disabled class="inline-flex items-center justify-center px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-bold shadow-sm">
-                ♻️ กู้คืนข้อมูลทั้งหมด
+                ♻️ กู้คืนจากไฟล์สำรอง
               </button>
             </div>
             <p id="full-restore-status" class="text-xs text-gray-500 mt-3"></p>
@@ -3127,6 +3141,115 @@ export async function renderSettings() {
       const fullBackupProgressDetail = document.getElementById('full-backup-progress-detail')
       const fullBackupProgressBar = document.getElementById('full-backup-progress-bar')
       const fullBackupProgressNote = document.getElementById('full-backup-progress-note')
+      const termBackupBtn = document.getElementById('btn-create-term-backup')
+      const termBackupResumeBtn = document.getElementById('btn-resume-term-backup')
+      const termBackupClearBtn = document.getElementById('btn-clear-term-backup')
+      const termBackupStatus = document.getElementById('term-backup-status')
+      const termBackupProgressWrap = document.getElementById('term-backup-progress-wrap')
+      const termBackupProgressLabel = document.getElementById('term-backup-progress-label')
+      const termBackupProgressCount = document.getElementById('term-backup-progress-count')
+      const termBackupProgressBar = document.getElementById('term-backup-progress-bar')
+      const runTermBackup = async resume => {
+        if (!resume && !confirm('สร้างไฟล์สำรองเฉพาะข้อมูลการเข้าเรียนและคะแนนละหมาดของภาคเรียนปัจจุบันใช่หรือไม่?')) return
+        // For a new task, open the native picker directly in the click gesture.
+        const saveTarget = resume ? null : requestTermBackupSaveTarget()
+        const academicYear = parseInt(cfg.academicYear ?? cfg.academic_year)
+        const semester = parseInt(cfg.semester)
+        let stage = resume ? 'กำลังตรวจสอบจุดสำรองเดิม' : 'กำลังเริ่มสำรองข้อมูล'
+        const startedAt = Date.now()
+        let lastUpdateAt = startedAt
+        if (termBackupBtn) termBackupBtn.disabled = true
+        if (termBackupResumeBtn) termBackupResumeBtn.disabled = true
+        if (termBackupClearBtn) termBackupClearBtn.disabled = true
+        if (termBackupBtn) termBackupBtn.textContent = resume ? '⏳ กำลังทำสำรองต่อ...' : '⏳ กำลังสำรองข้อมูลภาคเรียน...'
+        termBackupProgressWrap?.classList.remove('hidden')
+        if (termBackupProgressLabel) termBackupProgressLabel.textContent = stage
+        if (termBackupProgressCount) termBackupProgressCount.textContent = ''
+        if (!resume && termBackupProgressBar) termBackupProgressBar.style.width = '0%'
+        const watchdog = setInterval(() => {
+          if (Date.now() - lastUpdateAt < 15000 || !termBackupStatus) return
+          const seconds = Math.floor((Date.now() - startedAt) / 1000)
+          termBackupStatus.textContent = `${stage} · ${seconds.toLocaleString()} วินาที`
+        }, 5000)
+        try {
+          const result = await createTermBackup({
+            saveTarget, resume, academicYear, semester,
+            onProgress: (message, count, progress) => {
+              stage = message
+              lastUpdateAt = Date.now()
+              if (termBackupStatus) termBackupStatus.textContent = message
+              if (termBackupProgressLabel) termBackupProgressLabel.textContent = `${message}${progress?.percent != null ? ` · ${progress.percent}%` : ''}`
+              if (termBackupProgressCount) termBackupProgressCount.textContent = progress?.totalRows != null
+                ? `${progress.completedRows.toLocaleString()}/${progress.totalRows.toLocaleString()} รายการ`
+                : count ? `${count.toLocaleString()} รายการ` : ''
+              if (termBackupProgressBar && progress?.percent != null) termBackupProgressBar.style.width = `${Math.max(0, Math.min(100, progress.percent))}%`
+            },
+          })
+          window._latestTermBackupId = result.backupId
+          if (termBackupBtn) termBackupBtn.disabled = false
+          if (termBackupStatus) termBackupStatus.textContent = `สำเร็จ ${result.academicYear}/${result.semester} · เข้าเรียน ${result.counts.attendances.toLocaleString()} · ละหมาด ${result.counts.prayer_records.toLocaleString()} · ${(result.byteSize / 1024 / 1024).toFixed(1)} MB`
+          if (termBackupProgressLabel) termBackupProgressLabel.textContent = 'ตรวจสอบและลงทะเบียนไฟล์สำรองสำเร็จ · 100%'
+          if (termBackupProgressBar) termBackupProgressBar.style.width = '100%'
+          termBackupResumeBtn?.classList.add('hidden')
+          termBackupClearBtn?.classList.add('hidden')
+          showToast('สำรองข้อมูลที่จะล้างก่อนขึ้นภาคเรียนสำเร็จ ✅', 'success')
+        } catch (err) {
+          if (termBackupStatus) termBackupStatus.textContent = err?.name === 'AbortError' ? 'ยกเลิกการเลือกตำแหน่งไฟล์ · ไม่มีข้อมูลถูกลบ' : 'สำรองข้อมูลภาคเรียนไม่สำเร็จ · ตรวจสอบข้อความผิดพลาดและเลือก “ทำสำรองต่อ” ได้'
+          showToast('สำรองข้อมูลภาคเรียนไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+          const pending = await getTermBackupResumeInfo(academicYear, semester)
+          termBackupResumeBtn?.classList.toggle('hidden', !pending)
+          termBackupClearBtn?.classList.toggle('hidden', !pending)
+          if (termBackupBtn && pending) {
+            termBackupBtn.disabled = true
+            termBackupBtn.textContent = '⏸ มีงานค้าง · ทำต่อหรือล้างก่อนเริ่มใหม่'
+          }
+        } finally {
+          clearInterval(watchdog)
+          if (termBackupBtn) {
+            const hasPendingResume = termBackupResumeBtn && !termBackupResumeBtn.classList.contains('hidden')
+            termBackupBtn.disabled = Boolean(hasPendingResume)
+            termBackupBtn.textContent = hasPendingResume ? '⏸ มีงานค้าง · ทำต่อหรือล้างก่อนเริ่มใหม่' : '⬇️ สำรองข้อมูลก่อนขึ้นภาคเรียน'
+          }
+          if (termBackupResumeBtn) termBackupResumeBtn.disabled = false
+          if (termBackupClearBtn) termBackupClearBtn.disabled = false
+        }
+      }
+      if (termBackupBtn && !termBackupBtn.dataset.bound) {
+        termBackupBtn.dataset.bound = 'true'
+        termBackupBtn.addEventListener('click', () => runTermBackup(false))
+      }
+      if (termBackupResumeBtn && !termBackupResumeBtn.dataset.bound) {
+        termBackupResumeBtn.dataset.bound = 'true'
+        termBackupResumeBtn.addEventListener('click', () => runTermBackup(true))
+      }
+      if (termBackupClearBtn && !termBackupClearBtn.dataset.bound) {
+        termBackupClearBtn.dataset.bound = 'true'
+        termBackupClearBtn.addEventListener('click', async () => {
+          const academicYear = parseInt(cfg.academicYear ?? cfg.academic_year)
+          const semester = parseInt(cfg.semester)
+          if (!confirm('ล้างเฉพาะจุดสำรองภาคเรียนที่ค้างในเบราว์เซอร์ใช่หรือไม่? ไฟล์ที่เลือกไว้จะไม่ถูกลบ')) return
+          try {
+            await clearTermBackupResume(academicYear, semester)
+            termBackupResumeBtn.classList.add('hidden')
+            termBackupClearBtn.classList.add('hidden')
+            if (termBackupBtn) termBackupBtn.disabled = false
+            if (termBackupStatus) termBackupStatus.textContent = 'ล้างจุดสำรองค้างแล้ว · สามารถเริ่มไฟล์ใหม่ได้'
+          } catch (err) {
+            showToast('ล้างจุดสำรองค้างไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+          }
+        })
+      }
+      if (termBackupResumeBtn) {
+        getTermBackupResumeInfo(parseInt(cfg.academicYear ?? cfg.academic_year), parseInt(cfg.semester)).then(pending => {
+          termBackupResumeBtn.classList.toggle('hidden', !pending)
+          termBackupClearBtn?.classList.toggle('hidden', !pending)
+          if (termBackupBtn) termBackupBtn.disabled = Boolean(pending)
+          if (termBackupBtn && pending) termBackupBtn.textContent = '⏸ มีงานค้าง · ทำต่อหรือล้างก่อนเริ่มใหม่'
+          if (pending && termBackupStatus) {
+            termBackupStatus.textContent = `พบงานค้าง ${pending.academicYear}/${pending.semester} · ต่อจาก ${pending.completedRows.toLocaleString()}/${pending.totalRows.toLocaleString()} รายการ`
+          }
+        }).catch(error => console.warn('อ่านจุดสำรองภาคเรียนไม่สำเร็จ:', error))
+      }
       let fullBackupResumeInfo = null
       let fullBackupResumeCheckDone = false
       const setFullBackupProgress = progress => {
@@ -3281,7 +3404,7 @@ export async function renderSettings() {
         restoreFullBackupBtn.addEventListener('click', async () => {
           const file = fullBackupFile.files?.[0]
           if (!file) return
-          if (!confirm('ยืนยันกู้คืนข้อมูลทั้งหมดจากไฟล์นี้? ระบบจะเพิ่มหรือปรับข้อมูลตามไฟล์ และไม่ลบข้อมูลอื่น')) return
+          if (!confirm('ยืนยันกู้คืนข้อมูลตามขอบเขตของไฟล์นี้? ระบบจะเพิ่มหรือปรับเฉพาะข้อมูลในไฟล์ และไม่ลบข้อมูลอื่น')) return
           restoreFullBackupBtn.disabled = true
           restoreFullBackupBtn.textContent = '⏳ กำลังกู้คืน...'
           try {
@@ -3291,13 +3414,13 @@ export async function renderSettings() {
               },
             })
             if (fullRestoreStatus) fullRestoreStatus.textContent = `กู้คืนสำเร็จ · SHA-256: ${result.sha256.slice(0, 16)}…`
-            showToast('กู้คืนข้อมูลทั้งหมดสำเร็จ ✅', 'success')
+            showToast('กู้คืนข้อมูลจากไฟล์สำรองสำเร็จ ✅', 'success')
           } catch (err) {
             if (fullRestoreStatus) fullRestoreStatus.textContent = 'กู้คืนข้อมูลไม่สำเร็จ'
             showToast('กู้คืนข้อมูลไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
           } finally {
             restoreFullBackupBtn.disabled = false
-            restoreFullBackupBtn.textContent = '♻️ กู้คืนข้อมูลทั้งหมด'
+            restoreFullBackupBtn.textContent = '♻️ กู้คืนจากไฟล์สำรอง'
           }
         })
       }
@@ -3610,14 +3733,18 @@ export async function renderSettings() {
             showToast('กรุณาระบุวันเปิด-ปิดภาคเรียนใหม่ให้ถูกต้อง', 'warning')
             return
           }
-          if (!window._latestFullBackupId) {
-            showToast('กรุณาสำรองข้อมูลทั้งหมดก่อนขึ้นภาคเรียนใหม่', 'warning')
-            document.querySelector('.cfg-tab[data-tab="term-data"]')?.click()
-            return
-          }
           startNewSemBtn.disabled = true
-          startNewSemBtn.textContent = '⏳ กำลังดำเนินการ...'
+          startNewSemBtn.textContent = '⏳ กำลังตรวจสอบไฟล์สำรอง...'
           try {
+            const rolloverBackupId = await getLatestVerifiedBackupId(curYear, curSem)
+            if (!rolloverBackupId) {
+              showToast('กรุณาสร้างไฟล์สำรองที่ตรวจสอบแล้วของภาคเรียนปัจจุบันก่อน', 'warning')
+              document.querySelector('.cfg-tab[data-tab="term-data"]')?.click()
+              startNewSemBtn.disabled = false
+              startNewSemBtn.textContent = '🔄 ขึ้นภาคเรียนใหม่'
+              return
+            }
+            startNewSemBtn.textContent = '⏳ กำลังดำเนินการ...'
             const preview = await previewNewSemester(nextYear, nextSem, semesterStart, semesterEnd)
             const previewText = [
               `คอร์สเดิมที่จะถูกเก็บเป็นประวัติ: ${Number(preview?.courses_to_archive ?? 0).toLocaleString()} คอร์ส`,
@@ -3626,12 +3753,12 @@ export async function renderSettings() {
               `ข้อมูลเข้าเรียนที่จะล้าง: ${Number(preview?.attendances_to_clear ?? 0).toLocaleString()} รายการ`,
               `ข้อมูลละหมาดที่จะล้าง: ${Number(preview?.prayer_records_to_clear ?? 0).toLocaleString()} รายการ`,
             ].join('\n')
-            if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nวันเปิด: ${semesterStart}\nวันปิด: ${semesterEnd}\n\n${previewText}\n\nบัญชีครูและนักเรียนยังคงอยู่ ไม่ต้องสมัครใหม่\nภาคเรียนใหม่จะเป็นพื้นที่ว่าง ครูต้องสร้างคอร์ส ห้องเรียน และลงทะเบียนนักเรียนใหม่เอง\nคะแนนเดิมจะถูกเก็บเป็นข้อมูลดิบ\nข้อมูลเข้าเรียนและละหมาดของภาคเรียนเดิมจะถูกล้าง\nจะไม่สร้างการลงทะเบียนนักเรียนให้อัตโนมัติ`)) {
+            if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nวันเปิด: ${semesterStart}\nวันปิด: ${semesterEnd}\nไฟล์สำรองภาคเรียนปัจจุบันผ่านการตรวจสอบแล้ว\n\n${previewText}\n\nบัญชีครูและนักเรียนยังคงอยู่ ไม่ต้องสมัครใหม่\nภาคเรียนใหม่จะเป็นพื้นที่ว่าง ครูต้องสร้างคอร์ส ห้องเรียน และลงทะเบียนนักเรียนใหม่เอง\nคะแนนเดิมจะถูกเก็บเป็นข้อมูลดิบ\nข้อมูลเข้าเรียนและละหมาดของภาคเรียนเดิมจะถูกล้าง\nจะไม่สร้างการลงทะเบียนนักเรียนให้อัตโนมัติ`)) {
               startNewSemBtn.disabled = false
               startNewSemBtn.textContent = '🔄 ขึ้นภาคเรียนใหม่'
               return
             }
-            await startNewSemester(nextYear, nextSem, semesterStart, semesterEnd, window._latestFullBackupId, true)
+            await startNewSemester(nextYear, nextSem, semesterStart, semesterEnd, rolloverBackupId, true)
             cfg.semester = String(nextSem)
             cfg.academicYear = String(nextYear)
             cfg.semester_start = semesterStart

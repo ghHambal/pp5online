@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 
-const PAGE_SIZE = 5000
+const PAGE_SIZE = 1000
 const BATCH_SIZE = 250
 const BACKUP_RPC_TIMEOUT_MS = 60000
 const FORMAT = 'pp5-full-backup'
@@ -117,8 +117,16 @@ function safeFilePart(value) {
 // ต้องเรียกจาก click handler โดยตรง ก่อน await งานฐานข้อมูล เพื่อให้ Chrome
 // ยังมี user activation สำหรับเปิดหน้าต่างเลือกตำแหน่งไฟล์
 export function requestFullBackupSaveTarget() {
+  return requestBackupSaveTarget('full')
+}
+
+export function requestTermBackupSaveTarget() {
+  return requestBackupSaveTarget('term')
+}
+
+function requestBackupSaveTarget(scope) {
   if (typeof window === 'undefined' || typeof window.showSaveFilePicker !== 'function') return null
-  const fileName = `pp5-full-backup-${safeFilePart(new Date().toISOString().replace(/[:.]/g, '-'))}.jsonl.gz`
+  const fileName = `pp5-${scope}-backup-${safeFilePart(new Date().toISOString().replace(/[:.]/g, '-'))}.jsonl.gz`
   let pickerPromise
   try {
     pickerPromise = window.showSaveFilePicker({
@@ -164,31 +172,31 @@ function openBackupStateDb() {
   })
 }
 
-async function readBackupSession() {
+async function readBackupSession(id = 'active') {
   const db = await openBackupStateDb()
   if (!db) return null
   return new Promise((resolve, reject) => {
-    const request = db.transaction(BACKUP_STATE_STORE, 'readonly').objectStore(BACKUP_STATE_STORE).get('active')
+    const request = db.transaction(BACKUP_STATE_STORE, 'readonly').objectStore(BACKUP_STATE_STORE).get(id)
     request.onsuccess = () => { db.close(); resolve(request.result ?? null) }
     request.onerror = () => { db.close(); reject(request.error) }
   })
 }
 
-async function saveBackupSession(session) {
+async function saveBackupSession(session, id = session.id ?? 'active') {
   const db = await openBackupStateDb()
   if (!db) return false
   return new Promise((resolve, reject) => {
-    const request = db.transaction(BACKUP_STATE_STORE, 'readwrite').objectStore(BACKUP_STATE_STORE).put({ ...session, id: 'active' })
+    const request = db.transaction(BACKUP_STATE_STORE, 'readwrite').objectStore(BACKUP_STATE_STORE).put({ ...session, id })
     request.onsuccess = () => { db.close(); resolve(true) }
     request.onerror = () => { db.close(); reject(request.error) }
   })
 }
 
-async function clearBackupSession() {
+async function clearBackupSession(id = 'active') {
   const db = await openBackupStateDb()
   if (!db) return
   return new Promise((resolve, reject) => {
-    const request = db.transaction(BACKUP_STATE_STORE, 'readwrite').objectStore(BACKUP_STATE_STORE).delete('active')
+    const request = db.transaction(BACKUP_STATE_STORE, 'readwrite').objectStore(BACKUP_STATE_STORE).delete(id)
     request.onsuccess = () => { db.close(); resolve() }
     request.onerror = () => { db.close(); reject(request.error) }
   })
@@ -310,6 +318,27 @@ export async function clearFullBackupResume() {
   await clearBackupSession()
 }
 
+function termBackupSessionId(academicYear, semester) {
+  return `term:${Number(academicYear)}:${Number(semester)}`
+}
+
+export async function getTermBackupResumeInfo(academicYear, semester) {
+  const session = await readBackupSession(termBackupSessionId(academicYear, semester)).catch(() => null)
+  if (!session?.fileHandle) return null
+  return {
+    fileName: session.fileName,
+    academicYear: session.academicYear,
+    semester: session.semester,
+    counts: session.counts ?? {},
+    completedRows: Object.values(session.counts ?? {}).reduce((sum, count) => sum + Number(count || 0), 0) + Number(session.tableCount || 0),
+    totalRows: Object.values(session.expectedCounts ?? {}).reduce((sum, count) => sum + Number(count || 0), 0),
+  }
+}
+
+export async function clearTermBackupResume(academicYear, semester) {
+  await clearBackupSession(termBackupSessionId(academicYear, semester))
+}
+
 function getBackupProgress(session, overrides = {}) {
   const catalog = session?.catalog ?? []
   const counts = session?.counts ?? {}
@@ -365,14 +394,14 @@ function topoSort(catalog) {
   return result.filter(Boolean)
 }
 
-async function createGzipWriter(fileName) {
+async function createGzipWriter(fileName, selectedHandle = null) {
   if (typeof CompressionStream === 'undefined') {
     throw new Error('เบราว์เซอร์นี้ไม่รองรับการบีบอัดไฟล์สำรอง กรุณาใช้ Chrome, Edge หรือ Safari รุ่นปัจจุบัน')
   }
   const stream = new CompressionStream('gzip')
   const writer = stream.writable.getWriter()
-  if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
-    const handle = await window.showSaveFilePicker({
+  if (selectedHandle || (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function')) {
+    const handle = selectedHandle ?? await window.showSaveFilePicker({
       suggestedName: fileName,
       types: [{ description: 'ไฟล์สำรอง ปพ.5', accept: { 'application/gzip': ['.jsonl.gz'] } }],
     })
@@ -425,12 +454,17 @@ async function createGzipWriter(fileName) {
   }
 }
 
-async function readCatalog(signal) {
+async function readCatalog(signal, onStage = null) {
+  onStage?.('ส่งคำขอรายการตารางไปยังฐานข้อมูล')
   const { data, error } = await supabase.rpc('admin_full_backup_catalog').abortSignal(signal)
   if (error) throw error
   const catalog = Array.isArray(data) ? data : []
   if (!catalog.length) throw new Error('ไม่พบรายการข้อมูลสำหรับสำรอง')
-  return topoSort(catalog)
+  onStage?.(`ได้รับรายการ ${catalog.length.toLocaleString()} ตารางแล้ว · กำลังจัดลำดับความสัมพันธ์`)
+  const ordered = topoSort(catalog)
+  if (ordered.length !== catalog.length) throw new Error('จัดเตรียมรายการตารางสำรองไม่ครบ')
+  onStage?.('จัดลำดับตารางแล้ว · กำลังเตรียมไฟล์สำรอง')
+  return ordered
 }
 
 async function readTablePage(table, cursor, signal) {
@@ -489,10 +523,11 @@ export async function createFullBackup({ onProgress, saveTarget = null } = {}) {
   let resumable = false
 
   if (session?.fileHandle) {
+    onProgress?.('ตรวจสอบสิทธิ์เข้าถึงไฟล์สำรองเดิม')
     await ensureFileHandleAccess(session.fileHandle)
-    catalog = session.catalog ?? await readCatalog()
+    catalog = session.catalog ?? await readCatalog(undefined, stage => onProgress?.(stage))
     if (catalog.some(item => item.estimated_rows == null)) {
-      const refreshedCatalog = await retryBackupRequest(signal => readCatalog(signal), 'สถิติรายการตาราง', onProgress)
+      const refreshedCatalog = await retryBackupRequest(signal => readCatalog(signal, stage => onProgress?.(stage)), 'สถิติรายการตาราง', onProgress)
       const sameCatalog = refreshedCatalog.length === catalog.length
         && refreshedCatalog.every((item, index) => item.table_name === catalog[index]?.table_name)
       if (sameCatalog) {
@@ -516,9 +551,10 @@ export async function createFullBackup({ onProgress, saveTarget = null } = {}) {
       selectedFileHandle = fileHandle
     }
     onProgress?.('กำลังอ่านรายการตาราง...')
-    catalog = await retryBackupRequest(signal => readCatalog(signal), 'รายการตาราง', onProgress)
+    catalog = await retryBackupRequest(signal => readCatalog(signal, stage => onProgress?.(stage)), 'รายการตาราง', onProgress)
     fileName = saveTarget?.fileName ?? `pp5-full-backup-${safeFilePart(new Date().toISOString().replace(/[:.]/g, '-'))}.jsonl.gz`
     if (selectedFileHandle) {
+      onProgress?.('ตรวจสอบสิทธิ์เขียนไฟล์สำรอง')
       fileHandle = selectedFileHandle
       await ensureFileHandleAccess(fileHandle)
       resumable = true
@@ -528,6 +564,7 @@ export async function createFullBackup({ onProgress, saveTarget = null } = {}) {
         storageObjects: null, storageIndex: 0, counts: {}, headerWritten: false,
         endWritten: false, byteOffset: 0,
       }
+      onProgress?.('บันทึกจุดเริ่มต้นสำหรับทำสำรองต่อได้')
       await saveBackupSession(session)
       writer = await createResumableFileWriter(fileHandle, 0)
     } else {
@@ -650,6 +687,191 @@ export async function createFullBackup({ onProgress, saveTarget = null } = {}) {
   }
 }
 
+/** สำรองเฉพาะข้อมูลที่กระบวนการขึ้นภาคเรียนจะล้าง: attendance และ prayer_records */
+export async function createTermBackup({ onProgress, saveTarget = null, resume = false, academicYear, semester } = {}) {
+  let writer = null
+  let selectedFileHandle = null
+  let session = null
+  let resumable = false
+  let manifest
+  let fileName = saveTarget?.fileName ?? `pp5-term-backup-${safeFilePart(new Date().toISOString().replace(/[:.]/g, '-'))}.jsonl.gz`
+  try {
+    if (resume) {
+      session = await readBackupSession(termBackupSessionId(academicYear, semester)).catch(() => null)
+      if (!session) throw new Error('ไม่พบงานสำรองภาคเรียนที่ทำต่อได้ กรุณาเริ่มสำรองใหม่')
+      await ensureFileHandleAccess(session.fileHandle)
+      manifest = session.manifest
+      fileName = session.fileName
+      selectedFileHandle = session.fileHandle
+      resumable = true
+      writer = await createResumableFileWriter(selectedFileHandle, session.byteOffset ?? 0)
+      onProgress?.(`ทำสำรองต่อจาก ${session.table ?? 'จุดล่าสุด'}`)
+    } else if (saveTarget?.fileHandlePromise) {
+      onProgress?.('กำลังรอเลือกตำแหน่งไฟล์สำรองภาคเรียน')
+      const { fileHandle, error } = await saveTarget.fileHandlePromise
+      if (error) throw error
+      selectedFileHandle = fileHandle
+    }
+
+    if (!manifest) {
+      manifest = await retryBackupRequest(async signal => {
+        const { data, error } = await supabase.rpc('admin_term_backup_catalog').abortSignal(signal)
+        if (error) throw error
+        return data
+      }, 'สรุปข้อมูลภาคเรียน', onProgress)
+    }
+    const expectedCounts = {
+      attendances: Number(manifest?.counts?.attendances),
+      prayer_records: Number(manifest?.counts?.prayer_records),
+    }
+    if (!Number.isInteger(manifest?.academic_year) || ![1, 2].includes(Number(manifest?.semester))
+      || !Number.isSafeInteger(expectedCounts.attendances) || expectedCounts.attendances < 0
+      || !Number.isSafeInteger(expectedCounts.prayer_records) || expectedCounts.prayer_records < 0) {
+      throw new Error('ข้อมูลสรุปสำหรับสำรองภาคเรียนไม่ถูกต้อง')
+    }
+    if (session && (Number(session.academicYear) !== Number(manifest.academic_year)
+      || Number(session.semester) !== Number(manifest.semester)
+      || JSON.stringify(session.expectedCounts) !== JSON.stringify(expectedCounts))) {
+      throw new Error('ข้อมูลภาคเรียนเปลี่ยนจากตอนเริ่มสำรอง กรุณาล้างงานค้างและเริ่มใหม่เพื่อป้องกันไฟล์ไม่ครบ')
+    }
+    const expectedTotal = expectedCounts.attendances + expectedCounts.prayer_records
+    if (!selectedFileHandle && expectedTotal > 100000) {
+      throw new Error('ข้อมูลมีขนาดใหญ่ กรุณาใช้ Chrome หรือ Edge ที่รองรับการเลือกตำแหน่งไฟล์โดยตรง')
+    }
+
+    if (!writer) {
+      onProgress?.('ได้รับจำนวนข้อมูลแล้ว · กำลังเตรียมไฟล์สำรอง')
+      writer = selectedFileHandle
+        ? await createResumableFileWriter(selectedFileHandle, 0)
+        : await createGzipWriter(fileName)
+      resumable = Boolean(selectedFileHandle)
+      if (resumable) {
+        session = {
+          id: termBackupSessionId(manifest.academic_year, manifest.semester),
+          status: 'running', fileName, fileHandle: selectedFileHandle, manifest,
+          academicYear: Number(manifest.academic_year), semester: Number(manifest.semester),
+          expectedCounts, counts: {}, tableIndex: 0, cursor: null, tableCount: 0,
+          byteOffset: 0, headerWritten: false,
+        }
+        await saveBackupSession(session)
+      }
+    }
+    const counts = session?.counts ?? {}
+    const completedBefore = Object.values(counts).reduce((sum, count) => sum + Number(count || 0), 0)
+      + (resumable ? Number(session.tableCount || 0) : 0)
+    if (!session?.headerWritten) {
+      await writer.write(JSON.stringify({
+        format: 'pp5-term-backup',
+        version: 1,
+        created_at: new Date().toISOString(),
+        scope: 'term-rollover-source-data',
+        academic_year: Number(manifest.academic_year),
+        semester: Number(manifest.semester),
+        semester_start: manifest.semester_start ?? null,
+        semester_end: manifest.semester_end ?? null,
+        expected_counts: expectedCounts,
+        tables: ['attendances', 'prayer_records'],
+      }) + '\n')
+      if (resumable) {
+        session.byteOffset = writer.offset
+        session.headerWritten = true
+        await saveBackupSession(session)
+      }
+    }
+
+    let completed = completedBefore
+    const startTable = resumable ? Number(session.tableIndex ?? 0) : 0
+    const tables = ['attendances', 'prayer_records']
+    for (let tableIndex = startTable; tableIndex < tables.length; tableIndex += 1) {
+      const table = tables[tableIndex]
+      let cursor = resumable && tableIndex === startTable ? session.cursor ?? null : null
+      let tableCount = resumable && tableIndex === startTable ? Number(session.tableCount ?? 0) : 0
+      do {
+        const page = await retryBackupRequest(async signal => {
+          const { data, error } = await supabase.rpc('admin_term_backup_read_cursor', {
+            p_table: table,
+            p_academic_year: Number(manifest.academic_year),
+            p_semester: Number(manifest.semester),
+            p_cursor: cursor,
+            p_limit: 1000,
+          }).abortSignal(signal)
+          if (error) throw error
+          return data
+        }, `ข้อมูล ${table}`, onProgress)
+        const rows = Array.isArray(page?.rows) ? page.rows : []
+        if (page?.has_more && (!rows.length || !page.next_cursor)) {
+          throw new Error(`อ่านข้อมูล ${table} ไม่ต่อเนื่อง ระบบหยุดเพื่อป้องกันไฟล์ไม่ครบ`)
+        }
+        if (rows.length) {
+          await writer.write(rows.map(row => JSON.stringify({ kind: 'row', table, row })).join('\n') + '\n')
+          tableCount += rows.length
+          completed += rows.length
+          cursor = page.next_cursor
+          const percent = expectedTotal > 0 ? Math.min(98, Math.floor((completed / expectedTotal) * 98)) : 98
+          onProgress?.(`สำรอง ${table} · ${tableCount.toLocaleString()}/${expectedCounts[table].toLocaleString()} รายการ`, tableCount, { percent, completedRows: completed, totalRows: expectedTotal, table })
+          if (resumable) {
+            session.tableIndex = tableIndex
+            session.table = table
+            session.cursor = cursor
+            session.tableCount = tableCount
+            session.counts = counts
+            session.byteOffset = writer.offset
+            session.updatedAt = new Date().toISOString()
+            await saveBackupSession(session)
+          }
+        }
+        if (!page?.has_more) break
+      } while (true)
+      if (tableCount !== expectedCounts[table]) {
+        throw new Error(`จำนวนข้อมูล ${table} ไม่ตรงกับที่ตรวจนับไว้ (${tableCount.toLocaleString()}/${expectedCounts[table].toLocaleString()}) กรุณาสำรองใหม่`)
+      }
+      counts[table] = tableCount
+      if (resumable) {
+        session.tableIndex = tableIndex + 1
+        session.table = tables[tableIndex + 1] ?? 'ตรวจสอบไฟล์'
+        session.cursor = null
+        session.tableCount = 0
+        session.counts = counts
+        session.byteOffset = writer.offset
+        await saveBackupSession(session)
+      }
+    }
+
+    await writer.write(JSON.stringify({ kind: 'end', counts }) + '\n')
+    onProgress?.('อ่านข้อมูลครบแล้ว · กำลังปิดและตรวจสอบไฟล์')
+    let output
+    if (resumable) {
+      await writer.close()
+      const savedFile = await selectedFileHandle.getFile()
+      output = { blob: null, sha256: await sha256Hex(savedFile), byteSize: savedFile.size, savedToDisk: true }
+    } else {
+      output = await writer.close()
+    }
+    if (!output.byteSize || !/^[0-9a-f]{64}$/.test(output.sha256)) throw new Error('ตรวจสอบขนาดหรือค่า SHA-256 ของไฟล์ไม่ผ่าน')
+    const { data, error } = await supabase.rpc('admin_record_term_backup', {
+      p_academic_year: Number(manifest.academic_year),
+      p_semester: Number(manifest.semester),
+      p_semester_start: manifest.semester_start ?? null,
+      p_semester_end: manifest.semester_end ?? null,
+      p_file_name: fileName,
+      p_byte_size: output.byteSize,
+      p_sha256: output.sha256,
+      p_table_counts: counts,
+    })
+    if (error) throw error
+    if (output.blob) downloadBlob(output.blob, fileName)
+    if (resumable && session?.id) await clearBackupSession(session.id)
+    return { backupId: data?.id, fileName, byteSize: output.byteSize, sha256: output.sha256, counts, academicYear: Number(manifest.academic_year), semester: Number(manifest.semester), savedToDisk: output.savedToDisk }
+  } catch (error) {
+    if (resumable && session?.id) {
+      session.status = 'paused'
+      await saveBackupSession(session).catch(() => {})
+    }
+    await writer?.abort?.().catch?.(() => {})
+    throw error
+  }
+}
+
 async function* lineReader(file) {
   if (!file?.name?.endsWith('.gz') && file?.type !== 'application/gzip') {
     throw new Error('กรุณาเลือกไฟล์สำรอง .jsonl.gz ที่สร้างจากระบบ ปพ.5')
@@ -676,6 +898,17 @@ async function restoreBatch(table, rows) {
   if (error) throw error
 }
 
+async function restoreTermBatch(table, rows, academicYear, semester) {
+  if (!rows.length) return
+  const { error } = await supabase.rpc('admin_restore_term_backup_table', {
+    p_table: table,
+    p_academic_year: academicYear,
+    p_semester: semester,
+    p_rows: rows,
+  })
+  if (error) throw error
+}
+
 async function restoreStorage(item) {
   const blob = base64ToBlob(item.data, item.content_type)
   const { error } = await supabase.storage.from(item.bucket).upload(item.name, blob, {
@@ -690,8 +923,7 @@ export async function restoreFullBackup(file, { onProgress } = {}) {
   const sha256 = await sha256Hex(file)
   const { data: registeredBackup, error: lookupError } = await supabase
     .from('academic_term_backups')
-    .select('id, file_name, byte_size')
-    .eq('backup_scope', 'full')
+    .select('id, file_name, byte_size, backup_scope, academic_year, semester, table_counts')
     .eq('sha256', sha256)
     .eq('status', 'verified')
     .maybeSingle()
@@ -700,11 +932,16 @@ export async function restoreFullBackup(file, { onProgress } = {}) {
 
   let manifest = null
   let currentTable = null
+  let termBackup = false
   let batch = []
   const counts = {}
   const flush = async () => {
     if (!currentTable || !batch.length) return
-    await restoreBatch(currentTable, batch)
+    if (termBackup) {
+      await restoreTermBatch(currentTable, batch, manifest.academic_year, manifest.semester)
+    } else {
+      await restoreBatch(currentTable, batch)
+    }
     counts[currentTable] = (counts[currentTable] ?? 0) + batch.length
     onProgress?.(`กู้คืน ${currentTable}`, counts[currentTable])
     batch = []
@@ -712,9 +949,21 @@ export async function restoreFullBackup(file, { onProgress } = {}) {
 
   for await (const line of lineReader(file)) {
     const item = JSON.parse(line)
-    if (!item.kind && item.format === FORMAT) {
+    if (!item.kind && (item.format === FORMAT || item.format === 'pp5-term-backup')) {
       manifest = item
-      if (manifest.version !== VERSION || manifest.scope !== 'all-public-application-tables') {
+      termBackup = item.format === 'pp5-term-backup'
+      if (termBackup) {
+        if (manifest.version !== 1 || manifest.scope !== 'term-rollover-source-data'
+          || registeredBackup.backup_scope !== 'term'
+          || Number(registeredBackup.academic_year) !== Number(manifest.academic_year)
+          || Number(registeredBackup.semester) !== Number(manifest.semester)
+          || !Array.isArray(manifest.tables)
+          || manifest.tables.length !== 2
+          || !manifest.tables.includes('attendances')
+          || !manifest.tables.includes('prayer_records')) {
+          throw new Error('ไฟล์สำรองภาคเรียนหรือข้อมูลลงทะเบียนไม่ตรงกัน')
+        }
+      } else if (manifest.version !== VERSION || manifest.scope !== 'all-public-application-tables' || registeredBackup.backup_scope !== 'full') {
         throw new Error('เวอร์ชันหรือขอบเขตไฟล์สำรองไม่รองรับ')
       }
       continue
@@ -729,6 +978,9 @@ export async function restoreFullBackup(file, { onProgress } = {}) {
       continue
     }
     if (item.kind !== 'row' || !item.table || !item.row) throw new Error('รูปแบบไฟล์สำรองไม่ถูกต้อง')
+    if (termBackup && !['attendances', 'prayer_records'].includes(item.table)) {
+      throw new Error('ไฟล์สำรองภาคเรียนมีตารางนอกขอบเขตที่อนุญาต')
+    }
     if (currentTable !== item.table) {
       await flush()
       currentTable = item.table
@@ -738,6 +990,14 @@ export async function restoreFullBackup(file, { onProgress } = {}) {
   }
   await flush()
   if (!manifest) throw new Error('ไม่พบหัวไฟล์สำรอง')
+  if (termBackup) {
+    for (const table of ['attendances', 'prayer_records']) {
+      if (Number(counts[table] ?? 0) !== Number(manifest.expected_counts?.[table] ?? -1)
+        || Number(counts[table] ?? 0) !== Number(registeredBackup.table_counts?.[table] ?? -2)) {
+        throw new Error(`จำนวนข้อมูล ${table} ในไฟล์ไม่ตรงกับรายการสำรองที่ระบบรับรองไว้`)
+      }
+    }
+  }
 
   const { error } = await supabase
     .from('academic_term_backups')
@@ -745,4 +1005,19 @@ export async function restoreFullBackup(file, { onProgress } = {}) {
     .eq('id', registeredBackup.id)
   if (error) console.warn('บันทึกประวัติการกู้คืนไม่สำเร็จ:', error)
   return { counts, sha256, createdAt: manifest.created_at }
+}
+
+export async function getLatestVerifiedBackupId(academicYear, semester) {
+  const { data, error } = await supabase
+    .from('academic_term_backups')
+    .select('id, backup_scope, academic_year, semester')
+    .eq('status', 'verified')
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (error) throw error
+  const match = (data ?? []).find(item => item.backup_scope === 'full'
+    || (item.backup_scope === 'term'
+      && Number(item.academic_year) === Number(academicYear)
+      && Number(item.semester) === Number(semester)))
+  return match?.id ?? null
 }
