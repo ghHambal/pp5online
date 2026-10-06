@@ -19,7 +19,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.910'
+import { APP_VERSION } from './version.js?v=10.22.911'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -2319,6 +2319,8 @@ async function _initDonationFlow(teacherId) {
     window._pp5SystemCfg = cfg
 
     if (approved) {
+      // ปุ่มลอยกาแฟอาจถูกสร้างก่อนข้อมูลสมาชิกโหลดเสร็จ ต้องเอาออกเมื่อยืนยันผู้สนับสนุนแล้ว
+      document.getElementById('donate-float-btn')?.remove()
       // แสดงการ์ดขอบคุณครั้งแรก
       const seen = localStorage.getItem(`pp5_thankyou_seen_${approved.id}`)
       if (!seen && approved.admin_note) _showThankYouCard(approved)
