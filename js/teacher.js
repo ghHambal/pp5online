@@ -19,7 +19,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.907'
+import { APP_VERSION } from './version.js?v=10.22.908'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -1254,7 +1254,59 @@ async function _onSetupComplete(userId) {
   navigate('schedule-builder')
 }
 
+async function _requireCurrentTermSchedule(actionLabel) {
+  if (_hasAdminAccess) return true
+  if (!_teacher?.id) {
+    showToast('ไม่พบข้อมูลครู กรุณาเข้าสู่ระบบใหม่', 'error')
+    return false
+  }
+  const cfg = await getSystemConfig().catch(() => null)
+  if (!cfg) {
+    showToast('ตรวจสอบตารางสอนไม่สำเร็จ กรุณาลองใหม่', 'error')
+    return false
+  }
+  const academicYear = Number(cfg.academicYear ?? cfg.academic_year)
+  const semester = Number(cfg.semester)
+  if (!Number.isInteger(academicYear) || ![1, 2].includes(semester)) {
+    showToast('ยังระบุภาคเรียนปัจจุบันไม่ครบ จึงตรวจสอบตารางสอนไม่ได้', 'error')
+    return false
+  }
+  let schedule
+  try {
+    schedule = await getMySchedule(_teacher.id, academicYear, semester)
+  } catch (error) {
+    showToast('ตรวจสอบตารางสอนไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+    return false
+  }
+  if (schedule.length > 0) return true
+
+  document.getElementById('teacher-schedule-required-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'teacher-schedule-required-modal'
+  modal.className = 'fixed inset-0 z-[250] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4'
+  modal.innerHTML = `<section role="dialog" aria-modal="true" aria-labelledby="schedule-required-title" class="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+    <div class="text-center">
+      <div class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-3xl">🗓️</div>
+      <h3 id="schedule-required-title" class="text-lg font-extrabold text-gray-800">ต้องสร้างตารางสอนก่อน</h3>
+      <p class="mt-2 text-sm leading-relaxed text-gray-600">ก่อน${actionLabel} ต้องมีตารางสอนของภาค ${semester}/${academicYear} ในระบบก่อน จะกรอกเองหรือนำเข้าจาก API ที่เชื่อมต่อในอนาคตก็ได้</p>
+    </div>
+    <div class="mt-5 flex gap-2">
+      <button type="button" data-schedule-later class="flex-1 rounded-xl border border-gray-200 px-3 py-3 text-sm font-semibold text-gray-600 hover:bg-gray-50">ไว้ก่อน</button>
+      <button type="button" data-open-schedule class="flex-1 rounded-xl bg-emerald-600 px-3 py-3 text-sm font-bold text-white hover:bg-emerald-700">ไปสร้างตารางสอน</button>
+    </div>
+  </section>`
+  document.body.appendChild(modal)
+  modal.querySelector('[data-schedule-later]').addEventListener('click', () => modal.remove())
+  modal.querySelector('[data-open-schedule]').addEventListener('click', () => {
+    modal.remove()
+    navigate('schedule')
+  })
+  modal.addEventListener('click', event => { if (event.target === modal) modal.remove() })
+  return false
+}
+
 window._openCourseForm = async () => {
+  if (!await _requireCurrentTermSchedule('เปิดคอร์สวิชา')) return
   const { renderCourseForm } = await import('./teacher-views.js')
   renderCourseForm(_teacher, async (payload, coTeacherIds = []) => {
     await createSubject(payload, coTeacherIds)
@@ -1338,6 +1390,7 @@ window._deleteCourse = (id, name) => {
 }
 
 window._openRegisterClass = async (courseId) => {
+  if (!await _requireCurrentTermSchedule('เปิดห้องเรียน')) return
   const subjects = _teacher
     ? await getMySubjects(_teacher.id).catch(()=>[])
     : await getMasterSubjects().catch(()=>[])

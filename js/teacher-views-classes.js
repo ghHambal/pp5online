@@ -7,7 +7,7 @@ import {
   getClassStudents, getClassRosterStudents, getStudentByCode,
   addStudentToClass, updateClassStudentActive, removeStudentFromClass,
   getUniqueRooms, getUniqueReligionRooms,
-  getMySchedule, upsertScheduleEntry, deleteScheduleEntry, deleteScheduleByTeacher,
+  getMySchedule, upsertScheduleEntry, upsertScheduleEntries, deleteScheduleEntry, deleteScheduleByTeacher,
   getPeriods, getAllPeriods, getTeacherRoomColors, saveTeacherRoomColor,
   getClassScheduleLinks, linkClassToSchedule, unlinkClassFromSchedule,
   getClassrooms, assignClassroom, autoEnrollStudentsByRoom,
@@ -4046,8 +4046,8 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
     <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl flex flex-col max-h-[92vh]">
       <div class="px-5 pt-5 pb-4 border-b border-gray-100 flex items-center gap-3 flex-shrink-0">
         <div class="flex-1">
-          <h3 class="font-bold text-gray-800">🤖 วิเคราะห์รูปตารางสอน</h3>
-          <p class="text-xs text-gray-400 mt-0.5">อัปโหลดรูปตารางสอน → AI จะเติมข้อมูลลงตารางให้</p>
+          <h3 class="font-bold text-gray-800">🤖 ${initialGroups.length ? 'ตรวจสอบตารางสอนจาก AI' : 'วิเคราะห์รูปตารางสอน'}</h3>
+          <p class="text-xs text-gray-400 mt-0.5">${initialGroups.length ? 'ตรวจรายการจาก JSON แล้วบันทึกทุกคาบพร้อมกันได้' : 'อัปโหลดรูปตารางสอน → AI จะเติมข้อมูลลงตารางให้'}</p>
         </div>
         <button id="vision-close" class="text-gray-400 hover:text-gray-600 text-xl">✕</button>
       </div>
@@ -4213,14 +4213,10 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
             + เพิ่มคาบ
           </button>
         </div>
-        <!-- Group footer: บันทึกกลุ่มนี้ + ลบกลุ่ม -->
-        <div class="px-4 pb-3 flex gap-2">
-          <button type="button" class="vg-save-group flex-1 py-2 rounded-xl text-xs font-semibold text-white transition"
-            style="background:${clr.dot}" data-gi="${gi}">
-            ✅ บันทึกกลุ่มนี้
-          </button>
+        <!-- ลบกลุ่มได้ แต่บันทึกทั้งตารางพร้อมกันจากปุ่มด้านล่าง -->
+        <div class="px-4 pb-3 flex justify-end">
           <button type="button" class="vg-del-group py-2 px-3 rounded-xl border border-red-200 text-xs text-red-400 hover:bg-red-50 transition" data-gi="${gi}">
-            ลบกลุ่ม
+            ลบกลุ่มนี้
           </button>
         </div>
         <datalist id="subj-list-${gi}">${subjSuggestions}</datalist>
@@ -4259,59 +4255,6 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
       }))
     container.querySelectorAll('.vg-del-group').forEach(btn =>
       btn.addEventListener('click', () => { groups.splice(+btn.dataset.gi, 1); _renderGroups() }))
-    container.querySelectorAll('.vg-save-group').forEach(btn =>
-      btn.addEventListener('click', async () => {
-        const gi  = +btn.dataset.gi
-        const g   = groups[gi]
-        const origText = btn.textContent
-        btn.disabled = true; btn.textContent = '⏳ กำลังบันทึก...'
-        try {
-          const colorHex = g.color_hex ?? resolveScheduleColor({
-            teacherId: teacher?.id,
-            className: g.class_name,
-            subjectName: g.subject_name,
-            fallbackId: g.subject_id,
-          }, roomColorMap).dot
-          if (g.class_name || g.subject_name || g.subject_id) {
-            await saveTeacherRoomColor({
-              teacher_id: teacher.id,
-              room_key: roomColorKey({ className: g.class_name, subjectName: g.subject_name, fallbackId: g.subject_id }),
-              class_name: g.class_name?.trim() || null,
-              color_hex: colorHex,
-            }).catch(err => showToast('บันทึกสีไม่ได้: ' + (getFriendlyErrorMessage(err)), 'warning'))
-          }
-          await Promise.all(g.sessions.map(s => upsertScheduleEntry({
-            teacher_id:   teacher.id,
-            subject_id:   g.subject_id ?? null,
-            subject_name: g.subject_name?.trim() || null,
-            class_name:   g.class_name?.trim()   || null,
-            teacher_name: g.teacher_name?.trim()  || null,
-            day_of_week:  s.day_of_week,
-            period_no:    s.period_no,
-            span_periods: s.span_periods ?? 1,
-            academic_year: academicYear,
-            semester,
-          })))
-          btn.textContent = '✅ บันทึกแล้ว'
-          btn.style.background = '#16a34a'
-          setTimeout(() => {
-            const nextColor = g.color_hex ? colorMetaForHex(g.color_hex) : resolveScheduleColor({
-              teacherId: teacher?.id,
-              className: g.class_name,
-              subjectName: g.subject_name,
-              fallbackId: g.subject_id,
-            }, roomColorMap)
-            btn.disabled = false
-            btn.textContent = origText
-            btn.style.background = nextColor.dot
-          }, 2000)
-          // อัปเดตตารางหลังบ้านแบบ silent (ไม่ปิด popup)
-          renderScheduleGrid(teacher, academicYear, semester, cfg).catch(()=>{})
-        } catch (err) {
-          showToast('บันทึกกลุ่มนี้ไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
-          btn.disabled = false; btn.textContent = origText
-        }
-      }))
     container.querySelectorAll('.vs-dow').forEach(el =>
       el.addEventListener('change', () => { groups[+el.dataset.gi].sessions[+el.dataset.si].day_of_week = +el.value }))
     container.querySelectorAll('.vs-period').forEach(el =>
@@ -4339,6 +4282,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
     wrap.querySelector('#vision-analyze').classList.add('hidden')
     wrap.querySelector('#vision-status').textContent = '✅ นำเข้าข้อมูลจาก AI ภายนอกแล้ว — กรุณาตรวจสอบก่อนบันทึก'
     wrap.querySelector('#vision-status').classList.remove('hidden')
+    wrap.querySelector('#vision-save').textContent = '💾 บันทึกตารางทั้งหมด'
     _renderGroups()
   }
 
@@ -4410,7 +4354,8 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
       wrap.querySelector('#vision-result').classList.remove('hidden')
       wrap.querySelector('#vision-save').classList.remove('hidden')
       const total = groups.reduce((n, g) => n + g.sessions.length, 0)
-      status.textContent = `✅ พบ ${groups.length} กลุ่มวิชา ${total} คาบ — ตรวจสอบแล้วกด "บันทึก"`
+      wrap.querySelector('#vision-save').textContent = '💾 บันทึกตารางทั้งหมด'
+      status.textContent = `✅ พบ ${groups.length} กลุ่มวิชา ${total} คาบ — ตรวจสอบแล้วบันทึกพร้อมกันได้`
     } catch (err) {
       console.error('Vision error:', err)
       const errMsg = err.message ?? 'ไม่ทราบสาเหตุ'
@@ -4441,13 +4386,124 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
       sessions: [{ day_of_week: 0, period_no: PERIOD_NOS[0] ?? 1, span_periods: 1 }] })
     wrap.querySelector('#vision-result').classList.remove('hidden')
     wrap.querySelector('#vision-save').classList.remove('hidden')
+    wrap.querySelector('#vision-save').textContent = '💾 บันทึกตารางทั้งหมด'
     _renderGroups()
   })
 
   // ─── Save ─────────────────────────────────────────────────────────────────
   wrap.querySelector('#vision-save').addEventListener('click', async () => {
-    wrap.remove()
-    await renderScheduleGrid(teacher, academicYear, semester, cfg)
+    const status = wrap.querySelector('#vision-status')
+    const saveButton = wrap.querySelector('#vision-save')
+    const entries = []
+    const occupied = new Set()
+    for (const [groupIndex, group] of groups.entries()) {
+      const subjectName = String(group.subject_name ?? '').trim()
+      const className = String(group.class_name ?? '').trim()
+      if (!subjectName || !className || !group.sessions?.length) {
+        showToast(`กลุ่มที่ ${groupIndex + 1} ต้องมีชื่อวิชา ห้องเรียน และคาบสอนอย่างน้อย 1 คาบ`, 'warning')
+        return
+      }
+      for (const session of group.sessions) {
+        const day = Number(session.day_of_week)
+        const period = Number(session.period_no)
+        const span = Number(session.span_periods ?? 1)
+        if (!Number.isInteger(day) || day < 0 || day > 5 || !PERIOD_NOS.includes(period)
+          || !Number.isInteger(span) || span < 1 || span > 4
+          || Array.from({ length: span }, (_, i) => period + i).some(n => !PERIOD_NOS.includes(n))) {
+          showToast(`ข้อมูลวัน/คาบ/ช่วงคาบในกลุ่มที่ ${groupIndex + 1} ไม่ถูกต้อง`, 'warning')
+          return
+        }
+        for (let offset = 0; offset < span; offset++) {
+          const cellKey = `${day}-${period + offset}`
+          if (occupied.has(cellKey)) {
+            showToast(`มีคาบสอนซ้ำกันที่วัน${DAY_NAMES[day]} คาบ ${period + offset} กรุณาตรวจสอบก่อนบันทึก`, 'warning')
+            return
+          }
+          occupied.add(cellKey)
+        }
+        entries.push({
+          teacher_id: teacher.id,
+          subject_id: group.subject_id ?? null,
+          subject_name: subjectName,
+          class_name: className,
+          teacher_name: null,
+          day_of_week: day,
+          period_no: period,
+          span_periods: span,
+          academic_year: academicYear,
+          semester,
+        })
+      }
+    }
+    if (!entries.length) {
+      showToast('ยังไม่มีคาบสอนให้บันทึก', 'warning')
+      return
+    }
+
+    const choice = document.createElement('div')
+    choice.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4'
+    choice.innerHTML = `<section role="dialog" aria-modal="true" aria-labelledby="schedule-name-choice-title" class="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl">
+      <div class="text-center">
+        <div class="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-indigo-50 text-3xl">🗓️</div>
+        <h3 id="schedule-name-choice-title" class="text-lg font-extrabold text-gray-800">ต้องการแสดงชื่อครูในตารางสอนหรือไม่?</h3>
+        <p class="mt-2 text-sm leading-relaxed text-gray-500">กำลังจะบันทึก ${entries.length} คาบของภาค ${semester}/${academicYear} พร้อมกัน เลือกการแสดงชื่อก่อนยืนยัน</p>
+      </div>
+      <div class="mt-5 grid gap-2 sm:grid-cols-2">
+        <button type="button" data-show-teacher="yes" class="rounded-xl bg-indigo-600 px-3 py-3 text-sm font-bold text-white hover:bg-indigo-700">แสดงชื่อครู</button>
+        <button type="button" data-show-teacher="no" class="rounded-xl border border-gray-200 px-3 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50">ไม่แสดงชื่อครู</button>
+      </div>
+      <button type="button" data-cancel class="mt-2 w-full rounded-xl px-3 py-2.5 text-sm font-semibold text-gray-400 hover:bg-gray-50">ยกเลิก</button>
+    </section>`
+    document.body.appendChild(choice)
+
+    const closeChoice = () => choice.remove()
+    choice.querySelector('[data-cancel]').addEventListener('click', closeChoice)
+    choice.addEventListener('click', event => { if (event.target === choice) closeChoice() })
+    choice.querySelectorAll('[data-show-teacher]').forEach(button => button.addEventListener('click', async () => {
+      const showTeacherName = button.dataset.showTeacher === 'yes'
+      closeChoice()
+      saveButton.disabled = true
+      saveButton.textContent = '⏳ กำลังบันทึกทั้งตาราง...'
+      let scheduleSaved = false
+      try {
+        const rows = entries.map(row => ({
+          ...row,
+          teacher_name: showTeacherName
+            ? (groups.find(g => g.subject_name?.trim() === row.subject_name && g.class_name?.trim() === row.class_name)?.teacher_name?.trim() || teacher.full_name || null)
+            : null,
+        }))
+        await upsertScheduleEntries(rows)
+        scheduleSaved = true
+        await Promise.all(groups.filter(g => g.subject_name || g.class_name).map(g => {
+          const colorHex = g.color_hex ?? resolveScheduleColor({
+            teacherId: teacher.id,
+            className: g.class_name,
+            subjectName: g.subject_name,
+            fallbackId: g.subject_id,
+          }, roomColorMap).dot
+          return saveTeacherRoomColor({
+            teacher_id: teacher.id,
+            room_key: roomColorKey({ className: g.class_name, subjectName: g.subject_name, fallbackId: g.subject_id }),
+            class_name: g.class_name.trim(),
+            color_hex: colorHex,
+          }).catch(err => showToast('บันทึกสีห้องบางรายการไม่ได้: ' + getFriendlyErrorMessage(err), 'warning'))
+        }))
+        status.textContent = `✅ บันทึกตารางสอนแล้ว ${rows.length} คาบ — ${showTeacherName ? 'แสดงชื่อครู' : 'ซ่อนชื่อครู'}`
+        wrap.remove()
+        showToast(`บันทึกตารางสอนทั้งหมด ${rows.length} คาบเรียบร้อย`, 'success')
+        await renderScheduleGrid(teacher, academicYear, semester, cfg).catch(err =>
+          showToast('บันทึกแล้ว แต่โหลดตารางใหม่ไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'warning')
+        )
+      } catch (err) {
+        showToast(scheduleSaved
+          ? 'บันทึกตารางสอนแล้ว แต่ส่วนเสริมบางรายการไม่สำเร็จ: ' + getFriendlyErrorMessage(err)
+          : 'บันทึกตารางสอนไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+        if (!scheduleSaved) {
+          saveButton.disabled = false
+          saveButton.textContent = '💾 ลองบันทึกตารางทั้งหมดอีกครั้ง'
+        }
+      }
+    }))
   })
 }
 

@@ -377,6 +377,11 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   ])
   const academicYear = parseInt(cfg.academicYear ?? 2568)
   const semester     = parseInt(cfg.semester ?? 1)
+  // getMyClasses returns all terms for historical score workflows; the overview
+  // card should match the current-term filter used by "ห้องเรียนของฉัน".
+  const currentTermClasses = classes.filter(c =>
+    c.academic_year == null || (Number(c.academic_year) === academicYear && Number(c.semester) === semester)
+  )
   const termRows = collectAcademicTerms(terms, cfg)
   const currentTermKey = academicTermKey({ academic_year: academicYear, semester })
   let selectedTermKey = currentTermKey
@@ -812,7 +817,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
       ${[
         { label:'คอร์สวิชาของฉัน', value: subjects.length, icon:'📖', color:'text-emerald-700', bg:'bg-emerald-50', nav:'my-courses' },
-        { label:'ห้องเรียน', value: classes.length, icon:'🏫', color:'text-blue-700', bg:'bg-blue-50', nav:'my-classes' },
+        { label:'ห้องเรียน', value: currentTermClasses.length, icon:'🏫', color:'text-blue-700', bg:'bg-blue-50', nav:'my-classes' },
         { label:'คำร้องรออนุมัติ', value: pendingRequests, icon:'🔔', color: pendingRequests > 0 ? 'text-red-700' : 'text-gray-400', bg:'bg-red-50', nav:'requests' },
         { label:'Smart Classroom', value:'เปิดห้องสอนสด', icon:'👑', color:'text-amber-700', bg:'bg-amber-50', onclick:'window._openSmartClassroomLanding()' },
       ].map(c=>`

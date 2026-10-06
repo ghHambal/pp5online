@@ -2678,6 +2678,16 @@ export async function upsertScheduleEntry(payload) {
   if (error) throw error
 }
 
+// บันทึกตารางหลายรายการในคำขอเดียว เพื่อให้การนำเข้าตารางสอนเป็นชุดเดียว
+// และไม่เหลือข้อมูลเพียงบางกลุ่มเมื่อคำขอใดคำขอหนึ่งล้มเหลว
+export async function upsertScheduleEntries(payloads) {
+  if (!Array.isArray(payloads) || payloads.length === 0) return
+  const { error } = await supabase
+    .from('teacher_schedules')
+    .upsert(payloads, { onConflict: 'teacher_id,day_of_week,period_no,academic_year,semester' })
+  if (error) throw error
+}
+
 export async function deleteScheduleEntry(id) {
   const { error } = await supabase.from('teacher_schedules').delete().eq('id', id)
   if (error) throw error
