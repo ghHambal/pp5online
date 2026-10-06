@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.904'
+import { APP_VERSION } from './version.js?v=10.22.905'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.905': [
+    '💾 สำรองข้อมูลทั้งหมด: เปิดหน้าต่างเลือกตำแหน่งไฟล์จากการคลิกโดยตรงก่อนเรียกฐานข้อมูล แก้ปัญหา Chrome ไม่เปิดหน้าต่างบันทึกและสถานะค้าง 0%',
+    '🔎 ปรับข้อความสถานะสำรองให้บอกขั้นตอนที่กำลังรอ แยกการเลือกไฟล์ออกจากการรอฐานข้อมูล',
+  ],
   '10.22.904': [
     '🛟 สำรองข้อมูลทั้งหมด: เพิ่มตัวตัดเวลาคำขอที่เป็นอิสระจากการยกเลิกเครือข่าย และตัวนับเวลารอในหน้า เพื่อป้องกันสถานะค้างโดยไม่มีคำอธิบาย',
   ],

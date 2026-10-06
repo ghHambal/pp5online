@@ -114,6 +114,24 @@ function safeFilePart(value) {
   return String(value ?? '').replace(/[^0-9A-Za-zก-๙._-]+/g, '-').replace(/^-+|-+$/g, '') || 'pp5'
 }
 
+// ต้องเรียกจาก click handler โดยตรง ก่อน await งานฐานข้อมูล เพื่อให้ Chrome
+// ยังมี user activation สำหรับเปิดหน้าต่างเลือกตำแหน่งไฟล์
+export function requestFullBackupSaveTarget() {
+  if (typeof window === 'undefined' || typeof window.showSaveFilePicker !== 'function') return null
+  const fileName = `pp5-full-backup-${safeFilePart(new Date().toISOString().replace(/[:.]/g, '-'))}.jsonl.gz`
+  let pickerPromise
+  try {
+    pickerPromise = window.showSaveFilePicker({
+      suggestedName: fileName,
+      types: [{ description: 'ไฟล์สำรอง ปพ.5', accept: { 'application/gzip': ['.jsonl.gz'] } }],
+    })
+  } catch (error) {
+    pickerPromise = Promise.reject(error)
+  }
+  const fileHandlePromise = pickerPromise.then(fileHandle => ({ fileHandle }), error => ({ error }))
+  return { fileName, fileHandlePromise }
+}
+
 async function sha256Hex(blob) {
   const hash = new Sha256()
   const reader = blob.stream().getReader()
@@ -462,7 +480,7 @@ function base64ToBlob(base64, contentType = 'application/octet-stream') {
 }
 
 /** สำรองข้อมูลทั้งหมดของระบบแอปใน public schema เป็น JSONL gzip */
-export async function createFullBackup({ onProgress } = {}) {
+export async function createFullBackup({ onProgress, saveTarget = null } = {}) {
   let session = await readBackupSession().catch(() => null)
   let catalog
   let fileName
@@ -490,13 +508,18 @@ export async function createFullBackup({ onProgress } = {}) {
     await saveBackupSession(session)
     onProgress?.(`กำลังทำสำรองต่อจาก ${session.tableName ?? 'จุดล่าสุด'}`)
   } else {
+    let selectedFileHandle = null
+    if (saveTarget?.fileHandlePromise) {
+      onProgress?.('กำลังรอเลือกตำแหน่งไฟล์สำรอง...')
+      const { fileHandle, error } = await saveTarget.fileHandlePromise
+      if (error) throw error
+      selectedFileHandle = fileHandle
+    }
+    onProgress?.('กำลังอ่านรายการตาราง...')
     catalog = await retryBackupRequest(signal => readCatalog(signal), 'รายการตาราง', onProgress)
-    fileName = `pp5-full-backup-${safeFilePart(new Date().toISOString().replace(/[:.]/g, '-'))}.jsonl.gz`
-    if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
-      fileHandle = await window.showSaveFilePicker({
-        suggestedName: fileName,
-        types: [{ description: 'ไฟล์สำรอง ปพ.5', accept: { 'application/gzip': ['.jsonl.gz'] } }],
-      })
+    fileName = saveTarget?.fileName ?? `pp5-full-backup-${safeFilePart(new Date().toISOString().replace(/[:.]/g, '-'))}.jsonl.gz`
+    if (selectedFileHandle) {
+      fileHandle = selectedFileHandle
       await ensureFileHandleAccess(fileHandle)
       resumable = true
       session = {

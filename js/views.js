@@ -38,7 +38,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          approveSubjectGroupRequest, rejectSubjectGroupRequest, notifyFeedbackReply } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
-import { clearFullBackupResume, createFullBackup, getFullBackupResumeInfo, restoreFullBackup } from './term-backup.js'
+import { clearFullBackupResume, createFullBackup, getFullBackupResumeInfo, requestFullBackupSaveTarget, restoreFullBackup } from './term-backup.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect, getFriendlyErrorMessage } from './ui.js'
 import { openTeacherModal, handleDeleteTeacher,
          openSubjectModal, handleDeleteSubject,
@@ -3127,6 +3127,8 @@ export async function renderSettings() {
       const fullBackupProgressDetail = document.getElementById('full-backup-progress-detail')
       const fullBackupProgressBar = document.getElementById('full-backup-progress-bar')
       const fullBackupProgressNote = document.getElementById('full-backup-progress-note')
+      let fullBackupResumeInfo = null
+      let fullBackupResumeCheckDone = false
       const setFullBackupProgress = progress => {
         if (!fullBackupProgressWrap || !progress) return
         fullBackupProgressWrap.classList.remove('hidden')
@@ -3156,12 +3158,19 @@ export async function renderSettings() {
         }
       }
       const updateFullBackupResumeUi = async () => {
-          const resume = await getFullBackupResumeInfo().catch(() => null)
+        const resume = await getFullBackupResumeInfo().catch(() => null)
+        fullBackupResumeInfo = resume
+        fullBackupResumeCheckDone = true
+        if (fullBackupBtn) fullBackupBtn.disabled = false
         if (fullBackupResetBtn) {
           fullBackupResetBtn.classList.toggle('hidden', !resume)
           fullBackupResetBtn.disabled = false
         }
-        if (!fullBackupBtn || !resume) return
+        if (!fullBackupBtn) return
+        if (!resume) {
+          fullBackupBtn.textContent = '⬇️ สำรองข้อมูลทั้งหมด'
+          return
+        }
         fullBackupBtn.textContent = '▶️ สำรองต่อจากจุดล่าสุด'
         if (fullBackupStatus) {
           const location = resume.phase === 'finalizing'
@@ -3173,27 +3182,38 @@ export async function renderSettings() {
           setFullBackupProgress(resume.progress)
         }
       }
+      if (fullBackupBtn) fullBackupBtn.disabled = true
       updateFullBackupResumeUi()
       if (fullBackupBtn && !fullBackupBtn.dataset.bound) {
         fullBackupBtn.dataset.bound = 'true'
         fullBackupBtn.addEventListener('click', async () => {
+          if (!fullBackupResumeCheckDone) {
+            showToast('กำลังตรวจงานสำรองค้าง กรุณารอสักครู่แล้วลองใหม่', 'info')
+            return
+          }
           if (!confirm('ยืนยันสร้างไฟล์สำรองข้อมูลทั้งหมดของระบบ? ไฟล์อาจมีข้อมูลส่วนบุคคลจำนวนมาก')) return
+          // เปิด native file picker ภายใน click handler ก่อนเริ่ม await ใด ๆ
+          // เพราะ Chrome ต้องอาศัย user activation สำหรับ showSaveFilePicker
+          const saveTarget = fullBackupResumeInfo ? null : requestFullBackupSaveTarget()
           let lastBackupUpdateAt = Date.now()
           const backupStartedAt = lastBackupUpdateAt
           fullBackupBtn.disabled = true
           if (fullBackupResetBtn) fullBackupResetBtn.disabled = true
           fullBackupBtn.textContent = '⏳ กำลังสำรองข้อมูลทั้งหมด...'
-          if (fullBackupStatus) fullBackupStatus.textContent = 'กำลังเตรียมรายการตาราง...'
+          let lastBackupStage = saveTarget ? 'กำลังเลือกตำแหน่งไฟล์สำรอง' : 'กำลังเตรียมรายการตาราง'
+          if (fullBackupStatus) fullBackupStatus.textContent = lastBackupStage
           setFullBackupProgress({ percent: 0, tableIndex: 0, tableCount: 0, completedRows: 0, estimatedTotalRows: 0, storageIndex: 0, storageCount: 0 })
           const backupWatchdog = setInterval(() => {
             if (!fullBackupStatus || Date.now() - lastBackupUpdateAt < 15000) return
             const elapsed = Math.floor((Date.now() - backupStartedAt) / 1000)
-            fullBackupStatus.textContent = `ยังรอการตอบกลับจากเซิร์ฟเวอร์ · ${elapsed.toLocaleString()} วินาที · กำลังตรวจการเชื่อมต่อ`
+            fullBackupStatus.textContent = `กำลังทำขั้นตอน: ${lastBackupStage} · ${elapsed.toLocaleString()} วินาที`
           }, 5000)
           try {
             const result = await createFullBackup({
+              saveTarget,
               onProgress: (message, count, progress) => {
                 lastBackupUpdateAt = Date.now()
+                lastBackupStage = message
                 if (fullBackupStatus) fullBackupStatus.textContent = `${message}${count ? ` · ${count.toLocaleString()} รายการ` : ''}`
                 setFullBackupProgress(progress)
               },
@@ -3205,7 +3225,10 @@ export async function renderSettings() {
             showToast(`สำรองข้อมูลทั้งหมดสำเร็จ และ${result.savedToDisk ? 'บันทึกไฟล์ลงดิสก์แล้ว' : 'ดาวน์โหลดไฟล์แล้ว'} ✅`, 'success')
           } catch (err) {
             const resume = await getFullBackupResumeInfo().catch(() => null)
-            if (fullBackupStatus) fullBackupStatus.textContent = resume
+            fullBackupResumeInfo = resume
+            if (fullBackupStatus) fullBackupStatus.textContent = err?.name === 'AbortError'
+              ? 'ยกเลิกการเลือกตำแหน่งไฟล์ · ข้อมูลในฐานข้อมูลไม่ถูกเปลี่ยนแปลง'
+              : resume
               ? `หยุดไว้ชั่วคราว · กดปุ่มเดิมเพื่อสำรองต่อจาก ${resume.tableName ?? 'จุดล่าสุด'}`
               : 'สำรองข้อมูลไม่สำเร็จ'
             if (err?.code === 'BACKUP_FILE_MISSING' && fullBackupStatus) {
@@ -3216,6 +3239,8 @@ export async function renderSettings() {
             clearInterval(backupWatchdog)
             fullBackupBtn.disabled = false
             const resume = await getFullBackupResumeInfo().catch(() => null)
+            fullBackupResumeInfo = resume
+            fullBackupResumeCheckDone = true
             fullBackupBtn.textContent = resume ? '▶️ สำรองต่อจากจุดล่าสุด' : '⬇️ สำรองข้อมูลทั้งหมด'
             if (fullBackupResetBtn) {
               fullBackupResetBtn.classList.toggle('hidden', !resume)
