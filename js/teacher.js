@@ -19,7 +19,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.909'
+import { APP_VERSION } from './version.js?v=10.22.910'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -1947,8 +1947,13 @@ async function _showThankYouCard(request, cfgOverride = null) {
   const features    = _parseDonationFeatures(cfg)
   const tiers       = _parseDonationStickers(cfg, minAmount, stepAmount)
   const amount      = request.amount ?? 0
-  const tier        = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
-  const tierIndex   = _getDonorTierIndex(cfg, tiers, amount)  // 1-5
+  const explicitTier = Number.parseInt(String(request.donation_tier ?? ''), 10)
+  const tier        = Number.isInteger(explicitTier) && explicitTier >= 1 && explicitTier <= tiers.length
+    ? tiers[explicitTier - 1]
+    : [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
+  const tierIndex   = Number.isInteger(explicitTier) && explicitTier >= 1 && explicitTier <= tiers.length
+    ? explicitTier
+    : _getDonorTierIndex(cfg, tiers, amount)  // 1-5
   const thankText  = (cfg.donationThankYouCard ?? '').trim()
     || `❤️ ขอบคุณจากใจครับคุณครู
 
@@ -2058,7 +2063,10 @@ async function _addDonateToSidebar(approvedRequest = null) {
     const step   = _toPositiveInt(cfg.donationAmountStep, 50)
     const tiers  = _parseDonationStickers(cfg, minAmt, step)
     const amount = approvedRequest.amount ?? 0
-    const tier   = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
+    const explicitTier = Number.parseInt(String(approvedRequest.donation_tier ?? ''), 10)
+    const tier   = Number.isInteger(explicitTier) && explicitTier >= 1 && explicitTier <= tiers.length
+      ? tiers[explicitTier - 1]
+      : [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
     if (tier) {
       const s = String(tier.sticker ?? '')
       stickerHtml = /^https?:\/\//.test(s)
@@ -2315,7 +2323,11 @@ async function _initDonationFlow(teacherId) {
       const seen = localStorage.getItem(`pp5_thankyou_seen_${approved.id}`)
       if (!seen && approved.admin_note) _showThankYouCard(approved)
 
-      const tierIndex = _getDonorTierIndex(cfg, tiers, totalApproved)
+      const selectedTierIndex = Math.max(0, ...requests
+        .filter(r => r.package_type === 'donation' && r.status === 'approved')
+        .map(r => Number.parseInt(String(r.donation_tier ?? ''), 10))
+        .filter(tier => Number.isInteger(tier) && tier >= 1 && tier <= tiers.length))
+      const tierIndex = Math.max(_getDonorTierIndex(cfg, tiers, totalApproved), selectedTierIndex)
       window._pp5DonorTierIndex = tierIndex
       if (tierIndex >= maxTier) {
         // tier สูงสุด — แสดงแค่สติกเกอร์ใน sidebar

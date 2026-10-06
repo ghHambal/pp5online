@@ -31,7 +31,11 @@ export async function resolveAttendanceDelegateAccess(teacher) {
       const minAmt = _toPositiveInt(cfg.donationMinAmount, 49)
       const step   = _toPositiveInt(cfg.donationAmountStep, 50)
       const tiers  = _parseDonationStickers(cfg, minAmt, step)
-      tierIndex = _getDonorTierIndex(cfg, tiers, totalApproved)
+      const selectedTierIndex = Math.max(0, ...donationRequests
+        .filter(r => r.package_type === 'donation' && r.status === 'approved')
+        .map(r => Number.parseInt(String(r.donation_tier ?? ''), 10))
+        .filter(tier => Number.isInteger(tier) && tier >= 1 && tier <= tiers.length))
+      tierIndex = Math.max(_getDonorTierIndex(cfg, tiers, totalApproved), selectedTierIndex)
     } catch { /* query สดล้มเหลว — ใช้ค่า global เดิมเป็น fallback สุดท้าย */ }
   }
   return { cfg, minTier, unlocked: tierIndex >= minTier }

@@ -520,8 +520,13 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   if (approvedDonation && cfg.quotaMode === 'school_sponsored') {
     const tiers  = _parseTiers()
     const amount = totalApprovedDonation
-    donorTier    = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
-    donorTierIndex = donorTier ? tiers.indexOf(donorTier) + 1 : 0
+    const amountTier = [...tiers].reverse().find(t => amount >= t.amount) ?? tiers[0]
+    const selectedTierIndex = Math.max(0, ...donationRequests
+      .filter(r => r.package_type === 'donation' && r.status === 'approved')
+      .map(r => Number.parseInt(String(r.donation_tier ?? ''), 10))
+      .filter(tier => Number.isInteger(tier) && tier >= 1 && tier <= tiers.length))
+    donorTierIndex = Math.max(amountTier ? tiers.indexOf(amountTier) + 1 : 0, selectedTierIndex)
+    donorTier = tiers[donorTierIndex - 1] ?? null
 
     if (donorTier) {
       cardGlowStyle = _tierGlowStyle(donorTier.color)

@@ -2468,10 +2468,36 @@ export async function getMyDonationRequests(teacherId) {
   if (error) throw error
   const cfg = await getSystemConfig().catch(() => ({}))
   const semesterStartMs = Date.parse(String(cfg.semester_start ?? ''))
-  return (data ?? []).filter(request => {
+  const academicYear = Number.parseInt(String(cfg.academicYear ?? ''), 10)
+  const semester = Number.parseInt(String(cfg.semester ?? ''), 10)
+  const requests = data ?? []
+  const beforeTermRenewals = requests.filter(request => {
+    const requestAtMs = Date.parse(String(request.reviewed_at ?? request.created_at ?? ''))
+    return Number.isFinite(semesterStartMs)
+      && Number.isFinite(requestAtMs)
+      && requestAtMs < semesterStartMs
+      && request.supporter_renewal_entitlement_id != null
+  })
+
+  // การต่ออายุของภาคใหม่อาจได้รับอนุมัติก่อนวันเปิดภาค จึงต้องยึดภาคเป้าหมาย
+  // ใน entitlement แทนการทิ้งรายการเพียงเพราะ reviewed_at ยังอยู่ก่อน semester_start
+  let currentTermEntitlementIds = new Set()
+  if (beforeTermRenewals.length && Number.isInteger(academicYear) && [1, 2].includes(semester)) {
+    const { data: entitlements, error: entitlementError } = await supabase
+      .from('supporter_renewal_entitlements')
+      .select('id')
+      .eq('teacher_id', teacherId)
+      .eq('target_academic_year', academicYear)
+      .eq('target_semester', semester)
+    if (entitlementError) throw entitlementError
+    currentTermEntitlementIds = new Set((entitlements ?? []).map(row => Number(row.id)))
+  }
+
+  return requests.filter(request => {
     if (!Number.isFinite(semesterStartMs)) return true
     const requestAtMs = Date.parse(String(request.reviewed_at ?? request.created_at ?? ''))
-    return Number.isFinite(requestAtMs) && requestAtMs >= semesterStartMs
+    return (Number.isFinite(requestAtMs) && requestAtMs >= semesterStartMs)
+      || currentTermEntitlementIds.has(Number(request.supporter_renewal_entitlement_id))
   })
 }
 

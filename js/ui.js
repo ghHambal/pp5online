@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.909'
+import { APP_VERSION } from './version.js?v=10.22.910'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.910': [
+    '🎖️ แก้สถานะผู้สนับสนุนต่ออายุ: แสดงระดับและสติกเกอร์ของภาคใหม่ แม้แอดมินอนุมัติก่อนวันเปิดภาค',
+  ],
   '10.22.909': [
     '🔗 เปลี่ยนลิงก์เปิดตารางสอนของโรงเรียนเป็น azizstan.net/regist2/Schedule/ByTeacher',
   ],
