@@ -103,6 +103,16 @@ export async function startNewSemester(newAcademicYear, newSemester, semesterSta
   return data
 }
 
+export async function purgeTermSourceDataBatch(table, backupId, limit = 5000) {
+  const { data, error } = await supabase.rpc('admin_purge_term_source_data_batch', {
+    p_table: table,
+    p_backup_id: backupId,
+    p_limit: limit,
+  })
+  if (error) throw error
+  return data
+}
+
 // ─── Teacher Profile (linked via profile_id) ─────────────────────────────────
 const _TEACHER_PROFILE_COLUMNS_BASE = 'id, teacher_code, username, login_email, full_name, phone, image_url, dept, subject_group, skill_group, staff_type, category, profile_id, position, positions, position_dept_id, smart_classroom_free_class_id, attendance_delegate_free_class_id, teachers_quota(total_classes_created, is_paid, package_type, paid_at)'
 

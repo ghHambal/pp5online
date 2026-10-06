@@ -33,7 +33,7 @@ import { getStats, getTeachers, getClasses, getStudents,
          advisorResetStudentPassword, markStudentPasswordResetNotice,
          getReligionGroups, createReligionGroup, updateReligionGroup, deleteReligionGroup,
          getReligionGroupMembers, setReligionGroupMembers,
-         updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle,
+         updateTeacherPosition, updateClassroomLeaders, getStudentByCode, getClassroomLeaders, updateClassroomCertToggle, updateAllClassroomCertsToggle, purgeTermSourceDataBatch,
          getPendingSubjectGroupRequests, getAllSubjectGroupRequests, getCandidateClassesForGroupRequest,
          approveSubjectGroupRequest, rejectSubjectGroupRequest, notifyFeedbackReply } from './api.js'
 import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
@@ -84,6 +84,87 @@ const _esc = value => String(value ?? '')
   .replace(/>/g, '&gt;')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;')
+
+function _openSemesterRolloverConfirm({ year, semester, start, end, preview }) {
+  return new Promise(resolve => {
+    const modal = document.createElement('div')
+    modal.id = 'semester-rollover-confirm-modal'
+    modal.className = 'fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/60 p-3 sm:p-6'
+    modal.innerHTML = `
+      <section role="dialog" aria-modal="true" aria-labelledby="semester-rollover-title"
+        class="flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <header class="shrink-0 border-b border-amber-100 bg-amber-50 px-5 py-4 sm:px-7">
+          <p class="text-xs font-bold uppercase tracking-wide text-amber-700">ตรวจสอบก่อนดำเนินการ</p>
+          <h2 id="semester-rollover-title" class="mt-1 text-lg font-extrabold text-slate-900">ยืนยันขึ้นภาคเรียนที่ ${semester}/${year}</h2>
+          <p class="mt-1 text-sm text-slate-600">อ่านรายการและผลที่จะเกิดขึ้นทั้งหมดก่อนยืนยัน</p>
+        </header>
+        <div class="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-5 py-4 sm:px-7">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div class="rounded-xl border border-slate-200 p-3"><p class="text-xs font-semibold text-slate-500">วันเปิดภาคเรียนใหม่</p><p class="mt-1 font-bold text-slate-800">${_esc(start)}</p></div>
+            <div class="rounded-xl border border-slate-200 p-3"><p class="text-xs font-semibold text-slate-500">วันปิดภาคเรียนใหม่</p><p class="mt-1 font-bold text-slate-800">${_esc(end)}</p></div>
+          </div>
+          <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">✓ ไฟล์สำรองภาคเรียนปัจจุบันผ่านการตรวจสอบแล้ว</div>
+          <section>
+            <h3 class="mb-2 text-sm font-bold text-slate-800">สรุปข้อมูลที่จะจัดการ</h3>
+            <dl class="divide-y divide-slate-100 rounded-xl border border-slate-200 px-3">
+              ${[
+                ['คอร์สเดิมที่จะเก็บเป็นประวัติ', preview?.courses_to_archive, 'คอร์ส'],
+                ['ห้องเรียนเดิมที่จะเก็บเป็นประวัติ', preview?.classes_to_archive, 'ห้อง'],
+                ['ผู้สนับสนุนที่มีสิทธิ์ส่วนลดเทอมใหม่', preview?.eligible_supporters, 'คน'],
+                ['ข้อมูลเข้าเรียนที่จะล้างหลังสำรอง', preview?.attendances_to_clear, 'รายการ'],
+                ['ข้อมูลละหมาดที่จะล้างหลังสำรอง', preview?.prayer_records_to_clear, 'รายการ'],
+              ].map(([label, value, unit]) => `<div class="flex items-start justify-between gap-4 py-2.5 text-sm"><dt class="text-slate-600">${label}</dt><dd class="shrink-0 font-bold tabular-nums text-slate-900">${Number(value ?? 0).toLocaleString()} ${unit}</dd></div>`).join('')}
+            </dl>
+          </section>
+          <section class="rounded-xl border border-indigo-100 bg-indigo-50/70 p-4 text-sm text-indigo-950">
+            <h3 class="mb-2 font-bold">สิ่งที่จะเกิดขึ้น</h3>
+            <ul class="list-disc space-y-1.5 pl-5 leading-relaxed">
+              <li>บัญชีครู นักเรียน และประวัติคงอยู่ ไม่ต้องสมัครใหม่</li>
+              <li>ภาคเรียนใหม่เริ่มเป็นพื้นที่ว่าง ครูสร้างคอร์ส ห้องเรียน และลงทะเบียนนักเรียนเอง</li>
+              <li>คะแนนเดิมคงเป็นข้อมูลดิบ ไม่เชื่อมกับข้อมูลเข้าเรียน/ละหมาดที่กำลังล้าง</li>
+              <li>ระบบจะล้างข้อมูลเข้าเรียนและละหมาดเป็นชุดย่อย พร้อมแสดงความคืบหน้า หากหยุดกลางทางสามารถเริ่มต่อได้โดยใช้ไฟล์สำรองเดิม</li>
+              <li>สิทธิ์สนับสนุนและโควตาสร้างห้องจะถูกปรับตามกติกาภาคเรียนใหม่</li>
+            </ul>
+          </section>
+          <p class="text-xs leading-relaxed text-rose-700">การยืนยันนี้เริ่มล้างข้อมูลภาคเรียนเดิมที่ระบุข้างต้น โดยไฟล์สำรองที่ผ่านการตรวจสอบเป็นช่องทางกู้คืนข้อมูลเหล่านั้น</p>
+        </div>
+        <footer class="flex shrink-0 flex-col-reverse gap-2 border-t border-slate-100 bg-white px-5 py-4 sm:flex-row sm:justify-end sm:px-7">
+          <button type="button" data-action="cancel" class="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">ยกเลิก</button>
+          <button type="button" data-action="confirm" class="rounded-xl bg-amber-600 px-5 py-2.5 text-sm font-bold text-white shadow hover:bg-amber-700">ยืนยันและเริ่มขึ้นภาคเรียนใหม่</button>
+        </footer>
+      </section>`
+    const finish = value => { modal.remove(); document.removeEventListener('keydown', onKey); resolve(value) }
+    const onKey = event => { if (event.key === 'Escape') finish(false) }
+    modal.addEventListener('click', event => {
+      if (event.target === modal || event.target.closest('[data-action="cancel"]')) finish(false)
+      if (event.target.closest('[data-action="confirm"]')) finish(true)
+    })
+    document.addEventListener('keydown', onKey)
+    document.body.appendChild(modal)
+    modal.querySelector('[data-action="cancel"]')?.focus()
+  })
+}
+
+function _openSemesterRolloverProgress() {
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/60 p-3 sm:p-6'
+  modal.innerHTML = `<section role="dialog" aria-modal="true" aria-labelledby="semester-rollover-progress-title" class="w-full max-w-lg rounded-2xl bg-white p-5 shadow-2xl sm:p-7">
+    <h2 id="semester-rollover-progress-title" class="text-lg font-extrabold text-slate-900">กำลังเตรียมพื้นที่ภาคเรียนใหม่</h2>
+    <p data-progress-label class="mt-2 text-sm text-slate-600">กำลังเริ่ม...</p>
+    <div class="mt-4 h-3 overflow-hidden rounded-full bg-slate-100"><div data-progress-bar class="h-full w-0 rounded-full bg-indigo-600 transition-[width] duration-200"></div></div>
+    <p data-progress-count class="mt-2 text-right text-xs font-semibold tabular-nums text-indigo-700">0%</p>
+    <p class="mt-4 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">อย่าปิดหน้าต่างระหว่างกำลังทำงาน หากการเชื่อมต่อขาด ข้อมูลที่ลบไปแล้วอยู่ในไฟล์สำรอง และสามารถกดขึ้นภาคเรียนใหม่อีกครั้งเพื่อทำต่อจากข้อมูลที่เหลือ</p>
+  </section>`
+  document.body.appendChild(modal)
+  return {
+    update(label, percent) {
+      modal.querySelector('[data-progress-label]').textContent = label
+      modal.querySelector('[data-progress-count]').textContent = `${Math.max(0, Math.min(100, Math.floor(percent)))}%`
+      modal.querySelector('[data-progress-bar]').style.width = `${Math.max(0, Math.min(100, percent))}%`
+    },
+    close() { modal.remove() },
+  }
+}
 
 function _advisorNameKey(value) {
   return String(value ?? '')
@@ -2573,7 +2654,7 @@ export async function renderSettings() {
           <p class="text-sm font-bold text-amber-900">🔄 ขึ้นภาคเรียนใหม่</p>
           <p class="text-xs text-amber-800 mt-1.5 leading-relaxed">
             เปลี่ยนระบบเป็นปี/ภาคเรียนใหม่แบบพื้นที่ว่าง — <b>ไม่สร้างคอร์สวิชา ห้องเรียน หรือการลงทะเบียนนักเรียนให้อัตโนมัติ</b>
-            บัญชีครู บัญชีนักเรียน และข้อมูลประวัติยังคงอยู่ ไม่ต้องสมัครใช้งานใหม่ ครูผู้สอนจะเป็นผู้สร้างคอร์ส ห้องเรียน และลงทะเบียนนักเรียนของภาคใหม่เอง คะแนนเดิมจะเก็บเป็นข้อมูลดิบ ส่วนข้อมูลเข้าเรียนและละหมาดจะถูกล้างหลังสำรองข้อมูลทั้งหมดแล้ว
+            บัญชีครู บัญชีนักเรียน และข้อมูลประวัติยังคงอยู่ ไม่ต้องสมัครใช้งานใหม่ ครูผู้สอนจะเป็นผู้สร้างคอร์ส ห้องเรียน และลงทะเบียนนักเรียนของภาคใหม่เอง คะแนนเดิมจะเก็บเป็นข้อมูลดิบ ส่วนข้อมูลเข้าเรียนและละหมาดจะถูกล้างหลังไฟล์สำรองภาคเรียนปัจจุบันผ่านการตรวจสอบแล้ว
           </p>
           <p id="start-new-semester-target" class="text-xs text-amber-700 mt-2 font-mono"></p>
           <div class="grid sm:grid-cols-2 gap-3 mt-3">
@@ -3746,19 +3827,56 @@ export async function renderSettings() {
             }
             startNewSemBtn.textContent = '⏳ กำลังดำเนินการ...'
             const preview = await previewNewSemester(nextYear, nextSem, semesterStart, semesterEnd)
-            const previewText = [
-              `คอร์สเดิมที่จะถูกเก็บเป็นประวัติ: ${Number(preview?.courses_to_archive ?? 0).toLocaleString()} คอร์ส`,
-              `ห้องเรียนเดิมที่จะถูกเก็บเป็นประวัติ: ${Number(preview?.classes_to_archive ?? 0).toLocaleString()} ห้อง`,
-              `ผู้สนับสนุนที่มีสิทธิ์ส่วนลดต่อเทอมใหม่: ${Number(preview?.eligible_supporters ?? 0).toLocaleString()} คน`,
-              `ข้อมูลเข้าเรียนที่จะล้าง: ${Number(preview?.attendances_to_clear ?? 0).toLocaleString()} รายการ`,
-              `ข้อมูลละหมาดที่จะล้าง: ${Number(preview?.prayer_records_to_clear ?? 0).toLocaleString()} รายการ`,
-            ].join('\n')
-            if (!confirm(`ยืนยันขึ้นภาคเรียนที่ ${nextSem}/${nextYear}?\n\nวันเปิด: ${semesterStart}\nวันปิด: ${semesterEnd}\nไฟล์สำรองภาคเรียนปัจจุบันผ่านการตรวจสอบแล้ว\n\n${previewText}\n\nบัญชีครูและนักเรียนยังคงอยู่ ไม่ต้องสมัครใหม่\nภาคเรียนใหม่จะเป็นพื้นที่ว่าง ครูต้องสร้างคอร์ส ห้องเรียน และลงทะเบียนนักเรียนใหม่เอง\nคะแนนเดิมจะถูกเก็บเป็นข้อมูลดิบ\nข้อมูลเข้าเรียนและละหมาดของภาคเรียนเดิมจะถูกล้าง\nจะไม่สร้างการลงทะเบียนนักเรียนให้อัตโนมัติ`)) {
+            const confirmed = await _openSemesterRolloverConfirm({
+              year: nextYear,
+              semester: nextSem,
+              start: semesterStart,
+              end: semesterEnd,
+              preview,
+            })
+            if (!confirmed) {
               startNewSemBtn.disabled = false
               startNewSemBtn.textContent = '🔄 ขึ้นภาคเรียนใหม่'
               return
             }
-            await startNewSemester(nextYear, nextSem, semesterStart, semesterEnd, rolloverBackupId, true)
+
+            const progress = _openSemesterRolloverProgress()
+            const attendanceTotal = Number(preview?.attendances_to_clear ?? 0)
+            const prayerTotal = Number(preview?.prayer_records_to_clear ?? 0)
+            const allRows = attendanceTotal + prayerTotal
+            let clearedRows = 0
+            const purgeTable = async (table, label, expectedRows) => {
+              let hasMore = true
+              let emptyBatches = 0
+              while (hasMore) {
+                progress.update(`กำลังล้าง${label}: ${clearedRows.toLocaleString()} / ${allRows.toLocaleString()} รายการ`, allRows ? clearedRows * 100 / allRows : 90)
+                const batch = await purgeTermSourceDataBatch(table, rolloverBackupId, 5000)
+                const deleted = Number(batch?.deleted_rows ?? 0)
+                clearedRows += deleted
+                hasMore = Boolean(batch?.has_more)
+                if (deleted === 0 && hasMore) {
+                  emptyBatches += 1
+                  if (emptyBatches >= 3) throw new Error(`พบข้อมูล${label}ที่ยังล้างไม่สำเร็จ กรุณาลองดำเนินการต่ออีกครั้ง`)
+                  await new Promise(resolve => setTimeout(resolve, 500 * emptyBatches))
+                } else {
+                  emptyBatches = 0
+                }
+                const completedForTable = expectedRows === 0 || !hasMore
+                const overallPercent = allRows ? Math.min(90, clearedRows * 90 / allRows) : 90
+                progress.update(completedForTable
+                  ? `ล้าง${label}แล้ว ${clearedRows.toLocaleString()} / ${allRows.toLocaleString()} รายการ`
+                  : `กำลังล้าง${label}: ${clearedRows.toLocaleString()} / ${allRows.toLocaleString()} รายการ`, overallPercent)
+              }
+            }
+            try {
+              await purgeTable('attendances', 'ข้อมูลเข้าเรียน', attendanceTotal)
+              await purgeTable('prayer_records', 'คะแนนละหมาด', prayerTotal)
+              progress.update('กำลังบันทึกภาคเรียนใหม่และตั้งค่าสิทธิ์...', 95)
+              await startNewSemester(nextYear, nextSem, semesterStart, semesterEnd, rolloverBackupId, true)
+              progress.update('ขึ้นภาคเรียนใหม่สำเร็จ', 100)
+            } finally {
+              progress.close()
+            }
             cfg.semester = String(nextSem)
             cfg.academicYear = String(nextYear)
             cfg.semester_start = semesterStart
@@ -3767,7 +3885,10 @@ export async function renderSettings() {
             showToast(`ขึ้นภาคเรียนที่ ${nextSem}/${nextYear} สำเร็จ ✅ สำรองข้อมูลแล้ว ล้างข้อมูลเข้าเรียน/ละหมาด และเปิดให้ครูสร้างห้องได้ไม่จำกัด`, 'success')
             renderSettings()
           } catch (e) {
-            showToast('ขึ้นภาคเรียนใหม่ไม่สำเร็จ: ' + (getFriendlyErrorMessage(e)), 'error')
+            const reason = e?.code === '57014'
+              ? 'คำสั่งใช้เวลานานเกินกำหนด ข้อมูลที่ล้างสำเร็จแล้วยังอยู่ในไฟล์สำรอง กดขึ้นภาคเรียนใหม่อีกครั้งเพื่อทำต่อจากรายการที่เหลือ'
+              : getFriendlyErrorMessage(e)
+            showToast('ขึ้นภาคเรียนใหม่ไม่สำเร็จ: ' + reason, 'error')
             startNewSemBtn.disabled = false
             startNewSemBtn.textContent = '🔄 ขึ้นภาคเรียนใหม่'
           }
