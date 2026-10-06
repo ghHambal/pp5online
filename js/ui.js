@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.908'
+import { APP_VERSION } from './version.js?v=10.22.909'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.909': [
+    '🔗 เปลี่ยนลิงก์เปิดตารางสอนของโรงเรียนเป็น azizstan.net/regist2/Schedule/ByTeacher',
+  ],
   '10.22.908': [
     '🗓️ นำเข้าตารางสอนจาก AI แล้วบันทึกทุกคาบพร้อมกัน พร้อมเลือกแสดงหรือซ่อนชื่อครูและตรวจคาบซ้ำก่อนบันทึก',
     '🔒 กำหนดให้ครูบันทึกตารางสอนของภาคเรียนปัจจุบันก่อนเปิดคอร์สหรือห้องเรียน พร้อมพาไปหน้าสร้างตารางสอน',

@@ -3700,7 +3700,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
         <p class="text-sm font-semibold text-sky-800">📅 ตารางสอนของโรงเรียน</p>
         <p class="text-xs text-sky-600 mt-0.5 leading-relaxed">เปิดดูตารางสอนจากระบบโรงเรียน แล้วแคปหน้าจอให้เห็นตารางทั้งหมด รวมคอลัมน์คาบ/เวลาและทุกวัน หากมีคาบวันศุกร์ต้องเห็นวันศุกร์ด้วย จากนั้นเลือก "✨ ใช้ AI ของฉัน" เพื่อรับ Prompt ไปใช้กับ AI ที่ครูเลือก</p>
       </div>
-      <a href="http://azizstan.ac.th/2026/Teacher/" target="_blank" rel="noopener"
+      <a href="https://azizstan.net/regist2/Schedule/ByTeacher" target="_blank" rel="noopener"
          class="flex-shrink-0 px-4 py-2 bg-sky-600 text-white rounded-xl font-bold text-sm hover:bg-sky-700 transition whitespace-nowrap">
         เปิดตารางสอน ↗
       </a>
@@ -4057,7 +4057,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
         <div class="bg-sky-50 border border-sky-200 rounded-xl p-3 space-y-2">
           <div class="flex items-center justify-between gap-3">
             <p class="text-xs font-semibold text-sky-800">📅 ตารางสอนของโรงเรียน</p>
-            <a href="http://azizstan.ac.th/2026/Teacher/" target="_blank" rel="noopener"
+            <a href="https://azizstan.net/regist2/Schedule/ByTeacher" target="_blank" rel="noopener"
                class="flex-shrink-0 px-3 py-1.5 bg-sky-600 text-white rounded-lg font-bold text-[11px] hover:bg-sky-700 transition">
               เปิดตารางสอน ↗
             </a>
