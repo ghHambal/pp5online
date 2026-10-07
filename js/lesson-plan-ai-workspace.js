@@ -54,13 +54,17 @@ function scheduledLessonSessions(syllabusItems = []) {
     const weekStart = asInt(item.week_start)
     const weekEnd = asInt(item.week_end, weekStart)
     const weekType = item.source_json?.week_type ?? 'teaching'
-    if (!Number.isInteger(weekStart) || weekStart < 1 || weekEnd < weekStart || weekType !== 'teaching') continue
+    if (!Number.isInteger(weekStart) || weekStart < 1 || weekEnd < weekStart || !['teaching', 'midterm_exam', 'final_exam'].includes(weekType)) continue
     for (let week = weekStart; week <= weekEnd; week++) {
       if (coveredWeeks.has(week)) continue
       coveredWeeks.add(week)
       sessions.push({
         session_number: sessions.length + 1, week_start: week, week_end: week,
         lesson_date: null,
+        week_type: weekType,
+        topic: item.topic ?? '',
+        teaching_methods: item.teaching_methods ?? '',
+        notes: item.notes ?? '',
         unit_title: item.unit_title ?? item.source_json?.unit_title ?? '',
         key_concept: item.topic ?? '',
       })
@@ -116,7 +120,7 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
     course: { ...meta, total_sessions: planSessions.length, include_unit_title: includeUnitTitle },
     plans: planSessions.map(item => ({ ...lessonSchema.plans[0], ...item,
       title: `แผนการจัดการเรียนรู้ ครั้งที่ ${item.session_number}`,
-      unit_title: includeUnitTitle ? item.unit_title || 'หน่วยการเรียนรู้ที่ 1' : '',
+      unit_title: includeUnitTitle && item.week_type === 'teaching' ? item.unit_title || 'หน่วยการเรียนรู้ที่ 1' : item.unit_title || '',
       key_concept: item.key_concept || 'หัวข้อตามกำหนดการสอน',
     })),
   }
@@ -140,9 +144,9 @@ ${attachmentText}
 
 ข้อกำหนดสำคัญ:
 1. อ่านหนังสือเรียน เอกสารหลักสูตร ตัวชี้วัด และแบบฟอร์มที่แนบก่อนตอบ
-2. ${mode === 'schedule' ? `สร้างแถวให้ครบสัปดาห์ตามปฏิทิน 1-${calendarWeeks} โดยเลขสัปดาห์เป็นเลขจริง ห้ามเลื่อนหรือยุบเลขหลังช่วงสอบ สัปดาห์สอบกลางภาคคือ ${midtermWeeks?.join(', ') || 'ไม่มี'} และปลายภาคคือ ${finalWeeks?.join(', ') || 'ไม่มี'} ให้ใส่แถวสอบตาม week_type ที่ตรงกัน แล้วกระจายหน่วยการเรียนรู้ให้ครบในสัปดาห์สอนจริงที่เหลือ รวม ${teachingWeeks} สัปดาห์ ห้ามละเว้นหรือเปลี่ยนสาระสำคัญ; topic ให้เป็นชื่อเรื่องสั้น ๆ เท่านั้น ไม่เขียนบรรยายหรือเรียงความ` : `สร้างแผนหนึ่งรายการต่อหนึ่งสัปดาห์ที่เป็นการสอน ตาม requested_sessions ให้ครบทุกครั้ง เรียง session_number ตั้งแต่ 1 และคง week_start/week_end ตามข้อมูล ห้ามสร้างแผนในสัปดาห์สอบหรือสัปดาห์หยุด`}
+2. ${mode === 'schedule' ? `สร้างแถวให้ครบสัปดาห์ตามปฏิทิน 1-${calendarWeeks} โดยเลขสัปดาห์เป็นเลขจริง ห้ามเลื่อนหรือยุบเลขหลังช่วงสอบ สัปดาห์สอบกลางภาคคือ ${midtermWeeks?.join(', ') || 'ไม่มี'} และปลายภาคคือ ${finalWeeks?.join(', ') || 'ไม่มี'} ให้ใส่แถวสอบตาม week_type ที่ตรงกัน แล้วกระจายหน่วยการเรียนรู้ให้ครบในสัปดาห์สอนจริงที่เหลือ รวม ${teachingWeeks} สัปดาห์ ห้ามละเว้นหรือเปลี่ยนสาระสำคัญ; topic ให้เป็นชื่อเรื่องสั้น ๆ เท่านั้น ไม่เขียนบรรยายหรือเรียงความ` : `สร้างแผนหนึ่งรายการต่อทุก session ใน requested_sessions ให้ครบทั้งสัปดาห์เรียนและสัปดาห์สอบ เรียง session_number ตั้งแต่ 1 และคง week_start/week_end/week_type ตามข้อมูล ห้ามสร้างแผนเฉพาะสัปดาห์หยุด`}
 3. ${mode === 'schedule' ? 'ใช้ week_type เป็น teaching, midterm_exam, final_exam หรือ break; แต่ละสัปดาห์สอบต้องมี topic ระบุชื่อการสอบ และห้ามใส่หน่วยการเรียนรู้ในแถวสอบ' : `แต่ละแผนมี ${periodCount} คาบ คาบละ ${minutesPerPeriod} นาที รวม ${duration} นาที และ session_number/week ต้องตรงกับ requested_sessions วันที่ให้ใช้เฉพาะวันที่ยืนยันได้จากเอกสาร หากไม่ทราบให้เป็น null`}
-4. ${mode === 'schedule' ? 'สรุปเฉพาะหัวข้อที่จะสอนใน topic; description ให้เป็นสตริงว่าง; รูปแบบการสอนใช้คำหรือวลีสั้น ๆ และหมายเหตุให้สรุปใจความกระชับไม่เกิน 50 ตัวอักษร ห้ามเขียนเป็นประโยคยาว' : `ทุกช่องให้สรุปใจความสั้น ๆ ใช้ bullet หรือวลี ห้ามเขียนเรียงความ: จุดประสงค์ไม่เกิน 3 ข้อ; ขั้นนำ/สอน/สรุปอย่างละไม่เกิน 2 ข้อ; ช่องอื่นไม่เกิน 2 ข้อ เพื่อให้พอดีกับแบบฟอร์มหน้าเดียว${includeUnitTitle ? ' ให้ unit_title เป็นชื่อหน่วย เช่น "หน่วยการเรียนรู้ที่ 1"' : ' ให้ unit_title เป็นสตริงว่าง ไม่ต้องใส่ชื่อหน่วย'}; key_concept ใส่ชื่อเรื่องโดยไม่ต้องขึ้นต้นคำว่า "เรื่อง"`}
+4. ${mode === 'schedule' ? 'สรุปเฉพาะหัวข้อที่จะสอนใน topic; description ให้เป็นสตริงว่าง; รูปแบบการสอนใช้คำหรือวลีสั้น ๆ และหมายเหตุให้สรุปใจความกระชับไม่เกิน 50 ตัวอักษร ห้ามเขียนเป็นประโยคยาว' : `ทุกช่องให้สรุปใจความสั้น ๆ ใช้ bullet หรือวลี ห้ามเขียนเรียงความ: จุดประสงค์ไม่เกิน 3 ข้อ; ขั้นนำ/สอน/สรุปอย่างละไม่เกิน 2 ข้อ; ช่องอื่นไม่เกิน 2 ข้อ เพื่อให้พอดีกับแบบฟอร์มหน้าเดียว${includeUnitTitle ? ' สัปดาห์สอนให้ใส่ชื่อหน่วยใน unit_title; สัปดาห์สอบใส่หน่วยที่เกี่ยวข้องเฉพาะเมื่อข้อมูลในเอกสารระบุชัด มิฉะนั้นให้เว้นว่าง' : ' ให้ unit_title เป็นสตริงว่าง ไม่ต้องใส่ชื่อหน่วย'}; สำหรับ week_type midterm_exam/final_exam ให้ปรับจุดประสงค์ กิจกรรม และการประเมินให้เป็นการสอบ: ชี้แจงกติกา ทำข้อสอบ และส่งข้อสอบ/สรุปการสอบ ห้ามเขียนเป็นกิจกรรมสอนเนื้อหาใหม่; key_concept ใส่ชื่อเรื่องสั้น ๆ`}
 5. ${mode === 'schedule' ? 'ห้ามแต่งรหัสมาตรฐาน/ตัวชี้วัดเมื่อเอกสารอ้างอิงไม่มีข้อมูล ให้ใช้ [] และระบุข้อสังเกตใน teacher_notes' : 'ห้ามแต่งรหัสมาตรฐาน/ตัวชี้วัดที่ไม่มีในเอกสารอ้างอิง หากไม่มีให้ใช้ [] และสรุปข้อสังเกตสั้น ๆ'}
 6. คำตอบต้องมี JSON ทั้งหมดในกล่อง Markdown \`\`\`json เพียงกล่องเดียว ห้ามมีข้อความก่อนหรือหลังกล่อง
 7. สำหรับกำหนดการสอน ให้ใช้วันเริ่มสัปดาห์ที่ 1 จาก semester_start และคัดลอก date_start/date_end ของแต่ละสัปดาห์จาก weekly_date_ranges ให้ตรงทุกตัว ห้ามคำนวณหรือแต่งวันที่เอง หากไม่มีวันเปิดภาคเรียนให้ใช้ null
@@ -209,8 +213,9 @@ function validatePayload(raw, mode, scheduleConfig = null, planConfig = null) {
       seenSessions.add(sessionNo)
       const expected = expectedBySession.get(sessionNo)
       if (planConfig?.sessions?.length && (!expected || asInt(p.week_start) !== expected.week_start || asInt(p.week_end, asInt(p.week_start)) !== expected.week_end)) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องตรงกับสัปดาห์ที่ ${expected?.week_start ?? 'กำหนดการสอน'}`)
-      if (planConfig?.includeUnitTitle && !String(p.unit_title ?? '').trim()) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องระบุชื่อหน่วยการเรียนรู้ตามตัวเลือก`)
+      if (planConfig?.includeUnitTitle && expected?.week_type === 'teaching' && !String(p.unit_title ?? '').trim()) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องระบุชื่อหน่วยการเรียนรู้ตามตัวเลือก`)
       if (planConfig && !planConfig.includeUnitTitle && String(p.unit_title ?? '').trim()) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องเว้นชื่อหน่วยการเรียนรู้ตามตัวเลือก`)
+      if (expected?.week_type && p.week_type !== expected.week_type) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องใช้ประเภทสัปดาห์ ${expected.week_type} ตามกำหนดการสอน`)
       if (p.schedule_alignment && !['aligned', 'deviated', 'partial'].includes(p.schedule_alignment)) throw new Error(`schedule_alignment ของแผนลำดับ ${i + 1} ไม่ถูกต้อง`)
     })
   }
@@ -348,7 +353,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
   const getPlanConfig = () => {
     if (isSchedule) return null
     const sessions = scheduledLessonSessions(syllabusItems)
-    if (!sessions.length) throw new Error('กรุณาสร้างกำหนดการสอนที่มีสัปดาห์เรียนก่อน จึงจะสร้างแผนให้ครบทั้งภาคเรียนได้')
+    if (!sessions.length) throw new Error('กรุณาสร้างกำหนดการสอนที่มีสัปดาห์เรียนหรือสัปดาห์สอบก่อน จึงจะสร้างแผนให้ครบทั้งภาคเรียนได้')
     return { sessions, includeUnitTitle: m.querySelector('#lp-ai-include-unit').checked }
   }
   const paintDurationSummary = () => {
@@ -359,7 +364,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     const sessions = scheduledLessonSessions(syllabusItems)
     const sessionSummary = m.querySelector('#lp-ai-session-summary')
     sessionSummary.textContent = sessions.length
-      ? `พบสัปดาห์สอน ${sessions.length} สัปดาห์ · จะสร้างแผนครั้งที่ 1–${sessions.length} และข้ามสัปดาห์สอบ/หยุด`
+      ? `พบ ${sessions.length} ครั้งตามกำหนดการ · สร้างแผนทั้งสัปดาห์เรียนและสัปดาห์สอบ โดยข้ามสัปดาห์หยุด`
       : 'ยังไม่มีกำหนดการสอน กรุณาสร้างกำหนดการก่อน'
     if (!sessions.length) sessionSummary.classList.add('text-red-600')
     m.querySelector('#lp-ai-period-count').addEventListener('input', paintDurationSummary)
