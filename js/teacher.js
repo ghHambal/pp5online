@@ -1327,7 +1327,11 @@ window._editCourse = async (id) => {
   if (!editData) { showToast('ไม่พบข้อมูลคอร์ส', 'error'); return }
   const { renderCourseForm } = await import('./teacher-views.js')
   renderCourseForm(_teacher, async (payload, coTeacherIds = []) => {
-    await updateSubject(id, payload, coTeacherIds)
+    // catalog_id is provenance for the selected subject catalog. The atomic
+    // update RPC intentionally keeps it immutable while allowing teachers to
+    // edit course details such as the subject name and code.
+    const { catalog_id: _catalogId, ...editablePayload } = payload
+    await updateSubject(id, editablePayload, coTeacherIds)
   }, editData)
 }
 
