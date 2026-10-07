@@ -1855,6 +1855,10 @@ export async function renderSmartClassroom(teacher, classId) {
   }
 
   function _wireRefTabBody() {
+    const courseScheduledDays = [...new Set((mySchedule ?? [])
+      .filter(row => Number(row.subject_id) === Number(courseId))
+      .map(row => Number(row.day_of_week))
+      .filter(day => Number.isInteger(day) && day >= 1 && day <= 7))]
     document.querySelectorAll('.sc-sched-tab').forEach(b => {
       b.classList.toggle('active', b.dataset.sched === _schedMode)
       b.addEventListener('click', () => {
@@ -1865,7 +1869,8 @@ export async function renderSmartClassroom(teacher, classId) {
     })
     document.getElementById('sc-add-syllabus')?.addEventListener('click', () => _openSyllabusItemModal())
     document.getElementById('sc-ai-syllabus')?.addEventListener('click', () => openLessonPlanAIWorkspace({
-      teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek: curWeek || 1, initialMode: 'schedule', onSaved: () => _reload(),
+      teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek: curWeek || 1, initialMode: 'schedule',
+      semesterStart: cfg.semester_start, semesterEnd: cfg.semester_end, scheduledDays: courseScheduledDays, onSaved: () => _reload(),
     }))
     document.getElementById('sc-syllabus-list')?.addEventListener('click', e => {
       const row = e.target.closest('.sc-syllabus-row')
@@ -1875,7 +1880,8 @@ export async function renderSmartClassroom(teacher, classId) {
     })
     document.getElementById('sc-add-plan')?.addEventListener('click', () => _openLessonPlanModal())
     document.getElementById('sc-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({
-      teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek: curWeek || 1, initialMode: 'plan', onSaved: () => _reload(),
+      teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek: curWeek || 1, initialMode: 'plan',
+      semesterStart: cfg.semester_start, semesterEnd: cfg.semester_end, scheduledDays: courseScheduledDays, onSaved: () => _reload(),
     }))
     document.getElementById('sc-plan-list')?.addEventListener('click', e => {
       const reflectBtn = e.target.closest('.sc-plan-reflect')

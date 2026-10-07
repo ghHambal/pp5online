@@ -411,6 +411,15 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     const aiAllowed = access.unlocked || allowedClasses.length > 0
     const reopen = () => _openCourseWorkspace(teacher, subject, allClasses)
     const semesterStart = /^\d{4}-\d{2}-\d{2}$/.test(String(termConfig.semester_start ?? '')) ? termConfig.semester_start : null
+    const scheduleAcademicYear = Number(subject.academic_year ?? termConfig.academicYear ?? termConfig.academic_year)
+    const scheduleSemester = Number(subject.semester ?? termConfig.semester)
+    const termSchedule = Number.isInteger(scheduleAcademicYear) && [1, 2].includes(scheduleSemester)
+      ? await getMySchedule(teacher.id, scheduleAcademicYear, scheduleSemester).catch(() => [])
+      : []
+    const courseScheduledDays = [...new Set(termSchedule
+      .filter(row => Number(row.subject_id) === courseId)
+      .map(row => Number(row.day_of_week))
+      .filter(day => Number.isInteger(day) && day >= 1 && day <= 7))]
     const weekDateRange = weekNo => {
       if (!semesterStart) return null
       const [year, month, day] = semesterStart.split('-').map(Number)
@@ -564,8 +573,8 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       showScheduleNotes = event.currentTarget.checked
       try { localStorage.setItem(`pp5-schedule-show-notes-${courseId}`, String(showScheduleNotes)) } catch {}
     })
-    body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', semesterStart, semesterEnd: termConfig.semester_end, onSaved: reopen }))
-    body.querySelector('#cw-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'plan', semesterStart, semesterEnd: termConfig.semester_end, onSaved: reopen }))
+    body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: courseScheduledDays, onSaved: reopen }))
+    body.querySelector('#cw-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'plan', semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: courseScheduledDays, onSaved: reopen }))
     body.querySelector('#cw-schedule-preview')?.addEventListener('click', () => {
       const notesCheckbox = body.querySelector('#cw-schedule-show-notes')
       showScheduleNotes = notesCheckbox?.checked === true
