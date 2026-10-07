@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.913'
+import { APP_VERSION } from './version.js?v=10.22.914'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.914': [
+    '🎁 เพิ่มแถบเลือกภาคเรียนในหน้าผู้สนับสนุน พร้อมแยกครูเดิม รายใหม่ และผู้ที่ยังไม่สนับสนุน',
+  ],
   '10.22.913': [
     '🗓️ เพิ่มแถบเลือกภาคเรียนในภาพรวมแอดมิน; ห้องเรียน รายวิชา และคะแนนละหมาดแสดงตามภาคที่เลือก',
   ],

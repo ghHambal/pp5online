@@ -12154,6 +12154,21 @@ export async function renderDonations() {
   setActiveNav('donations')
   document.getElementById('page-title').textContent = 'ผู้สนับสนุน'
 
+  const [initialConfig, initialTerms] = await Promise.all([
+    getSystemConfig().catch(() => ({})),
+    getAcademicTerms().catch(() => []),
+  ])
+  const _terms = collectAcademicTerms(initialTerms, initialConfig)
+  const _currentTerm = currentAcademicTerm(initialConfig)
+  const _currentTermKey = academicTermKey(_currentTerm)
+  let _selectedTermKey = _currentTermKey
+  try {
+    const saved = localStorage.getItem('pp5_admin_donations_term')
+    if (_terms.some(term => academicTermKey(term) === saved)) _selectedTermKey = saved
+  } catch {}
+
+  const _termOrdinal = term => Number(term?.academic_year) * 2 + Number(term?.semester)
+
   const fmtDate = (s) => {
     if (!s) return '—'
     return new Date(s).toLocaleDateString('th-TH', { year: '2-digit', month: 'short', day: 'numeric' })
@@ -12200,19 +12215,37 @@ export async function renderDonations() {
   <div class="max-w-4xl mx-auto animate-fade space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div>
-        <p class="text-xs text-gray-400 mt-0.5">รายชื่อครูที่โดเนทผ่านระบบและเงินสด</p>
+        <p class="text-xs text-gray-400 mt-0.5">ติดตามการสนับสนุนแยกตามภาคเรียน พร้อมสถานะครูเดิม/รายใหม่/ยังไม่มีรายการ</p>
       </div>
-      <button id="don-add" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition">
+      <label class="flex items-center gap-2 text-sm font-semibold text-indigo-700">
+        <span>เลือกภาคเรียน</span>
+        <select id="don-term-switcher" class="max-w-[240px] border border-indigo-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-200">
+          ${renderAcademicTermOptions(_terms, _selectedTermKey, _currentTermKey)}
+        </select>
+      </label>
+      <button id="don-add" ${_selectedTermKey !== _currentTermKey ? 'disabled title="เพิ่มเงินสดได้เฉพาะภาคเรียนปัจจุบัน"' : ''} class="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold transition">
         + เพิ่มเงินสด
       </button>
     </div>
 
+    <p id="don-term-note" class="text-xs text-gray-500 -mt-3"></p>
+
     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      ${['ยอดรวมอนุมัติ','รออนุมัติ','จำนวนผู้โดเนท','เฉลี่ยต่อคน'].map((lbl,i) => `
+      ${['ยอดรวมอนุมัติ','รออนุมัติ','ผู้สนับสนุนแล้ว','เฉลี่ยต่อคน','เดิมที่ต่ออายุ','รายใหม่','ยังไม่สนับสนุน'].map((lbl,i) => `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
         <p class="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1">${lbl}</p>
         <p class="text-xl font-bold text-gray-800 don-stat-val" data-i="${i}">—</p>
       </div>`).join('')}
+    </div>
+
+    <div class="bg-white rounded-2xl border border-amber-100 shadow-sm overflow-hidden">
+      <div class="px-4 py-3 bg-amber-50 border-b border-amber-100">
+        <h2 class="text-sm font-bold text-amber-900">👥 สถานะการสนับสนุนของครูในภาคเรียนที่เลือก</h2>
+        <p class="text-xs text-amber-800 mt-1">ครูที่ไม่มีรายการในเทอมนี้จะแสดงว่าเคยสนับสนุนมาก่อนหรือยังไม่เคยสนับสนุน</p>
+      </div>
+      <div id="don-teacher-coverage" class="max-h-[420px] overflow-auto">
+        <p class="text-center py-8 text-sm text-gray-400">กำลังโหลดรายชื่อครู...</p>
+      </div>
     </div>
 
     <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex flex-wrap gap-3">
@@ -12243,23 +12276,104 @@ export async function renderDonations() {
     </div>
   </div>`)
 
-  let _all = [], _tiers = [], _teacherTotals = {}
+  let _all = [], _termRequests = [], _tiers = [], _teacherTotals = {}, _teachers = [], _entitlements = [], _config = initialConfig
+
+  const _termForRequest = request => {
+    const linked = _entitlements.find(row => Number(row.id) === Number(request.supporter_renewal_entitlement_id))
+    if (linked) return `${Number(linked.target_academic_year)}:${Number(linked.target_semester)}`
+    const date = String(request.created_at ?? '').slice(0, 10)
+    if (!date) return ''
+    const datedTerm = _terms.find(term => term.start_date && term.end_date && date >= term.start_date && date <= term.end_date)
+    if (datedTerm) return academicTermKey(datedTerm)
+    // ผู้สนับสนุนรายใหม่อาจส่งคำขอก่อนวันเปิดภาค; ผูกคำขอในช่วง 45 วันก่อนเปิดกับเทอมถัดไป
+    const nextTerm = _terms.filter(term => term.start_date && date < term.start_date)
+      .sort((a, b) => a.start_date.localeCompare(b.start_date))[0]
+    const daysUntilStart = nextTerm ? (Date.parse(`${nextTerm.start_date}T00:00:00Z`) - Date.parse(`${date}T00:00:00Z`)) / 86400000 : Infinity
+    return daysUntilStart >= 0 && daysUntilStart <= 45 ? academicTermKey(nextTerm) : ''
+  }
+
+  const _hasPriorApproved = teacherId => {
+    const selected = _terms.find(term => academicTermKey(term) === _selectedTermKey)
+    const selectedOrdinal = _termOrdinal(selected)
+    const selectedStart = selected?.start_date || (_selectedTermKey === _currentTermKey ? _config.semester_start : null)
+    return _all.some(request => {
+      if (Number(request.teachers?.id) !== Number(teacherId) || request.status !== 'approved') return false
+      const linked = _entitlements.find(row => Number(row.id) === Number(request.supporter_renewal_entitlement_id))
+      if (linked) return _termOrdinal({ academic_year: linked.source_academic_year, semester: linked.source_semester }) < selectedOrdinal
+      const termKey = _termForRequest(request)
+      const previousTerm = _terms.find(term => academicTermKey(term) === termKey)
+      if (previousTerm) return _termOrdinal(previousTerm) < selectedOrdinal
+      return Boolean(selectedStart && String(request.reviewed_at ?? request.created_at ?? '').slice(0, 10) < selectedStart)
+    })
+  }
 
   const _load = async () => {
     const { supabase: sb } = await import('./supabase.js')
     const { getSystemConfig, getPaymentSlipViewUrl } = await import('./api.js')
-    const [cfg, { data }] = await Promise.all([
+    const [cfg, { data }, teachers, { data: entitlements }] = await Promise.all([
       getSystemConfig().catch(() => ({})),
       sb.from('payment_requests')
-        .select('id, package_type, amount, status, slip_url, admin_note, created_at, reviewed_at, teachers(id, full_name, teacher_code, phone, image_url)')
+        .select('id, package_type, amount, status, slip_url, admin_note, created_at, reviewed_at, supporter_renewal_entitlement_id, donation_tier, discount_percent, teachers(id, full_name, teacher_code, phone, image_url)')
         .eq('package_type', 'donation')
-        .order('created_at', { ascending: false })
+        .order('created_at', { ascending: false }),
+      getTeachers().catch(() => []),
+      sb.from('supporter_renewal_entitlements')
+        .select('id, teacher_id, source_academic_year, source_semester, target_academic_year, target_semester')
     ])
-    _tiers = _parseTiers(cfg)
-    _all   = data ?? []
+    _config = cfg ?? initialConfig
+    _tiers = _parseTiers(_config)
+    _teachers = teachers ?? []
+    _entitlements = entitlements ?? []
+    _all = (data ?? []).map(row => ({ ...row, _termKey: _termForRequest(row) }))
+    _termRequests = _all.filter(row => row._termKey === _selectedTermKey)
+    const selectedTerm = _terms.find(term => academicTermKey(term) === _selectedTermKey)
+    const coverage = document.getElementById('don-teacher-coverage')
+    const termNote = document.getElementById('don-term-note')
+    if (termNote) {
+      termNote.textContent = selectedTerm?.start_date && selectedTerm?.end_date
+        ? `ช่วงข้อมูล ${fmtDate(selectedTerm.start_date)} – ${fmtDate(selectedTerm.end_date)} · รายการต่ออายุที่เชื่อมสิทธิ์จะยึดภาคเป้าหมาย แม้ส่งคำขอก่อนวันเปิดภาค`
+        : 'หมายเหตุ: ภาคเรียนนี้ไม่มีช่วงวันที่ในทะเบียน ระบบจึงแยกคำขอที่ระบุภาคเรียนผ่านสิทธิ์ต่ออายุได้เท่านั้น'
+    }
+
+    // จัดกลุ่มคำขอตามครู แล้วแยกสถานะเดิม/รายใหม่/ยังไม่มีรายการ
+    const byTeacher = new Map()
+    for (const request of _termRequests) {
+      const teacherId = Number(request.teachers?.id)
+      if (!teacherId) continue
+      if (!byTeacher.has(teacherId)) byTeacher.set(teacherId, [])
+      byTeacher.get(teacherId).push(request)
+    }
+    const coverageRows = _teachers.map(teacher => {
+      const requests = byTeacher.get(Number(teacher.id)) ?? []
+      const approved = requests.filter(row => row.status === 'approved')
+      const pending = requests.some(row => row.status === 'pending')
+      const prior = _hasPriorApproved(teacher.id)
+      const kind = approved.length ? (prior ? 'เดิม · ต่ออายุแล้ว' : 'รายใหม่ · สนับสนุนแล้ว')
+        : pending ? (prior ? 'เดิม · รอตรวจสอบ' : 'รายใหม่ · รอตรวจสอบ')
+          : requests.length ? (prior ? 'เดิม · คำขอถูกปฏิเสธ' : 'รายใหม่ · คำขอถูกปฏิเสธ')
+            : prior ? 'เดิม · ยังไม่สนับสนุนเทอมนี้' : 'ยังไม่เคยสนับสนุน'
+      return { teacher, requests, approved, pending, prior, kind,
+        total: approved.reduce((sum, row) => sum + (Number(row.amount) || 0), 0) }
+    }).sort((a, b) => {
+      const rank = row => row.approved.length ? 0 : row.pending ? 1 : row.prior ? 2 : 3
+      return rank(a) - rank(b) || String(a.teacher.full_name ?? '').localeCompare(String(b.teacher.full_name ?? ''), 'th')
+    })
+    if (coverage) {
+      coverage.innerHTML = coverageRows.length ? `<div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead class="sticky top-0 bg-gray-50"><tr>
+          <th class="text-left px-4 py-2 text-xs font-semibold text-gray-500">ครู</th>
+          <th class="text-left px-4 py-2 text-xs font-semibold text-gray-500">สถานะภาคนี้</th>
+          <th class="text-right px-4 py-2 text-xs font-semibold text-gray-500">ยอดอนุมัติ</th>
+        </tr></thead><tbody class="divide-y divide-gray-50">${coverageRows.map(row => `
+          <tr class="hover:bg-gray-50"><td class="px-4 py-2.5"><span class="font-medium text-gray-800">${_htmlEsc(row.teacher.full_name ?? '—')}</span>
+            <span class="ml-1 text-xs text-gray-400">${_htmlEsc(row.teacher.teacher_code ?? '')}</span></td>
+            <td class="px-4 py-2.5"><span class="px-2 py-1 rounded-full text-[11px] font-semibold ${row.approved.length ? 'bg-emerald-50 text-emerald-700' : row.pending ? 'bg-amber-50 text-amber-700' : 'bg-gray-100 text-gray-500'}">${row.kind}</span></td>
+            <td class="px-4 py-2.5 text-right font-semibold ${row.total ? 'text-emerald-700' : 'text-gray-400'}">${row.total ? `${fmtBaht(row.total)} ฿` : '—'}</td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="text-center py-8 text-sm text-gray-400">ไม่พบรายชื่อครู</p>'
+    }
 
     // resolve slip URLs ทั้งหมด
-    for (const r of _all) {
+    for (const r of _termRequests) {
       if (r.slip_url && !isCash(r)) {
         r._resolvedSlip = await getPaymentSlipViewUrl(r.slip_url).catch(() => r.slip_url)
       }
@@ -12267,7 +12381,7 @@ export async function renderDonations() {
 
     // คำนวณยอดรวมต่อครู (approved เท่านั้น)
     _teacherTotals = {}
-    for (const r of _all) {
+    for (const r of _termRequests) {
       if (r.status !== 'approved') continue
       const tid = r.teachers?.id
       if (tid) _teacherTotals[tid] = (_teacherTotals[tid] ?? 0) + (Number(r.amount) || 0)
@@ -12277,12 +12391,15 @@ export async function renderDonations() {
   }
 
   const _updateStats = () => {
-    const approved = _all.filter(r => r.status === 'approved')
+    const approved = _termRequests.filter(r => r.status === 'approved')
     const total  = approved.reduce((s,r) => s + (Number(r.amount)||0), 0)
-    const pending = _all.filter(r => r.status === 'pending').length
+    const pending = _termRequests.filter(r => r.status === 'pending').length
     const donors  = new Set(approved.map(r => r.teachers?.id)).size
     const avg     = donors ? Math.round(total / donors) : 0
-    const vals = [fmtBaht(total) + ' ฿', pending, donors + ' คน', fmtBaht(avg) + ' ฿']
+    const returning = new Set(approved.filter(r => _hasPriorApproved(r.teachers?.id)).map(r => r.teachers?.id)).size
+    const firstTime = Math.max(0, donors - returning)
+    const notYet = Math.max(0, _teachers.length - donors)
+    const vals = [fmtBaht(total) + ' ฿', pending, donors + ' คน', fmtBaht(avg) + ' ฿', returning + ' คน', firstTime + ' คน', notYet + ' คน']
     document.querySelectorAll('.don-stat-val').forEach((el, i) => { el.textContent = vals[i] })
   }
 
@@ -12293,7 +12410,7 @@ export async function renderDonations() {
     const method = document.getElementById('don-filter-method')?.value ?? 'all'
     const sort   = document.getElementById('don-filter-sort')?.value ?? 'date_desc'
 
-    let rows = _all.filter(r => {
+    let rows = _termRequests.filter(r => {
       const t = r.teachers
       if (q && !String(t?.full_name ?? '').toLowerCase().includes(q) && !String(t?.teacher_code ?? '').includes(q)) return false
       if (status !== 'all' && r.status !== status) return false
@@ -12337,6 +12454,7 @@ export async function renderDonations() {
           const note = String(r.admin_note ?? '').replace(/^\[เงินสด\]\s*/, '')
           const totalForTeacher = _teacherTotals[t?.id] ?? 0
           const tier = _tierForAmount(totalForTeacher, _tiers)
+          const supporterKind = _hasPriorApproved(t?.id) ? 'เดิม' : 'รายใหม่'
           const avatar = t?.image_url
             ? `<img src="${t.image_url}" class="w-9 h-9 rounded-full object-cover flex-shrink-0 border border-gray-200" />`
             : `<div class="w-9 h-9 rounded-full bg-gradient-to-tr from-emerald-300 to-teal-400 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">${(t?.full_name??'?').charAt(0)}</div>`
@@ -12347,7 +12465,7 @@ export async function renderDonations() {
                 ${avatar}
                 <div>
                   <p class="font-semibold text-gray-800 text-sm leading-tight">${t?.full_name ?? '—'}</p>
-                  <p class="text-xs text-gray-400">${t?.teacher_code ?? ''}</p>
+                  <p class="text-xs text-gray-400">${t?.teacher_code ?? ''} · ${supporterKind}</p>
                 </div>
               </div>
             </td>
@@ -12429,7 +12547,7 @@ export async function renderDonations() {
   const _openTeacherSummary = (tid) => {
     if (!tid) return
     const tid_n = Number(tid)
-    const txns  = _all.filter(r => r.teachers?.id === tid_n)
+    const txns  = _termRequests.filter(r => r.teachers?.id === tid_n)
     if (!txns.length) return
     const teacher = txns[0].teachers
     const approved = txns.filter(r => r.status === 'approved')
@@ -12590,6 +12708,18 @@ export async function renderDonations() {
   document.getElementById('don-filter-method')?.addEventListener('change', _render)
   document.getElementById('don-filter-sort')?.addEventListener('change', _render)
   document.getElementById('don-add')?.addEventListener('click', _openAddModal)
+  document.getElementById('don-term-switcher')?.addEventListener('change', async event => {
+    _selectedTermKey = event.target.value
+    try { localStorage.setItem('pp5_admin_donations_term', _selectedTermKey) } catch {}
+    const addButton = document.getElementById('don-add')
+    if (addButton) {
+      addButton.disabled = _selectedTermKey !== _currentTermKey
+      addButton.title = addButton.disabled ? 'เพิ่มเงินสดได้เฉพาะภาคเรียนปัจจุบัน' : ''
+    }
+    const table = document.getElementById('don-table')
+    if (table) table.innerHTML = '<div class="py-10 text-gray-400"><span class="animate-spin text-2xl">⏳</span><p class="mt-2 text-sm">กำลังโหลดข้อมูลภาคเรียน...</p></div>'
+    await _load()
+  })
   await _load()
 }
 
