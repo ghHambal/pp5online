@@ -422,8 +422,23 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       getTeachersWithSignatures().catch(() => []),
       getDepartments().catch(() => []),
     ])
-    const deptKey = String(courseClasses[0]?.master_subjects?.dept ?? subject.dept ?? teacher?.dept ?? '').trim().toLowerCase()
-    const courseDepartment = departments.find(d => [d.dept_code, d.dept_name, d.category].some(value => String(value ?? '').trim().toLowerCase() === deptKey)) ?? null
+    const courseMaster = courseClasses[0]?.master_subjects ?? {}
+    const deptKey = String(courseMaster.dept ?? subject.dept ?? teacher?.dept ?? '').trim().toLowerCase()
+    const courseHeadName = String(courseMaster.learning_area ?? '').trim()
+    const subjectGroup = String(courseMaster.subject_group ?? '').toUpperCase()
+    const courseCategory = subjectGroup === 'ACDM' ? 'สามัญ' : subjectGroup === 'ACDMVOC' ? 'สามัญปวช' : ['AGM', 'AGMVOC'].includes(subjectGroup) ? 'ศาสนา' : ''
+    const deptMatches = departments.filter(item => String(item.dept_code ?? '').trim().toLowerCase() === deptKey || String(item.dept_name ?? '').trim().toLowerCase() === deptKey)
+    const scopedDepts = courseCategory ? deptMatches.filter(item => item.category === courseCategory) : deptMatches
+    const matchedDept = (courseHeadName && scopedDepts.find(item => String(item.head_name ?? '').trim() === courseHeadName))
+      || scopedDepts[0]
+      || (courseHeadName && departments.find(item => String(item.head_name ?? '').trim() === courseHeadName))
+      || null
+    const courseHeadProfile = signatureTeachers.find(person => String(person.full_name ?? '').trim() === courseHeadName)
+    const courseDepartment = matchedDept ? {
+      ...matchedDept,
+      head_name: courseHeadName || (matchedDept.head_name === 'ทีมบริหาร' ? '' : matchedDept.head_name),
+      head_sign_url: courseHeadProfile?.signature_url || (courseHeadName && matchedDept.head_name !== courseHeadName ? null : matchedDept.head_sign_url),
+    } : courseHeadName ? { head_name: courseHeadName, head_sign_url: courseHeadProfile?.signature_url ?? null } : null
     const courseRoomNames = [...new Set(courseClasses.map(cls => {
       const room = String(cls.class_name ?? `ห้อง ${cls.id}`).trim()
       const grade = String(cls.master_subjects?.grade_level ?? subject.grade_level ?? '').trim()

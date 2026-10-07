@@ -513,7 +513,7 @@ async function _getMyClasses(teacherId) {
       id, course_id, class_name, skill_group, google_sheet_id, gas_url, head_student_id,
       classroom_id, source_class_id, academic_year, semester, attendance_delegate_enabled,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
-      master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id ),
+      master_subjects ( id, subject_code, subject_name, dept, grade_level, subject_group, credit, teacher_id, learning_area ),
       students:students!fk_head_student ( full_name )
     `)
     .in('course_id', ids)
@@ -827,7 +827,7 @@ export async function getClasses() {
       head_cert_url, vice_head_cert_url,
       academic_year, semester,
       day1_date, day2_date, day3_date, day4_date, day5_date, day6_date,
-      master_subjects ( subject_code, subject_name, dept, subject_group, grade_level, credit, teacher_id )
+      master_subjects ( subject_code, subject_name, dept, subject_group, grade_level, credit, teacher_id, learning_area )
     `)
     .order('class_name')
   if (error) throw error

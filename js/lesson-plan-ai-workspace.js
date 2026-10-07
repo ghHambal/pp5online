@@ -16,6 +16,84 @@ const thaiShortDate = value => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ''))
   return match ? `${match[3]}/${match[2]}/${String(Number(match[1]) + 543).slice(-2)}` : '........................'
 }
+const REFLECTION_NOTE_PREFIX = 'pp5-reflection-v1:'
+const REFLECTION_NOTE_FONTS = [
+  ['Sarabun', 'สารบรรณ'], ['TH Sarabun New', 'TH Sarabun New'],
+  ['Mali', 'Mali · ลายมือ'], ['Itim', 'Itim · ลายมือ'], ['Sriracha', 'Sriracha · ลายมือ'],
+]
+function parseReflectionNote(value) {
+  const raw = String(value ?? '')
+  if (!raw.startsWith(REFLECTION_NOTE_PREFIX)) return { mode: 'type', text: raw, color: '#173b78', font: 'Sarabun', drawing: '' }
+  try {
+    const parsed = JSON.parse(raw.slice(REFLECTION_NOTE_PREFIX.length))
+    return { mode: parsed.mode === 'draw' ? 'draw' : 'type', text: String(parsed.text ?? ''), color: /^#[0-9a-f]{6}$/i.test(parsed.color) ? parsed.color : '#173b78', font: REFLECTION_NOTE_FONTS.some(([font]) => font === parsed.font) ? parsed.font : 'Sarabun', drawing: String(parsed.drawing ?? '') }
+  } catch { return { mode: 'type', text: '', color: '#173b78', font: 'Sarabun', drawing: '' } }
+}
+function reflectionNoteFieldHTML(key, label, value) {
+  const note = parseReflectionNote(value)
+  const fontOptions = REFLECTION_NOTE_FONTS.map(([font, title]) => `<option value="${esc(font)}" ${note.font === font ? 'selected' : ''}>${esc(title)}</option>`).join('')
+  return `<label class="text-xs font-bold text-gray-500">${label}<div data-reflection-note="${key}" data-initial-value="${esc(value ?? '')}" class="mt-1 rounded-xl border border-gray-200 p-2">
+    <div class="flex flex-wrap items-center gap-2 mb-2"><select data-note-mode class="border rounded-lg px-2 py-1.5 text-[11px] bg-white font-normal"><option value="type" ${note.mode === 'type' ? 'selected' : ''}>พิมพ์ข้อความ</option><option value="draw" ${note.mode === 'draw' ? 'selected' : ''}>เขียนด้วยลายมือ</option></select><label class="flex items-center gap-1 text-[10px] font-normal">สี <input data-note-color type="color" value="${note.color}" class="w-8 h-7 p-0.5 border rounded"></label><select data-note-font class="border rounded-lg px-2 py-1.5 text-[10px] bg-white font-normal">${fontOptions}</select></div>
+    <textarea data-note-text rows="4" class="w-full border rounded-lg p-2 font-normal resize-y" style="color:${note.color};font-family:'${esc(note.font)}',sans-serif;${note.mode === 'draw' ? 'display:none' : ''}" placeholder="${label}">${esc(note.text)}</textarea>
+    <div data-note-draw-wrap style="${note.mode === 'draw' ? '' : 'display:none'}"><canvas data-note-canvas width="1000" height="240" class="w-full h-24 border rounded-lg bg-white touch-none"></canvas><button data-note-clear type="button" class="mt-1 text-[10px] text-red-500 font-normal">ล้างลายมือ</button></div>
+  </div></label>`
+}
+function bindReflectionNote(box) {
+  const mode = box.querySelector('[data-note-mode]')
+  const color = box.querySelector('[data-note-color]')
+  const font = box.querySelector('[data-note-font]')
+  const text = box.querySelector('[data-note-text]')
+  const drawWrap = box.querySelector('[data-note-draw-wrap]')
+  const canvas = box.querySelector('[data-note-canvas]')
+  const ctx = canvas.getContext('2d')
+  let drawing = false
+  let hasDrawing = false
+  ctx.lineWidth = 3
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = color.value
+  const paintTextStyle = () => {
+    text.style.color = color.value
+    text.style.fontFamily = `'${font.value}', sans-serif`
+  }
+  const syncMode = () => {
+    const isDraw = mode.value === 'draw'
+    text.style.display = isDraw ? 'none' : ''
+    drawWrap.style.display = isDraw ? '' : 'none'
+  }
+  const point = event => {
+    const rect = canvas.getBoundingClientRect()
+    return { x: (event.clientX - rect.left) * canvas.width / rect.width, y: (event.clientY - rect.top) * canvas.height / rect.height }
+  }
+  canvas.addEventListener('pointerdown', event => {
+    drawing = true; hasDrawing = true; canvas.setPointerCapture?.(event.pointerId)
+    const p = point(event); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.strokeStyle = color.value
+  })
+  canvas.addEventListener('pointermove', event => {
+    if (!drawing) return
+    const p = point(event); ctx.lineTo(p.x, p.y); ctx.stroke()
+  })
+  for (const eventName of ['pointerup', 'pointercancel', 'pointerleave']) canvas.addEventListener(eventName, () => { drawing = false })
+  mode.addEventListener('change', syncMode)
+  color.addEventListener('input', () => { ctx.strokeStyle = color.value; paintTextStyle() })
+  font.addEventListener('change', paintTextStyle)
+  box.querySelector('[data-note-clear]').addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasDrawing = false })
+  const note = parseReflectionNote(box.dataset.initialValue ?? '')
+  if (note.drawing) {
+    const image = new Image()
+    image.onload = () => { ctx.drawImage(image, 0, 0, canvas.width, canvas.height); hasDrawing = true }
+    image.src = note.drawing
+  }
+  syncMode()
+  return {
+    value() {
+      const payload = { mode: mode.value, text: text.value.trim(), color: color.value, font: font.value, drawing: mode.value === 'draw' && hasDrawing ? canvas.toDataURL('image/png') : '' }
+      if (payload.mode === 'type' && !payload.text) return null
+      if (payload.mode === 'draw' && !payload.drawing) return null
+      return REFLECTION_NOTE_PREFIX + JSON.stringify(payload)
+    },
+  }
+}
 const stripFence = text => String(text ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
 const WEEKDAY_LABELS = { 1: 'วันจันทร์', 2: 'วันอังคาร', 3: 'วันพุธ', 4: 'วันพฤหัสบดี', 5: 'วันศุกร์', 6: 'วันเสาร์', 7: 'วันอาทิตย์' }
 const normalizeScheduleDays = days => [...new Set((days ?? []).map(day => asInt(day)).filter(day => day >= 1 && day <= 7 && day !== 6))].sort((a, b) => (a % 7) - (b % 7))
@@ -627,11 +705,17 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept }) {
   const nl = value => esc(value || '-').replace(/\n/g, '<br>')
   const logoUrl = new URL('./pp5-form-logo.png', window.location.href).href
   const sig = (url, name, role) => `<div class="sig"><div class="sig-img">${url ? `<img src="${esc(url)}">` : ''}</div><div>ลงชื่อ</div><div class="sig-line"></div><div>${role}</div><div>( ${esc(name || '................................')} )</div><div>วันที่ ${date}</div></div>`
-  const ruled = (title, value, lines = 3) => `<section class="ruled"><div class="rule title">${title}</div>${String(value ?? '').split('\n').filter(Boolean).map(line => `<div class="rule">${esc(line)}</div>`).join('')}${Array.from({ length: Math.max(1, lines - String(value ?? '').split('\n').filter(Boolean).length) }, () => '<div class="rule"></div>').join('')}</section>`
+  const ruled = (title, value, lines = 3) => {
+    const note = parseReflectionNote(value)
+    if (note.mode === 'draw' && note.drawing) return `<section class="ruled"><div class="rule title">${title}</div><div class="rule drawing-rule"><img class="note-drawing" src="${esc(note.drawing)}" alt="บันทึกด้วยลายมือ"></div>${Array.from({ length: Math.max(1, lines - 1) }, () => '<div class="rule"></div>').join('')}</section>`
+    const textLines = note.text.split('\n').filter(Boolean)
+    const style = `color:${note.color};font-family:'${note.font}',sans-serif`
+    return `<section class="ruled"><div class="rule title">${title}</div>${textLines.map(line => `<div class="rule" style="${style}">${esc(line)}</div>`).join('')}${Array.from({ length: Math.max(1, lines - textLines.length) }, () => '<div class="rule"></div>').join('')}</section>`
+  }
   const w = window.open('', '_blank')
   if (!w) { showToast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาต Pop-up', 'warning'); return }
-  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(plan.title)}</title><style>
-    @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:10.5px;line-height:1.42}.page{width:210mm;min-height:297mm;padding:10mm 11mm 11mm;margin:auto;background:#fff}.head{text-align:center}.logo{width:15mm;height:15mm;object-fit:contain}.head h1{font-size:18px;line-height:1.15;margin:1mm 0}.head h2{font-size:13px;line-height:1.15;margin:0 0 1mm}.head p{font-size:10.5px;margin:.5mm 0}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #176b3a;border-bottom:1px solid #176b3a;padding:1.7mm 2mm;margin-top:2.5mm;font-size:10.5px}.meta span:nth-child(2){text-align:center}.meta span:last-child{text-align:right}.cols{display:grid;grid-template-columns:1fr 1fr;gap:3.5mm;margin-top:3mm}.box{border:.8px solid #17743d;border-radius:1.2mm;margin-bottom:2.7mm;overflow:hidden}.box h3{font-size:11px;font-weight:500;margin:0;padding:1.5mm 2.2mm;background:#d8f6e2;color:#145f35;border-bottom:.8px solid #17743d}.box .content{padding:1.8mm 2.2mm;line-height:1.5;min-height:15mm}.activities{min-height:80mm!important}.sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:7mm;margin-top:10mm}.sig{text-align:center;font-size:9px;line-height:1.55}.sig-img{height:12mm;display:flex;align-items:flex-end;justify-content:center}.sig-img img{max-height:12mm;max-width:35mm;object-fit:contain}.sig-line{border-bottom:1px dotted #111;margin:0 1mm 1mm}.reflection-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:10mm 0 2mm}.ruled{margin-top:0}.rule{min-height:7mm;border-bottom:.6px solid #8ca1bd;padding:1mm 2mm;color:#111}.rule.title{color:#176b3a}.suggest-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:5mm 0 2mm}.dept{width:72%;margin:18mm auto 0;text-align:center;font-size:9.5px;line-height:1.6}.dept .sig-img{height:12mm}.dept-line{display:inline-block;width:38mm;border-bottom:1px dotted #111;vertical-align:middle}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div class="page">
+  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(plan.title)}</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Itim&family=Mali:wght@400;500&family=Sriracha&display=swap" rel="stylesheet"><style>
+    @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:10.5px;line-height:1.42}.page{width:210mm;min-height:297mm;padding:10mm 11mm 11mm;margin:auto;background:#fff}.head{text-align:center}.logo{width:15mm;height:15mm;object-fit:contain}.head h1{font-size:18px;line-height:1.15;margin:1mm 0}.head h2{font-size:13px;line-height:1.15;margin:0 0 1mm}.head p{font-size:10.5px;margin:.5mm 0}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #176b3a;border-bottom:1px solid #176b3a;padding:1.7mm 2mm;margin-top:2.5mm;font-size:10.5px}.meta span:nth-child(2){text-align:center}.meta span:last-child{text-align:right}.cols{display:grid;grid-template-columns:1fr 1fr;gap:3.5mm;margin-top:3mm}.box{border:.8px solid #17743d;border-radius:1.2mm;margin-bottom:2.7mm;overflow:hidden}.box h3{font-size:11px;font-weight:500;margin:0;padding:1.5mm 2.2mm;background:#d8f6e2;color:#145f35;border-bottom:.8px solid #17743d}.box .content{padding:1.8mm 2.2mm;line-height:1.5;min-height:15mm}.activities{min-height:80mm!important}.sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:7mm;margin-top:10mm}.sig{text-align:center;font-size:9px;line-height:1.55}.sig-img{height:12mm;display:flex;align-items:flex-end;justify-content:center}.sig-img img{max-height:12mm;max-width:35mm;object-fit:contain}.sig-line{border-bottom:1px dotted #111;margin:0 1mm 1mm}.reflection-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:10mm 0 2mm}.ruled{margin-top:0}.rule{min-height:7mm;border-bottom:.6px solid #8ca1bd;padding:1mm 2mm;color:#111}.rule.title{color:#176b3a}.drawing-rule{height:22mm;display:flex;align-items:center}.note-drawing{width:100%;height:100%;object-fit:contain}.suggest-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:5mm 0 2mm}.dept{width:72%;margin:18mm auto 0;text-align:center;font-size:9.5px;line-height:1.6}.dept .sig-img{height:12mm}.dept-line{display:inline-block;width:38mm;border-bottom:1px dotted #111;vertical-align:middle}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div class="page">
     <div class="head"><img class="logo" src="${esc(logoUrl)}"><h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1><h2>กลุ่มสาระการเรียนรู้${esc(learningArea)}</h2><p>วิชา ${esc(meta.subject_name)} รหัสวิชา ${esc(meta.subject_code)} ชั้นมัธยมศึกษาปีที่ ${esc(className)}</p><p>${esc(lessonHeading || 'เรื่อง ................................')}</p></div>
     <div class="meta"><span>ครั้งที่ ${plan.session_number || 1}</span><span>เวลา ${duration}</span><span>วันที่ ${date}</span></div>
     <div class="cols"><div>
@@ -646,19 +730,39 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept }) {
       <div class="suggest-title">ข้อเสนอแนะ</div>${ruled('', reflection?.suggestions, 3)}
       <div class="dept"><div class="sig-img">${urls.deptHead ? `<img src="${esc(urls.deptHead)}">` : ''}</div>ลงชื่อ <span class="dept-line"></span> หัวหน้ากลุ่มสาระ<div>( ${esc(reflection?.dept_head_name || dept?.head_name || '................................')} )</div><div>วันที่ ${date}</div></div>
     </div></div>
-  </div><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),350))<\/script></body></html>`)
+  </div><script>window.addEventListener('load',()=>Promise.resolve(document.fonts?.ready).finally(()=>setTimeout(()=>window.print(),350)))<\/script></body></html>`)
   w.document.close()
 }
 
 export async function openLessonPlanDocument({ plan, cls, teacher, classId, currentWeek }) {
   document.getElementById('lp-document-modal')?.remove()
+  if (!document.getElementById('lp-reflection-fonts')) {
+    const fonts = document.createElement('link')
+    fonts.id = 'lp-reflection-fonts'
+    fonts.rel = 'stylesheet'
+    fonts.href = 'https://fonts.googleapis.com/css2?family=Itim&family=Mali:wght@400;500&family=Sriracha&display=swap'
+    document.head.appendChild(fonts)
+  }
   const [departments, signatureTeachers, planReflections] = await Promise.all([
     getDepartments().catch(() => []),
     getTeachersWithSignatures().catch(() => []),
     getLessonPlanReflectionsForPlan(plan.id).catch(() => []),
   ])
+  const courseHeadName = String(cls?.master_subjects?.learning_area ?? '').trim()
   const deptKey = String(cls?.master_subjects?.dept ?? teacher?.dept ?? '').trim().toLowerCase()
-  const dept = departments.find(d => [d.dept_code,d.dept_name,d.category].some(v => String(v ?? '').trim().toLowerCase() === deptKey)) ?? null
+  const subjectGroup = String(cls?.master_subjects?.subject_group ?? '').toUpperCase()
+  const courseCategory = subjectGroup === 'ACDM' ? 'สามัญ' : subjectGroup === 'ACDMVOC' ? 'สามัญปวช' : ['AGM', 'AGMVOC'].includes(subjectGroup) ? 'ศาสนา' : ''
+  const deptMatches = departments.filter(d => String(d.dept_code ?? '').trim().toLowerCase() === deptKey || String(d.dept_name ?? '').trim().toLowerCase() === deptKey)
+  const scopedDepartments = courseCategory ? deptMatches.filter(d => d.category === courseCategory) : deptMatches
+  const dept = (courseHeadName && scopedDepartments.find(d => String(d.head_name ?? '').trim() === courseHeadName))
+    || scopedDepartments[0]
+    || (courseHeadName && departments.find(d => String(d.head_name ?? '').trim() === courseHeadName))
+    || null
+  const matchingCourseHead = signatureTeachers.find(person => String(person.full_name ?? '').trim() === courseHeadName)
+  const courseHeadSignature = matchingCourseHead?.signature_url
+    || (dept && String(dept.head_name ?? '').trim() === courseHeadName ? dept.head_sign_url : null)
+  const isManagementName = value => /ทีมผู้บริหาร|ทีมบริหาร|ฝ่ายบริหาร/.test(String(value ?? '').trim())
+  const deptHeadName = courseHeadName || (dept && !isManagementName(dept.head_name) ? dept.head_name : '') || ''
   const headRel = cls?.students
   const classHeadDefault = (Array.isArray(headRel) ? headRel[0]?.full_name : headRel?.full_name) ?? ''
   const signaturePreferences = () => plan.source_json?.signature_preferences ?? {}
@@ -668,18 +772,25 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
   const render = async () => {
     const reflection = await getLessonPlanReflection(plan.id, classId, weekNo).catch(() => null)
     const resolve = path => getLessonPlanAssetUrl(path).catch(() => null)
+    const persistedDeptName = String(reflection?.dept_head_name ?? '').trim()
+    const staleDeptHeadReflection = Boolean(courseHeadName && persistedDeptName && persistedDeptName !== courseHeadName && (dept?.head_name === persistedDeptName || isManagementName(persistedDeptName)))
+    const effectiveReflectionDeptName = staleDeptHeadReflection ? null : reflection?.dept_head_name
+    const effectiveReflectionDeptPath = staleDeptHeadReflection ? null : reflection?.dept_head_signature_path
     const [classHeadUrl, teacherUrl, deptHeadUrl] = await Promise.all([
       resolve(reflection?.class_head_signature_path),
       resolve(reflection?.teacher_signature_path || reflection?.signature_data_url),
-      resolve(reflection?.dept_head_signature_path || dept?.head_sign_url),
+      resolve(effectiveReflectionDeptPath || courseHeadSignature),
     ])
     const preference = signaturePreferences()
-    const deptPlanPreference = preference['dept-head']
+    const storedDeptPlanPreference = preference['dept-head']
+    const deptPlanPreference = courseHeadName && storedDeptPlanPreference?.name !== courseHeadName && (storedDeptPlanPreference?.name === dept?.head_name || isManagementName(storedDeptPlanPreference?.name))
+      ? null
+      : storedDeptPlanPreference
     const deptSessionPreference = deptPlanPreference?.session_overrides?.[String(weekNo)]
     const currentPaths = {
       'class-head': reflection?.class_head_signature_path,
       teacher: reflection?.teacher_signature_path || reflection?.signature_data_url,
-      'dept-head': reflection?.dept_head_signature_path,
+      'dept-head': effectiveReflectionDeptPath,
     }
     const profileTeacher = signatureTeachers.find(person => Number(person.id) === Number(teacher.id))
     const savedOptions = { 'class-head': [], teacher: [], 'dept-head': [] }
@@ -694,8 +805,8 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     }
     if (currentPaths.teacher) addSaved('teacher', currentPaths.teacher, reflection?.teacher_name || teacher.full_name, 'ลายเซ็นครั้งนี้', teacherUrl)
     if (profileTeacher?.signature_url) addSaved('teacher', profileTeacher.signature_url, profileTeacher.full_name || teacher.full_name, 'ลายเซ็นที่บันทึกในโปรไฟล์ครู')
-    if (currentPaths['dept-head']) addSaved('dept-head', currentPaths['dept-head'], reflection?.dept_head_name || dept?.head_name, 'ลายเซ็นครั้งนี้', deptHeadUrl)
-    if (dept?.head_sign_url) addSaved('dept-head', dept.head_sign_url, dept.head_name, 'ลายเซ็นหัวหน้ากลุ่มสาระที่บันทึกไว้')
+    if (currentPaths['dept-head']) addSaved('dept-head', currentPaths['dept-head'], effectiveReflectionDeptName || deptHeadName, 'ลายเซ็นครั้งนี้', deptHeadUrl)
+    if (courseHeadSignature) addSaved('dept-head', courseHeadSignature, deptHeadName, 'ลายเซ็นหัวหน้ากลุ่มสาระของรายวิชา')
     for (const person of signatureTeachers) {
       addSaved('dept-head', person.signature_url, person.full_name, `ใช้ลายเซ็นที่มีในระบบ · ${person.full_name}`)
     }
@@ -729,12 +840,13 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
       <div class="grid sm:grid-cols-3 gap-3 mt-4">
         ${signaturePadHTML('class-head','หัวหน้าห้อง',reflection?.class_head_name || classHeadDefault,classHeadUrl,makePadOptions('class-head'),sourceFor('class-head'))}
         ${signaturePadHTML('teacher','ครูผู้สอน',reflection?.teacher_name || teacher.full_name,teacherUrl,makePadOptions('teacher'),sourceFor('teacher'),Boolean(profileTeacher?.signature_url))}
-        ${signaturePadHTML('dept-head','หัวหน้ากลุ่มสาระ',reflection?.dept_head_name || dept?.head_name || '',deptHeadUrl,makePadOptions('dept-head'),sourceFor('dept-head'),false,true)}
+        ${signaturePadHTML('dept-head','หัวหน้ากลุ่มสาระ',effectiveReflectionDeptName || deptHeadName,deptHeadUrl,makePadOptions('dept-head'),sourceFor('dept-head'),false,true)}
       </div>
-      <div class="grid sm:grid-cols-3 gap-3 mt-4"><label class="text-xs font-bold text-gray-500">ผลการจัดการเรียนรู้<textarea id="lp-doc-result" rows="4" class="mt-1 w-full border rounded-xl p-2 font-normal">${esc(reflection?.reflection_text || '')}</textarea></label><label class="text-xs font-bold text-gray-500">ปัญหา/แนวทางแก้ไข<textarea id="lp-doc-issues" rows="4" class="mt-1 w-full border rounded-xl p-2 font-normal">${esc(reflection?.issues_solutions || '')}</textarea></label><label class="text-xs font-bold text-gray-500">ข้อเสนอแนะ<textarea id="lp-doc-suggestions" rows="4" class="mt-1 w-full border rounded-xl p-2 font-normal">${esc(reflection?.suggestions || '')}</textarea></label></div>
+      <div class="grid sm:grid-cols-3 gap-3 mt-4">${reflectionNoteFieldHTML('result','ผลการจัดการเรียนรู้',reflection?.reflection_text)}${reflectionNoteFieldHTML('issues','ปัญหา/แนวทางแก้ไข',reflection?.issues_solutions)}${reflectionNoteFieldHTML('suggestions','ข้อเสนอแนะ',reflection?.suggestions)}</div>
       <div class="grid grid-cols-2 gap-2 mt-4"><button id="lp-doc-save" class="py-3 rounded-xl bg-emerald-600 text-white text-xs font-bold">💾 บันทึกทั้งหมด</button><button id="lp-doc-print" class="py-3 rounded-xl bg-indigo-600 text-white text-xs font-bold">🖨️ บันทึกแล้วพิมพ์</button></div>
     </div>`
     const pads = Object.fromEntries([...m.querySelectorAll('[data-sign-role]')].map(box => [box.dataset.signRole, bindPad(box)]))
+    const notePads = Object.fromEntries([...m.querySelectorAll('[data-reflection-note]')].map(box => [box.dataset.reflectionNote, bindReflectionNote(box)]))
     m.querySelector('[data-close]').addEventListener('click',()=>m.remove())
     m.querySelector('#lp-doc-week').addEventListener('change',e=>{weekNo=asInt(e.target.value,plan.week_start);render()})
 
@@ -760,7 +872,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
       }
       const saved = await upsertLessonPlanReflection({
         lesson_plan_id:plan.id,class_id:classId,teacher_id:teacher.id,week_no:weekNo,
-        reflection_text:m.querySelector('#lp-doc-result').value.trim()||null,issues_solutions:m.querySelector('#lp-doc-issues').value.trim()||null,suggestions:m.querySelector('#lp-doc-suggestions').value.trim()||null,
+        reflection_text:notePads.result.value(),issues_solutions:notePads.issues.value(),suggestions:notePads.suggestions.value(),
         class_head_name:pads['class-head'].name()||pads['class-head'].savedName()||null,class_head_signature_path:nextPaths['class-head']||null,class_head_signed_at:nextPaths['class-head']?new Date().toISOString():null,
         teacher_name:pads.teacher.name()||pads.teacher.savedName()||null,teacher_signature_path:nextPaths.teacher||null,teacher_signed_at:nextPaths.teacher?new Date().toISOString():null,
         dept_head_name:pads['dept-head'].name()||pads['dept-head'].savedName()||null,dept_head_signature_path:nextPaths['dept-head']||null,dept_head_signed_at:nextPaths['dept-head']?new Date().toISOString():null,
