@@ -967,11 +967,14 @@ export async function renderSmartClassroom(teacher, classId) {
   const _syllabusHTML = () => {
     if (!syllabusItems.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่ได้กำหนดหัวข้อการสอน — กด "➕ เพิ่มหัวข้อ" เพื่อเริ่มวางกำหนดการสอน</p>`
     return `<div class="max-h-72 lg:max-h-[28rem] overflow-y-auto space-y-2 pr-1">${syllabusItems.map(it => `
-      <button class="sc-syllabus-row w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl border transition ${curWeek >= it.week_start && curWeek <= it.week_end ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100 bg-gray-50 hover:border-indigo-200'}" data-sylid="${it.id}">
-        <span class="text-[10px] font-bold text-gray-500 flex-shrink-0 w-16">สัปดาห์ ${it.week_start}${it.week_end !== it.week_start ? `-${it.week_end}` : ''}</span>
-        <span class="text-xs font-semibold text-gray-700 truncate flex-1">${_htmlEsc(it.topic)}</span>
-        ${syllabusWeekType(it) !== 'teaching' ? `<span class="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-lg flex-shrink-0">${_htmlEsc(syllabusTypeLabels[syllabusWeekType(it)] ?? 'กำหนดพิเศษ')}</span>` : ''}
-      </button>`).join('')}</div>`
+      <div class="flex items-center gap-2">
+        <button class="sc-syllabus-row min-w-0 flex-1 text-left flex items-center gap-2 px-3 py-2 rounded-xl border transition ${curWeek >= it.week_start && curWeek <= it.week_end ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100 bg-gray-50 hover:border-indigo-200'}" data-sylid="${it.id}">
+          <span class="text-[10px] font-bold text-gray-500 flex-shrink-0 w-16">สัปดาห์ ${it.week_start}${it.week_end !== it.week_start ? `-${it.week_end}` : ''}</span>
+          <span class="text-xs font-semibold text-gray-700 truncate flex-1">${_htmlEsc(it.topic)}</span>
+          ${syllabusWeekType(it) !== 'teaching' ? `<span class="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-lg flex-shrink-0">${_htmlEsc(syllabusTypeLabels[syllabusWeekType(it)] ?? 'กำหนดพิเศษ')}</span>` : ''}
+        </button>
+        <button type="button" class="sc-syllabus-delete shrink-0 rounded-lg border border-red-200 bg-white px-2.5 py-2 text-[10px] font-bold text-red-600" data-sylid="${it.id}" aria-label="ลบกำหนดการสัปดาห์ ${it.week_start}">ลบ</button>
+      </div>`).join('')}</div>`
   }
 
   // ── แผนการจัดการเรียนรู้ (ผูกกับรายวิชา ยืดหยุ่นจำนวนแผน) ────────────────────
@@ -984,6 +987,7 @@ export async function renderSmartClassroom(teacher, classId) {
           <p class="text-[10px] text-gray-400">สัปดาห์ ${p.week_start}${p.week_end !== p.week_start ? `-${p.week_end}` : ''}</p>
         </button>
         <button class="sc-plan-reflect text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 flex-shrink-0" data-planid="${p.id}">✍️ ลงนาม/พิมพ์</button>
+        <button type="button" class="sc-plan-delete text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-red-200 text-red-600 flex-shrink-0" data-planid="${p.id}" aria-label="ลบแผน ${_htmlEsc(p.title)}">ลบ</button>
       </div>`).join('')}</div>`
   }
 
@@ -1873,6 +1877,20 @@ export async function renderSmartClassroom(teacher, classId) {
       semesterStart: cfg.semester_start, semesterEnd: cfg.semester_end, scheduledDays: courseScheduledDays, onSaved: () => _reload(),
     }))
     document.getElementById('sc-syllabus-list')?.addEventListener('click', e => {
+      const deleteButton = e.target.closest('.sc-syllabus-delete')
+      if (deleteButton) {
+        const it = syllabusItems.find(x => x.id === parseInt(deleteButton.dataset.sylid, 10))
+        if (!it || !confirm(`ลบกำหนดการสอนสัปดาห์ ${it.week_start}${it.week_end !== it.week_start ? `–${it.week_end}` : ''} เรื่อง "${it.topic}"?`)) return
+        deleteButton.disabled = true
+        deleteSyllabusItem(it.id).then(() => {
+          showToast('ลบกำหนดการสอนแล้ว', 'success')
+          _reload()
+        }).catch(err => {
+          deleteButton.disabled = false
+          showToast('ลบไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+        })
+        return
+      }
       const row = e.target.closest('.sc-syllabus-row')
       if (!row) return
       const it = syllabusItems.find(x => x.id === parseInt(row.dataset.sylid, 10))
@@ -1884,6 +1902,20 @@ export async function renderSmartClassroom(teacher, classId) {
       semesterStart: cfg.semester_start, semesterEnd: cfg.semester_end, scheduledDays: courseScheduledDays, onSaved: () => _reload(),
     }))
     document.getElementById('sc-plan-list')?.addEventListener('click', e => {
+      const deleteButton = e.target.closest('.sc-plan-delete')
+      if (deleteButton) {
+        const p = lessonPlans.find(x => x.id === parseInt(deleteButton.dataset.planid, 10))
+        if (!p || !confirm(`ลบแผน "${p.title}"? บันทึกหลังสอนและลายเซ็นที่ผูกกับแผนนี้จะถูกลบด้วย`)) return
+        deleteButton.disabled = true
+        deleteLessonPlan(p.id).then(() => {
+          showToast('ลบแผนแล้ว', 'success')
+          _reload()
+        }).catch(err => {
+          deleteButton.disabled = false
+          showToast('ลบไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+        })
+        return
+      }
       const reflectBtn = e.target.closest('.sc-plan-reflect')
       const row = e.target.closest('.sc-plan-row')
       if (reflectBtn) {

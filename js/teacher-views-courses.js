@@ -6,7 +6,7 @@ import {
   getTeacherPackageAccess, getSystemConfig, getRoomsByGrade, getSubjectCatalog,
   getMySchedule, createSubject,
   getUniqueRooms, getUniqueReligionRooms, getHomeroomTeachers, getSubjectCoTeachers,
-  getCourseSyllabus, getLessonPlans, updateSyllabusItem,
+  getCourseSyllabus, getLessonPlans, updateSyllabusItem, deleteSyllabusItem, deleteLessonPlan,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { uploadTeacherPhoto } from './storage.js'
@@ -474,7 +474,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
         <td class="px-3 py-3 text-xs min-w-48"><p class="font-bold text-gray-800">${_htmlEsc(item.topic)}</p>${unitTitle ? `<p class="text-[11px] text-blue-700 mt-1">${_htmlEsc(unitTitle)}</p>` : ''}</td>
         <td class="px-3 py-3 text-xs min-w-36 whitespace-pre-wrap">${_htmlEsc(item.teaching_methods ?? '—')}</td>
         <td class="px-3 py-3 text-xs min-w-28 whitespace-pre-wrap">${_htmlEsc(item.notes ?? '—')}</td>
-        <td class="px-2 py-2"><button type="button" data-schedule-action="edit" data-schedule-id="${_htmlEsc(item.id)}" class="rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-blue-700">แก้ไข</button></td>
+        <td class="px-2 py-2"><div class="flex flex-col gap-1"><button type="button" data-schedule-action="edit" data-schedule-id="${_htmlEsc(item.id)}" class="rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-blue-700">แก้ไข</button><button type="button" data-schedule-action="delete" data-schedule-id="${_htmlEsc(item.id)}" class="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-red-600">ลบ</button></div></td>
       </tr>`
     }).join('') : ''
     const documentClassOptions = allowedClasses.map(c => `<option value="${c.id}">${_htmlEsc(c.class_name ?? `ห้อง ${c.id}`)}</option>`).join('')
@@ -490,7 +490,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
           </div>
           ${aiAllowed ? '' : '<p class="mt-2 text-[11px] text-amber-700">ต้องมีสิทธิ์ใช้ Smart Classroom อย่างน้อยหนึ่งห้องในรายวิชานี้ก่อน</p>'}
           ${semesterStart ? `<p class="mt-3 text-[11px] text-blue-700">ช่วงวันที่คำนวณจากวันเปิดภาคเรียนที่ตั้งค่าไว้: ${formatScheduleDate(semesterStart)} · สัปดาห์ที่ 1 เริ่มวันนี้</p>` : '<p class="mt-3 text-[11px] text-amber-700">ยังไม่ได้ตั้งค่าวันเปิดภาคเรียน ระบบจะแสดงวันที่จากกำหนดการเดิมจนกว่าจะตั้งค่าวันเริ่มภาคเรียน</p>'}
-          ${syllabusItems.length ? `<div class="mt-4 max-h-[68vh] overflow-auto rounded-xl border border-blue-100 bg-white"><table class="w-full min-w-[780px] table-fixed text-left"><colgroup><col><col class="w-[138px]"><col><col><col><col class="w-[56px]"></colgroup><thead class="sticky top-0 bg-blue-50 text-[10px] font-extrabold text-blue-900"><tr><th class="px-3 py-2">สัปดาห์</th><th class="w-[138px] px-3 py-2 text-center">วัน/เดือน</th><th class="px-3 py-2">เนื้อหา</th><th class="px-3 py-2">รูปแบบการสอน</th><th class="px-3 py-2">หมายเหตุ</th><th class="w-[56px] px-2 py-2">แก้ไข</th></tr></thead><tbody id="cw-schedule-rows">${renderScheduleRows()}</tbody></table></div>` : `<div class="mt-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/50 py-8 text-center text-xs text-blue-500">ยังไม่มีกำหนดการสอนของคอร์สนี้</div>`}
+          ${syllabusItems.length ? `<div class="mt-4 max-h-[68vh] overflow-auto rounded-xl border border-blue-100 bg-white"><table class="w-full min-w-[780px] table-fixed text-left"><colgroup><col><col class="w-[138px]"><col><col><col><col class="w-[76px]"></colgroup><thead class="sticky top-0 bg-blue-50 text-[10px] font-extrabold text-blue-900"><tr><th class="px-3 py-2">สัปดาห์</th><th class="w-[138px] px-3 py-2 text-center">วัน/เดือน</th><th class="px-3 py-2">เนื้อหา</th><th class="px-3 py-2">รูปแบบการสอน</th><th class="px-3 py-2">หมายเหตุ</th><th class="w-[76px] px-2 py-2">จัดการ</th></tr></thead><tbody id="cw-schedule-rows">${renderScheduleRows()}</tbody></table></div>` : `<div class="mt-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/50 py-8 text-center text-xs text-blue-500">ยังไม่มีกำหนดการสอนของคอร์สนี้</div>`}
     </section>
 
     <section data-course-panel="plans" class="hidden rounded-2xl border border-violet-100 bg-violet-50/60 p-4 sm:p-5">
@@ -499,7 +499,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
             <button id="cw-ai-plan" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-violet-700 hover:bg-violet-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>✨ สร้างแผนด้วย AI</button>
           </div>
           ${aiAllowed ? '' : '<p class="mt-2 text-[11px] text-amber-700">ต้องมีสิทธิ์ใช้ Smart Classroom อย่างน้อยหนึ่งห้องในรายวิชานี้ก่อน</p>'}
-          ${lessonPlans.length ? `<div class="mt-4 space-y-2">${lessonPlans.map(plan => `<button class="cw-plan-row w-full text-left rounded-xl border border-violet-100 bg-white px-3 py-3 hover:border-violet-300 transition" data-plan-id="${plan.id}"><p class="text-sm font-bold text-gray-800">${_htmlEsc(plan.title)}</p><p class="text-[11px] text-violet-600 mt-0.5">สัปดาห์ ${plan.week_start}${plan.week_end !== plan.week_start ? `–${plan.week_end}` : ''} · กดเพื่อเปิดเอกสาร/บันทึกหลังสอน</p></button>`).join('')}</div>` : `<div class="mt-4 rounded-xl border border-dashed border-violet-200 py-8 text-center text-xs text-violet-400">ยังไม่มีแผนการสอน</div>`}
+          ${lessonPlans.length ? `<div class="mt-4 space-y-2">${lessonPlans.map(plan => `<div class="flex items-center gap-2 rounded-xl border border-violet-100 bg-white px-3 py-3"><button class="cw-plan-row min-w-0 flex-1 text-left hover:text-violet-800 transition" data-plan-id="${plan.id}"><p class="text-sm font-bold text-gray-800">${_htmlEsc(plan.title)}</p><p class="text-[11px] text-violet-600 mt-0.5">สัปดาห์ ${plan.week_start}${plan.week_end !== plan.week_start ? `–${plan.week_end}` : ''} · กดเพื่อเปิดเอกสาร/บันทึกหลังสอน</p></button><button type="button" class="cw-plan-delete shrink-0 rounded-lg border border-red-200 bg-white px-3 py-2 text-[10px] font-bold text-red-600" data-plan-id="${plan.id}">ลบ</button></div>`).join('')}</div>` : `<div class="mt-4 rounded-xl border border-dashed border-violet-200 py-8 text-center text-xs text-violet-400">ยังไม่มีแผนการสอน</div>`}
     </section>
     ${lessonPlans.length && allowedClasses.length ? `<div id="cw-document-picker" class="hidden fixed inset-0 z-[99] bg-black/50 items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5"><h3 class="font-extrabold text-gray-800">เลือกห้อง Smart Classroom</h3><p class="text-xs text-gray-400 mt-1">แผนใช้ร่วมกันในรายวิชา แต่เปิดบันทึกหลังสอนเฉพาะห้องที่มีสิทธิ์</p><select id="cw-document-class" class="mt-4 w-full min-h-[44px] border rounded-xl bg-white px-3 text-sm">${documentClassOptions}</select><div class="grid grid-cols-2 gap-2 mt-4"><button id="cw-document-cancel" class="min-h-[42px] rounded-xl border text-gray-500 text-xs font-bold">ยกเลิก</button><button id="cw-document-open" class="min-h-[42px] rounded-xl bg-violet-700 text-white text-xs font-bold">เปิดเอกสาร</button></div></div></div>` : ''}`
 
@@ -518,6 +518,19 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       const rowId = button.dataset.scheduleId
       const item = syllabusItems.find(entry => String(entry.id) === String(rowId))
       if (!item) return
+      if (button.dataset.scheduleAction === 'delete') {
+        if (!confirm(`ลบกำหนดการสอนสัปดาห์ ${item.week_start}${item.week_end !== item.week_start ? `–${item.week_end}` : ''} เรื่อง "${item.topic}"?`)) return
+        button.disabled = true
+        try {
+          await deleteSyllabusItem(item.id)
+          showToast('ลบกำหนดการสอนแล้ว', 'success')
+          reopen()
+        } catch (error) {
+          button.disabled = false
+          showToast(`ลบไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error')
+        }
+        return
+      }
       if (button.dataset.scheduleAction === 'edit') {
         editingScheduleId = rowId
         scheduleRowsBody.innerHTML = renderScheduleRows()
@@ -588,6 +601,20 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       selectedPlan = lessonPlans.find(p => p.id === parseInt(btn.dataset.planId, 10)) ?? null
       if (!selectedPlan || !allowedClasses.length || !picker) return
       picker.classList.remove('hidden'); picker.classList.add('flex')
+    }))
+    body.querySelectorAll('.cw-plan-delete').forEach(button => button.addEventListener('click', async () => {
+      const plan = lessonPlans.find(item => item.id === parseInt(button.dataset.planId, 10))
+      if (!plan) return
+      if (!confirm(`ลบแผน "${plan.title}"? บันทึกหลังสอนและลายเซ็นที่ผูกกับแผนนี้จะถูกลบด้วย`)) return
+      button.disabled = true
+      try {
+        await deleteLessonPlan(plan.id)
+        showToast('ลบแผนการสอนแล้ว', 'success')
+        reopen()
+      } catch (error) {
+        button.disabled = false
+        showToast(`ลบไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error')
+      }
     }))
     body.querySelector('#cw-document-cancel')?.addEventListener('click', hidePicker)
     picker?.addEventListener('click', e => { if (e.target === picker) hidePicker() })
