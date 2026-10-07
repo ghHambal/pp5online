@@ -6,7 +6,7 @@ import {
   getTeacherPackageAccess, getSystemConfig, getRoomsByGrade, getSubjectCatalog,
   getMySchedule, createSubject,
   getUniqueRooms, getUniqueReligionRooms, getHomeroomTeachers, getSubjectCoTeachers,
-  getCourseSyllabus, getLessonPlans,
+  getCourseSyllabus, getLessonPlans, updateSyllabusItem,
 } from './api.js'
 import { supabase } from './supabase.js'
 import { uploadTeacherPhoto } from './storage.js'
@@ -300,10 +300,19 @@ export async function renderMyCourses(teacher) {
 
 }
 
-function openCourseSchedulePreview({ subject, teacher, syllabusItems, semester, academicYear, semesterStart, semesterEnd }) {
+function openCourseSchedulePreview({ subject, teacher, syllabusItems, semester, academicYear, semesterStart, semesterEnd, showNotes = true }) {
   const rows = [...(syllabusItems ?? [])].sort((a, b) => Number(a.week_start) - Number(b.week_start))
   const esc = _htmlEsc
-  const formatDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+  const dateParts = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('th-TH-u-nu-latn', { day: 'numeric', month: 'short', year: '2-digit' }).split(' ') : []
+  const formatShortRange = (startValue, endValue) => {
+    const start = dateParts(startValue), end = dateParts(endValue)
+    if (!start.length || !end.length) return '—'
+    const [startDay, startMonth, startYear] = start
+    const [endDay, endMonth, endYear] = end
+    if (startYear === endYear && startMonth === endMonth) return `${startDay} - ${endDay} ${endMonth} ${endYear}`
+    if (startYear === endYear) return `${startDay} ${startMonth} - ${endDay} ${endMonth} ${endYear}`
+    return `${startDay} ${startMonth} ${startYear} - ${endDay} ${endMonth} ${endYear}`
+  }
   const weekDates = weekNo => {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(semesterStart ?? ''))) return null
     const [year, month, day] = semesterStart.split('-').map(Number)
@@ -313,10 +322,12 @@ function openCourseSchedulePreview({ subject, teacher, syllabusItems, semester, 
     const iso = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
     return { start: iso(start), end: iso(end) }
   }
-  const dateLabel = item => {
-    const dates = weekDates(Number(item.week_start))
-    if (dates) return `${formatDate(dates.start)} – ${formatDate(dates.end)}`
-    return item.date_start || item.date_end ? `${formatDate(item.date_start)} – ${formatDate(item.date_end)}` : '—'
+  const dateLabel = (item, weekNo = Number(item.week_start)) => {
+    const dates = weekDates(weekNo)
+    const isSingleWeekRow = Number(item.week_start) === weekNo && Number(item.week_end ?? item.week_start) === weekNo
+    const start = (isSingleWeekRow ? item.date_start : null) || dates?.start
+    const end = (isSingleWeekRow ? item.date_end : null) || dates?.end
+    return formatShortRange(start, end)
   }
   const periodWeeks = semesterStart && semesterEnd
     ? Math.max(1, Math.min(30, Math.ceil((new Date(`${semesterEnd}T00:00:00`) - new Date(`${semesterStart}T00:00:00`) + 86400000) / 604800000)))
@@ -325,15 +336,19 @@ function openCourseSchedulePreview({ subject, teacher, syllabusItems, semester, 
     const weekNo = index + 1
     const item = rows.find(row => weekNo >= Number(row.week_start) && weekNo <= Number(row.week_end))
     const type = item?.source_json?.week_type
-    return `<tr><td class="week">${weekNo}</td><td>${esc(item ? dateLabel({ ...item, week_start: weekNo }) : (weekDates(weekNo) ? `${formatDate(weekDates(weekNo).start)} – ${formatDate(weekDates(weekNo).end)}` : '—'))}</td><td>${esc(item?.topic || (type === 'midterm_exam' ? 'สอบกลางภาค' : type === 'final_exam' ? 'สอบปลายภาค' : type === 'break' ? 'หยุด/ไม่มีการเรียน' : ''))}</td><td>${esc(item?.teaching_methods || (type?.includes('exam') ? 'ทดสอบ/ประเมินผล' : ''))}</td><td>${esc(item?.notes || '')}</td></tr>`
+    const weekDate = weekDates(weekNo)
+    const dateText = item ? dateLabel(item, weekNo) : formatShortRange(weekDate?.start, weekDate?.end)
+    return `<tr><td class="week">${weekNo}</td><td>${esc(dateText)}</td><td>${esc(item?.topic || (type === 'midterm_exam' ? 'สอบกลางภาค' : type === 'final_exam' ? 'สอบปลายภาค' : type === 'break' ? 'หยุด/ไม่มีการเรียน' : ''))}</td><td>${esc(item?.teaching_methods || (type?.includes('exam') ? 'ทดสอบ/ประเมินผล' : ''))}</td>${showNotes ? `<td>${esc(item?.notes || '')}</td>` : ''}</tr>`
   }).join('')
   const meta = subject ?? {}
   const periodsPerWeek = meta.periods_per_week ?? (Number(meta.credit) > 0 ? Number(meta.credit) * 2 : null)
   const w = window.open('', '_blank')
   if (!w) { showToast('เบราว์เซอร์บล็อกหน้าต่างตัวอย่าง กรุณาอนุญาต Pop-up', 'warning'); return }
+  const columnCount = showNotes ? 5 : 4
+  const logoUrl = new URL('pp5-form-logo.png', window.location.href).href
   w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>กำหนดการสอน ${esc(meta.subject_name)}</title><style>
-    @page{size:A4;margin:13mm}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:11pt;line-height:1.5}.toolbar{position:sticky;top:0;padding:10px;background:#f3f4f6;text-align:center}.toolbar button{border:0;border-radius:8px;background:#1d4ed8;color:white;padding:10px 20px;font-weight:bold;font-size:14px;cursor:pointer}.page{width:184mm;min-height:271mm;margin:0 auto;padding:8mm 5mm;background:white}.cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;page-break-after:always}.cover h1{font-size:25pt;margin:0 0 24mm}.cover .course{font-size:16pt;font-weight:bold;margin:0 0 5mm}.cover p{font-size:14pt;margin:2mm 0}.cover .signatures{width:100%;margin-top:24mm;text-align:left;font-size:13pt}.cover .signatures p{margin:11mm 0}.table{width:100%;border-collapse:collapse;margin-top:4mm;font-size:9.5pt}.table th,.table td{border:1px solid #555;padding:2mm 2.2mm;vertical-align:top}.table th{background:#e8eefb;text-align:center}.table .week{text-align:center;width:12mm;white-space:nowrap}.table td:nth-child(2){width:42mm}.table td:nth-child(3){width:63mm}.table td:nth-child(4){width:42mm}.table tr{break-inside:avoid;page-break-inside:avoid}.table thead{display:table-header-group}.table .doc-title th{border:0;background:white;font-size:18pt;padding:0;text-align:center}.table .doc-meta th{border:0;background:white;font-size:10pt;font-weight:normal;padding:0;text-align:center}@media print{.toolbar{display:none}.page{margin:0;width:auto;min-height:0;padding:0}.schedule{page-break-before:always}}
-  </style></head><body><div class="toolbar"><button onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button></div><section class="page cover"><h1>กำหนดการสอน</h1><p class="course">รายวิชา ${esc(meta.subject_name || '................................')} (${esc(meta.subject_code || '.............')})</p><p>ครูผู้สอน ${esc(teacher?.full_name || '................................')}</p><p>ชั้น ${esc(meta.grade_level || '....................')}</p><p>จำนวน ${esc(periodsPerWeek || '........')} คาบ/สัปดาห์</p><p>ภาคเรียนที่ ${esc(semester || '....')} ปีการศึกษา ${esc(academicYear || '........')}</p><div class="signatures"><p>ลงชื่อ............................................................................ครูผู้สอน</p><p>ลงชื่อ.......................................................................หัวหน้ากลุ่มสาระการเรียนรู้</p><p>ลงชื่อ......................................................................ผู้อำนวยการโรงเรียน</p></div></section><section class="page schedule"><table class="table"><thead><tr class="doc-title"><th colspan="5">กำหนดการสอน</th></tr><tr class="doc-meta"><th colspan="5">รายวิชา ${esc(meta.subject_name || '—')} รหัส ${esc(meta.subject_code || '—')} ${esc(meta.grade_level || '')} · คุณครู ${esc(teacher?.full_name || '—')}</th></tr><tr class="doc-meta"><th colspan="5">ภาคเรียนที่ ${esc(semester || '—')} ปีการศึกษา ${esc(academicYear || '—')}</th></tr><tr><th>สัปดาห์ที่</th><th>วัน/เดือน/ปี</th><th>เนื้อหา</th><th>รูปแบบการสอน</th><th>หมายเหตุ</th></tr></thead><tbody>${printableRows}</tbody></table></section></body></html>`)
+    @page{size:A4;margin:13mm}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:11pt;line-height:1.5}.toolbar{position:sticky;top:0;padding:10px;background:#f3f4f6;text-align:center}.toolbar button{border:0;border-radius:8px;background:#1d4ed8;color:white;padding:10px 20px;font-weight:bold;font-size:14px;cursor:pointer}.page{width:184mm;min-height:271mm;margin:0 auto;padding:8mm 5mm;background:white}.cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;page-break-after:always}.cover-logo{width:32mm;height:32mm;object-fit:contain;filter:grayscale(1);mix-blend-mode:multiply;margin-bottom:8mm}.cover h1{font-size:25pt;margin:0 0 18mm}.cover .course{font-size:16pt;font-weight:bold;margin:0 0 5mm}.cover p{font-size:14pt;margin:2mm 0}.cover .signatures{width:100%;margin-top:20mm;text-align:left;font-size:13pt}.cover .signatures p{margin:11mm 0}.table{width:100%;border-collapse:collapse;margin-top:4mm;font-size:9.5pt}.table th,.table td{border:1px solid #555;padding:2mm 2.2mm;vertical-align:top}.table th{background:#e8eefb;text-align:center}.table .week{text-align:center;width:12mm;white-space:nowrap}.table td:nth-child(2){width:42mm}.table td:nth-child(3){width:63mm}.table td:nth-child(4){width:42mm}.table tr{break-inside:avoid;page-break-inside:avoid}.table thead{display:table-header-group}.table .doc-title th{border:0;background:white;font-size:18pt;padding:0;text-align:center}.table .doc-meta th{border:0;background:white;font-size:10pt;font-weight:normal;padding:0;text-align:center}@media print{.toolbar{display:none}.page{margin:0;width:auto;min-height:0;padding:0}.schedule{page-break-before:always}}
+  </style></head><body><div class="toolbar"><button onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button></div><section class="page cover"><img class="cover-logo" src="${esc(logoUrl)}" alt="ตราโรงเรียน"><h1>กำหนดการสอน</h1><p class="course">รายวิชา ${esc(meta.subject_name || '................................')} (${esc(meta.subject_code || '.............')})</p><p>ครูผู้สอน ${esc(teacher?.full_name || '................................')}</p><p>ชั้น ${esc(meta.grade_level || '....................')}</p><p>จำนวน ${esc(periodsPerWeek || '........')} คาบ/สัปดาห์</p><p>ภาคเรียนที่ ${esc(semester || '....')} ปีการศึกษา ${esc(academicYear || '........')}</p><div class="signatures"><p>ลงชื่อ............................................................................ครูผู้สอน</p><p>ลงชื่อ.......................................................................หัวหน้ากลุ่มสาระการเรียนรู้</p><p>ลงชื่อ......................................................................ผู้อำนวยการโรงเรียน</p></div></section><section class="page schedule"><table class="table"><thead><tr class="doc-title"><th colspan="${columnCount}">กำหนดการสอน</th></tr><tr class="doc-meta"><th colspan="${columnCount}">รายวิชา ${esc(meta.subject_name || '—')} รหัส ${esc(meta.subject_code || '—')} ${esc(meta.grade_level || '')} · คุณครู ${esc(teacher?.full_name || '—')}</th></tr><tr class="doc-meta"><th colspan="${columnCount}">ภาคเรียนที่ ${esc(semester || '—')} ปีการศึกษา ${esc(academicYear || '—')}</th></tr><tr><th>สัปดาห์ที่</th><th>วัน/เดือน/ปี</th><th>เนื้อหา</th><th>รูปแบบการสอน</th>${showNotes ? '<th>หมายเหตุ</th>' : ''}</tr></thead><tbody>${printableRows}</tbody></table></section></body></html>`)
   w.document.close()
 }
 
@@ -392,17 +407,43 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       const toIso = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
       return { start: toIso(start), end: toIso(end) }
     }
-    const formatScheduleDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '—'
+    const scheduleDateParts = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('th-TH-u-nu-latn', { day: 'numeric', month: 'short', year: '2-digit' }).split(' ') : []
+    const formatScheduleDate = value => {
+      const parts = scheduleDateParts(value)
+      return parts.length ? `${parts[0]} ${parts[1]} ${parts[2]}` : '—'
+    }
+    const formatScheduleRange = (startValue, endValue) => {
+      const start = scheduleDateParts(startValue), end = scheduleDateParts(endValue)
+      if (!start.length || !end.length) return '—'
+      if (start[1] === end[1] && start[2] === end[2]) return `${start[0]} - ${end[0]} ${end[1]} ${end[2]}`
+      if (start[2] === end[2]) return `${start[0]} ${start[1]} - ${end[0]} ${end[1]} ${end[2]}`
+      return `${start[0]} ${start[1]} ${start[2]} - ${end[0]} ${end[1]} ${end[2]}`
+    }
     const scheduleTypeLabel = { teaching: 'เรียน', midterm_exam: 'สอบกลางภาค', final_exam: 'สอบปลายภาค', break: 'หยุด/ไม่มีการเรียน' }
-    const scheduleRows = syllabusItems.length ? syllabusItems.map(item => {
+    let editingScheduleId = null
+    let showScheduleNotes = true
+    try { showScheduleNotes = localStorage.getItem(`pp5-schedule-show-notes-${courseId}`) !== 'false' } catch {}
+    const renderScheduleRows = () => syllabusItems.length ? syllabusItems.map(item => {
       const weekType = item.source_json?.week_type ?? 'teaching'
       const unitTitle = item.unit_title ?? item.source_json?.unit_title
-      const weekLabel = `สัปดาห์ ${item.week_start}${item.week_end !== item.week_start ? `–${item.week_end}` : ''}`
       const configuredDates = weekDateRange(item.week_start)
       const configuredEndDate = weekDateRange(item.week_end ?? item.week_start)
-      const dateLabel = configuredDates
-        ? `${formatScheduleDate(configuredDates.start)} – ${formatScheduleDate(configuredEndDate.end)}`
-        : item.date_start || item.date_end ? `${formatScheduleDate(item.date_start)} – ${formatScheduleDate(item.date_end)}` : '—'
+      const dateStart = item.date_start || configuredDates?.start || ''
+      const dateEnd = item.date_end || configuredEndDate?.end || ''
+      if (String(item.id) === String(editingScheduleId)) {
+        const input = (field, value, type = 'text', cls = '') => `<input data-schedule-field="${field}" type="${type}" value="${_htmlEsc(value ?? '')}" class="w-full min-w-24 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-xs ${cls}" />`
+        const textarea = (field, value) => `<textarea data-schedule-field="${field}" rows="2" class="w-full min-w-32 rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-xs">${_htmlEsc(value ?? '')}</textarea>`
+        return `<tr data-schedule-row="${_htmlEsc(item.id)}" class="border-t border-blue-100 align-top bg-blue-50/50">
+          <td class="px-2 py-2 text-xs"><div class="flex items-center gap-1">${input('week_start', item.week_start, 'number', 'max-w-20')}<span>–</span>${input('week_end', item.week_end ?? item.week_start, 'number', 'max-w-20')}</div><select data-schedule-field="week_type" class="mt-2 w-full rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-xs">${Object.entries(scheduleTypeLabel).map(([key, label]) => `<option value="${key}" ${key === weekType ? 'selected' : ''}>${label}</option>`).join('')}</select></td>
+          <td class="px-2 py-2"><div class="space-y-1">${input('date_start', dateStart, 'date')}${input('date_end', dateEnd, 'date')}</div></td>
+          <td class="px-2 py-2 space-y-1">${input('topic', item.topic, 'text', 'min-w-48')}<label class="block text-[10px] text-gray-500">หน่วยการเรียนรู้${input('unit_title', unitTitle, 'text')}</label></td>
+          <td class="px-2 py-2">${textarea('teaching_methods', item.teaching_methods)}</td>
+          <td class="px-2 py-2">${textarea('notes', item.notes)}</td>
+          <td class="px-2 py-2"><div class="flex flex-col gap-1"><button type="button" data-schedule-action="save" data-schedule-id="${_htmlEsc(item.id)}" class="rounded-lg bg-emerald-600 px-2 py-1.5 text-[10px] font-bold text-white">บันทึก</button><button type="button" data-schedule-action="cancel" class="rounded-lg border bg-white px-2 py-1.5 text-[10px] font-bold text-gray-600">ยกเลิก</button></div></td>
+        </tr>`
+      }
+      const weekLabel = `สัปดาห์ ${item.week_start}${item.week_end !== item.week_start ? `–${item.week_end}` : ''}`
+      const dateLabel = formatScheduleRange(dateStart, dateEnd)
       const typeLabel = scheduleTypeLabel[weekType] ?? 'เรียน'
       const typeClass = weekType === 'teaching' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-800'
       return `<tr class="border-t border-blue-100 align-top">
@@ -411,6 +452,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
         <td class="px-3 py-3 text-xs min-w-48"><p class="font-bold text-gray-800">${_htmlEsc(item.topic)}</p>${unitTitle ? `<p class="text-[11px] text-blue-700 mt-1">${_htmlEsc(unitTitle)}</p>` : ''}</td>
         <td class="px-3 py-3 text-xs min-w-36 whitespace-pre-wrap">${_htmlEsc(item.teaching_methods ?? '—')}</td>
         <td class="px-3 py-3 text-xs min-w-28 whitespace-pre-wrap">${_htmlEsc(item.notes ?? '—')}</td>
+        <td class="px-2 py-2"><button type="button" data-schedule-action="edit" data-schedule-id="${_htmlEsc(item.id)}" class="rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-[10px] font-bold text-blue-700">แก้ไข</button></td>
       </tr>`
     }).join('') : ''
     const documentClassOptions = allowedClasses.map(c => `<option value="${c.id}">${_htmlEsc(c.class_name ?? `ห้อง ${c.id}`)}</option>`).join('')
@@ -422,11 +464,11 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     <section data-course-panel="schedule" class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:p-5">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
             <div><h3 class="font-extrabold text-blue-950">📘 กำหนดการสอนทั้งภาคเรียน</h3><p class="text-xs text-blue-700/70 mt-1">ภาพรวมรายสัปดาห์ของรายวิชา ใช้ร่วมกับ Smart Classroom ในห้องที่มีสิทธิ์</p></div>
-            <div class="flex flex-wrap gap-2"><button id="cw-schedule-preview" class="min-h-[44px] px-4 rounded-xl border border-blue-200 bg-white text-blue-800 text-xs font-bold">👁️ ตัวอย่างเอกสารทั้งหมด</button><button id="cw-ai-schedule" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-blue-700 hover:bg-blue-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>🤖 สร้างด้วย AI</button></div>
+            <div class="flex flex-wrap items-center gap-2"><label class="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-blue-100 bg-white px-3 text-xs text-blue-800"><input id="cw-schedule-show-notes" type="checkbox" class="h-4 w-4 accent-blue-700" ${showScheduleNotes ? 'checked' : ''}> แสดงหมายเหตุในเอกสาร</label><button id="cw-schedule-preview" class="min-h-[44px] px-4 rounded-xl border border-blue-200 bg-white text-blue-800 text-xs font-bold">👁️ ตัวอย่างเอกสารทั้งหมด</button><button id="cw-ai-schedule" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-blue-700 hover:bg-blue-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>🤖 สร้างด้วย AI</button></div>
           </div>
           ${aiAllowed ? '' : '<p class="mt-2 text-[11px] text-amber-700">ต้องมีสิทธิ์ใช้ Smart Classroom อย่างน้อยหนึ่งห้องในรายวิชานี้ก่อน</p>'}
           ${semesterStart ? `<p class="mt-3 text-[11px] text-blue-700">ช่วงวันที่คำนวณจากวันเปิดภาคเรียนที่ตั้งค่าไว้: ${formatScheduleDate(semesterStart)} · สัปดาห์ที่ 1 เริ่มวันนี้</p>` : '<p class="mt-3 text-[11px] text-amber-700">ยังไม่ได้ตั้งค่าวันเปิดภาคเรียน ระบบจะแสดงวันที่จากกำหนดการเดิมจนกว่าจะตั้งค่าวันเริ่มภาคเรียน</p>'}
-          ${syllabusItems.length ? `<div class="mt-4 max-h-[68vh] overflow-auto rounded-xl border border-blue-100 bg-white"><table class="w-full min-w-[680px] text-left"><thead class="sticky top-0 bg-blue-50 text-[10px] font-extrabold text-blue-900"><tr><th class="px-3 py-2">สัปดาห์</th><th class="px-3 py-2">วัน/เดือน</th><th class="px-3 py-2">เนื้อหา</th><th class="px-3 py-2">รูปแบบการสอน</th><th class="px-3 py-2">หมายเหตุ</th></tr></thead><tbody>${scheduleRows}</tbody></table></div>` : `<div class="mt-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/50 py-8 text-center text-xs text-blue-500">ยังไม่มีกำหนดการสอนของคอร์สนี้</div>`}
+          ${syllabusItems.length ? `<div class="mt-4 max-h-[68vh] overflow-auto rounded-xl border border-blue-100 bg-white"><table class="w-full min-w-[780px] text-left"><thead class="sticky top-0 bg-blue-50 text-[10px] font-extrabold text-blue-900"><tr><th class="px-3 py-2">สัปดาห์</th><th class="px-3 py-2">วัน/เดือน</th><th class="px-3 py-2">เนื้อหา</th><th class="px-3 py-2">รูปแบบการสอน</th><th class="px-3 py-2">หมายเหตุ</th><th class="px-2 py-2">แก้ไข</th></tr></thead><tbody id="cw-schedule-rows">${renderScheduleRows()}</tbody></table></div>` : `<div class="mt-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/50 py-8 text-center text-xs text-blue-500">ยังไม่มีกำหนดการสอนของคอร์สนี้</div>`}
     </section>
 
     <section data-course-panel="plans" class="hidden rounded-2xl border border-violet-100 bg-violet-50/60 p-4 sm:p-5">
@@ -447,9 +489,71 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       })
     }
     body.querySelectorAll('[data-course-tab]').forEach(button => button.addEventListener('click', () => selectCourseTab(button.dataset.courseTab)))
+    const scheduleRowsBody = body.querySelector('#cw-schedule-rows')
+    scheduleRowsBody?.addEventListener('click', async event => {
+      const button = event.target.closest('[data-schedule-action]')
+      if (!button) return
+      const rowId = button.dataset.scheduleId
+      const item = syllabusItems.find(entry => String(entry.id) === String(rowId))
+      if (!item) return
+      if (button.dataset.scheduleAction === 'edit') {
+        editingScheduleId = rowId
+        scheduleRowsBody.innerHTML = renderScheduleRows()
+        return
+      }
+      if (button.dataset.scheduleAction === 'cancel') {
+        editingScheduleId = null
+        scheduleRowsBody.innerHTML = renderScheduleRows()
+        return
+      }
+      if (button.dataset.scheduleAction !== 'save') return
+      const row = button.closest('[data-schedule-row]')
+      const field = name => row.querySelector(`[data-schedule-field="${name}"]`)?.value ?? ''
+      const weekStart = Number(field('week_start'))
+      const weekEnd = Number(field('week_end'))
+      const weekType = field('week_type')
+      const dateStart = field('date_start') || null
+      const dateEnd = field('date_end') || null
+      const topic = field('topic').trim()
+      if (!Number.isInteger(weekStart) || weekStart < 1 || !Number.isInteger(weekEnd) || weekEnd < weekStart) {
+        showToast('ช่วงสัปดาห์ไม่ถูกต้อง', 'warning'); return
+      }
+      if (!topic) { showToast('กรุณาระบุหัวข้อที่จะสอน', 'warning'); return }
+      if (!Object.hasOwn(scheduleTypeLabel, weekType)) { showToast('เลือกประเภทสัปดาห์ให้ถูกต้อง', 'warning'); return }
+      if (dateStart && dateEnd && dateEnd < dateStart) { showToast('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น', 'warning'); return }
+      const overlaps = syllabusItems.some(other => {
+        if (String(other.id) === String(item.id)) return false
+        const otherStart = Number(other.week_start), otherEnd = Number(other.week_end ?? other.week_start)
+        return weekStart <= otherEnd && weekEnd >= otherStart
+      })
+      if (overlaps) { showToast('ช่วงสัปดาห์นี้ซ้ำกับรายการอื่น กรุณาปรับเลขสัปดาห์', 'warning'); return }
+      const unitTitle = field('unit_title').trim()
+      const payload = {
+        course_id: courseId, week_start: weekStart, week_end: weekEnd,
+        date_start: dateStart, date_end: dateEnd, topic,
+        teaching_methods: field('teaching_methods').trim() || null,
+        notes: field('notes').trim() || null,
+        source_json: { ...(item.source_json ?? {}), week_start: weekStart, week_end: weekEnd, date_start: dateStart, date_end: dateEnd, week_type: weekType, unit_title: unitTitle },
+      }
+      button.disabled = true; button.textContent = 'กำลังบันทึก…'
+      try {
+        await updateSyllabusItem(item.id, payload)
+        Object.assign(item, payload, { unit_title: unitTitle || null })
+        editingScheduleId = null
+        scheduleRowsBody.innerHTML = renderScheduleRows()
+        showToast('บันทึกแถวกำหนดการแล้ว', 'success')
+      } catch (error) {
+        button.disabled = false; button.textContent = 'บันทึก'
+        showToast(`บันทึกไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error')
+      }
+    })
+    body.querySelector('#cw-schedule-show-notes')?.addEventListener('change', event => {
+      showScheduleNotes = event.currentTarget.checked
+      try { localStorage.setItem(`pp5-schedule-show-notes-${courseId}`, String(showScheduleNotes)) } catch {}
+    })
     body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', semesterStart, semesterEnd: termConfig.semester_end, onSaved: reopen }))
     body.querySelector('#cw-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'plan', semesterStart, semesterEnd: termConfig.semester_end, onSaved: reopen }))
-    body.querySelector('#cw-schedule-preview')?.addEventListener('click', () => openCourseSchedulePreview({ subject, teacher, syllabusItems, semester: termConfig.semester ?? subject.semester, academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year, semesterStart, semesterEnd: termConfig.semester_end }))
+    body.querySelector('#cw-schedule-preview')?.addEventListener('click', () => openCourseSchedulePreview({ subject, teacher, syllabusItems, semester: termConfig.semester ?? subject.semester, academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year, semesterStart, semesterEnd: termConfig.semester_end, showNotes: showScheduleNotes }))
     let selectedPlan = null
     const picker = body.querySelector('#cw-document-picker')
     const hidePicker = () => { if (picker) { picker.classList.add('hidden'); picker.classList.remove('flex') } }
