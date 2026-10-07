@@ -344,30 +344,47 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     const allowedClasses = courseClasses.filter(c => canUseSmartClassroomForClass(access.unlocked, teacher, c.id))
     const aiAllowed = access.unlocked || allowedClasses.length > 0
     const reopen = () => _openCourseWorkspace(teacher, subject, allClasses)
-    const scheduleRows = syllabusItems.length ? syllabusItems.map(item => `<div class="rounded-xl border border-blue-100 bg-white px-3 py-2.5 flex gap-3">
-      <span class="flex-shrink-0 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 text-[10px] font-bold h-fit">สัปดาห์ ${item.week_start}${item.week_end !== item.week_start ? `–${item.week_end}` : ''}</span>
-      <div class="min-w-0"><p class="text-sm font-bold text-gray-800">${_htmlEsc(item.topic)}</p>${item.unit_title ? `<p class="text-[11px] text-blue-600 mt-0.5">${_htmlEsc(item.unit_title)}</p>` : ''}</div>
-    </div>`).join('') : `<div class="rounded-xl border border-dashed border-blue-200 bg-blue-50/50 py-8 text-center text-xs text-blue-500">ยังไม่มีกำหนดการสอนของคอร์สนี้</div>`
-    const documentClassOptions = courseClasses.map(c => `<option value="${c.id}">${_htmlEsc(c.class_name ?? `ห้อง ${c.id}`)}</option>`).join('')
+    const formatScheduleDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '—'
+    const scheduleTypeLabel = { teaching: 'เรียน', midterm_exam: 'สอบกลางภาค', final_exam: 'สอบปลายภาค', break: 'หยุด/ไม่มีการเรียน' }
+    const scheduleRows = syllabusItems.length ? syllabusItems.map(item => {
+      const weekType = item.source_json?.week_type ?? 'teaching'
+      const unitTitle = item.unit_title ?? item.source_json?.unit_title
+      const weekLabel = `สัปดาห์ ${item.week_start}${item.week_end !== item.week_start ? `–${item.week_end}` : ''}`
+      const dateLabel = item.date_start || item.date_end
+        ? `${formatScheduleDate(item.date_start)} – ${formatScheduleDate(item.date_end)}`
+        : '—'
+      const typeLabel = scheduleTypeLabel[weekType] ?? 'เรียน'
+      const typeClass = weekType === 'teaching' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-800'
+      return `<tr class="border-t border-blue-100 align-top">
+        <td class="px-3 py-3 text-xs font-bold whitespace-nowrap">${_htmlEsc(weekLabel)}<span class="block mt-1 px-2 py-1 rounded-lg ${typeClass} text-[10px] w-fit">${_htmlEsc(typeLabel)}</span></td>
+        <td class="px-3 py-3 text-xs whitespace-nowrap">${_htmlEsc(dateLabel)}</td>
+        <td class="px-3 py-3 text-xs min-w-48"><p class="font-bold text-gray-800">${_htmlEsc(item.topic)}</p>${unitTitle ? `<p class="text-[11px] text-blue-700 mt-1">${_htmlEsc(unitTitle)}</p>` : ''}${item.description ? `<p class="text-[11px] text-gray-500 mt-1 whitespace-pre-wrap">${_htmlEsc(item.description)}</p>` : ''}</td>
+        <td class="px-3 py-3 text-xs min-w-36 whitespace-pre-wrap">${_htmlEsc(item.teaching_methods ?? '—')}</td>
+        <td class="px-3 py-3 text-xs min-w-28 whitespace-pre-wrap">${_htmlEsc(item.notes ?? '—')}</td>
+      </tr>`
+    }).join('') : ''
+    const documentClassOptions = allowedClasses.map(c => `<option value="${c.id}">${_htmlEsc(c.class_name ?? `ห้อง ${c.id}`)}</option>`).join('')
 
     body.innerHTML = `<div class="grid lg:grid-cols-2 gap-4 items-start">
         <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:p-5">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-            <div><h3 class="font-extrabold text-blue-950">📘 กำหนดการสอนของคอร์ส</h3><p class="text-xs text-blue-700/70 mt-1">สร้างครั้งเดียว แล้วทุกห้องในรายวิชานี้อ้างอิงชุดเดียวกัน</p></div>
+            <div><h3 class="font-extrabold text-blue-950">📘 กำหนดการสอนทั้งภาคเรียน</h3><p class="text-xs text-blue-700/70 mt-1">ภาพรวมรายสัปดาห์ของรายวิชา ใช้ร่วมกับ Smart Classroom ในห้องที่มีสิทธิ์</p></div>
             <button id="cw-ai-schedule" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-blue-700 hover:bg-blue-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>🤖 สร้างด้วย AI</button>
           </div>
-          <div class="mt-4 space-y-2 max-h-72 overflow-y-auto pr-1">${scheduleRows}</div>
+          ${aiAllowed ? '' : '<p class="mt-2 text-[11px] text-amber-700">ต้องมีสิทธิ์ใช้ Smart Classroom อย่างน้อยหนึ่งห้องในรายวิชานี้ก่อน</p>'}
+          ${syllabusItems.length ? `<div class="mt-4 max-h-80 overflow-auto rounded-xl border border-blue-100 bg-white"><table class="w-full min-w-[760px] text-left"><thead class="sticky top-0 bg-blue-50 text-[10px] font-extrabold text-blue-900"><tr><th class="px-3 py-2">สัปดาห์</th><th class="px-3 py-2">วัน/เดือน</th><th class="px-3 py-2">เนื้อหา</th><th class="px-3 py-2">รูปแบบการสอน</th><th class="px-3 py-2">หมายเหตุ</th></tr></thead><tbody>${scheduleRows}</tbody></table></div>` : `<div class="mt-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/50 py-8 text-center text-xs text-blue-500">ยังไม่มีกำหนดการสอนของคอร์สนี้</div>`}
         </div>
 
         <div class="rounded-2xl border border-violet-100 bg-violet-50/60 p-4 sm:p-5">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-            <div><h3 class="font-extrabold text-violet-950">📝 แผนการสอนหน้าเดียว</h3><p class="text-xs text-violet-700/70 mt-1">ออกแบบแผนกลางของคอร์ส ใช้ร่วมกันได้ทุกห้อง และค่อยแยกบันทึกหลังสอนตามห้อง</p></div>
+            <div><h3 class="font-extrabold text-violet-950">📝 แผนการจัดการเรียนรู้หน้าเดียว</h3><p class="text-xs text-violet-700/70 mt-1">แผนรายครั้งที่อ้างอิงหัวข้อจากกำหนดการสอน ส่วนบันทึกหลังสอนและลายเซ็นแยกตามห้องที่มีสิทธิ์</p></div>
             <button id="cw-ai-plan" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-violet-700 hover:bg-violet-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>✨ สร้างแผนด้วย AI</button>
           </div>
+          ${aiAllowed ? '' : '<p class="mt-2 text-[11px] text-amber-700">ต้องมีสิทธิ์ใช้ Smart Classroom อย่างน้อยหนึ่งห้องในรายวิชานี้ก่อน</p>'}
           ${lessonPlans.length ? `<div class="mt-4 space-y-2">${lessonPlans.map(plan => `<button class="cw-plan-row w-full text-left rounded-xl border border-violet-100 bg-white px-3 py-3 hover:border-violet-300 transition" data-plan-id="${plan.id}"><p class="text-sm font-bold text-gray-800">${_htmlEsc(plan.title)}</p><p class="text-[11px] text-violet-600 mt-0.5">สัปดาห์ ${plan.week_start}${plan.week_end !== plan.week_start ? `–${plan.week_end}` : ''} · กดเพื่อเปิดเอกสาร/บันทึกหลังสอน</p></button>`).join('')}</div>` : `<div class="mt-4 rounded-xl border border-dashed border-violet-200 py-8 text-center text-xs text-violet-400">ยังไม่มีแผนการสอน</div>`}
         </div>
     </div>
-    ${lessonPlans.length && courseClasses.length ? `<div id="cw-document-picker" class="hidden fixed inset-0 z-[99] bg-black/50 items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5"><h3 class="font-extrabold text-gray-800">เลือกห้องสำหรับบันทึกหลังสอน</h3><p class="text-xs text-gray-400 mt-1">แผนเป็นของคอร์ส แต่บันทึกและลายเซ็นจะแยกตามห้อง</p><select id="cw-document-class" class="mt-4 w-full min-h-[44px] border rounded-xl bg-white px-3 text-sm">${documentClassOptions}</select><div class="grid grid-cols-2 gap-2 mt-4"><button id="cw-document-cancel" class="min-h-[42px] rounded-xl border text-gray-500 text-xs font-bold">ยกเลิก</button><button id="cw-document-open" class="min-h-[42px] rounded-xl bg-violet-700 text-white text-xs font-bold">เปิดเอกสาร</button></div></div></div>` : ''}`
+    ${lessonPlans.length && allowedClasses.length ? `<div id="cw-document-picker" class="hidden fixed inset-0 z-[99] bg-black/50 items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5"><h3 class="font-extrabold text-gray-800">เลือกห้อง Smart Classroom</h3><p class="text-xs text-gray-400 mt-1">แผนใช้ร่วมกันในรายวิชา แต่เปิดบันทึกหลังสอนเฉพาะห้องที่มีสิทธิ์</p><select id="cw-document-class" class="mt-4 w-full min-h-[44px] border rounded-xl bg-white px-3 text-sm">${documentClassOptions}</select><div class="grid grid-cols-2 gap-2 mt-4"><button id="cw-document-cancel" class="min-h-[42px] rounded-xl border text-gray-500 text-xs font-bold">ยกเลิก</button><button id="cw-document-open" class="min-h-[42px] rounded-xl bg-violet-700 text-white text-xs font-bold">เปิดเอกสาร</button></div></div></div>` : ''}`
 
     body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', onSaved: reopen }))
     body.querySelector('#cw-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'plan', onSaved: reopen }))
@@ -376,14 +393,14 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     const hidePicker = () => { if (picker) { picker.classList.add('hidden'); picker.classList.remove('flex') } }
     body.querySelectorAll('.cw-plan-row').forEach(btn => btn.addEventListener('click', () => {
       selectedPlan = lessonPlans.find(p => p.id === parseInt(btn.dataset.planId, 10)) ?? null
-      if (!selectedPlan || !courseClasses.length || !picker) return
+      if (!selectedPlan || !allowedClasses.length || !picker) return
       picker.classList.remove('hidden'); picker.classList.add('flex')
     }))
     body.querySelector('#cw-document-cancel')?.addEventListener('click', hidePicker)
     picker?.addEventListener('click', e => { if (e.target === picker) hidePicker() })
     body.querySelector('#cw-document-open')?.addEventListener('click', () => {
       const classId = parseInt(body.querySelector('#cw-document-class')?.value, 10)
-      const cls = courseClasses.find(c => c.id === classId)
+      const cls = allowedClasses.find(c => c.id === classId)
       if (!selectedPlan || !cls) return
       hidePicker()
       openLessonPlanDocument({ plan: selectedPlan, cls, teacher, classId: cls.id, currentWeek: selectedPlan.week_start })

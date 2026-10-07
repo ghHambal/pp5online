@@ -958,7 +958,11 @@ export async function renderSmartClassroom(teacher, classId) {
 
   // ── กำหนดการสอน (ผูกกับรายวิชา) — สัปดาห์นี้คือสัปดาห์ที่เท่าไหร่ ตรงกับหัวข้ออะไร ──
   const curWeek = _currentWeek(cfg.semester_start)
-  const currentTopic = syllabusItems.find(it => curWeek >= it.week_start && curWeek <= it.week_end)
+  const syllabusWeekType = item => item?.source_json?.week_type ?? 'teaching'
+  const currentTopic = syllabusItems.find(it =>
+    curWeek >= it.week_start && curWeek <= it.week_end && syllabusWeekType(it) !== 'break'
+  )
+  const syllabusTypeLabels = { teaching: 'เรียน', midterm_exam: 'สอบกลางภาค', final_exam: 'สอบปลายภาค', break: 'หยุด/ไม่มีการเรียน' }
 
   const _syllabusHTML = () => {
     if (!syllabusItems.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่ได้กำหนดหัวข้อการสอน — กด "➕ เพิ่มหัวข้อ" เพื่อเริ่มวางกำหนดการสอน</p>`
@@ -966,6 +970,7 @@ export async function renderSmartClassroom(teacher, classId) {
       <button class="sc-syllabus-row w-full text-left flex items-center gap-2 px-3 py-2 rounded-xl border transition ${curWeek >= it.week_start && curWeek <= it.week_end ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100 bg-gray-50 hover:border-indigo-200'}" data-sylid="${it.id}">
         <span class="text-[10px] font-bold text-gray-500 flex-shrink-0 w-16">สัปดาห์ ${it.week_start}${it.week_end !== it.week_start ? `-${it.week_end}` : ''}</span>
         <span class="text-xs font-semibold text-gray-700 truncate flex-1">${_htmlEsc(it.topic)}</span>
+        ${syllabusWeekType(it) !== 'teaching' ? `<span class="text-[9px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-lg flex-shrink-0">${_htmlEsc(syllabusTypeLabels[syllabusWeekType(it)] ?? 'กำหนดพิเศษ')}</span>` : ''}
       </button>`).join('')}</div>`
   }
 
