@@ -23,7 +23,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.921'
+import { APP_VERSION } from './version.js?v=10.22.923'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
@@ -826,9 +826,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     students:    renderStudents,
     departments: renderDepartments,
     subjects:    renderSubjects,
+    'subject-admin': () => import('./admin-subject-management.js').then(({ renderAdminSubjectManagement }) => renderAdminSubjectManagement()),
     curriculum:  renderCurriculum,
     periods:     renderPeriods,
-    'schedule-admin': () => import('./admin-schedule-import.js').then(({ renderAdminScheduleImport }) => renderAdminScheduleImport()),
+    'schedule-admin': () => import('./admin-schedule-management.js').then(({ renderAdminScheduleManagement }) => renderAdminScheduleManagement()),
+    'schedule-admin-import': () => import('./admin-schedule-import.js').then(({ renderAdminScheduleImport }) => renderAdminScheduleImport({ onBack: () => routes['schedule-admin']() })),
     homeroom:              renderHomeroom,
     'score-col-config':    renderScoreColConfig,
     'registered-teachers': renderRegisteredTeachers,

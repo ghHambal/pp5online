@@ -172,7 +172,7 @@ function renderShell(state) {
     : '<span class="text-gray-400">ยังไม่ได้เลือกไฟล์ — ให้แนบไฟล์เดียวกันตอนนำ Prompt ไปสั่ง AI</span>'
   return `<div class="mx-auto max-w-7xl animate-fade space-y-5">
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div><p class="text-sm text-gray-500">นำเข้า JSON จาก AI พร้อมตรวจสอบชื่อครูก่อนบันทึก</p></div>
+      <div><button id="asi-back" type="button" class="mb-2 text-sm font-semibold text-gray-500 hover:text-indigo-600">← กลับไปจัดการตารางสอน</button><h2 class="text-xl font-extrabold text-gray-800">🤖 นำเข้าตารางสอนด้วย AI</h2><p class="text-sm text-gray-500">นำเข้า JSON จาก AI พร้อมตรวจสอบชื่อครูก่อนบันทึก</p></div>
       <div class="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700">ภาค ${state.semester}/${state.year}</div>
     </div>
     <section class="rounded-2xl border border-violet-100 bg-gradient-to-r from-violet-50 to-white p-5 shadow-sm">
@@ -219,10 +219,10 @@ function cellKeys(row) {
     `${row.teacher_id}:${row.day_of_week}:${row.period_no + offset}`)
 }
 
-export async function renderAdminScheduleImport() {
+export async function renderAdminScheduleImport({ onBack = null } = {}) {
   const main = document.getElementById('main-content')
   if (!main) return
-  document.getElementById('page-title').textContent = 'นำเข้าตารางสอนทั้งโรงเรียน'
+  document.getElementById('page-title').textContent = 'นำเข้าตารางสอนด้วย AI'
   document.querySelectorAll('[data-nav]').forEach(item => {
     item.classList.toggle('bg-indigo-800', item.dataset.nav === 'schedule-admin')
     item.classList.toggle('text-white', item.dataset.nav === 'schedule-admin')
@@ -237,6 +237,7 @@ export async function renderAdminScheduleImport() {
       semester: Number(cfg.semester ?? 1),
       teachers: [], periods: [], subjects: [], existing: [], aliases: [],
       entries: [], groups: [], preparedRows: [], fileNames: [], replaceExisting: false,
+      onBack,
     }
     ;[state.teachers, state.periods, state.subjects, state.existing, state.aliases] = await Promise.all([
       getTeachers(), getPeriods(), getMasterSubjects(),
@@ -244,6 +245,10 @@ export async function renderAdminScheduleImport() {
       getTeacherNameAliases(SOURCE_SYSTEM).catch(() => []),
     ])
     main.innerHTML = renderShell(state)
+    document.getElementById('asi-back')?.addEventListener('click', () => {
+      if (typeof state.onBack === 'function') state.onBack()
+      else window.location.hash = '#schedule-admin'
+    })
     const prompt = () => buildPrompt({ ...state, fileNames: state.fileNames })
     const promptEl = document.getElementById('asi-prompt')
     promptEl.value = prompt()

@@ -4567,7 +4567,7 @@ export async function renderCurriculum() {
 // ─── View: Subjects (2 tabs) ──────────────────────────────────────────────────
 export async function renderSubjects() {
   setActiveNav('subjects')
-  document.getElementById('page-title').textContent = 'จัดการรายวิชา'
+  document.getElementById('page-title').textContent = 'คอร์สและห้องเรียน'
   setContent(`<div class="flex justify-center py-16 text-gray-400">
     <svg class="animate-spin h-6 w-6 mr-3 text-indigo-400" viewBox="0 0 24 24" fill="none">
       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>

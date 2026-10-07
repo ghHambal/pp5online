@@ -739,6 +739,74 @@ export function getSubjectCatalog(filters = {}) {
   })
 }
 
+// ─── Admin subject catalog / course management ───────────────────────────────
+export async function getSubjectCatalogAdmin() {
+  return _fetchAllRows(() => supabase
+    .from('subject_catalog')
+    .select('id, catalog_key, subject_code, subject_name, subject_name_arabic, credit, subject_group, dept_label, grade_level, curriculum, course_type, learning_area, academic_year, semester, source_file, is_active, created_at, updated_at')
+    .order('subject_group').order('grade_level').order('subject_code').order('subject_name'))
+}
+
+export async function createSubjectCatalog(payload) {
+  const { data, error } = await supabase
+    .from('subject_catalog')
+    .insert(payload)
+    .select('id')
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function updateSubjectCatalog(id, payload) {
+  const { error } = await supabase.from('subject_catalog').update({
+    ...payload,
+    updated_at: new Date().toISOString(),
+  }).eq('id', id)
+  if (error) throw error
+}
+
+export async function setSubjectCatalogActive(id, isActive) {
+  return updateSubjectCatalog(id, { is_active: Boolean(isActive) })
+}
+
+export async function getMasterSubjectsAdmin() {
+  return _fetchAllRows(() => supabase
+    .from('master_subjects')
+    .select('id, catalog_id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, skill_group, teacher_id, academic_year, semester, is_active')
+    .order('subject_code').order('subject_name'))
+}
+
+export async function setMasterSubjectActive(id, isActive) {
+  const { error } = await supabase.from('master_subjects')
+    .update({ is_active: Boolean(isActive) }).eq('id', id)
+  if (error) throw error
+}
+
+export async function getMasterSubjectDependencies(subjectId) {
+  const [{ count: classCount }, { count: scheduleCount }, { count: docCount }] = await Promise.all([
+    supabase.from('classes').select('id', { count: 'exact', head: true }).eq('course_id', subjectId),
+    supabase.from('teacher_schedules').select('id', { count: 'exact', head: true }).eq('subject_id', subjectId),
+    supabase.from('course_doc_page2').select('subject_id', { count: 'exact', head: true }).eq('subject_id', subjectId),
+  ])
+  return {
+    classCount: classCount ?? 0,
+    scheduleCount: scheduleCount ?? 0,
+    docCount: docCount ?? 0,
+  }
+}
+
+export async function getAdminAcademicAuditLogs(tableName = '', limit = 100) {
+  let query = supabase
+    .from('admin_academic_audit_logs')
+    .select('id, table_name, action, record_id, academic_year, semester, actor_profile_id, before_data, after_data, metadata, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (tableName) query = query.eq('table_name', tableName)
+  const { data, error } = await query
+  if (error) throw error
+  return data ?? []
+}
+
 // ─── Classes ──────────────────────────────────────────────────────────────────
 export async function getClasses() {
   const { data, error } = await supabase
@@ -2110,8 +2178,8 @@ export async function createSubject(payload, coTeacherIds = []) {
   const semester = Number(cfg.semester)
   const termPayload = {
     ...normalizedPayload,
-    ...(Number.isInteger(academicYear) ? { academic_year: academicYear } : {}),
-    ...([1, 2].includes(semester) ? { semester } : {}),
+    ...(Number.isInteger(academicYear) && !Object.prototype.hasOwnProperty.call(normalizedPayload, 'academic_year') ? { academic_year: academicYear } : {}),
+    ...([1, 2].includes(semester) && !Object.prototype.hasOwnProperty.call(normalizedPayload, 'semester') ? { semester } : {}),
   }
   const { data, error } = await supabase
     .from('master_subjects')
@@ -2769,6 +2837,12 @@ export async function upsertScheduleEntry(payload) {
   const { error } = await supabase
     .from('teacher_schedules')
     .upsert(payload, { onConflict: 'teacher_id,day_of_week,period_no,academic_year,semester' })
+  if (error) throw error
+}
+
+export async function updateScheduleEntry(id, payload) {
+  const { error } = await supabase.from('teacher_schedules')
+    .update(payload).eq('id', id)
   if (error) throw error
 }
 

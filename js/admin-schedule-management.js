@@ -1,0 +1,186 @@
+import {
+  getSystemConfig, getTeachers, getPeriods, getMasterSubjectsAdmin,
+  getScheduleEntriesForTerm, upsertScheduleEntry, updateScheduleEntry,
+  deleteScheduleEntry, getAdminAcademicAuditLogs,
+} from './api.js'
+import { showToast, getFriendlyErrorMessage } from './ui.js'
+
+const DAYS = [
+  [0, 'อาทิตย์'], [1, 'จันทร์'], [2, 'อังคาร'], [3, 'พุธ'],
+  [4, 'พฤหัสบดี'], [5, 'ศุกร์'],
+]
+
+const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[char]))
+const norm = value => String(value ?? '').trim().toLocaleLowerCase('th-TH').replace(/\s+/g, '')
+const slotKeys = row => Array.from({ length: Number(row.span_periods || 1) }, (_, offset) =>
+  `${row.teacher_id}:${row.day_of_week}:${Number(row.period_no) + offset}`)
+const roomKeys = row => row.class_name?.trim()
+  ? Array.from({ length: Number(row.span_periods || 1) }, (_, offset) =>
+    `${norm(row.class_name)}:${row.day_of_week}:${Number(row.period_no) + offset}`)
+  : []
+
+function termOptions(selectedYear, selectedSemester) {
+  const years = [selectedYear - 1, selectedYear, selectedYear + 1]
+  return years.flatMap(year => [1, 2].map(semester =>
+    `<option value="${year}|${semester}" ${year === selectedYear && semester === selectedSemester ? 'selected' : ''}>ภาคเรียนที่ ${semester}/${year}</option>`
+  )).join('')
+}
+
+function statusBadge(row, conflictSet) {
+  const conflicts = conflictSet.get(row.id) ?? []
+  if (conflicts.length) return `<span class="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700">ชน ${esc(conflicts.join(' / '))}</span>`
+  return '<span class="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">ปกติ</span>'
+}
+
+function buildConflicts(rows) {
+  const teacherSlots = new Map()
+  const roomSlots = new Map()
+  const conflicts = new Map()
+  const add = (map, key, row, label) => {
+    if (!map.has(key)) map.set(key, [])
+    map.get(key).push({ row, label })
+  }
+  rows.forEach(row => {
+    slotKeys(row).forEach(key => add(teacherSlots, key, row, 'ครูสอนชนกัน'))
+    roomKeys(row).forEach(key => add(roomSlots, key, row, 'ห้องเรียนชนกัน'))
+  })
+  const mark = (map, message) => {
+    for (const items of map.values()) {
+      if (items.length < 2) continue
+      items.forEach(item => {
+        if (!conflicts.has(item.row.id)) conflicts.set(item.row.id, [])
+        if (!conflicts.get(item.row.id).includes(message)) conflicts.get(item.row.id).push(message)
+      })
+    }
+  }
+  mark(teacherSlots, 'ครูสอนชนกัน')
+  mark(roomSlots, 'ห้องเรียนชนกัน')
+  return conflicts
+}
+
+function renderForm({ row = null, state, onSaved, onClose }) {
+  const teachers = state.teachers
+  const subjects = state.subjects
+  const rowTeacherId = row?.teacher_id ?? ''
+  const teacherOptions = teachers.map(teacher => `<option value="${teacher.id}" ${String(rowTeacherId) === String(teacher.id) ? 'selected' : ''}>${esc(teacher.full_name)}${teacher.teacher_code ? ` (${esc(teacher.teacher_code)})` : ''}</option>`).join('')
+  const subjectOptions = subjects.map(subject => `<option value="${subject.id}" data-teacher-id="${subject.teacher_id ?? ''}" ${String(row?.subject_id ?? '') === String(subject.id) ? 'selected' : ''}>${esc(subject.subject_code || 'ไม่มีรหัส')} · ${esc(subject.subject_name)}${subject.teacher_id ? ` · ${esc(teachers.find(t => t.id === subject.teacher_id)?.full_name || '')}` : ''}</option>`).join('')
+  const periodOptions = state.periods.map(period => `<option value="${period.period_no}" ${Number(row?.period_no) === Number(period.period_no) ? 'selected' : ''}>คาบ ${period.period_no} (${esc(String(period.start_time || '').slice(0, 5))}-${esc(String(period.end_time || '').slice(0, 5))})</option>`).join('')
+  const dayOptions = DAYS.map(([value, label]) => `<option value="${value}" ${Number(row?.day_of_week) === value ? 'selected' : ''}>${label}</option>`).join('')
+  const spanOptions = [1, 2, 3, 4].map(value => `<option value="${value}" ${Number(row?.span_periods || 1) === value ? 'selected' : ''}>${value} คาบต่อเนื่อง</option>`).join('')
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4'
+  modal.innerHTML = `<div class="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+    <div class="flex items-start justify-between gap-3"><div><h2 class="text-lg font-extrabold text-gray-800">${row ? 'แก้ไขรายการตารางสอน' : 'เพิ่มรายการตารางสอน'}</h2><p class="mt-1 text-xs text-gray-500">ภาคเรียนที่ ${state.semester}/${state.year} · ระบบตรวจคาบซ้ำ ครูชน และห้องชนก่อนบันทึก</p></div><button type="button" data-close class="text-2xl text-gray-400 hover:text-gray-700">×</button></div>
+    <form data-form class="mt-5 space-y-4">
+      <div class="grid gap-4 md:grid-cols-2"><label class="text-sm font-semibold text-gray-700">ครูผู้สอน *<select name="teacher_id" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5"><option value="">— เลือกครู —</option>${teacherOptions}</select></label><label class="text-sm font-semibold text-gray-700">รายวิชา / คอร์ส<select name="subject_id" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5"><option value="">— ไม่ผูกคอร์ส —</option>${subjectOptions}</select></label></div>
+      <label class="block text-sm font-semibold text-gray-700">ชื่อวิชาในตาราง <span class="font-normal text-gray-400">(กรณีไม่มีคอร์สในระบบ)</span><input name="subject_name" value="${esc(row?.subject_name || '')}" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5" /></label>
+      <div class="grid gap-4 md:grid-cols-2"><label class="text-sm font-semibold text-gray-700">ห้องเรียน / กลุ่มเรียน<input name="class_name" value="${esc(row?.class_name || '')}" placeholder="เช่น ม.6/2" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5" /></label><label class="text-sm font-semibold text-gray-700">วันเรียน<select name="day_of_week" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5">${dayOptions}</select></label></div>
+      <div class="grid gap-4 md:grid-cols-2"><label class="text-sm font-semibold text-gray-700">คาบเริ่มต้น<select name="period_no" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5">${periodOptions}</select></label><label class="text-sm font-semibold text-gray-700">จำนวนคาบ<select name="span_periods" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5">${spanOptions}</select></label></div>
+      <label class="block text-sm font-semibold text-gray-700">หมายเหตุ<textarea name="note" rows="2" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5">${esc(row?.note || '')}</textarea></label>
+      <div data-error class="hidden rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700"></div>
+      <div class="flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4"><button type="button" data-close class="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600">ยกเลิก</button><button type="submit" class="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white">${row ? 'บันทึกการแก้ไข' : 'เพิ่มรายการ'}</button></div>
+    </form></div>`
+  document.body.appendChild(modal)
+  const close = () => { modal.remove(); onClose?.() }
+  modal.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close))
+  modal.querySelector('[data-form]').addEventListener('submit', async event => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const errorEl = form.querySelector('[data-error]')
+    const payload = {
+      teacher_id: Number(form.teacher_id.value),
+      subject_id: form.subject_id.value ? Number(form.subject_id.value) : null,
+      subject_name: form.subject_name.value.trim() || null,
+      class_name: form.class_name.value.trim() || null,
+      day_of_week: Number(form.day_of_week.value),
+      period_no: Number(form.period_no.value),
+      span_periods: Number(form.span_periods.value),
+      note: form.note.value.trim() || null,
+      academic_year: state.year,
+      semester: state.semester,
+    }
+    const candidate = { ...(row || {}), ...payload, id: row?.id ?? `new-${Date.now()}` }
+    const compareRows = state.rows.filter(item => !row || item.id !== row.id)
+    const conflicts = buildConflicts([...compareRows, candidate]).get(candidate.id) ?? []
+    if (conflicts.length) {
+      errorEl.className = 'rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700'
+      errorEl.textContent = `บันทึกไม่ได้: ${conflicts.join(' และ ')} ในวัน/คาบเดียวกัน`
+      return
+    }
+    const button = form.querySelector('button[type="submit"]')
+    button.disabled = true; button.textContent = 'กำลังบันทึก...'
+    try {
+      if (row) await updateScheduleEntry(row.id, payload)
+      else await upsertScheduleEntry(payload)
+      showToast(row ? 'แก้ไขรายการตารางสอนแล้ว' : 'เพิ่มรายการตารางสอนแล้ว', 'success')
+      close(); await onSaved()
+    } catch (err) {
+      errorEl.className = 'rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-xs text-rose-700'
+      errorEl.textContent = getFriendlyErrorMessage(err)
+      button.disabled = false; button.textContent = row ? 'บันทึกการแก้ไข' : 'เพิ่มรายการ'
+    }
+  })
+}
+
+async function renderAudit(state) {
+  const logs = await getAdminAcademicAuditLogs('teacher_schedules', 100)
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4'
+  modal.innerHTML = `<div class="max-h-[88vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"><div class="flex items-center justify-between"><div><h2 class="text-lg font-extrabold text-gray-800">ประวัติการเปลี่ยนแปลงตารางสอน</h2><p class="mt-1 text-xs text-gray-500">ระบบบันทึกเพิ่ม แก้ไข และลบโดยอัตโนมัติ พร้อมผู้กระทำและเวลาที่เกิดรายการ</p></div><button data-close class="text-2xl text-gray-400">×</button></div><div class="mt-4 overflow-x-auto"><table class="w-full min-w-[760px] text-left text-xs"><thead class="bg-gray-50 text-gray-500"><tr><th class="px-3 py-2">เวลา</th><th class="px-3 py-2">การกระทำ</th><th class="px-3 py-2">รายการ</th><th class="px-3 py-2">ภาคเรียน</th><th class="px-3 py-2">ผู้ดำเนินการ</th></tr></thead><tbody class="divide-y divide-gray-100">${logs.map(log => `<tr><td class="px-3 py-2">${esc(new Date(log.created_at).toLocaleString('th-TH'))}</td><td class="px-3 py-2 font-semibold">${log.action === 'insert' ? 'เพิ่ม' : log.action === 'update' ? 'แก้ไข' : 'ลบ'}</td><td class="px-3 py-2">#${esc(log.record_id)}</td><td class="px-3 py-2">${log.semester && log.academic_year ? `${log.semester}/${log.academic_year}` : '—'}</td><td class="px-3 py-2 font-mono text-[10px]">${esc(log.actor_profile_id || 'ระบบ')}</td></tr>`).join('')}</tbody></table></div></div>`
+  document.body.appendChild(modal)
+  modal.querySelector('[data-close]').addEventListener('click', () => modal.remove())
+}
+
+export async function renderAdminScheduleManagement() {
+  const main = document.getElementById('main-content')
+  if (!main) return
+  document.getElementById('page-title').textContent = 'จัดการตารางสอน'
+  document.querySelectorAll('[data-nav]').forEach(item => {
+    item.classList.toggle('bg-indigo-800', item.dataset.nav === 'schedule-admin')
+    item.classList.toggle('text-white', item.dataset.nav === 'schedule-admin')
+    item.classList.toggle('text-indigo-200', item.dataset.nav !== 'schedule-admin')
+  })
+  main.innerHTML = '<div class="flex justify-center py-16 text-gray-400">กำลังโหลดข้อมูลตารางสอน...</div>'
+  try {
+    const cfg = await getSystemConfig().catch(() => ({}))
+    const state = {
+      year: Number(cfg.academicYear ?? cfg.academic_year ?? new Date().getFullYear() + 543),
+      semester: Number(cfg.semester ?? 1), teachers: [], periods: [], subjects: [], rows: [], query: '', day: '',
+    }
+    const load = async () => {
+      ;[state.teachers, state.periods, state.subjects, state.rows] = await Promise.all([
+        getTeachers(), getPeriods(), getMasterSubjectsAdmin(), getScheduleEntriesForTerm(state.year, state.semester),
+      ])
+    }
+    await load()
+    const teacherById = Object.fromEntries(state.teachers.map(teacher => [teacher.id, teacher]))
+    const subjectById = Object.fromEntries(state.subjects.map(subject => [subject.id, subject]))
+    const render = () => {
+      const q = state.query.toLocaleLowerCase('th-TH')
+      const rows = state.rows.filter(row => {
+        const teacher = teacherById[row.teacher_id]
+        const subject = subjectById[row.subject_id]
+        const haystack = [teacher?.full_name, teacher?.teacher_code, row.class_name, row.subject_name, subject?.subject_name, subject?.subject_code].join(' ').toLocaleLowerCase('th-TH')
+        return (!q || haystack.includes(q)) && (state.day === '' || String(row.day_of_week) === state.day)
+      })
+      const conflictSet = buildConflicts(state.rows)
+      main.innerHTML = `<div class="mx-auto max-w-7xl animate-fade space-y-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-xl font-extrabold text-gray-800">🗓️ จัดการตารางสอน</h2><p class="mt-1 text-sm text-gray-500">ดู ค้นหา เพิ่ม แก้ไข และลบตารางสอนของครูทั้งโรงเรียน</p></div><div class="flex flex-wrap gap-2"><button data-ai class="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-bold text-violet-700">🤖 นำเข้าด้วย AI</button><button data-audit class="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600">🧾 ประวัติการเปลี่ยนแปลง</button><button data-add class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white">＋ เพิ่มรายการ</button></div></div><div class="grid gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm md:grid-cols-[220px_220px_1fr_160px]"><select data-term class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${termOptions(state.year, state.semester)}</select><input data-search value="${esc(state.query)}" placeholder="ค้นหาครู ห้องเรียน หรือรายวิชา" class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm" /><select data-day class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><option value="">ทุกวัน</option>${DAYS.map(([value, label]) => `<option value="${value}" ${state.day === String(value) ? 'selected' : ''}>${label}</option>`).join('')}</select><div class="rounded-xl bg-gray-50 px-3 py-2.5 text-sm text-gray-600">พบ <b class="text-indigo-600">${rows.length}</b> / ${state.rows.length} รายการ</div></div><div class="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"><div class="overflow-x-auto"><table class="w-full min-w-[1050px] text-left text-sm"><thead class="bg-gray-50 text-xs text-gray-500"><tr><th class="px-4 py-3">ครูผู้สอน</th><th class="px-4 py-3">รายวิชา</th><th class="px-4 py-3">ห้องเรียน</th><th class="px-4 py-3">วัน/คาบ</th><th class="px-4 py-3">สถานะ</th><th class="px-4 py-3 text-right">จัดการ</th></tr></thead><tbody class="divide-y divide-gray-100">${rows.map(row => { const teacher = teacherById[row.teacher_id]; const subject = subjectById[row.subject_id]; return `<tr><td class="px-4 py-3"><div class="font-semibold text-gray-800">${esc(teacher?.full_name || row.teacher_name || 'ไม่พบครู')}</div><div class="text-xs text-gray-400">${esc(teacher?.teacher_code || '')}</div></td><td class="px-4 py-3"><div class="font-semibold">${esc(subject?.subject_name || row.subject_name || '—')}</div><div class="text-xs text-gray-400">${esc(subject?.subject_code || '')}</div></td><td class="px-4 py-3">${esc(row.class_name || '—')}</td><td class="px-4 py-3">${DAYS.find(item => item[0] === Number(row.day_of_week))?.[1] || '—'} · คาบ ${row.period_no}${Number(row.span_periods) > 1 ? `–${Number(row.period_no) + Number(row.span_periods) - 1}` : ''}</td><td class="px-4 py-3">${statusBadge(row, conflictSet)}</td><td class="px-4 py-3 text-right"><button data-edit="${row.id}" class="mr-2 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-indigo-700">แก้ไข</button><button data-delete="${row.id}" class="rounded-lg border border-rose-100 px-2.5 py-1.5 text-xs font-semibold text-rose-700">ลบ</button></td></tr>` }).join('') || '<tr><td colspan="6" class="px-4 py-12 text-center text-gray-400">ยังไม่มีรายการตามเงื่อนไข</td></tr>'}</tbody></table></div></div></div>`
+      main.querySelector('[data-ai]').addEventListener('click', async () => {
+        const { renderAdminScheduleImport } = await import('./admin-schedule-import.js')
+        renderAdminScheduleImport({ onBack: renderAdminScheduleManagement })
+      })
+      main.querySelector('[data-audit]').addEventListener('click', () => renderAudit(state).catch(error => showToast(getFriendlyErrorMessage(error), 'error')))
+      main.querySelector('[data-add]').addEventListener('click', () => renderForm({ state, onSaved: async () => { await load(); render() }, onClose: render }))
+      main.querySelector('[data-search]').addEventListener('input', event => { state.query = event.target.value; render() })
+      main.querySelector('[data-day]').addEventListener('change', event => { state.day = event.target.value; render() })
+      main.querySelector('[data-term]').addEventListener('change', async event => { const [year, semester] = event.target.value.split('|').map(Number); state.year = year; state.semester = semester; await load(); render() })
+      main.querySelectorAll('[data-edit]').forEach(button => button.addEventListener('click', () => { const row = state.rows.find(item => String(item.id) === String(button.dataset.edit)); if (row) renderForm({ row, state, onSaved: async () => { await load(); render() }, onClose: render }) }))
+      main.querySelectorAll('[data-delete]').forEach(button => button.addEventListener('click', async () => { const row = state.rows.find(item => String(item.id) === String(button.dataset.delete)); if (!row || !confirm('ยืนยันลบรายการตารางสอนนี้หรือไม่? ระบบจะบันทึกประวัติการลบ')) return; try { await deleteScheduleEntry(row.id); showToast('ลบรายการตารางสอนแล้ว', 'success'); await load(); render() } catch (error) { showToast(`ลบไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error') } }))
+    }
+    render()
+  } catch (error) {
+    main.innerHTML = `<div class="rounded-2xl border border-rose-100 bg-rose-50 p-6 text-sm text-rose-700">โหลดหน้าจัดการตารางสอนไม่สำเร็จ: ${esc(getFriendlyErrorMessage(error))}</div>`
+  }
+}
