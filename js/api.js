@@ -2727,6 +2727,44 @@ export async function getScheduleTeacherIds(academicYear, semester) {
   return [...new Set((data ?? []).map(r => r.teacher_id).filter(Boolean))]
 }
 
+export async function getScheduleEntriesForTerm(academicYear, semester) {
+  return _fetchAllRows(() => supabase
+    .from('teacher_schedules')
+    .select('id, teacher_id, subject_id, subject_name, class_name, teacher_name, day_of_week, period_no, span_periods, note, academic_year, semester')
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+    .order('teacher_id').order('day_of_week').order('period_no'))
+}
+
+export async function getTeacherNameAliases(sourceSystem = 'school_schedule') {
+  const { data, error } = await supabase
+    .from('teacher_name_aliases')
+    .select('id, teacher_id, source_name, normalized_name, source_system')
+    .eq('source_system', sourceSystem)
+    .order('id')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function upsertTeacherNameAliases(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return
+  const { data: sessionData } = await supabase.auth.getSession()
+  const createdBy = sessionData?.session?.user?.id ?? null
+  const payload = rows.map(row => ({
+    teacher_id: Number(row.teacher_id),
+    source_name: String(row.source_name ?? '').trim(),
+    normalized_name: String(row.normalized_name ?? '').trim(),
+    source_system: String(row.source_system ?? 'school_schedule'),
+    ...(createdBy ? { created_by: createdBy } : {}),
+    updated_at: new Date().toISOString(),
+  })).filter(row => row.teacher_id && row.source_name && row.normalized_name)
+  if (!payload.length) return
+  const { error } = await supabase
+    .from('teacher_name_aliases')
+    .upsert(payload, { onConflict: 'source_system,normalized_name' })
+  if (error) throw error
+}
+
 export async function upsertScheduleEntry(payload) {
   const { error } = await supabase
     .from('teacher_schedules')
