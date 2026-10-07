@@ -28,12 +28,11 @@ const lessonSchema = {
   schema_version: 'pp5.lesson_plan.v1',
   type: 'lesson_plan',
   plans: [{
-    title: 'แผนการสอนครั้งที่ 1', week_start: 1, week_end: 1, session_number: 1,
+    title: 'แผนการจัดการเรียนรู้ ครั้งที่ 1', week_start: 1, week_end: 1, session_number: 1,
     lesson_date: '2026-05-11', period_count: 2, minutes_per_period: 50, duration_minutes: 100, unit_title: 'หน่วยการเรียนรู้ที่ 1',
-    topic: 'ความหมายของเลขยกกำลัง', standards: ['ค 1.1 ม.5/1'],
-    objectives: ['อธิบายความหมายของเลขยกกำลังได้'], key_concept: '',
-    activities: { intro: ['นำเข้าสู่บทเรียน'], main: ['กิจกรรมการเรียนรู้'], wrap: ['สรุปบทเรียน'] },
-    media: ['หนังสือเรียน'], assessment: ['สังเกตการตอบคำถาม'], homework: '', teacher_notes: '',
+    standards: ['ค 1.1 ม.5/1'], objectives: ['อธิบายความหมายของเลขยกกำลังได้'], key_concept: 'ความหมายของเลขยกกำลัง',
+    activities: { intro: ['ทบทวนเลขยกกำลังด้วยโจทย์สั้น'], main: ['แยกตัวประกอบและตรวจคำตอบ'], wrap: ['สรุปวิธีคิด 1 ประโยค'] },
+    media: ['หนังสือเรียน'], assessment: ['ตรวจคำตอบจากแบบฝึกหัด'], homework: '', teacher_notes: '',
     schedule_alignment: 'aligned', deviation_reason: '',
   }],
 }
@@ -48,7 +47,29 @@ function courseMeta(cls) {
   }
 }
 
-function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCount, minutesPerPeriod, calendarWeeks, midtermWeeks, finalWeeks, topic, teachingUnits, files }) {
+function scheduledLessonSessions(syllabusItems = []) {
+  const sessions = []
+  const coveredWeeks = new Set()
+  for (const item of [...syllabusItems].sort((a, b) => asInt(a.week_start) - asInt(b.week_start))) {
+    const weekStart = asInt(item.week_start)
+    const weekEnd = asInt(item.week_end, weekStart)
+    const weekType = item.source_json?.week_type ?? 'teaching'
+    if (!Number.isInteger(weekStart) || weekStart < 1 || weekEnd < weekStart || weekType !== 'teaching') continue
+    for (let week = weekStart; week <= weekEnd; week++) {
+      if (coveredWeeks.has(week)) continue
+      coveredWeeks.add(week)
+      sessions.push({
+        session_number: sessions.length + 1, week_start: week, week_end: week,
+        lesson_date: null,
+        unit_title: item.unit_title ?? item.source_json?.unit_title ?? '',
+        key_concept: item.topic ?? '',
+      })
+    }
+  }
+  return sessions
+}
+
+function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCount, minutesPerPeriod, calendarWeeks, midtermWeeks, finalWeeks, includeUnitTitle = true, topic, teachingUnits, files }) {
   const meta = courseMeta(cls)
   const examWeeks = [...new Set([...(midtermWeeks ?? []), ...(finalWeeks ?? [])])]
   const teachingWeeks = mode === 'schedule' ? Math.max(0, calendarWeeks - examWeeks.length) : null
@@ -68,6 +89,9 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
       topic: 'สอบปลายภาค', description: '', teaching_methods: 'ทดสอบ/ประเมินผลปลายภาค', notes: '',
     })),
   ].sort((a, b) => a.week_start - b.week_start) : []
+  const planSessions = mode === 'plan'
+    ? scheduledLessonSessions(syllabusItems).map(item => ({ ...item, unit_title: includeUnitTitle ? item.unit_title : '' }))
+    : []
   const schema = mode === 'schedule' ? {
     schema_version: 'pp5.schedule.v2',
     type: 'course_schedule',
@@ -78,7 +102,15 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
       midterm_exam_weeks: midtermWeeks, final_exam_weeks: finalWeeks,
     },
     weeks: scheduleRowsExample,
-  } : lessonSchema
+  } : {
+    ...lessonSchema,
+    course: { ...meta, total_sessions: planSessions.length, include_unit_title: includeUnitTitle },
+    plans: planSessions.map(item => ({ ...lessonSchema.plans[0], ...item,
+      title: `แผนการจัดการเรียนรู้ ครั้งที่ ${item.session_number}`,
+      unit_title: includeUnitTitle ? item.unit_title || 'หน่วยการเรียนรู้ที่ 1' : '',
+      key_concept: item.key_concept || 'หัวข้อตามกำหนดการสอน',
+    })),
+  }
   const duration = mode === 'schedule' ? null : periodCount * minutesPerPeriod
   const relevant = (syllabusItems ?? []).filter(it => !week || (week >= it.week_start && week <= it.week_end))
   const attachmentText = files.length
@@ -86,29 +118,29 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
     : 'ไม่มีไฟล์แนบ'
   return `คุณเป็นผู้ช่วยจัดทำเอกสารการสอนภาษาไทย ให้ใช้ข้อมูลจากเอกสารที่แนบและข้อมูลรายวิชาด้านล่างเป็นหลัก
 
-งานที่ต้องทำ: ${mode === 'schedule' ? 'สร้างกำหนดการสอนทั้งภาคเรียน โดยแสดงเป็นภาพรวมรายสัปดาห์' : 'สร้างแผนการจัดการเรียนรู้หน้าเดียวสำหรับการสอนหนึ่งครั้ง โดยยึดหัวข้อจากกำหนดการสอน'}
+งานที่ต้องทำ: ${mode === 'schedule' ? 'สร้างกำหนดการสอนทั้งภาคเรียน โดยแสดงเป็นภาพรวมรายสัปดาห์' : `สร้างแผนการจัดการเรียนรู้หน้าเดียวให้ครบทุกครั้งจากกำหนดการสอน จำนวน ${planSessions.length} ครั้ง ในคำตอบชุดเดียว`}
 
 ข้อมูลจากระบบ PP5:
-${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_week: week, session_number: session, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: duration, calendar_weeks: mode === 'schedule' ? calendarWeeks : null, teaching_weeks_excluding_exams: mode === 'schedule' ? teachingWeeks : null, midterm_exam_weeks: mode === 'schedule' ? midtermWeeks : null, final_exam_weeks: mode === 'schedule' ? finalWeeks : null, requested_topic: topic, requested_teaching_units: teachingUnits, existing_schedule: relevant }, null, 2)}
+${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_week: week, session_number: session, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: duration, calendar_weeks: mode === 'schedule' ? calendarWeeks : null, teaching_weeks_excluding_exams: mode === 'schedule' ? teachingWeeks : null, midterm_exam_weeks: mode === 'schedule' ? midtermWeeks : null, final_exam_weeks: mode === 'schedule' ? finalWeeks : null, include_unit_title: mode === 'plan' ? includeUnitTitle : null, requested_sessions: mode === 'plan' ? planSessions : null, requested_topic: topic, requested_teaching_units: teachingUnits, existing_schedule: relevant }, null, 2)}
 
 ไฟล์ที่ผู้ใช้จะอัปโหลดให้คุณอ่านประกอบ:
 ${attachmentText}
 
 ข้อกำหนดสำคัญ:
 1. อ่านหนังสือเรียน เอกสารหลักสูตร ตัวชี้วัด และแบบฟอร์มที่แนบก่อนตอบ
-2. ${mode === 'schedule' ? `สร้างแถวให้ครบสัปดาห์ตามปฏิทิน 1-${calendarWeeks} โดยเลขสัปดาห์เป็นเลขจริง ห้ามเลื่อนหรือยุบเลขหลังช่วงสอบ สัปดาห์สอบกลางภาคคือ ${midtermWeeks?.join(', ') || 'ไม่มี'} และปลายภาคคือ ${finalWeeks?.join(', ') || 'ไม่มี'} ให้ใส่แถวสอบตาม week_type ที่ตรงกัน แล้วกระจายหน่วยการเรียนรู้ให้ครบในสัปดาห์สอนจริงที่เหลือ รวม ${teachingWeeks} สัปดาห์ ห้ามละเว้นหรือเปลี่ยนสาระสำคัญ` : 'ยึดกำหนดการสอนของสัปดาห์เป็นข้อมูลหลัก หากจำเป็นต้องเบี่ยงให้ระบุ schedule_alignment="deviated" และอธิบาย deviation_reason'}
-3. ${mode === 'schedule' ? 'ใช้ week_type เป็น teaching, midterm_exam, final_exam หรือ break; แต่ละสัปดาห์สอบต้องมี topic ระบุชื่อการสอบ และห้ามใส่หน่วยการเรียนรู้ในแถวสอบ' : `แผนนี้มี ${periodCount} คาบ คาบละ ${minutesPerPeriod} นาที รวม ${duration} นาที กิจกรรมทั้งหมดต้องจัดเวลาให้พอดีกับจำนวนคาบนี้`}
-4. กิจกรรมต้องใช้ได้จริง มีขั้นนำ ขั้นสอน ขั้นสรุป สื่อ และการวัดผลที่ตรวจสอบได้
-5. ห้ามแต่งรหัสมาตรฐาน/ตัวชี้วัดเมื่อเอกสารอ้างอิงไม่มีข้อมูล ให้ใช้ [] และระบุข้อสังเกตใน teacher_notes
-6. คำตอบต้องมีโค้ด JSON ทั้งหมดอยู่ในกล่องโค้ด Markdown ชนิด json เพียงกล่องเดียวเท่านั้น (เปิดด้วย \`\`\`json และปิดด้วย \`\`\`) ห้ามแบ่งหลายกล่อง และห้ามมีคำอธิบายหรือข้อความใดก่อนหรือหลังกล่องโค้ด
-7. สำหรับกำหนดการสอน date_start/date_end ให้ใช้วันที่จริงจากเอกสารปฏิทินที่แนบในรูปแบบ YYYY-MM-DD เท่านั้น หากไม่มีข้อมูลวันที่ให้ใช้ null ห้ามคาดเดาวันที่
-8. ใช้ schema_version และชื่อ field ตามตัวอย่างทุกตัว เพื่อให้ระบบ PP5 อ่านได้ แผนหน้าเดียวต้องอยู่ใน JSON type=lesson_plan แยกจากกำหนดการสอนเสมอ
+2. ${mode === 'schedule' ? `สร้างแถวให้ครบสัปดาห์ตามปฏิทิน 1-${calendarWeeks} โดยเลขสัปดาห์เป็นเลขจริง ห้ามเลื่อนหรือยุบเลขหลังช่วงสอบ สัปดาห์สอบกลางภาคคือ ${midtermWeeks?.join(', ') || 'ไม่มี'} และปลายภาคคือ ${finalWeeks?.join(', ') || 'ไม่มี'} ให้ใส่แถวสอบตาม week_type ที่ตรงกัน แล้วกระจายหน่วยการเรียนรู้ให้ครบในสัปดาห์สอนจริงที่เหลือ รวม ${teachingWeeks} สัปดาห์ ห้ามละเว้นหรือเปลี่ยนสาระสำคัญ` : `สร้างแผนหนึ่งรายการต่อหนึ่งสัปดาห์ที่เป็นการสอน ตาม requested_sessions ให้ครบทุกครั้ง เรียง session_number ตั้งแต่ 1 และคง week_start/week_end ตามข้อมูล ห้ามสร้างแผนในสัปดาห์สอบหรือสัปดาห์หยุด`}
+3. ${mode === 'schedule' ? 'ใช้ week_type เป็น teaching, midterm_exam, final_exam หรือ break; แต่ละสัปดาห์สอบต้องมี topic ระบุชื่อการสอบ และห้ามใส่หน่วยการเรียนรู้ในแถวสอบ' : `แต่ละแผนมี ${periodCount} คาบ คาบละ ${minutesPerPeriod} นาที รวม ${duration} นาที และ session_number/week ต้องตรงกับ requested_sessions วันที่ให้ใช้เฉพาะวันที่ยืนยันได้จากเอกสาร หากไม่ทราบให้เป็น null`}
+4. ${mode === 'schedule' ? 'จัดหัวข้อและวิธีสอนให้ชัดเจนและกระชับ' : `ทุกช่องให้สรุปใจความสั้น ๆ ใช้ bullet หรือวลี ห้ามเขียนเรียงความ: จุดประสงค์ไม่เกิน 3 ข้อ; ขั้นนำ/สอน/สรุปอย่างละไม่เกิน 2 ข้อ; ช่องอื่นไม่เกิน 2 ข้อ เพื่อให้พอดีกับแบบฟอร์มหน้าเดียว${includeUnitTitle ? ' ให้ unit_title เป็นชื่อหน่วย เช่น "หน่วยการเรียนรู้ที่ 1"' : ' ให้ unit_title เป็นสตริงว่าง ไม่ต้องใส่ชื่อหน่วย'}; key_concept ใส่ชื่อเรื่องโดยไม่ต้องขึ้นต้นคำว่า "เรื่อง"`}
+5. ${mode === 'schedule' ? 'ห้ามแต่งรหัสมาตรฐาน/ตัวชี้วัดเมื่อเอกสารอ้างอิงไม่มีข้อมูล ให้ใช้ [] และระบุข้อสังเกตใน teacher_notes' : 'ห้ามแต่งรหัสมาตรฐาน/ตัวชี้วัดที่ไม่มีในเอกสารอ้างอิง หากไม่มีให้ใช้ [] และสรุปข้อสังเกตสั้น ๆ'}
+6. คำตอบต้องมี JSON ทั้งหมดในกล่อง Markdown \`\`\`json เพียงกล่องเดียว ห้ามมีข้อความก่อนหรือหลังกล่อง
+7. สำหรับกำหนดการสอน date_start/date_end ใช้วันที่จริงจากเอกสารเท่านั้น หากไม่มีให้ใช้ null ห้ามคาดเดาวันที่
+8. ใช้ schema_version และชื่อ field ตามตัวอย่างทุกตัว แผนหน้าเดียวต้องเป็น JSON type=lesson_plan
 
 JSON Schema ตัวอย่าง:
 ${JSON.stringify(schema, null, 2)}`
 }
 
-function validatePayload(raw, mode, scheduleConfig = null) {
+function validatePayload(raw, mode, scheduleConfig = null, planConfig = null) {
   let data
   try { data = JSON.parse(stripFence(raw)) } catch { throw new Error('JSON ไม่ถูกต้อง กรุณาตรวจเครื่องหมายปีกกาและเครื่องหมายคำพูด') }
   if (mode === 'schedule') {
@@ -155,8 +187,18 @@ function validatePayload(raw, mode, scheduleConfig = null) {
     }
   } else {
     if (data.type !== 'lesson_plan' || !Array.isArray(data.plans) || !data.plans.length) throw new Error('ต้องเป็น lesson_plan และมี plans อย่างน้อย 1 รายการ')
+    if (planConfig?.sessions?.length && data.plans.length !== planConfig.sessions.length) throw new Error(`ต้องมีแผนครบ ${planConfig.sessions.length} ครั้งตามกำหนดการสอน`)
+    const expectedBySession = new Map((planConfig?.sessions ?? []).map(item => [item.session_number, item]))
+    const seenSessions = new Set()
     data.plans.forEach((p, i) => {
-      if (!String(p.title ?? '').trim() || asInt(p.week_start) < 1) throw new Error(`แผนลำดับ ${i + 1} ไม่มีชื่อแผนหรือสัปดาห์`)
+      const sessionNo = asInt(p.session_number)
+      if (!String(p.title ?? '').trim() || asInt(p.week_start) < 1 || !Number.isInteger(sessionNo) || sessionNo < 1) throw new Error(`แผนลำดับ ${i + 1} ไม่มีชื่อแผน ครั้งที่ หรือสัปดาห์`)
+      if (seenSessions.has(sessionNo)) throw new Error(`ครั้งที่ ${sessionNo} ซ้ำกัน`)
+      seenSessions.add(sessionNo)
+      const expected = expectedBySession.get(sessionNo)
+      if (planConfig?.sessions?.length && (!expected || asInt(p.week_start) !== expected.week_start || asInt(p.week_end, asInt(p.week_start)) !== expected.week_end)) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องตรงกับสัปดาห์ที่ ${expected?.week_start ?? 'กำหนดการสอน'}`)
+      if (planConfig?.includeUnitTitle && !String(p.unit_title ?? '').trim()) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องระบุชื่อหน่วยการเรียนรู้ตามตัวเลือก`)
+      if (planConfig && !planConfig.includeUnitTitle && String(p.unit_title ?? '').trim()) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องเว้นชื่อหน่วยการเรียนรู้ตามตัวเลือก`)
       if (p.schedule_alignment && !['aligned', 'deviated', 'partial'].includes(p.schedule_alignment)) throw new Error(`schedule_alignment ของแผนลำดับ ${i + 1} ไม่ถูกต้อง`)
     })
   }
@@ -191,14 +233,17 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     <section class="rounded-2xl border border-gray-200 p-4 mb-4">
       <div class="flex items-start justify-between gap-3 mb-3"><div><p class="text-sm font-extrabold text-gray-800">หน่วยการเรียนรู้ที่ต้องสอนในเทอมนี้</p><p class="text-[11px] text-gray-400 mt-0.5">เพิ่มได้หลายหน่วย ระบบจะส่งชื่อและคำอธิบายให้ AI ใช้จัดกำหนดการ</p></div><button id="lp-ai-add-unit" type="button" class="min-h-[40px] px-3 rounded-xl border border-blue-200 bg-blue-50 text-blue-700 text-xs font-bold flex-shrink-0">＋ เพิ่มหน่วย</button></div>
       <div id="lp-ai-units" class="space-y-2"></div>
-    </section>` : `<div class="grid sm:grid-cols-4 gap-2 mb-2">
-      <label class="text-xs font-bold text-gray-500">สัปดาห์<input id="lp-ai-week" type="number" min="1" value="${currentWeek || 1}" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
-      <label class="text-xs font-bold text-gray-500">ครั้งที่สอน<input id="lp-ai-session" type="number" min="1" value="1" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
-      <label class="text-xs font-bold text-gray-500">จำนวนคาบ<input id="lp-ai-period-count" type="number" min="1" value="2" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
-      <label class="text-xs font-bold text-gray-500">นาทีต่อคาบ<input id="lp-ai-minutes-per-period" type="number" min="1" value="50" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
-    </div>
-    <p id="lp-ai-duration-summary" class="text-[11px] text-violet-600 font-bold mb-3">รวมเวลา 100 นาที</p>
-    <label class="block text-xs font-bold text-gray-500 mb-3">เรื่องที่ต้องการสร้าง<input id="lp-ai-topic" value="${esc((syllabusItems ?? []).find(x => currentWeek >= x.week_start && currentWeek <= x.week_end)?.topic ?? '')}" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal" placeholder="เว้นว่างเพื่อให้ AI ยึดจากกำหนดการสอน"></label>`}
+    </section>` : `<section class="rounded-2xl border border-violet-100 bg-violet-50/70 p-4 mb-4">
+      <p class="text-sm font-bold text-violet-800">สร้างแผนให้ครบทุกครั้งในครั้งเดียว</p>
+      <p id="lp-ai-session-summary" class="text-[11px] text-violet-700 mt-1"></p>
+      <div class="grid sm:grid-cols-2 gap-2 mt-3">
+        <label class="text-xs font-bold text-gray-600">จำนวนคาบต่อครั้ง<input id="lp-ai-period-count" type="number" min="1" value="2" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
+        <label class="text-xs font-bold text-gray-600">นาทีต่อคาบ<input id="lp-ai-minutes-per-period" type="number" min="1" value="50" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
+      </div>
+      <label class="flex items-center gap-2 mt-3 text-xs font-bold text-violet-900"><input id="lp-ai-include-unit" type="checkbox" checked class="h-4 w-4 accent-violet-700"> ให้ AI ใส่ชื่อหน่วยการเรียนรู้บนแผน</label>
+      <p class="text-[10px] text-violet-600 mt-1">เมื่อไม่เลือก ระบบจะเว้นชื่อหน่วยและแสดงเฉพาะ “เรื่อง …”</p>
+    </section>
+    <p id="lp-ai-duration-summary" class="text-[11px] text-violet-600 font-bold mb-3">รวมเวลา 100 นาที</p>`}
     <div class="rounded-2xl border border-dashed ${isSchedule ? 'border-blue-200 bg-blue-50/50' : 'border-violet-200 bg-violet-50/50'} p-4 mb-3">
       <p class="text-xs font-bold ${isSchedule ? 'text-blue-700' : 'text-violet-700'}">📎 เอกสารประกอบสำหรับ AI</p>
       <p class="text-[11px] text-gray-500 mt-1">เลือกหนังสือเรียน หลักสูตร หรือต้นแบบ ระบบจะใส่ชื่อไฟล์ใน Prompt ไฟล์ยังอยู่บนเครื่องและต้องแนบไฟล์เดียวกันให้ AI ด้วย</p>
@@ -275,28 +320,44 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
 
   const getPeriodCount = () => isSchedule ? null : Math.max(1, asInt(m.querySelector('#lp-ai-period-count').value, 1))
   const getMinutesPerPeriod = () => isSchedule ? null : Math.max(1, asInt(m.querySelector('#lp-ai-minutes-per-period').value, 50))
+  const getPlanConfig = () => {
+    if (isSchedule) return null
+    const sessions = scheduledLessonSessions(syllabusItems)
+    if (!sessions.length) throw new Error('กรุณาสร้างกำหนดการสอนที่มีสัปดาห์เรียนก่อน จึงจะสร้างแผนให้ครบทั้งภาคเรียนได้')
+    return { sessions, includeUnitTitle: m.querySelector('#lp-ai-include-unit').checked }
+  }
   const paintDurationSummary = () => {
     if (isSchedule) return
     m.querySelector('#lp-ai-duration-summary').textContent = `${getPeriodCount()} คาบ × ${getMinutesPerPeriod()} นาที = รวมเวลา ${getPeriodCount() * getMinutesPerPeriod()} นาที`
   }
   if (!isSchedule) {
+    const sessions = scheduledLessonSessions(syllabusItems)
+    const sessionSummary = m.querySelector('#lp-ai-session-summary')
+    sessionSummary.textContent = sessions.length
+      ? `พบสัปดาห์สอน ${sessions.length} สัปดาห์ · จะสร้างแผนครั้งที่ 1–${sessions.length} และข้ามสัปดาห์สอบ/หยุด`
+      : 'ยังไม่มีกำหนดการสอน กรุณาสร้างกำหนดการก่อน'
+    if (!sessions.length) sessionSummary.classList.add('text-red-600')
     m.querySelector('#lp-ai-period-count').addEventListener('input', paintDurationSummary)
     m.querySelector('#lp-ai-minutes-per-period').addEventListener('input', paintDurationSummary)
     paintDurationSummary()
   }
 
-  const prompt = () => makePrompt({
-    mode, cls, teacher, syllabusItems,
-    week: isSchedule ? null : asInt(m.querySelector('#lp-ai-week').value, 1), session: isSchedule ? null : asInt(m.querySelector('#lp-ai-session').value, 1),
-    periodCount: getPeriodCount(), minutesPerPeriod: getMinutesPerPeriod(), ...getScheduleConfig(), topic: isSchedule ? '' : m.querySelector('#lp-ai-topic').value.trim(),
-    teachingUnits: isSchedule ? readTeachingUnits().filter(unit => unit.title || unit.description) : [], files,
-  })
+  const prompt = () => {
+    const planConfig = getPlanConfig()
+    return makePrompt({
+      mode, cls, teacher, syllabusItems, week: null, session: null,
+      periodCount: getPeriodCount(), minutesPerPeriod: getMinutesPerPeriod(), ...getScheduleConfig(),
+      includeUnitTitle: planConfig?.includeUnitTitle, topic: '',
+      teachingUnits: isSchedule ? readTeachingUnits().filter(unit => unit.title || unit.description) : [], files,
+    })
+  }
   const showResult = (message, ok) => {
     const box = m.querySelector('#lp-ai-result'); box.classList.remove('hidden')
     box.className = `mt-2 rounded-xl px-3 py-2 text-xs ${ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'}`
     box.textContent = message
   }
-  m.querySelector('#lp-ai-prompt').value = prompt()
+  try { m.querySelector('#lp-ai-prompt').value = prompt() }
+  catch (err) { showResult(err.message, false) }
   m.addEventListener('click', e => { if (e.target === m) m.remove() })
   m.querySelector('[data-close]').addEventListener('click', () => m.remove())
   m.querySelector('#lp-ai-files').addEventListener('change', e => {
@@ -315,12 +376,12 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     catch { m.querySelector('#lp-ai-prompt').select(); document.execCommand('copy'); showToast('คัดลอก Prompt แล้ว', 'success') }
   })
   m.querySelector('#lp-ai-validate').addEventListener('click', () => {
-    try { const data = validatePayload(m.querySelector('#lp-ai-json').value, mode, getScheduleConfig()); showResult(`JSON ถูกต้อง: ${mode === 'schedule' ? data.weeks.length + ' แถวสัปดาห์' : data.plans.length + ' แผน'}`, true) }
+    try { const data = validatePayload(m.querySelector('#lp-ai-json').value, mode, getScheduleConfig(), getPlanConfig()); showResult(`JSON ถูกต้อง: ${mode === 'schedule' ? data.weeks.length + ' แถวสัปดาห์' : data.plans.length + ' แผน/ครั้ง'}`, true) }
     catch (err) { showResult(err.message, false) }
   })
   m.querySelector('#lp-ai-save').addEventListener('click', async e => {
     let data
-    try { data = validatePayload(m.querySelector('#lp-ai-json').value, mode, getScheduleConfig()) } catch (err) { showResult(err.message, false); return }
+    try { data = validatePayload(m.querySelector('#lp-ai-json').value, mode, getScheduleConfig(), getPlanConfig()) } catch (err) { showResult(err.message, false); return }
     const count = mode === 'schedule' ? data.weeks.length : data.plans.length
     if (!confirm(`ยืนยันสร้าง${mode === 'schedule' ? 'กำหนดการสอน' : 'แผนการสอน'} ${count} รายการในระบบ?`)) return
     const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'กำลังสร้าง...'
@@ -367,6 +428,14 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
 function signaturePadHTML(key, label, name, currentUrl) {
   return `<div class="rounded-2xl border border-gray-200 p-3" data-sign-role="${key}">
     <div class="flex justify-between gap-2"><div><p class="text-xs font-bold text-gray-700">${label}</p><input data-sign-name class="mt-1 border rounded-lg px-2 py-1 text-xs w-full" value="${esc(name)}" placeholder="ชื่อผู้ลงนาม"></div>${currentUrl ? `<img data-sign-current src="${esc(currentUrl)}" class="h-14 w-28 object-contain border rounded-lg bg-white">` : '<span class="text-[10px] text-gray-300">ยังไม่มีลายเซ็น</span>'}</div>
+    <div class="grid grid-cols-2 gap-2 mt-2">
+      <label class="text-[10px] font-bold text-gray-500">วิธีลงชื่อ<select data-sign-mode class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white"><option value="draw">วาดลายเซ็น</option><option value="type">พิมพ์ชื่อ</option></select></label>
+      <label class="text-[10px] font-bold text-gray-500">สีปากกา/ตัวอักษร<input data-sign-color type="color" value="#173b78" class="mt-1 w-full h-8 border rounded-lg bg-white p-1"></label>
+    </div>
+    <div data-sign-typed-controls hidden class="grid grid-cols-2 gap-2 mt-2">
+      <label class="col-span-2 text-[10px] font-bold text-gray-500">ข้อความลายเซ็น<input data-sign-typed maxlength="80" value="${esc(name)}" class="mt-1 w-full border rounded-lg px-2 py-1.5 font-normal" placeholder="พิมพ์ชื่อสำหรับใช้เป็นลายเซ็น"></label>
+      <label class="col-span-2 text-[10px] font-bold text-gray-500">รูปแบบตัวอักษร<select data-sign-font class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white font-normal"><option value="Sarabun, sans-serif">Sarabun</option><option value="Tahoma, sans-serif">Tahoma</option><option value="serif">Serif</option><option value="cursive">Cursive</option></select></label>
+    </div>
     <canvas data-sign-canvas width="700" height="180" class="mt-2 w-full h-24 border rounded-xl bg-white touch-none"></canvas>
     <div class="flex items-center justify-between gap-2 mt-2"><button data-sign-clear type="button" class="text-[11px] text-red-500">ล้างที่วาด</button><label class="text-[11px] font-bold text-indigo-600 cursor-pointer">📤 อัปโหลดภาพ<input data-sign-file type="file" accept="image/png,image/jpeg,image/webp" class="hidden"></label></div>
     <p data-sign-file-name class="text-[10px] text-gray-400 mt-1"></p>
@@ -375,14 +444,35 @@ function signaturePadHTML(key, label, name, currentUrl) {
 
 function bindPad(box) {
   const canvas = box.querySelector('[data-sign-canvas]'), ctx = canvas.getContext('2d')
-  ctx.strokeStyle = '#173b78'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+  const mode = box.querySelector('[data-sign-mode]'), color = box.querySelector('[data-sign-color]')
+  const typedControls = box.querySelector('[data-sign-typed-controls]'), typed = box.querySelector('[data-sign-typed]'), font = box.querySelector('[data-sign-font]')
+  ctx.strokeStyle = color.value; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
   let drawing = false, drawn = false, last = null
+  const renderTyped = () => {
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    const value = typed.value.trim()
+    if (!value) { drawn = false; return }
+    ctx.fillStyle = color.value
+    ctx.font = `36px ${font.value}`
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText(value, canvas.width / 2, canvas.height / 2, canvas.width - 40)
+    drawn = true
+  }
+  const setMode = () => {
+    const isTyped = mode.value === 'type'
+    typedControls.hidden = !isTyped
+    if (isTyped) renderTyped()
+    else { ctx.clearRect(0, 0, canvas.width, canvas.height); drawn = false; ctx.strokeStyle = color.value }
+  }
   const pos = e => { const r = canvas.getBoundingClientRect(), p = e.touches?.[0] ?? e; return { x:(p.clientX-r.left)*canvas.width/r.width, y:(p.clientY-r.top)*canvas.height/r.height } }
-  const start = e => { e.preventDefault(); drawing = true; drawn = true; last = pos(e) }
+  const start = e => { if (mode.value !== 'draw') return; e.preventDefault(); drawing = true; drawn = true; last = pos(e) }
   const move = e => { if (!drawing) return; e.preventDefault(); const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p }
   const end = () => { drawing = false }
   canvas.addEventListener('pointerdown', start); canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerup', end); canvas.addEventListener('pointerleave', end)
-  box.querySelector('[data-sign-clear]').addEventListener('click', () => { ctx.clearRect(0,0,canvas.width,canvas.height); drawn=false })
+  mode.addEventListener('change', setMode)
+  color.addEventListener('input', () => { ctx.strokeStyle = color.value; if (mode.value === 'type') renderTyped() })
+  typed.addEventListener('input', renderTyped); font.addEventListener('change', renderTyped)
+  box.querySelector('[data-sign-clear]').addEventListener('click', () => { ctx.clearRect(0,0,canvas.width,canvas.height); if (mode.value === 'type') typed.value = ''; drawn=false })
   box.querySelector('[data-sign-file]').addEventListener('change', e => { box.querySelector('[data-sign-file-name]').textContent = e.target.files[0]?.name ?? '' })
   return { canvas, hasDrawn: () => drawn, file: () => box.querySelector('[data-sign-file]').files[0] ?? null, name: () => box.querySelector('[data-sign-name]').value.trim() }
 }
@@ -400,6 +490,13 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept }) {
   const duration = Number(plan.duration_minutes) > 0 && Number(plan.duration_minutes) % 60 === 0
     ? `${Number(plan.duration_minutes) / 60} ชั่วโมง`
     : `${plan.duration_minutes || '...........'} นาที`
+  const rawUnitTitle = String(plan.unit_title ?? '').trim()
+  const unitTitle = !rawUnitTitle ? ''
+    : /^หน่วยการเรียนรู้ที่\s*/.test(rawUnitTitle) ? rawUnitTitle
+      : /^หน่วยที่\s*/.test(rawUnitTitle) ? rawUnitTitle.replace(/^หน่วยที่\s*/, 'หน่วยการเรียนรู้ที่ ')
+        : /^ที่\s*/.test(rawUnitTitle) ? `หน่วยการเรียนรู้${rawUnitTitle}`
+          : `หน่วยการเรียนรู้ที่ ${rawUnitTitle}`
+  const lessonHeading = [unitTitle, plan.key_concept ? `เรื่อง ${String(plan.key_concept).replace(/^เรื่อง\s*/, '')}` : ''].filter(Boolean).join(' ')
   const nl = value => esc(value || '-').replace(/\n/g, '<br>')
   const logoUrl = new URL('./pp5-form-logo.png', window.location.href).href
   const sig = (url, name, role) => `<div class="sig"><div class="sig-img">${url ? `<img src="${esc(url)}">` : ''}</div><div>ลงชื่อ</div><div class="sig-line"></div><div>${role}</div><div>( ${esc(name || '................................')} )</div><div>วันที่ ${date}</div></div>`
@@ -408,7 +505,7 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept }) {
   if (!w) { showToast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาต Pop-up', 'warning'); return }
   w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(plan.title)}</title><style>
     @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:10.5px;line-height:1.42}.page{width:210mm;min-height:297mm;padding:10mm 11mm 11mm;margin:auto;background:#fff}.head{text-align:center}.logo{width:15mm;height:15mm;object-fit:contain}.head h1{font-size:18px;line-height:1.15;margin:1mm 0}.head h2{font-size:13px;line-height:1.15;margin:0 0 1mm}.head p{font-size:10.5px;margin:.5mm 0}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #176b3a;border-bottom:1px solid #176b3a;padding:1.7mm 2mm;margin-top:2.5mm;font-size:10.5px}.meta span:nth-child(2){text-align:center}.meta span:last-child{text-align:right}.cols{display:grid;grid-template-columns:1fr 1fr;gap:3.5mm;margin-top:3mm}.box{border:.8px solid #17743d;border-radius:1.2mm;margin-bottom:2.7mm;overflow:hidden}.box h3{font-size:11px;font-weight:500;margin:0;padding:1.5mm 2.2mm;background:#d8f6e2;color:#145f35;border-bottom:.8px solid #17743d}.box .content{padding:1.8mm 2.2mm;line-height:1.5;min-height:15mm}.activities{min-height:80mm!important}.sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:7mm;margin-top:10mm}.sig{text-align:center;font-size:9px;line-height:1.55}.sig-img{height:12mm;display:flex;align-items:flex-end;justify-content:center}.sig-img img{max-height:12mm;max-width:35mm;object-fit:contain}.sig-line{border-bottom:1px dotted #111;margin:0 1mm 1mm}.reflection-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:10mm 0 2mm}.ruled{margin-top:0}.rule{min-height:7mm;border-bottom:.6px solid #8ca1bd;padding:1mm 2mm;color:#111}.rule.title{color:#176b3a}.suggest-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:5mm 0 2mm}.dept{width:72%;margin:18mm auto 0;text-align:center;font-size:9.5px;line-height:1.6}.dept .sig-img{height:12mm}.dept-line{display:inline-block;width:38mm;border-bottom:1px dotted #111;vertical-align:middle}@media print{body{print-color-adjust:exact;-webkit-print-color-adjust:exact}}</style></head><body><div class="page">
-    <div class="head"><img class="logo" src="${esc(logoUrl)}"><h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1><h2>กลุ่มสาระการเรียนรู้${esc(learningArea)}</h2><p>วิชา ${esc(meta.subject_name)} รหัสวิชา ${esc(meta.subject_code)} ชั้นมัธยมศึกษาปีที่ ${esc(className)}</p><p>หน่วยการเรียนรู้ ${esc(plan.unit_title || '................................')} ${plan.key_concept ? 'เรื่อง ' + esc(plan.key_concept) : ''}</p></div>
+    <div class="head"><img class="logo" src="${esc(logoUrl)}"><h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1><h2>กลุ่มสาระการเรียนรู้${esc(learningArea)}</h2><p>วิชา ${esc(meta.subject_name)} รหัสวิชา ${esc(meta.subject_code)} ชั้นมัธยมศึกษาปีที่ ${esc(className)}</p><p>${esc(lessonHeading || 'เรื่อง ................................')}</p></div>
     <div class="meta"><span>ครั้งที่ ${plan.session_number || 1}</span><span>เวลา ${duration}</span><span>วันที่ ${date}</span></div>
     <div class="cols"><div>
       <section class="box"><h3>1.มาตรฐาน/ตัวชี้วัด (ผลการเรียนรู้)</h3><div class="content">${nl(plan.standards)}</div></section>
@@ -446,7 +543,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     ])
     m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
       <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-bold text-gray-800">📝 ${esc(plan.title)}</h3><p class="text-xs text-gray-400">บันทึกหลังสอนและลายเซ็นครบ 3 ฝ่าย</p></div><button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button></div>
-      <label class="text-xs font-bold text-gray-500">สัปดาห์ที่<select id="lp-doc-week" class="ml-2 border rounded-lg px-2 py-1 bg-white">${Array.from({length:plan.week_end-plan.week_start+1},(_,i)=>plan.week_start+i).map(w=>`<option value="${w}" ${w===weekNo?'selected':''}>${w}</option>`).join('')}</select></label>
+      <label class="text-xs font-bold text-gray-500">ครั้งที่<select id="lp-doc-week" class="ml-2 border rounded-lg px-2 py-1 bg-white">${Array.from({length:plan.week_end-plan.week_start+1},(_,i)=>({ week:plan.week_start+i, session:asInt(plan.session_number,1)+i })).map(item=>`<option value="${item.week}" ${item.week===weekNo?'selected':''}>${item.session}</option>`).join('')}</select></label>
       <div class="grid sm:grid-cols-3 gap-3 mt-4">
         ${signaturePadHTML('class-head','หัวหน้าห้อง',reflection?.class_head_name || classHeadDefault,classHeadUrl)}
         ${signaturePadHTML('teacher','ครูผู้สอน',reflection?.teacher_name || teacher.full_name,teacherUrl)}
