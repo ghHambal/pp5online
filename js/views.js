@@ -60,6 +60,7 @@ import {
   syncStudentsFromSheetNow,
 } from './sync.js'
 import { READING_GRADES, _readingGrade, applyReadingGradesFromConfig, _htmlEsc, _dateInputValue } from './teacher-views-utils.js'
+import { academicTermKey, collectAcademicTerms, currentAcademicTerm, renderAcademicTermOptions } from './academic-term-switcher.js'
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
 function _grade(room) {
@@ -216,11 +217,40 @@ export async function renderOverview() {
   setActiveNav('overview')
   document.getElementById('page-title').textContent = 'ภาพรวมระบบ'
 
+  const [overviewCfg, overviewTerms] = await Promise.all([
+    getSystemConfig().catch(() => ({})),
+    getAcademicTerms().catch(() => []),
+  ])
+  const termRows = collectAcademicTerms(overviewTerms, overviewCfg)
+  const currentTermKey = academicTermKey(currentAcademicTerm(overviewCfg))
+  let selectedTermKey = currentTermKey
+  try {
+    const saved = localStorage.getItem('pp5_admin_overview_term')
+    if (termRows.some(term => academicTermKey(term) === saved)) selectedTermKey = saved
+  } catch {}
+  const selectedTerm = termRows.find(term => academicTermKey(term) === selectedTermKey) ?? currentAcademicTerm(overviewCfg)
+
   setContent(`<div class="max-w-6xl mx-auto animate-fade">
     <div class="bg-gradient-to-r from-indigo-50 to-white rounded-2xl border border-gray-100 p-8 mb-6">
       <h3 class="text-2xl font-bold text-indigo-900 mb-1">ยินดีต้อนรับเข้าสู่ระบบ ปพ.5 👋</h3>
       <p class="text-gray-500 text-sm">จัดการข้อมูลครู นักเรียน และห้องเรียนได้จากเมนูด้านซ้าย</p>
     </div>
+
+    <section class="mb-5 rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-50 to-white p-4 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="min-w-0">
+          <h2 class="text-sm font-bold text-indigo-900">🗓️ ภาคเรียนของข้อมูล</h2>
+          <p class="mt-1 text-xs text-indigo-700">ห้องเรียน รายวิชา และคะแนนละหมาดเปลี่ยนตามภาคที่เลือก · จำนวนครู นักเรียน บัญชี และคำขอชำระเงินเป็นยอดรวมระบบ</p>
+        </div>
+        <label class="flex items-center gap-2 whitespace-nowrap text-xs font-semibold text-indigo-700">
+          <span>เลือกภาคเรียน</span>
+          <select id="admin-overview-term-switcher" aria-label="เลือกภาคเรียนของภาพรวมแอดมิน"
+            class="max-w-[220px] rounded-xl border border-indigo-200 bg-white px-3 py-2 text-sm font-bold text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-200">
+            ${renderAcademicTermOptions(termRows, selectedTermKey, currentTermKey)}
+          </select>
+        </label>
+      </div>
+    </section>
 
     <!-- สถิติหลัก -->
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-4" id="stat-grid">
@@ -281,10 +311,30 @@ export async function renderOverview() {
 
   try {
     const [stats, payments, teachers] = await Promise.all([
-      getStats(),
+      getStats(selectedTerm.academic_year, selectedTerm.semester),
       getAllPaymentRequests().catch(()=>[]),
       getTeachers().catch(()=>[]),
     ])
+
+    document.getElementById('admin-overview-term-switcher')?.addEventListener('change', async event => {
+      selectedTermKey = event.target.value
+      try { localStorage.setItem('pp5_admin_overview_term', selectedTermKey) } catch {}
+      const term = termRows.find(row => academicTermKey(row) === selectedTermKey)
+      if (!term) return
+      const select = event.target
+      select.disabled = true
+      try {
+        const nextStats = await getStats(term.academic_year, term.semester)
+        Object.entries(nextStats).forEach(([key, value]) => {
+          const el = document.getElementById(`stat-${key}`)
+          if (el) el.textContent = Number(value ?? 0).toLocaleString()
+        })
+      } catch {
+        showToast('โหลดสถิติของภาคเรียนที่เลือกไม่สำเร็จ', 'error')
+      } finally {
+        select.disabled = false
+      }
+    })
 
     // สถิติหลัก
     Object.entries(stats).forEach(([k, v]) => {

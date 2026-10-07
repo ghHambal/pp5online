@@ -591,33 +591,37 @@ async function _getMySubjects(teacherId, currentOnly = true) {
 }
 
 // ─── Overview Stats ───────────────────────────────────────────────────────────
-export async function getStats() {
+export async function getStats(academicYear = null, semester = null) {
+  const hasTerm = Number.isInteger(Number(academicYear)) && Number(academicYear) > 0
+    && [1, 2].includes(Number(semester))
+  let classesQuery = supabase.from('classes').select('*', { count: 'exact', head: true })
+  let subjectsQuery = supabase.from('master_subjects').select('*', { count: 'exact', head: true })
+  let prayerQuery = supabase.from('prayer_records').select('*', { count: 'exact', head: true })
+  if (hasTerm) {
+    classesQuery = classesQuery.eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
+    subjectsQuery = subjectsQuery.eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
+    prayerQuery = prayerQuery.eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
+  }
   const [
     { count: teachers },
     { count: students },
     { count: classes },
     { count: subjects },
+    { count: prayer },
   ] = await Promise.all([
     supabase.from('teachers').select('*',       { count: 'exact', head: true }),
     supabase.from('students').select('*',       { count: 'exact', head: true }).eq('is_active', true),
-    supabase.from('classes').select('*',        { count: 'exact', head: true }),
-    supabase.from('master_subjects').select('*',{ count: 'exact', head: true }),
+    classesQuery,
+    subjectsQuery,
+    prayerQuery,
   ])
-
-  let prayer = 0
-  try {
-    const { count } = await supabase.from('prayer_records').select('*', { count: 'exact', head: true })
-    prayer = count ?? 0
-  } catch (e) {
-    console.error('Error fetching prayer records count:', e)
-  }
 
   return {
     teachers: teachers ?? 0,
     students: students ?? 0,
     classes:  classes  ?? 0,
     subjects: subjects ?? 0,
-    prayer,
+    prayer: prayer ?? 0,
   }
 }
 
