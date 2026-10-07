@@ -2252,6 +2252,9 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
   // 2. กลุ่มสาระ → auto-fill หัวหน้าหมวด (เฉพาะถ้ายังไม่ได้พิมพ์เอง)
   document.getElementById('cf-dept').addEventListener('change', e => {
     const code = e.target.value
+    const subjectGroup = document.getElementById('cf-subg').value
+    const selectedCatalogId = document.getElementById('cf-catalog-id')?.value || ''
+    _renderCatalogOptions(subjectGroup, code, selectedCatalogId)
     const heads = depts.filter(x => x.dept_code === code && x.head_name).map(x => x.head_name)
     const headEl = document.getElementById('cf-dept-head')
     if (heads.length === 1) {
@@ -2491,7 +2494,11 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     }
 
     // กลุ่มสาระ
-    if (editData.dept) document.getElementById('cf-dept').value = editData.dept
+    if (editData.dept) {
+      const deptEl = document.getElementById('cf-dept')
+      deptEl.value = editData.dept
+      _renderCatalogOptions(editData.subject_group ?? '', editData.dept, editData.catalog_id ?? '')
+    }
 
     // หัวหน้ากลุ่มสาระ: ใช้จาก editData.learning_area ก่อน, ถ้าไม่มี auto-fill จาก dept
     if (editData.learning_area) {
