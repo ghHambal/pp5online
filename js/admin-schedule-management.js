@@ -34,6 +34,63 @@ function statusBadge(row, conflictSet) {
   return '<span class="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">ปกติ</span>'
 }
 
+function teacherCardStyle(rows, conflictSet, missingTeacher = false) {
+  if (missingTeacher || rows.some(row => conflictSet.has(row.id))) {
+    return {
+      border: 'border-rose-400',
+      glow: 'shadow-[0_0_18px_rgba(244,63,94,0.38)]',
+      label: 'มีปัญหา',
+      badge: 'bg-rose-50 text-rose-700',
+    }
+  }
+  if (rows.length) {
+    return {
+      border: 'border-emerald-400',
+      glow: 'shadow-[0_0_18px_rgba(16,185,129,0.32)]',
+      label: 'มีตารางสอน',
+      badge: 'bg-emerald-50 text-emerald-700',
+    }
+  }
+  return {
+    border: 'border-gray-300',
+    glow: 'shadow-[0_0_15px_rgba(107,114,128,0.22)]',
+    label: 'ยังไม่มีตารางสอน',
+    badge: 'bg-gray-100 text-gray-600',
+  }
+}
+
+function renderTeacherSchedulePopup({ teacher, rows, state, subjectById, conflictSet, onChanged }) {
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/50 p-4'
+  const teacherName = teacher?.full_name || 'ไม่พบครู'
+  const teacherCode = teacher?.teacher_code ? ` (${esc(teacher.teacher_code)})` : ''
+  const close = () => modal.remove()
+  const render = () => {
+    const sortedRows = [...rows].sort((a, b) => Number(a.day_of_week) - Number(b.day_of_week) || Number(a.period_no) - Number(b.period_no))
+    modal.innerHTML = `<div class="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl">
+      <div class="flex items-start justify-between gap-4">
+        <div><p class="text-xs font-semibold text-indigo-500">ตารางสอนรายบุคคล · ${state.semester}/${state.year}</p><h2 class="mt-1 text-xl font-extrabold text-gray-800">${esc(teacherName)}${teacherCode}</h2><p class="mt-1 text-sm text-gray-500">ทั้งหมด ${sortedRows.length} รายการ · ตรวจสอบ แก้ไข หรือลบรายการได้จากหน้าต่างนี้</p></div>
+        <button type="button" data-close class="text-2xl text-gray-400 hover:text-gray-700">×</button>
+      </div>
+      <div class="mt-5 overflow-x-auto rounded-2xl border border-gray-100"><table class="w-full min-w-[760px] text-left text-sm"><thead class="bg-gray-50 text-xs text-gray-500"><tr><th class="px-4 py-3">รายวิชา</th><th class="px-4 py-3">ห้องเรียน</th><th class="px-4 py-3">วัน/คาบ</th><th class="px-4 py-3">สถานะ</th><th class="px-4 py-3 text-right">จัดการ</th></tr></thead><tbody class="divide-y divide-gray-100">${sortedRows.length ? sortedRows.map(row => { const subject = subjectById[row.subject_id]; return `<tr><td class="px-4 py-3"><div class="font-semibold text-gray-800">${esc(subject?.subject_name || row.subject_name || '—')}</div><div class="text-xs text-gray-400">${esc(subject?.subject_code || '')}</div></td><td class="px-4 py-3">${esc(row.class_name || '—')}</td><td class="px-4 py-3">${DAYS.find(item => item[0] === Number(row.day_of_week))?.[1] || '—'} · คาบ ${row.period_no}${Number(row.span_periods) > 1 ? `–${Number(row.period_no) + Number(row.span_periods) - 1}` : ''}</td><td class="px-4 py-3">${statusBadge(row, conflictSet)}</td><td class="px-4 py-3 text-right"><button data-edit="${row.id}" class="mr-2 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-indigo-700">แก้ไข</button><button data-delete="${row.id}" class="rounded-lg border border-rose-100 px-2.5 py-1.5 text-xs font-semibold text-rose-700">ลบ</button></td></tr>` }).join('') : '<tr><td colspan="5" class="px-4 py-12 text-center text-gray-400">ครูท่านนี้ยังไม่มีตารางสอนในภาคเรียนนี้</td></tr>'}</tbody></table></div>
+      <div class="mt-5 flex flex-wrap justify-end gap-2 border-t border-gray-100 pt-4"><button type="button" data-add class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white">＋ เพิ่มรายการให้ครูคนนี้</button><button type="button" data-close class="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600">ปิด</button></div>
+    </div>`
+    modal.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close))
+    modal.querySelector('[data-add]').addEventListener('click', () => renderForm({ state, row: { teacher_id: teacher?.id }, onSaved: async () => { close(); await onChanged() } }))
+    modal.querySelectorAll('[data-edit]').forEach(button => button.addEventListener('click', () => {
+      const row = rows.find(item => String(item.id) === String(button.dataset.edit))
+      if (row) renderForm({ row, state, onSaved: async () => { close(); await onChanged() } })
+    }))
+    modal.querySelectorAll('[data-delete]').forEach(button => button.addEventListener('click', async () => {
+      const row = rows.find(item => String(item.id) === String(button.dataset.delete))
+      if (!row || !confirm('ยืนยันลบรายการตารางสอนนี้หรือไม่? ระบบจะบันทึกประวัติการลบ')) return
+      try { await deleteScheduleEntry(row.id); showToast('ลบรายการตารางสอนแล้ว', 'success'); close(); await onChanged() } catch (error) { showToast(`ลบไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error') }
+    }))
+  }
+  document.body.appendChild(modal)
+  render()
+}
+
 function buildConflicts(rows) {
   const teacherSlots = new Map()
   const roomSlots = new Map()
@@ -159,14 +216,24 @@ export async function renderAdminScheduleManagement() {
     const subjectById = Object.fromEntries(state.subjects.map(subject => [subject.id, subject]))
     const render = () => {
       const q = state.query.toLocaleLowerCase('th-TH')
-      const rows = state.rows.filter(row => {
+      const matchesRow = row => {
         const teacher = teacherById[row.teacher_id]
         const subject = subjectById[row.subject_id]
         const haystack = [teacher?.full_name, teacher?.teacher_code, row.class_name, row.subject_name, subject?.subject_name, subject?.subject_code].join(' ').toLocaleLowerCase('th-TH')
         return (!q || haystack.includes(q)) && (state.day === '' || String(row.day_of_week) === state.day)
-      })
+      }
+      const visibleRows = state.rows.filter(matchesRow)
       const conflictSet = buildConflicts(state.rows)
-      main.innerHTML = `<div class="mx-auto max-w-7xl animate-fade space-y-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-xl font-extrabold text-gray-800">🗓️ จัดการตารางสอน</h2><p class="mt-1 text-sm text-gray-500">ดู ค้นหา เพิ่ม แก้ไข และลบตารางสอนของครูทั้งโรงเรียน</p></div><div class="flex flex-wrap gap-2"><button data-ai class="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-bold text-violet-700">🤖 นำเข้าด้วย AI</button><button data-audit class="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600">🧾 ประวัติการเปลี่ยนแปลง</button><button data-add class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white">＋ เพิ่มรายการ</button></div></div><div class="grid gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm md:grid-cols-[220px_220px_1fr_160px]"><select data-term class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${termOptions(state.year, state.semester)}</select><input data-search value="${esc(state.query)}" placeholder="ค้นหาครู ห้องเรียน หรือรายวิชา" class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm" /><select data-day class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><option value="">ทุกวัน</option>${DAYS.map(([value, label]) => `<option value="${value}" ${state.day === String(value) ? 'selected' : ''}>${label}</option>`).join('')}</select><div class="rounded-xl bg-gray-50 px-3 py-2.5 text-sm text-gray-600">พบ <b class="text-indigo-600">${rows.length}</b> / ${state.rows.length} รายการ</div></div><div class="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm"><div class="overflow-x-auto"><table class="w-full min-w-[1050px] text-left text-sm"><thead class="bg-gray-50 text-xs text-gray-500"><tr><th class="px-4 py-3">ครูผู้สอน</th><th class="px-4 py-3">รายวิชา</th><th class="px-4 py-3">ห้องเรียน</th><th class="px-4 py-3">วัน/คาบ</th><th class="px-4 py-3">สถานะ</th><th class="px-4 py-3 text-right">จัดการ</th></tr></thead><tbody class="divide-y divide-gray-100">${rows.map(row => { const teacher = teacherById[row.teacher_id]; const subject = subjectById[row.subject_id]; return `<tr><td class="px-4 py-3"><div class="font-semibold text-gray-800">${esc(teacher?.full_name || row.teacher_name || 'ไม่พบครู')}</div><div class="text-xs text-gray-400">${esc(teacher?.teacher_code || '')}</div></td><td class="px-4 py-3"><div class="font-semibold">${esc(subject?.subject_name || row.subject_name || '—')}</div><div class="text-xs text-gray-400">${esc(subject?.subject_code || '')}</div></td><td class="px-4 py-3">${esc(row.class_name || '—')}</td><td class="px-4 py-3">${DAYS.find(item => item[0] === Number(row.day_of_week))?.[1] || '—'} · คาบ ${row.period_no}${Number(row.span_periods) > 1 ? `–${Number(row.period_no) + Number(row.span_periods) - 1}` : ''}</td><td class="px-4 py-3">${statusBadge(row, conflictSet)}</td><td class="px-4 py-3 text-right"><button data-edit="${row.id}" class="mr-2 rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-semibold text-indigo-700">แก้ไข</button><button data-delete="${row.id}" class="rounded-lg border border-rose-100 px-2.5 py-1.5 text-xs font-semibold text-rose-700">ลบ</button></td></tr>` }).join('') || '<tr><td colspan="6" class="px-4 py-12 text-center text-gray-400">ยังไม่มีรายการตามเงื่อนไข</td></tr>'}</tbody></table></div></div></div>`
+      const teacherItems = state.teachers.map(teacher => {
+        const teacherRows = state.rows.filter(row => String(row.teacher_id) === String(teacher.id))
+        const teacherHaystack = [teacher.full_name, teacher.teacher_code].join(' ').toLocaleLowerCase('th-TH')
+        return { teacher, rows: teacherRows, visibleRows: teacherRows.filter(matchesRow), matches: (!q && state.day === '') || (q && teacherHaystack.includes(q)) || teacherRows.some(matchesRow) }
+      }).filter(item => item.matches)
+      const orphanRows = state.rows.filter(row => !teacherById[row.teacher_id] && matchesRow(row))
+      if (orphanRows.length) teacherItems.push({ teacher: { id: null, full_name: 'ครูที่ไม่พบในรายชื่อ' }, rows: orphanRows, visibleRows: orphanRows, matches: true })
+      const withSchedules = teacherItems.filter(item => item.rows.length).length
+      const problemTeachers = teacherItems.filter(item => !item.teacher.id || item.rows.some(row => conflictSet.has(row.id))).length
+      main.innerHTML = `<div class="mx-auto max-w-7xl animate-fade space-y-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-xl font-extrabold text-gray-800">🗓️ จัดการตารางสอน</h2><p class="mt-1 text-sm text-gray-500">แสดงรายชื่อครูเป็นหลัก คลิกปุ่มตารางสอนเพื่อดูและจัดการรายละเอียดรายบุคคล</p></div><div class="flex flex-wrap gap-2"><button data-ai class="rounded-xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-bold text-violet-700">🤖 นำเข้าด้วย AI</button><button data-audit class="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600">🧾 ประวัติการเปลี่ยนแปลง</button><button data-add class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white">＋ เพิ่มรายการ</button></div></div><div class="grid gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-sm md:grid-cols-[220px_220px_1fr_180px]"><select data-term class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${termOptions(state.year, state.semester)}</select><input data-search value="${esc(state.query)}" placeholder="ค้นหาครู ห้องเรียน หรือรายวิชา" class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm" /><select data-day class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><option value="">ทุกวัน</option>${DAYS.map(([value, label]) => `<option value="${value}" ${state.day === String(value) ? 'selected' : ''}>${label}</option>`).join('')}</select><div class="rounded-xl bg-gray-50 px-3 py-2.5 text-sm text-gray-600">พบครู <b class="text-indigo-600">${teacherItems.length}</b> คน<br><span class="text-xs text-gray-400">${visibleRows.length} รายการ · มีตาราง ${withSchedules} · ปัญหา ${problemTeachers}</span></div></div><div class="flex flex-wrap items-center gap-3 text-xs text-gray-500"><span class="font-semibold text-gray-700">สถานะ:</span><span class="rounded-full bg-emerald-50 px-3 py-1 font-semibold text-emerald-700">● มีตารางสอน</span><span class="rounded-full bg-gray-100 px-3 py-1 font-semibold text-gray-600">● ยังไม่มีตารางสอน</span><span class="rounded-full bg-rose-50 px-3 py-1 font-semibold text-rose-700">● มีปัญหา/คาบชน</span></div><div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">${teacherItems.map((item, index) => { const style = teacherCardStyle(item.rows, conflictSet, !item.teacher.id); const teacher = item.teacher; return `<article class="rounded-2xl border-2 ${style.border} ${style.glow} bg-white p-4 transition hover:-translate-y-0.5"><div class="flex items-start justify-between gap-3"><div><h3 class="font-extrabold text-gray-800">${esc(teacher.full_name)}</h3><p class="mt-1 text-xs text-gray-400">${esc(teacher.teacher_code || 'ไม่มีรหัสครู')}</p></div><span class="rounded-full px-2.5 py-1 text-[11px] font-bold ${style.badge}">${style.label}</span></div><div class="mt-4 flex items-end justify-between gap-3"><div><p class="text-2xl font-black text-gray-800">${item.rows.length}</p><p class="text-xs text-gray-500">รายการตารางสอน</p></div><button data-view-teacher="${index}" class="rounded-xl bg-indigo-600 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-indigo-700">🗓️ ตารางสอน</button></div></article>` }).join('') || '<div class="col-span-full rounded-2xl border border-dashed border-gray-200 bg-white px-6 py-14 text-center text-gray-400">ไม่พบครูหรือตารางสอนตามเงื่อนไข</div>'}</div></div>`
       main.querySelector('[data-ai]').addEventListener('click', async () => {
         const { renderAdminScheduleImport } = await import('./admin-schedule-import.js')
         renderAdminScheduleImport({ onBack: renderAdminScheduleManagement })
@@ -176,8 +243,7 @@ export async function renderAdminScheduleManagement() {
       main.querySelector('[data-search]').addEventListener('input', event => { state.query = event.target.value; render() })
       main.querySelector('[data-day]').addEventListener('change', event => { state.day = event.target.value; render() })
       main.querySelector('[data-term]').addEventListener('change', async event => { const [year, semester] = event.target.value.split('|').map(Number); state.year = year; state.semester = semester; await load(); render() })
-      main.querySelectorAll('[data-edit]').forEach(button => button.addEventListener('click', () => { const row = state.rows.find(item => String(item.id) === String(button.dataset.edit)); if (row) renderForm({ row, state, onSaved: async () => { await load(); render() }, onClose: render }) }))
-      main.querySelectorAll('[data-delete]').forEach(button => button.addEventListener('click', async () => { const row = state.rows.find(item => String(item.id) === String(button.dataset.delete)); if (!row || !confirm('ยืนยันลบรายการตารางสอนนี้หรือไม่? ระบบจะบันทึกประวัติการลบ')) return; try { await deleteScheduleEntry(row.id); showToast('ลบรายการตารางสอนแล้ว', 'success'); await load(); render() } catch (error) { showToast(`ลบไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error') } }))
+      main.querySelectorAll('[data-view-teacher]').forEach(button => button.addEventListener('click', () => { const item = teacherItems[Number(button.dataset.viewTeacher)]; if (item) renderTeacherSchedulePopup({ teacher: item.teacher, rows: item.rows, state, subjectById, conflictSet, onChanged: async () => { await load(); render() } }) }))
     }
     render()
   } catch (error) {
