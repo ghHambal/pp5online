@@ -27,10 +27,11 @@ function parseWeekNumbers(value, maxWeek, label) {
 const lessonSchema = {
   schema_version: 'pp5.lesson_plan.v1',
   type: 'lesson_plan',
+  course: { course_type: 'basic' },
   plans: [{
     title: 'แผนการจัดการเรียนรู้ ครั้งที่ 1', week_start: 1, week_end: 1, session_number: 1,
     lesson_date: '2026-05-11', period_count: 2, minutes_per_period: 50, duration_minutes: 100, unit_title: 'หน่วยการเรียนรู้ที่ 1',
-    standards: ['ค 1.1 ม.5/1'], objectives: ['อธิบายความหมายของเลขยกกำลังได้'], key_concept: 'ความหมายของเลขยกกำลัง',
+    standards_type: 'indicators', standards: ['ค.1.2 ม.2/1 : อธิบายความสัมพันธ์ของจำนวนและการดำเนินการ'], standards_source: ['หลักสูตรแกนกลางฯ หน้า ...'], objectives: ['อธิบายความหมายของเลขยกกำลังได้'], key_concept: 'ความหมายของเลขยกกำลัง',
     activities: { intro: ['ทบทวนเลขยกกำลังด้วยโจทย์สั้น'], main: ['แยกตัวประกอบและตรวจคำตอบ'], wrap: ['สรุปวิธีคิด 1 ประโยค'] },
     media: ['หนังสือเรียน'], assessment: ['ตรวจคำตอบจากแบบฝึกหัด'], homework: '', teacher_notes: '',
     schedule_alignment: 'aligned', deviation_reason: '',
@@ -117,7 +118,7 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
     weeks: scheduleRowsExample,
   } : {
     ...lessonSchema,
-    course: { ...meta, total_sessions: planSessions.length, include_unit_title: includeUnitTitle },
+    course: { ...meta, course_type: 'ให้จำแนกจากหลักสูตรหรือเอกสารแนบ', total_sessions: planSessions.length, include_unit_title: includeUnitTitle },
     plans: planSessions.map(item => ({ ...lessonSchema.plans[0], ...item,
       title: `แผนการจัดการเรียนรู้ ครั้งที่ ${item.session_number}`,
       unit_title: includeUnitTitle && item.week_type === 'teaching' ? item.unit_title || 'หน่วยการเรียนรู้ที่ 1' : item.unit_title || '',
@@ -143,14 +144,14 @@ ${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_wee
 ${attachmentText}
 
 ข้อกำหนดสำคัญ:
-1. อ่านหนังสือเรียน เอกสารหลักสูตร ตัวชี้วัด และแบบฟอร์มที่แนบก่อนตอบ
+1. ตรวจประเภทวิชาและอ่านหนังสือเรียน เอกสารหลักสูตร ผลการเรียนรู้/มาตรฐานและตัวชี้วัด รวมถึงแบบฟอร์มที่แนบก่อนตอบ ห้ามเดาประเภทวิชาจากรหัสวิชาเพียงอย่างเดียว
 2. ${mode === 'schedule' ? `สร้างแถวให้ครบสัปดาห์ตามปฏิทิน 1-${calendarWeeks} โดยเลขสัปดาห์เป็นเลขจริง ห้ามเลื่อนหรือยุบเลขหลังช่วงสอบ สัปดาห์สอบกลางภาคคือ ${midtermWeeks?.join(', ') || 'ไม่มี'} และปลายภาคคือ ${finalWeeks?.join(', ') || 'ไม่มี'} ให้ใส่แถวสอบตาม week_type ที่ตรงกัน แล้วกระจายหน่วยการเรียนรู้ให้ครบในสัปดาห์สอนจริงที่เหลือ รวม ${teachingWeeks} สัปดาห์ ห้ามละเว้นหรือเปลี่ยนสาระสำคัญ; topic ให้เป็นชื่อเรื่องสั้น ๆ เท่านั้น ไม่เขียนบรรยายหรือเรียงความ` : `สร้างแผนหนึ่งรายการต่อทุก session ใน requested_sessions ให้ครบทั้งสัปดาห์เรียนและสัปดาห์สอบ เรียง session_number ตั้งแต่ 1 และคง week_start/week_end/week_type ตามข้อมูล ห้ามสร้างแผนเฉพาะสัปดาห์หยุด`}
 3. ${mode === 'schedule' ? 'ใช้ week_type เป็น teaching, midterm_exam, final_exam หรือ break; แต่ละสัปดาห์สอบต้องมี topic ระบุชื่อการสอบ และห้ามใส่หน่วยการเรียนรู้ในแถวสอบ' : `แต่ละแผนมี ${periodCount} คาบ คาบละ ${minutesPerPeriod} นาที รวม ${duration} นาที และ session_number/week ต้องตรงกับ requested_sessions วันที่ให้ใช้เฉพาะวันที่ยืนยันได้จากเอกสาร หากไม่ทราบให้เป็น null`}
 4. ${mode === 'schedule' ? 'สรุปเฉพาะหัวข้อที่จะสอนใน topic; description ให้เป็นสตริงว่าง; รูปแบบการสอนใช้คำหรือวลีสั้น ๆ และหมายเหตุให้สรุปใจความกระชับไม่เกิน 50 ตัวอักษร ห้ามเขียนเป็นประโยคยาว' : `ทุกช่องให้สรุปใจความสั้น ๆ ใช้ bullet หรือวลี ห้ามเขียนเรียงความ: จุดประสงค์ไม่เกิน 3 ข้อ; ขั้นนำ/สอน/สรุปอย่างละไม่เกิน 2 ข้อ; ช่องอื่นไม่เกิน 2 ข้อ เพื่อให้พอดีกับแบบฟอร์มหน้าเดียว${includeUnitTitle ? ' สัปดาห์สอนให้ใส่ชื่อหน่วยใน unit_title; สัปดาห์สอบใส่หน่วยที่เกี่ยวข้องเฉพาะเมื่อข้อมูลในเอกสารระบุชัด มิฉะนั้นให้เว้นว่าง' : ' ให้ unit_title เป็นสตริงว่าง ไม่ต้องใส่ชื่อหน่วย'}; สำหรับ week_type midterm_exam/final_exam ให้ปรับจุดประสงค์ กิจกรรม และการประเมินให้เป็นการสอบ: ชี้แจงกติกา ทำข้อสอบ และส่งข้อสอบ/สรุปการสอบ ห้ามเขียนเป็นกิจกรรมสอนเนื้อหาใหม่; key_concept ใส่ชื่อเรื่องสั้น ๆ`}
-5. ${mode === 'schedule' ? 'ห้ามแต่งรหัสมาตรฐาน/ตัวชี้วัดเมื่อเอกสารอ้างอิงไม่มีข้อมูล ให้ใช้ [] และระบุข้อสังเกตใน teacher_notes' : 'ห้ามแต่งรหัสมาตรฐาน/ตัวชี้วัดที่ไม่มีในเอกสารอ้างอิง หากไม่มีให้ใช้ [] และสรุปข้อสังเกตสั้น ๆ'}
+5. ${mode === 'schedule' ? 'ยึดหน่วยและหัวข้อจากเอกสารหลักสูตร หากแหล่งข้อมูลไม่พอให้หยุดและแจ้งครูให้อัปโหลดไฟล์หลักสูตร; หากครูยืนยันให้ AI ดำเนินการต่อ ให้ค้นหรือประเมินข้อมูลที่สอดคล้องกับหน่วยและหัวข้อของแต่ละครั้ง โดยอ้างอิงแหล่งข้อมูลที่ตรวจสอบได้แบบสั้นใน notes และห้ามแต่งรหัสขึ้นเอง' : `จำแนกประเภทวิชาและเลือกข้อมูลอ้างอิงให้ตรงประเภท: ถ้าเป็นรายวิชาพื้นฐาน ให้ standards_type เป็น "indicators" และเขียน standards เป็นรหัสพร้อมข้อความตัวชี้วัดในรูปแบบ "ค.1.2 ม.2/1 : ..." โดยใช้รหัสและข้อความที่ตรวจสอบได้จากหลักสูตร; ถ้าเป็นรายวิชาเพิ่มเติม ให้ standards_type เป็น "learning_outcomes" และเขียน standards เป็นผลการเรียนรู้ที่สอดคล้องกับรายวิชาและหน่วย/เรื่องของครั้งนั้น ไม่ใช้มาตรฐาน/ตัวชี้วัดแทนผลการเรียนรู้ หากเอกสารหรือข้อมูลไม่พอที่จะระบุประเภทวิชา มาตรฐาน/ตัวชี้วัด หรือผลการเรียนรู้ได้ ให้หยุดก่อนสร้าง JSON และขอให้ครูอัปโหลดไฟล์หลักสูตรหรือเอกสารรายวิชา พร้อมถามว่าต้องการให้ AI ค้นหา/ประเมินต่อหรือไม่ เมื่อครูยืนยันให้ดำเนินการต่อ ให้ค้นแหล่งข้อมูลหลักสูตรที่เชื่อถือได้เมื่อทำได้ และประเมินข้อมูลให้สอดคล้องกับหน่วยและหัวข้อของแต่ละครั้ง ระบุชื่อเอกสาร/หน้า/URL ใน standards_source; หากค้นแหล่งข้อมูลไม่ได้ ให้แจ้งข้อจำกัดและทำผลลัพธ์เป็นข้อเสนอชั่วคราวเพื่อให้ครูตรวจทาน ห้ามอ้างว่าข้อเสนอที่ AI ประเมินเองเป็นผลการเรียนรู้อย่างเป็นทางการ`}
 6. คำตอบต้องมี JSON ทั้งหมดในกล่อง Markdown \`\`\`json เพียงกล่องเดียว ห้ามมีข้อความก่อนหรือหลังกล่อง
 7. สำหรับกำหนดการสอน ให้ใช้วันเริ่มสัปดาห์ที่ 1 จาก semester_start และคัดลอก date_start/date_end ของแต่ละสัปดาห์จาก weekly_date_ranges ให้ตรงทุกตัว ห้ามคำนวณหรือแต่งวันที่เอง หากไม่มีวันเปิดภาคเรียนให้ใช้ null
-8. ใช้ schema_version และชื่อ field ตามตัวอย่างทุกตัว แผนหน้าเดียวต้องเป็น JSON type=lesson_plan
+8. ใช้ schema_version และชื่อ field ตามตัวอย่างทุกตัว แผนหน้าเดียวต้องเป็น JSON type=lesson_plan และกำหนด course.course_type เป็น "basic" หรือ "additional" ให้ตรงกับเอกสาร พร้อมกำหนด standards_type ของทุกแผนให้ตรงกัน (basic ใช้ indicators, additional ใช้ learning_outcomes) หากต้องหยุดถามครูตามข้อ 5 ให้ตอบเป็นคำถามสั้น ๆ ได้โดยไม่ต้องสร้าง JSON; หลังครูยืนยันแล้วจึงตอบ JSON ตามรูปแบบนี้
 
 JSON Schema ตัวอย่าง:
 ${JSON.stringify(schema, null, 2)}`
@@ -203,6 +204,7 @@ function validatePayload(raw, mode, scheduleConfig = null, planConfig = null) {
     }
   } else {
     if (data.type !== 'lesson_plan' || !Array.isArray(data.plans) || !data.plans.length) throw new Error('ต้องเป็น lesson_plan และมี plans อย่างน้อย 1 รายการ')
+    if (!['basic', 'additional'].includes(data.course?.course_type)) throw new Error('course.course_type ต้องระบุเป็น basic หรือ additional')
     if (planConfig?.sessions?.length && data.plans.length !== planConfig.sessions.length) throw new Error(`ต้องมีแผนครบ ${planConfig.sessions.length} ครั้งตามกำหนดการสอน`)
     const expectedBySession = new Map((planConfig?.sessions ?? []).map(item => [item.session_number, item]))
     const seenSessions = new Set()
@@ -216,6 +218,9 @@ function validatePayload(raw, mode, scheduleConfig = null, planConfig = null) {
       if (planConfig?.includeUnitTitle && expected?.week_type === 'teaching' && !String(p.unit_title ?? '').trim()) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องระบุชื่อหน่วยการเรียนรู้ตามตัวเลือก`)
       if (planConfig && !planConfig.includeUnitTitle && String(p.unit_title ?? '').trim()) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องเว้นชื่อหน่วยการเรียนรู้ตามตัวเลือก`)
       if (expected?.week_type && p.week_type !== expected.week_type) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องใช้ประเภทสัปดาห์ ${expected.week_type} ตามกำหนดการสอน`)
+      const expectedStandardsType = data.course.course_type === 'additional' ? 'learning_outcomes' : 'indicators'
+      if (p.standards_type !== expectedStandardsType) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องใช้ ${data.course.course_type === 'additional' ? 'ผลการเรียนรู้' : 'มาตรฐาน/ตัวชี้วัด'} ให้ตรงกับประเภทวิชา`)
+      if (!Array.isArray(p.standards) || !p.standards.length || p.standards.some(item => !String(item ?? '').trim())) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องระบุ${data.course.course_type === 'additional' ? 'ผลการเรียนรู้' : 'มาตรฐาน/ตัวชี้วัด'}`)
       if (p.schedule_alignment && !['aligned', 'deviated', 'partial'].includes(p.schedule_alignment)) throw new Error(`schedule_alignment ของแผนลำดับ ${i + 1} ไม่ถูกต้อง`)
     })
   }
@@ -524,6 +529,7 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept }) {
     ? `${Number(plan.duration_minutes) / 60} ชั่วโมง`
     : `${plan.duration_minutes || '...........'} นาที`
   const rawUnitTitle = String(plan.unit_title ?? '').trim()
+  const standardsType = plan.standards_type ?? plan.source_json?.standards_type ?? null
   const unitTitle = !rawUnitTitle ? ''
     : /^หน่วยการเรียนรู้ที่\s*/.test(rawUnitTitle) ? rawUnitTitle
       : /^หน่วยที่\s*/.test(rawUnitTitle) ? rawUnitTitle.replace(/^หน่วยที่\s*/, 'หน่วยการเรียนรู้ที่ ')
@@ -541,7 +547,7 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept }) {
     <div class="head"><img class="logo" src="${esc(logoUrl)}"><h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1><h2>กลุ่มสาระการเรียนรู้${esc(learningArea)}</h2><p>วิชา ${esc(meta.subject_name)} รหัสวิชา ${esc(meta.subject_code)} ชั้นมัธยมศึกษาปีที่ ${esc(className)}</p><p>${esc(lessonHeading || 'เรื่อง ................................')}</p></div>
     <div class="meta"><span>ครั้งที่ ${plan.session_number || 1}</span><span>เวลา ${duration}</span><span>วันที่ ${date}</span></div>
     <div class="cols"><div>
-      <section class="box"><h3>1.มาตรฐาน/ตัวชี้วัด (ผลการเรียนรู้)</h3><div class="content">${nl(plan.standards)}</div></section>
+      <section class="box"><h3>1.${standardsType === 'learning_outcomes' ? 'ผลการเรียนรู้' : standardsType === 'indicators' ? 'มาตรฐานการเรียนรู้/ตัวชี้วัด' : 'มาตรฐาน/ตัวชี้วัด (ผลการเรียนรู้)'}</h3><div class="content">${nl(plan.standards)}</div></section>
       <section class="box"><h3>2.จุดประสงค์การเรียนรู้</h3><div class="content">${nl(plan.objectives)}</div></section>
       <section class="box"><h3>3.กิจกรรมการเรียนรู้</h3><div class="content activities"><b>ขั้นนำเข้าสู่บทเรียน</b><br>${nl(plan.activities_intro)}<br><br><b>ขั้นสอน</b><br>${nl(plan.activities_main)}<br><br><b>ขั้นสรุป</b><br>${nl(plan.activities_wrap)}</div></section>
       <section class="box"><h3>4.การวัดและประเมินผล</h3><div class="content">${nl(plan.assessment)}</div></section>
