@@ -69,23 +69,32 @@ function scheduledLessonSessions(syllabusItems = []) {
   return sessions
 }
 
-function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCount, minutesPerPeriod, calendarWeeks, midtermWeeks, finalWeeks, includeUnitTitle = true, topic, teachingUnits, files }) {
+function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCount, minutesPerPeriod, calendarWeeks, midtermWeeks, finalWeeks, semesterStart, semesterEnd, includeUnitTitle = true, topic, teachingUnits, files }) {
   const meta = courseMeta(cls)
   const examWeeks = [...new Set([...(midtermWeeks ?? []), ...(finalWeeks ?? [])])]
   const teachingWeeks = mode === 'schedule' ? Math.max(0, calendarWeeks - examWeeks.length) : null
   const firstTeachingWeek = Array.from({ length: calendarWeeks }, (_, i) => i + 1).find(weekNo => !examWeeks.includes(weekNo)) ?? 1
+  const dateForWeek = weekNo => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(semesterStart ?? ''))) return { start: null, end: null }
+    const [year, month, day] = semesterStart.split('-').map(Number)
+    const start = new Date(year, month - 1, day + (weekNo - 1) * 7)
+    const end = new Date(year, month - 1, day + weekNo * 7 - 1)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(semesterEnd ?? '')) && end > new Date(`${semesterEnd}T00:00:00`)) end.setTime(new Date(`${semesterEnd}T00:00:00`).getTime())
+    const toIso = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    return { start: toIso(start), end: toIso(end) }
+  }
   const scheduleRowsExample = mode === 'schedule' ? [
     ...(teachingWeeks > 0 ? [{
-      week_start: firstTeachingWeek, week_end: firstTeachingWeek, date_start: null, date_end: null, week_type: 'teaching',
+      week_start: firstTeachingWeek, week_end: firstTeachingWeek, date_start: dateForWeek(firstTeachingWeek).start, date_end: dateForWeek(firstTeachingWeek).end, week_type: 'teaching',
       unit_title: 'หน่วยการเรียนรู้ที่ 1', topic: 'หัวข้อที่จะสอน', description: '',
       teaching_methods: 'รูปแบบการสอน', notes: '',
     }] : []),
     ...(midtermWeeks ?? []).map(weekNo => ({
-      week_start: weekNo, week_end: weekNo, date_start: null, date_end: null, week_type: 'midterm_exam', unit_title: '',
+      week_start: weekNo, week_end: weekNo, date_start: dateForWeek(weekNo).start, date_end: dateForWeek(weekNo).end, week_type: 'midterm_exam', unit_title: '',
       topic: 'สอบกลางภาค', description: '', teaching_methods: 'ทดสอบ/ประเมินผลกลางภาค', notes: '',
     })),
     ...(finalWeeks ?? []).map(weekNo => ({
-      week_start: weekNo, week_end: weekNo, date_start: null, date_end: null, week_type: 'final_exam', unit_title: '',
+      week_start: weekNo, week_end: weekNo, date_start: dateForWeek(weekNo).start, date_end: dateForWeek(weekNo).end, week_type: 'final_exam', unit_title: '',
       topic: 'สอบปลายภาค', description: '', teaching_methods: 'ทดสอบ/ประเมินผลปลายภาค', notes: '',
     })),
   ].sort((a, b) => a.week_start - b.week_start) : []
@@ -116,24 +125,27 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
   const attachmentText = files.length
     ? files.map((f, i) => `${i + 1}. ${f.name} (${f.type || 'ไม่ทราบประเภท'})`).join('\n')
     : 'ไม่มีไฟล์แนบ'
+  const weeklyDateRanges = mode === 'schedule' && semesterStart
+    ? Array.from({ length: calendarWeeks }, (_, index) => ({ week: index + 1, date_start: dateForWeek(index + 1).start, date_end: dateForWeek(index + 1).end }))
+    : []
   return `คุณเป็นผู้ช่วยจัดทำเอกสารการสอนภาษาไทย ให้ใช้ข้อมูลจากเอกสารที่แนบและข้อมูลรายวิชาด้านล่างเป็นหลัก
 
 งานที่ต้องทำ: ${mode === 'schedule' ? 'สร้างกำหนดการสอนทั้งภาคเรียน โดยแสดงเป็นภาพรวมรายสัปดาห์' : `สร้างแผนการจัดการเรียนรู้หน้าเดียวให้ครบทุกครั้งจากกำหนดการสอน จำนวน ${planSessions.length} ครั้ง ในคำตอบชุดเดียว`}
 
 ข้อมูลจากระบบ PP5:
-${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_week: week, session_number: session, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: duration, calendar_weeks: mode === 'schedule' ? calendarWeeks : null, teaching_weeks_excluding_exams: mode === 'schedule' ? teachingWeeks : null, midterm_exam_weeks: mode === 'schedule' ? midtermWeeks : null, final_exam_weeks: mode === 'schedule' ? finalWeeks : null, include_unit_title: mode === 'plan' ? includeUnitTitle : null, requested_sessions: mode === 'plan' ? planSessions : null, requested_topic: topic, requested_teaching_units: teachingUnits, existing_schedule: relevant }, null, 2)}
+${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_week: week, session_number: session, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: duration, calendar_weeks: mode === 'schedule' ? calendarWeeks : null, semester_start: mode === 'schedule' ? semesterStart : null, weekly_date_ranges: weeklyDateRanges, teaching_weeks_excluding_exams: mode === 'schedule' ? teachingWeeks : null, midterm_exam_weeks: mode === 'schedule' ? midtermWeeks : null, final_exam_weeks: mode === 'schedule' ? finalWeeks : null, include_unit_title: mode === 'plan' ? includeUnitTitle : null, requested_sessions: mode === 'plan' ? planSessions : null, requested_topic: topic, requested_teaching_units: teachingUnits, existing_schedule: relevant }, null, 2)}
 
 ไฟล์ที่ผู้ใช้จะอัปโหลดให้คุณอ่านประกอบ:
 ${attachmentText}
 
 ข้อกำหนดสำคัญ:
 1. อ่านหนังสือเรียน เอกสารหลักสูตร ตัวชี้วัด และแบบฟอร์มที่แนบก่อนตอบ
-2. ${mode === 'schedule' ? `สร้างแถวให้ครบสัปดาห์ตามปฏิทิน 1-${calendarWeeks} โดยเลขสัปดาห์เป็นเลขจริง ห้ามเลื่อนหรือยุบเลขหลังช่วงสอบ สัปดาห์สอบกลางภาคคือ ${midtermWeeks?.join(', ') || 'ไม่มี'} และปลายภาคคือ ${finalWeeks?.join(', ') || 'ไม่มี'} ให้ใส่แถวสอบตาม week_type ที่ตรงกัน แล้วกระจายหน่วยการเรียนรู้ให้ครบในสัปดาห์สอนจริงที่เหลือ รวม ${teachingWeeks} สัปดาห์ ห้ามละเว้นหรือเปลี่ยนสาระสำคัญ` : `สร้างแผนหนึ่งรายการต่อหนึ่งสัปดาห์ที่เป็นการสอน ตาม requested_sessions ให้ครบทุกครั้ง เรียง session_number ตั้งแต่ 1 และคง week_start/week_end ตามข้อมูล ห้ามสร้างแผนในสัปดาห์สอบหรือสัปดาห์หยุด`}
+2. ${mode === 'schedule' ? `สร้างแถวให้ครบสัปดาห์ตามปฏิทิน 1-${calendarWeeks} โดยเลขสัปดาห์เป็นเลขจริง ห้ามเลื่อนหรือยุบเลขหลังช่วงสอบ สัปดาห์สอบกลางภาคคือ ${midtermWeeks?.join(', ') || 'ไม่มี'} และปลายภาคคือ ${finalWeeks?.join(', ') || 'ไม่มี'} ให้ใส่แถวสอบตาม week_type ที่ตรงกัน แล้วกระจายหน่วยการเรียนรู้ให้ครบในสัปดาห์สอนจริงที่เหลือ รวม ${teachingWeeks} สัปดาห์ ห้ามละเว้นหรือเปลี่ยนสาระสำคัญ; topic ให้เป็นชื่อเรื่องสั้น ๆ เท่านั้น ไม่เขียนบรรยายหรือเรียงความ` : `สร้างแผนหนึ่งรายการต่อหนึ่งสัปดาห์ที่เป็นการสอน ตาม requested_sessions ให้ครบทุกครั้ง เรียง session_number ตั้งแต่ 1 และคง week_start/week_end ตามข้อมูล ห้ามสร้างแผนในสัปดาห์สอบหรือสัปดาห์หยุด`}
 3. ${mode === 'schedule' ? 'ใช้ week_type เป็น teaching, midterm_exam, final_exam หรือ break; แต่ละสัปดาห์สอบต้องมี topic ระบุชื่อการสอบ และห้ามใส่หน่วยการเรียนรู้ในแถวสอบ' : `แต่ละแผนมี ${periodCount} คาบ คาบละ ${minutesPerPeriod} นาที รวม ${duration} นาที และ session_number/week ต้องตรงกับ requested_sessions วันที่ให้ใช้เฉพาะวันที่ยืนยันได้จากเอกสาร หากไม่ทราบให้เป็น null`}
-4. ${mode === 'schedule' ? 'จัดหัวข้อและวิธีสอนให้ชัดเจนและกระชับ' : `ทุกช่องให้สรุปใจความสั้น ๆ ใช้ bullet หรือวลี ห้ามเขียนเรียงความ: จุดประสงค์ไม่เกิน 3 ข้อ; ขั้นนำ/สอน/สรุปอย่างละไม่เกิน 2 ข้อ; ช่องอื่นไม่เกิน 2 ข้อ เพื่อให้พอดีกับแบบฟอร์มหน้าเดียว${includeUnitTitle ? ' ให้ unit_title เป็นชื่อหน่วย เช่น "หน่วยการเรียนรู้ที่ 1"' : ' ให้ unit_title เป็นสตริงว่าง ไม่ต้องใส่ชื่อหน่วย'}; key_concept ใส่ชื่อเรื่องโดยไม่ต้องขึ้นต้นคำว่า "เรื่อง"`}
+4. ${mode === 'schedule' ? 'สรุปเฉพาะหัวข้อที่จะสอนใน topic; description ให้เป็นสตริงว่าง; รูปแบบการสอนและหมายเหตุใช้คำหรือวลีสั้น ๆ ไม่เกินหนึ่งบรรทัด' : `ทุกช่องให้สรุปใจความสั้น ๆ ใช้ bullet หรือวลี ห้ามเขียนเรียงความ: จุดประสงค์ไม่เกิน 3 ข้อ; ขั้นนำ/สอน/สรุปอย่างละไม่เกิน 2 ข้อ; ช่องอื่นไม่เกิน 2 ข้อ เพื่อให้พอดีกับแบบฟอร์มหน้าเดียว${includeUnitTitle ? ' ให้ unit_title เป็นชื่อหน่วย เช่น "หน่วยการเรียนรู้ที่ 1"' : ' ให้ unit_title เป็นสตริงว่าง ไม่ต้องใส่ชื่อหน่วย'}; key_concept ใส่ชื่อเรื่องโดยไม่ต้องขึ้นต้นคำว่า "เรื่อง"`}
 5. ${mode === 'schedule' ? 'ห้ามแต่งรหัสมาตรฐาน/ตัวชี้วัดเมื่อเอกสารอ้างอิงไม่มีข้อมูล ให้ใช้ [] และระบุข้อสังเกตใน teacher_notes' : 'ห้ามแต่งรหัสมาตรฐาน/ตัวชี้วัดที่ไม่มีในเอกสารอ้างอิง หากไม่มีให้ใช้ [] และสรุปข้อสังเกตสั้น ๆ'}
 6. คำตอบต้องมี JSON ทั้งหมดในกล่อง Markdown \`\`\`json เพียงกล่องเดียว ห้ามมีข้อความก่อนหรือหลังกล่อง
-7. สำหรับกำหนดการสอน date_start/date_end ใช้วันที่จริงจากเอกสารเท่านั้น หากไม่มีให้ใช้ null ห้ามคาดเดาวันที่
+7. สำหรับกำหนดการสอน ให้ใช้วันเริ่มสัปดาห์ที่ 1 จาก semester_start และคัดลอก date_start/date_end ของแต่ละสัปดาห์จาก weekly_date_ranges ให้ตรงทุกตัว ห้ามคำนวณหรือแต่งวันที่เอง หากไม่มีวันเปิดภาคเรียนให้ใช้ null
 8. ใช้ schema_version และชื่อ field ตามตัวอย่างทุกตัว แผนหน้าเดียวต้องเป็น JSON type=lesson_plan
 
 JSON Schema ตัวอย่าง:
@@ -205,16 +217,28 @@ function validatePayload(raw, mode, scheduleConfig = null, planConfig = null) {
   return data
 }
 
-export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek, initialMode = 'plan', onSaved }) {
+export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek, initialMode = 'plan', semesterStart = null, semesterEnd = null, onSaved }) {
   document.getElementById('lp-ai-workspace')?.remove()
   const m = document.createElement('div')
   m.id = 'lp-ai-workspace'
-  m.className = 'fixed inset-0 z-[97] bg-black/60 flex items-center justify-center p-3'
+  m.className = 'fixed inset-0 z-[97] bg-black/60 flex items-stretch justify-stretch'
   const mode = initialMode === 'schedule' ? 'schedule' : 'plan'
   const isSchedule = mode === 'schedule'
+  const configuredWeekCount = semesterStart && semesterEnd
+    ? Math.max(1, Math.min(30, Math.ceil((new Date(`${semesterEnd}T00:00:00`) - new Date(`${semesterStart}T00:00:00`) + 86400000) / 604800000)))
+    : 20
+  const dateForWeek = weekNo => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(semesterStart ?? ''))) return { start: null, end: null }
+    const [year, month, day] = semesterStart.split('-').map(Number)
+    const start = new Date(year, month - 1, day + (weekNo - 1) * 7)
+    const end = new Date(year, month - 1, day + weekNo * 7 - 1)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(semesterEnd ?? '')) && end > new Date(`${semesterEnd}T00:00:00`)) end.setTime(new Date(`${semesterEnd}T00:00:00`).getTime())
+    const toIso = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    return { start: toIso(start), end: toIso(end) }
+  }
   let files = []
   let teachingUnits = [{ title: '', description: '' }]
-  m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
+  m.innerHTML = `<div class="bg-white w-full h-full overflow-y-auto p-4 sm:p-6">
     <div class="flex items-start justify-between gap-3 mb-4">
       <div><span class="inline-flex px-2.5 py-1 rounded-full ${isSchedule ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'} text-[10px] font-extrabold mb-2">${isSchedule ? '📘 กำหนดการสอน' : '📝 แผนหน้าเดียว'}</span><h3 class="font-extrabold text-gray-800 text-lg">${isSchedule ? 'สร้างกำหนดการสอนด้วย AI' : 'สร้างแผนการสอนหน้าเดียวด้วย AI'}</h3><p class="text-xs text-gray-400 mt-1">สร้าง Prompt → ใช้กับ AI ที่ครูเลือก → นำ JSON กลับมาวาง → ระบบสร้าง${isSchedule ? 'กำหนดการสอน' : 'แผนการสอน'}</p></div>
       <button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button>
@@ -224,10 +248,11 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
       <p class="text-sm font-extrabold text-amber-900">กำหนดสัปดาห์ตามปฏิทินและสัปดาห์สอบ</p>
       <p class="text-[11px] text-amber-700 mt-1">เลขสัปดาห์จะคงตามปฏิทินจริง สัปดาห์สอบจะแสดงเป็นแถวในกำหนดการ ไม่ทำให้สัปดาห์เรียนถัดไปเลื่อนเลข</p>
       <div class="grid sm:grid-cols-3 gap-2 mt-3">
-        <label class="text-[11px] font-bold text-amber-900">สัปดาห์ทั้งหมด<input id="lp-ai-calendar-weeks" type="number" min="1" max="30" value="20" class="mt-1 w-full min-h-[42px] border border-amber-200 rounded-xl px-3 bg-white text-base"></label>
+        <label class="text-[11px] font-bold text-amber-900">สัปดาห์ทั้งหมด<input id="lp-ai-calendar-weeks" type="number" min="1" max="30" value="${configuredWeekCount}" class="mt-1 w-full min-h-[42px] border border-amber-200 rounded-xl px-3 bg-white text-base"></label>
         <label class="text-[11px] font-bold text-amber-900">สัปดาห์สอบกลางภาค<input id="lp-ai-midterm-weeks" type="text" value="10" placeholder="เช่น 10 หรือ 9,10" class="mt-1 w-full min-h-[42px] border border-amber-200 rounded-xl px-3 bg-white text-base font-normal"></label>
         <label class="text-[11px] font-bold text-amber-900">สัปดาห์สอบปลายภาค<input id="lp-ai-final-weeks" type="text" value="19,20" placeholder="เช่น 19,20" class="mt-1 w-full min-h-[42px] border border-amber-200 rounded-xl px-3 bg-white text-base font-normal"></label>
       </div>
+      <p class="text-[11px] text-amber-800 mt-2">วันเริ่มภาคเรียน: <strong>${esc(semesterStart || 'ยังไม่ได้ตั้งค่า')}</strong> · สัปดาห์ที่ 1 ใช้วันเริ่มนี้ และระบบคำนวณช่วงวันถัดไปให้อัตโนมัติ</p>
       <p id="lp-ai-week-summary" class="text-[11px] font-bold text-amber-800 mt-2"></p>
     </section>
     <section class="rounded-2xl border border-gray-200 p-4 mb-4">
@@ -297,7 +322,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     const paintScheduleSummary = () => {
       const summary = m.querySelector('#lp-ai-week-summary')
       try {
-        const config = getScheduleConfig()
+      const config = getScheduleConfig()
         const examCount = new Set([...config.midtermWeeks, ...config.finalWeeks]).size
         summary.textContent = `สัปดาห์สอนจริง ${config.calendarWeeks - examCount} · กลางภาค ${config.midtermWeeks.join(', ') || '—'} · ปลายภาค ${config.finalWeeks.join(', ') || '—'}`
         summary.classList.remove('text-red-600'); summary.classList.add('text-amber-800')
@@ -349,6 +374,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
       periodCount: getPeriodCount(), minutesPerPeriod: getMinutesPerPeriod(), ...getScheduleConfig(),
       includeUnitTitle: planConfig?.includeUnitTitle, topic: '',
       teachingUnits: isSchedule ? readTeachingUnits().filter(unit => unit.title || unit.description) : [], files,
+      semesterStart, semesterEnd,
     })
   }
   const showResult = (message, ok) => {
@@ -390,9 +416,11 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
         for (const w of data.weeks) {
           const payload = {
             course_id: courseId, week_start: asInt(w.week_start), week_end: asInt(w.week_end, asInt(w.week_start)),
-            date_start: isoDate(w.date_start), date_end: isoDate(w.date_end), topic: String(w.topic).trim(),
-            description: asText(w.description) || null, teaching_methods: asText(w.teaching_methods) || null,
-            notes: asText(w.notes) || null, source_json: w,
+            date_start: dateForWeek(asInt(w.week_start)).start ?? isoDate(w.date_start),
+            date_end: dateForWeek(asInt(w.week_end, asInt(w.week_start))).end ?? isoDate(w.date_end),
+            topic: String(w.topic).trim(), description: null, teaching_methods: asText(w.teaching_methods) || null,
+            notes: asText(w.notes) || null,
+            source_json: { ...w, date_start: dateForWeek(asInt(w.week_start)).start ?? isoDate(w.date_start), date_end: dateForWeek(asInt(w.week_end, asInt(w.week_start))).end ?? isoDate(w.date_end) },
           }
           const existing = (syllabusItems ?? []).find(x => x.week_start === payload.week_start && x.week_end === payload.week_end)
           if (existing) await updateSyllabusItem(existing.id, payload); else await createSyllabusItem(payload)

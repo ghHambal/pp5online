@@ -300,6 +300,43 @@ export async function renderMyCourses(teacher) {
 
 }
 
+function openCourseSchedulePreview({ subject, teacher, syllabusItems, semester, academicYear, semesterStart, semesterEnd }) {
+  const rows = [...(syllabusItems ?? [])].sort((a, b) => Number(a.week_start) - Number(b.week_start))
+  const esc = _htmlEsc
+  const formatDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+  const weekDates = weekNo => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(semesterStart ?? ''))) return null
+    const [year, month, day] = semesterStart.split('-').map(Number)
+    const start = new Date(year, month - 1, day + (weekNo - 1) * 7)
+    const end = new Date(year, month - 1, day + weekNo * 7 - 1)
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(semesterEnd ?? '')) && end > new Date(`${semesterEnd}T00:00:00`)) end.setTime(new Date(`${semesterEnd}T00:00:00`).getTime())
+    const iso = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    return { start: iso(start), end: iso(end) }
+  }
+  const dateLabel = item => {
+    const dates = weekDates(Number(item.week_start))
+    if (dates) return `${formatDate(dates.start)} – ${formatDate(dates.end)}`
+    return item.date_start || item.date_end ? `${formatDate(item.date_start)} – ${formatDate(item.date_end)}` : '—'
+  }
+  const periodWeeks = semesterStart && semesterEnd
+    ? Math.max(1, Math.min(30, Math.ceil((new Date(`${semesterEnd}T00:00:00`) - new Date(`${semesterStart}T00:00:00`) + 86400000) / 604800000)))
+    : Math.max(20, ...rows.map(row => Number(row.week_end) || 1))
+  const printableRows = Array.from({ length: periodWeeks }, (_, index) => {
+    const weekNo = index + 1
+    const item = rows.find(row => weekNo >= Number(row.week_start) && weekNo <= Number(row.week_end))
+    const type = item?.source_json?.week_type
+    return `<tr><td class="week">${weekNo}</td><td>${esc(item ? dateLabel({ ...item, week_start: weekNo }) : (weekDates(weekNo) ? `${formatDate(weekDates(weekNo).start)} – ${formatDate(weekDates(weekNo).end)}` : '—'))}</td><td>${esc(item?.topic || (type === 'midterm_exam' ? 'สอบกลางภาค' : type === 'final_exam' ? 'สอบปลายภาค' : type === 'break' ? 'หยุด/ไม่มีการเรียน' : ''))}</td><td>${esc(item?.teaching_methods || (type?.includes('exam') ? 'ทดสอบ/ประเมินผล' : ''))}</td><td>${esc(item?.notes || '')}</td></tr>`
+  }).join('')
+  const meta = subject ?? {}
+  const periodsPerWeek = meta.periods_per_week ?? (Number(meta.credit) > 0 ? Number(meta.credit) * 2 : null)
+  const w = window.open('', '_blank')
+  if (!w) { showToast('เบราว์เซอร์บล็อกหน้าต่างตัวอย่าง กรุณาอนุญาต Pop-up', 'warning'); return }
+  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>กำหนดการสอน ${esc(meta.subject_name)}</title><style>
+    @page{size:A4;margin:13mm}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:11pt;line-height:1.5}.toolbar{position:sticky;top:0;padding:10px;background:#f3f4f6;text-align:center}.toolbar button{border:0;border-radius:8px;background:#1d4ed8;color:white;padding:10px 20px;font-weight:bold;font-size:14px;cursor:pointer}.page{width:184mm;min-height:271mm;margin:0 auto;padding:8mm 5mm;background:white}.cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;page-break-after:always}.cover h1{font-size:25pt;margin:0 0 24mm}.cover .course{font-size:16pt;font-weight:bold;margin:0 0 5mm}.cover p{font-size:14pt;margin:2mm 0}.cover .signatures{width:100%;margin-top:24mm;text-align:left;font-size:13pt}.cover .signatures p{margin:11mm 0}.table{width:100%;border-collapse:collapse;margin-top:4mm;font-size:9.5pt}.table th,.table td{border:1px solid #555;padding:2mm 2.2mm;vertical-align:top}.table th{background:#e8eefb;text-align:center}.table .week{text-align:center;width:12mm;white-space:nowrap}.table td:nth-child(2){width:42mm}.table td:nth-child(3){width:63mm}.table td:nth-child(4){width:42mm}.table tr{break-inside:avoid;page-break-inside:avoid}.table thead{display:table-header-group}.table .doc-title th{border:0;background:white;font-size:18pt;padding:0;text-align:center}.table .doc-meta th{border:0;background:white;font-size:10pt;font-weight:normal;padding:0;text-align:center}@media print{.toolbar{display:none}.page{margin:0;width:auto;min-height:0;padding:0}.schedule{page-break-before:always}}
+  </style></head><body><div class="toolbar"><button onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button></div><section class="page cover"><h1>กำหนดการสอน</h1><p class="course">รายวิชา ${esc(meta.subject_name || '................................')} (${esc(meta.subject_code || '.............')})</p><p>ครูผู้สอน ${esc(teacher?.full_name || '................................')}</p><p>ชั้น ${esc(meta.grade_level || '....................')}</p><p>จำนวน ${esc(periodsPerWeek || '........')} คาบ/สัปดาห์</p><p>ภาคเรียนที่ ${esc(semester || '....')} ปีการศึกษา ${esc(academicYear || '........')}</p><div class="signatures"><p>ลงชื่อ............................................................................ครูผู้สอน</p><p>ลงชื่อ.......................................................................หัวหน้ากลุ่มสาระการเรียนรู้</p><p>ลงชื่อ......................................................................ผู้อำนวยการโรงเรียน</p></div></section><section class="page schedule"><table class="table"><thead><tr class="doc-title"><th colspan="5">กำหนดการสอน</th></tr><tr class="doc-meta"><th colspan="5">รายวิชา ${esc(meta.subject_name || '—')} รหัส ${esc(meta.subject_code || '—')} ${esc(meta.grade_level || '')} · คุณครู ${esc(teacher?.full_name || '—')}</th></tr><tr class="doc-meta"><th colspan="5">ภาคเรียนที่ ${esc(semester || '—')} ปีการศึกษา ${esc(academicYear || '—')}</th></tr><tr><th>สัปดาห์ที่</th><th>วัน/เดือน/ปี</th><th>เนื้อหา</th><th>รูปแบบการสอน</th><th>หมายเหตุ</th></tr></thead><tbody>${printableRows}</tbody></table></section></body></html>`)
+  w.document.close()
+}
+
 async function _openCourseWorkspace(teacher, subject, allClasses) {
   document.getElementById('course-workspace-modal')?.remove()
   const courseId = Number(subject.id)
@@ -311,8 +348,8 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
   }
   const m = document.createElement('div')
   m.id = 'course-workspace-modal'
-  m.className = 'fixed inset-0 z-[95] bg-black/60 flex items-center justify-center p-2 sm:p-4'
-  m.innerHTML = `<div class="bg-gray-50 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-5xl h-[96vh] sm:h-auto sm:max-h-[92vh] overflow-hidden flex flex-col">
+  m.className = 'fixed inset-0 z-[95] bg-gray-50 flex items-stretch justify-stretch'
+  m.innerHTML = `<div class="bg-gray-50 w-full h-full overflow-hidden flex flex-col">
     <header class="flex-shrink-0 px-4 sm:px-6 py-4 border-b bg-white flex items-start justify-between gap-3">
       <div class="min-w-0">
         <span class="inline-flex px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 text-[10px] font-extrabold">📘 ออกแบบการสอนของคอร์ส</span>
@@ -336,58 +373,83 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       import('./teacher-views-smart-classroom.js'),
       import('./lesson-plan-ai-workspace.js'),
     ])
-    const [syllabusItems, lessonPlans, access] = await Promise.all([
+    const [syllabusItems, lessonPlans, access, termConfig] = await Promise.all([
       getCourseSyllabus(courseId).catch(() => []),
       getLessonPlans(courseId).catch(() => []),
       resolveSmartClassroomAccess(teacher),
+      getSystemConfig().catch(() => ({})),
     ])
     const allowedClasses = courseClasses.filter(c => canUseSmartClassroomForClass(access.unlocked, teacher, c.id))
     const aiAllowed = access.unlocked || allowedClasses.length > 0
     const reopen = () => _openCourseWorkspace(teacher, subject, allClasses)
-    const formatScheduleDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' }) : '—'
+    const semesterStart = /^\d{4}-\d{2}-\d{2}$/.test(String(termConfig.semester_start ?? '')) ? termConfig.semester_start : null
+    const weekDateRange = weekNo => {
+      if (!semesterStart) return null
+      const [year, month, day] = semesterStart.split('-').map(Number)
+      const start = new Date(year, month - 1, day + (weekNo - 1) * 7)
+      const end = new Date(year, month - 1, day + weekNo * 7 - 1)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(termConfig.semester_end ?? '')) && end > new Date(`${termConfig.semester_end}T00:00:00`)) end.setTime(new Date(`${termConfig.semester_end}T00:00:00`).getTime())
+      const toIso = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+      return { start: toIso(start), end: toIso(end) }
+    }
+    const formatScheduleDate = value => value ? new Date(`${value}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '—'
     const scheduleTypeLabel = { teaching: 'เรียน', midterm_exam: 'สอบกลางภาค', final_exam: 'สอบปลายภาค', break: 'หยุด/ไม่มีการเรียน' }
     const scheduleRows = syllabusItems.length ? syllabusItems.map(item => {
       const weekType = item.source_json?.week_type ?? 'teaching'
       const unitTitle = item.unit_title ?? item.source_json?.unit_title
       const weekLabel = `สัปดาห์ ${item.week_start}${item.week_end !== item.week_start ? `–${item.week_end}` : ''}`
-      const dateLabel = item.date_start || item.date_end
-        ? `${formatScheduleDate(item.date_start)} – ${formatScheduleDate(item.date_end)}`
-        : '—'
+      const configuredDates = weekDateRange(item.week_start)
+      const configuredEndDate = weekDateRange(item.week_end ?? item.week_start)
+      const dateLabel = configuredDates
+        ? `${formatScheduleDate(configuredDates.start)} – ${formatScheduleDate(configuredEndDate.end)}`
+        : item.date_start || item.date_end ? `${formatScheduleDate(item.date_start)} – ${formatScheduleDate(item.date_end)}` : '—'
       const typeLabel = scheduleTypeLabel[weekType] ?? 'เรียน'
       const typeClass = weekType === 'teaching' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-800'
       return `<tr class="border-t border-blue-100 align-top">
         <td class="px-3 py-3 text-xs font-bold whitespace-nowrap">${_htmlEsc(weekLabel)}<span class="block mt-1 px-2 py-1 rounded-lg ${typeClass} text-[10px] w-fit">${_htmlEsc(typeLabel)}</span></td>
         <td class="px-3 py-3 text-xs whitespace-nowrap">${_htmlEsc(dateLabel)}</td>
-        <td class="px-3 py-3 text-xs min-w-48"><p class="font-bold text-gray-800">${_htmlEsc(item.topic)}</p>${unitTitle ? `<p class="text-[11px] text-blue-700 mt-1">${_htmlEsc(unitTitle)}</p>` : ''}${item.description ? `<p class="text-[11px] text-gray-500 mt-1 whitespace-pre-wrap">${_htmlEsc(item.description)}</p>` : ''}</td>
+        <td class="px-3 py-3 text-xs min-w-48"><p class="font-bold text-gray-800">${_htmlEsc(item.topic)}</p>${unitTitle ? `<p class="text-[11px] text-blue-700 mt-1">${_htmlEsc(unitTitle)}</p>` : ''}</td>
         <td class="px-3 py-3 text-xs min-w-36 whitespace-pre-wrap">${_htmlEsc(item.teaching_methods ?? '—')}</td>
         <td class="px-3 py-3 text-xs min-w-28 whitespace-pre-wrap">${_htmlEsc(item.notes ?? '—')}</td>
       </tr>`
     }).join('') : ''
     const documentClassOptions = allowedClasses.map(c => `<option value="${c.id}">${_htmlEsc(c.class_name ?? `ห้อง ${c.id}`)}</option>`).join('')
 
-    body.innerHTML = `<div class="grid lg:grid-cols-2 gap-4 items-start">
-        <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:p-5">
+    body.innerHTML = `<nav class="flex flex-wrap gap-2 border-b border-gray-200 pb-4 mb-4" aria-label="ส่วนออกแบบการสอน">
+      <button type="button" data-course-tab="schedule" class="course-tab rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white">📘 กำหนดการสอน</button>
+      <button type="button" data-course-tab="plans" class="course-tab rounded-xl border border-violet-200 bg-white px-4 py-2.5 text-sm font-bold text-violet-800">📝 แผนการจัดการเรียนรู้หน้าเดียว</button>
+    </nav>
+    <section data-course-panel="schedule" class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4 sm:p-5">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
             <div><h3 class="font-extrabold text-blue-950">📘 กำหนดการสอนทั้งภาคเรียน</h3><p class="text-xs text-blue-700/70 mt-1">ภาพรวมรายสัปดาห์ของรายวิชา ใช้ร่วมกับ Smart Classroom ในห้องที่มีสิทธิ์</p></div>
-            <button id="cw-ai-schedule" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-blue-700 hover:bg-blue-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>🤖 สร้างด้วย AI</button>
+            <div class="flex flex-wrap gap-2"><button id="cw-schedule-preview" class="min-h-[44px] px-4 rounded-xl border border-blue-200 bg-white text-blue-800 text-xs font-bold">👁️ ตัวอย่างเอกสารทั้งหมด</button><button id="cw-ai-schedule" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-blue-700 hover:bg-blue-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>🤖 สร้างด้วย AI</button></div>
           </div>
           ${aiAllowed ? '' : '<p class="mt-2 text-[11px] text-amber-700">ต้องมีสิทธิ์ใช้ Smart Classroom อย่างน้อยหนึ่งห้องในรายวิชานี้ก่อน</p>'}
-          ${syllabusItems.length ? `<div class="mt-4 max-h-80 overflow-auto rounded-xl border border-blue-100 bg-white"><table class="w-full min-w-[760px] text-left"><thead class="sticky top-0 bg-blue-50 text-[10px] font-extrabold text-blue-900"><tr><th class="px-3 py-2">สัปดาห์</th><th class="px-3 py-2">วัน/เดือน</th><th class="px-3 py-2">เนื้อหา</th><th class="px-3 py-2">รูปแบบการสอน</th><th class="px-3 py-2">หมายเหตุ</th></tr></thead><tbody>${scheduleRows}</tbody></table></div>` : `<div class="mt-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/50 py-8 text-center text-xs text-blue-500">ยังไม่มีกำหนดการสอนของคอร์สนี้</div>`}
-        </div>
+          ${semesterStart ? `<p class="mt-3 text-[11px] text-blue-700">ช่วงวันที่คำนวณจากวันเปิดภาคเรียนที่ตั้งค่าไว้: ${formatScheduleDate(semesterStart)} · สัปดาห์ที่ 1 เริ่มวันนี้</p>` : '<p class="mt-3 text-[11px] text-amber-700">ยังไม่ได้ตั้งค่าวันเปิดภาคเรียน ระบบจะแสดงวันที่จากกำหนดการเดิมจนกว่าจะตั้งค่าวันเริ่มภาคเรียน</p>'}
+          ${syllabusItems.length ? `<div class="mt-4 max-h-[68vh] overflow-auto rounded-xl border border-blue-100 bg-white"><table class="w-full min-w-[680px] text-left"><thead class="sticky top-0 bg-blue-50 text-[10px] font-extrabold text-blue-900"><tr><th class="px-3 py-2">สัปดาห์</th><th class="px-3 py-2">วัน/เดือน</th><th class="px-3 py-2">เนื้อหา</th><th class="px-3 py-2">รูปแบบการสอน</th><th class="px-3 py-2">หมายเหตุ</th></tr></thead><tbody>${scheduleRows}</tbody></table></div>` : `<div class="mt-4 rounded-xl border border-dashed border-blue-200 bg-blue-50/50 py-8 text-center text-xs text-blue-500">ยังไม่มีกำหนดการสอนของคอร์สนี้</div>`}
+    </section>
 
-        <div class="rounded-2xl border border-violet-100 bg-violet-50/60 p-4 sm:p-5">
+    <section data-course-panel="plans" class="hidden rounded-2xl border border-violet-100 bg-violet-50/60 p-4 sm:p-5">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
             <div><h3 class="font-extrabold text-violet-950">📝 แผนการจัดการเรียนรู้หน้าเดียว</h3><p class="text-xs text-violet-700/70 mt-1">แผนรายครั้งที่อ้างอิงหัวข้อจากกำหนดการสอน ส่วนบันทึกหลังสอนและลายเซ็นแยกตามห้องที่มีสิทธิ์</p></div>
             <button id="cw-ai-plan" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-violet-700 hover:bg-violet-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>✨ สร้างแผนด้วย AI</button>
           </div>
           ${aiAllowed ? '' : '<p class="mt-2 text-[11px] text-amber-700">ต้องมีสิทธิ์ใช้ Smart Classroom อย่างน้อยหนึ่งห้องในรายวิชานี้ก่อน</p>'}
           ${lessonPlans.length ? `<div class="mt-4 space-y-2">${lessonPlans.map(plan => `<button class="cw-plan-row w-full text-left rounded-xl border border-violet-100 bg-white px-3 py-3 hover:border-violet-300 transition" data-plan-id="${plan.id}"><p class="text-sm font-bold text-gray-800">${_htmlEsc(plan.title)}</p><p class="text-[11px] text-violet-600 mt-0.5">สัปดาห์ ${plan.week_start}${plan.week_end !== plan.week_start ? `–${plan.week_end}` : ''} · กดเพื่อเปิดเอกสาร/บันทึกหลังสอน</p></button>`).join('')}</div>` : `<div class="mt-4 rounded-xl border border-dashed border-violet-200 py-8 text-center text-xs text-violet-400">ยังไม่มีแผนการสอน</div>`}
-        </div>
-    </div>
+    </section>
     ${lessonPlans.length && allowedClasses.length ? `<div id="cw-document-picker" class="hidden fixed inset-0 z-[99] bg-black/50 items-center justify-center p-4"><div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5"><h3 class="font-extrabold text-gray-800">เลือกห้อง Smart Classroom</h3><p class="text-xs text-gray-400 mt-1">แผนใช้ร่วมกันในรายวิชา แต่เปิดบันทึกหลังสอนเฉพาะห้องที่มีสิทธิ์</p><select id="cw-document-class" class="mt-4 w-full min-h-[44px] border rounded-xl bg-white px-3 text-sm">${documentClassOptions}</select><div class="grid grid-cols-2 gap-2 mt-4"><button id="cw-document-cancel" class="min-h-[42px] rounded-xl border text-gray-500 text-xs font-bold">ยกเลิก</button><button id="cw-document-open" class="min-h-[42px] rounded-xl bg-violet-700 text-white text-xs font-bold">เปิดเอกสาร</button></div></div></div>` : ''}`
 
-    body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', onSaved: reopen }))
-    body.querySelector('#cw-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'plan', onSaved: reopen }))
+    const selectCourseTab = tab => {
+      body.querySelectorAll('[data-course-panel]').forEach(panel => panel.classList.toggle('hidden', panel.dataset.coursePanel !== tab))
+      body.querySelectorAll('[data-course-tab]').forEach(button => {
+        const active = button.dataset.courseTab === tab
+        button.className = `course-tab rounded-xl px-4 py-2.5 text-sm font-bold ${active ? (tab === 'schedule' ? 'bg-blue-700 text-white' : 'bg-violet-700 text-white') : 'border border-gray-200 bg-white text-gray-600'}`
+      })
+    }
+    body.querySelectorAll('[data-course-tab]').forEach(button => button.addEventListener('click', () => selectCourseTab(button.dataset.courseTab)))
+    body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', semesterStart, semesterEnd: termConfig.semester_end, onSaved: reopen }))
+    body.querySelector('#cw-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'plan', semesterStart, semesterEnd: termConfig.semester_end, onSaved: reopen }))
+    body.querySelector('#cw-schedule-preview')?.addEventListener('click', () => openCourseSchedulePreview({ subject, teacher, syllabusItems, semester: termConfig.semester ?? subject.semester, academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year, semesterStart, semesterEnd: termConfig.semester_end }))
     let selectedPlan = null
     const picker = body.querySelector('#cw-document-picker')
     const hidePicker = () => { if (picker) { picker.classList.add('hidden'); picker.classList.remove('flex') } }
