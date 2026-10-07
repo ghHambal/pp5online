@@ -98,7 +98,7 @@ const stripFence = text => String(text ?? '').trim().replace(/^```(?:json)?\s*/i
 const WEEKDAY_LABELS = { 1: 'วันจันทร์', 2: 'วันอังคาร', 3: 'วันพุธ', 4: 'วันพฤหัสบดี', 5: 'วันศุกร์', 6: 'วันเสาร์', 7: 'วันอาทิตย์' }
 const normalizeScheduleDays = days => [...new Set((days ?? []).map(day => asInt(day)).filter(day => day >= 1 && day <= 7 && day !== 6))].sort((a, b) => (a % 7) - (b % 7))
 
-function schoolWeekRange(weekNo, semesterStart, semesterEnd, scheduledDays = []) {
+function schoolWeekRange(weekNo, semesterStart, semesterEnd, scheduledDays = [], useWholeWeek = false) {
   if (!Number.isInteger(Number(weekNo)) || Number(weekNo) < 1 || !isoDate(semesterStart)) {
     return { start: null, end: null, dates: [] }
   }
@@ -121,7 +121,7 @@ function schoolWeekRange(weekNo, semesterStart, semesterEnd, scheduledDays = [])
   const dates = []
   for (const date = new Date(lower); date <= upper; date.setDate(date.getDate() + 1)) {
     const dayNo = date.getDay() || 7
-    if (!allowedDays.has(dayNo)) continue
+    if (!useWholeWeek && !allowedDays.has(dayNo)) continue
     dates.push(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`)
   }
   return { start: dates[0] ?? null, end: dates.at(-1) ?? null, dates }
@@ -207,7 +207,7 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
   const examWeeks = [...new Set([...(midtermWeeks ?? []), ...(finalWeeks ?? [])])]
   const teachingWeeks = mode === 'schedule' ? Math.max(0, calendarWeeks - examWeeks.length) : null
   const firstTeachingWeek = Array.from({ length: calendarWeeks }, (_, i) => i + 1).find(weekNo => !examWeeks.includes(weekNo)) ?? 1
-  const dateForWeek = weekNo => schoolWeekRange(weekNo, semesterStart, semesterEnd, normalizedScheduleDays)
+  const dateForWeek = weekNo => schoolWeekRange(weekNo, semesterStart, semesterEnd, mode === 'schedule' ? [] : normalizedScheduleDays, mode === 'schedule')
   const scheduleRowsExample = mode === 'schedule' ? [
     ...(teachingWeeks > 0 ? [{
       week_start: firstTeachingWeek, week_end: firstTeachingWeek, date_start: dateForWeek(firstTeachingWeek).start, date_end: dateForWeek(firstTeachingWeek).end, week_type: 'teaching',
@@ -265,7 +265,7 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
 งานที่ต้องทำ: ${mode === 'schedule' ? 'สร้างกำหนดการสอนทั้งภาคเรียน โดยแสดงเป็นภาพรวมรายสัปดาห์' : `สร้างแผนการจัดการเรียนรู้หน้าเดียวให้ครบทุกครั้งจากกำหนดการสอน จำนวน ${planSessions.length} ครั้ง ในคำตอบชุดเดียว`}
 
 ข้อมูลจากระบบ PP5:
-${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_week: week, session_number: session, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: duration, calendar_weeks: mode === 'schedule' ? calendarWeeks : null, semester_start: semesterStart, week_first_day: 'วันอาทิตย์', week_last_instructional_day: 'วันศุกร์', scheduled_weekdays: scheduledWeekdays, schedule_days_found: normalizedScheduleDays.length > 0, weekly_date_ranges: weeklyDateRanges, teaching_weeks_excluding_exams: mode === 'schedule' ? teachingWeeks : null, midterm_exam_weeks: mode === 'schedule' ? midtermWeeks : null, final_exam_weeks: mode === 'schedule' ? finalWeeks : null, include_unit_title: mode === 'plan' ? includeUnitTitle : null, requested_sessions: mode === 'plan' ? planSessions : null, requested_topic: topic, requested_teaching_units: teachingUnits, existing_schedule: relevant }, null, 2)}
+${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_week: week, session_number: session, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: duration, calendar_weeks: mode === 'schedule' ? calendarWeeks : null, semester_start: semesterStart, week_first_day: 'วันอาทิตย์', week_last_instructional_day: 'วันศุกร์', scheduled_weekdays: scheduledWeekdays, schedule_days_found: normalizedScheduleDays.length > 0, schedule_days_required: mode === 'plan', date_range_source: mode === 'schedule' ? 'school_calendar' : 'teacher_timetable', weekly_date_ranges: weeklyDateRanges, teaching_weeks_excluding_exams: mode === 'schedule' ? teachingWeeks : null, midterm_exam_weeks: mode === 'schedule' ? midtermWeeks : null, final_exam_weeks: mode === 'schedule' ? finalWeeks : null, include_unit_title: mode === 'plan' ? includeUnitTitle : null, requested_sessions: mode === 'plan' ? planSessions : null, requested_topic: topic, requested_teaching_units: teachingUnits, existing_schedule: relevant }, null, 2)}
 
 ไฟล์ที่ผู้ใช้จะอัปโหลดให้คุณอ่านประกอบ:
 ${attachmentText}
@@ -277,7 +277,7 @@ ${attachmentText}
 4. ${mode === 'schedule' ? 'สรุปเฉพาะหัวข้อที่จะสอนใน topic; description ให้เป็นสตริงว่าง; รูปแบบการสอนใช้คำหรือวลีสั้น ๆ และหมายเหตุให้สรุปใจความกระชับไม่เกิน 50 ตัวอักษร ห้ามเขียนเป็นประโยคยาว' : `ทุกช่องให้สรุปใจความสั้น ๆ ใช้ bullet หรือวลี ห้ามเขียนเรียงความ: จุดประสงค์ไม่เกิน 3 ข้อ; ขั้นนำ/สอน/สรุปอย่างละไม่เกิน 2 ข้อ; ช่องอื่นไม่เกิน 2 ข้อ เพื่อให้พอดีกับแบบฟอร์มหน้าเดียว${includeUnitTitle ? ' สัปดาห์สอนให้ใส่ชื่อหน่วยใน unit_title; สัปดาห์สอบใส่หน่วยที่เกี่ยวข้องเฉพาะเมื่อข้อมูลในเอกสารระบุชัด มิฉะนั้นให้เว้นว่าง' : ' ให้ unit_title เป็นสตริงว่าง ไม่ต้องใส่ชื่อหน่วย'}; สำหรับ week_type midterm_exam/final_exam ให้ปรับจุดประสงค์ กิจกรรม และการประเมินให้เป็นการสอบ: ชี้แจงกติกา ทำข้อสอบ และส่งข้อสอบ/สรุปการสอบ ห้ามเขียนเป็นกิจกรรมสอนเนื้อหาใหม่; key_concept ใส่ชื่อเรื่องสั้น ๆ`}
 5. ${mode === 'schedule' ? 'ยึดหน่วยและหัวข้อจากเอกสารหลักสูตร หากแหล่งข้อมูลไม่พอให้หยุดและแจ้งครูให้อัปโหลดไฟล์หลักสูตร; หากครูยืนยันให้ AI ดำเนินการต่อ ให้ค้นหรือประเมินข้อมูลที่สอดคล้องกับหน่วยและหัวข้อของแต่ละครั้ง โดยอ้างอิงแหล่งข้อมูลที่ตรวจสอบได้แบบสั้นใน notes และห้ามแต่งรหัสขึ้นเอง' : `จำแนกประเภทวิชาและเลือกข้อมูลอ้างอิงให้ตรงประเภท: ถ้าเป็นรายวิชาพื้นฐาน ให้ standards_type เป็น "indicators" และเขียน standards เป็นรหัสพร้อมข้อความตัวชี้วัดในรูปแบบ "ค.1.2 ม.2/1 : ..." โดยใช้รหัสและข้อความที่ตรวจสอบได้จากหลักสูตร; ถ้าเป็นรายวิชาเพิ่มเติม ให้ standards_type เป็น "learning_outcomes" และเขียน standards เป็นผลการเรียนรู้ที่สอดคล้องกับรายวิชาและหน่วย/เรื่องของครั้งนั้น ไม่ใช้มาตรฐาน/ตัวชี้วัดแทนผลการเรียนรู้ หากเอกสารหรือข้อมูลไม่พอที่จะระบุประเภทวิชา มาตรฐาน/ตัวชี้วัด หรือผลการเรียนรู้ได้ ให้หยุดก่อนสร้าง JSON และขอให้ครูอัปโหลดไฟล์หลักสูตรหรือเอกสารรายวิชา พร้อมถามว่าต้องการให้ AI ค้นหา/ประเมินต่อหรือไม่ เมื่อครูยืนยันให้ดำเนินการต่อ ให้ค้นแหล่งข้อมูลหลักสูตรที่เชื่อถือได้เมื่อทำได้ และประเมินข้อมูลให้สอดคล้องกับหน่วยและหัวข้อของแต่ละครั้ง ระบุชื่อเอกสาร/หน้า/URL ใน standards_source; หากค้นแหล่งข้อมูลไม่ได้ ให้แจ้งข้อจำกัดและทำผลลัพธ์เป็นข้อเสนอชั่วคราวเพื่อให้ครูตรวจทาน ห้ามอ้างว่าข้อเสนอที่ AI ประเมินเองเป็นผลการเรียนรู้อย่างเป็นทางการ`}
 6. คำตอบต้องมี JSON ทั้งหมดในกล่อง Markdown \`\`\`json เพียงกล่องเดียว ห้ามมีข้อความก่อนหรือหลังกล่อง
-7. กรอบสัปดาห์เรียนเริ่มวันอาทิตย์และสิ้นสุดวันศุกร์; วันเรียนของรายวิชานี้ต้องยึด scheduled_weekdays จากตารางสอนจริง ห้ามสมมติว่าครูทุกคนสอนวันเดียวกัน สำหรับกำหนดการให้คัดลอก date_start/date_end และ available_lesson_dates จาก weekly_date_ranges เท่านั้น สัปดาห์ที่ 1 ให้เริ่มวันที่ semester_start ซึ่งเป็นวันเปิดภาคเรียนจริง และไม่นับวันอาทิตย์ก่อนเปิดภาคเรียนซึ่งเป็นวันรับเกรด; แผนหน้าเดียวให้เลือก lesson_date จาก available_lesson_dates ในครั้งที่ตรงกัน หาก schedule_days_found เป็น false หรือช่วงใดไม่มีวันที่สอน ให้หยุดและแจ้งครูให้ตรวจ/บันทึกตารางสอนจริงก่อนสร้าง JSON ห้ามคาดเดาหรือสร้างวันที่เอง
+7. ${mode === 'schedule' ? 'กำหนดการสอนเป็นภาพรวมรายสัปดาห์ ไม่ต้องเชื่อมวันสอนจากตารางสอน ให้คัดลอก date_start/date_end และ available_lesson_dates จาก weekly_date_ranges ซึ่งคำนวณจากปฏิทินภาคเรียนในระบบเท่านั้น สัปดาห์ที่ 1 เริ่มจาก semester_start ซึ่งเป็นวันเปิดภาคเรียนจริง และไม่นับวันอาทิตย์ก่อนเปิดภาคเรียนซึ่งเป็นวันรับเกรด ห้ามหยุดสร้าง JSON เพราะ schedule_days_found เป็น false' : 'แผนหน้าเดียวเป็นรายครั้ง ให้เลือก lesson_date จาก available_lesson_dates ของครั้งนั้น ซึ่งมาจากวันสอนจริงของครูในตารางสอน ห้ามสมมติวันสอนเอง หากไม่พบวันสอนหรือช่วงนั้นไม่มีวันที่ ให้ใช้ null และแจ้งครูตรวจตารางสอน'}
 8. ใช้ schema_version และชื่อ field ตามตัวอย่างทุกตัว แผนหน้าเดียวต้องเป็น JSON type=lesson_plan และกำหนด course.course_type เป็น "basic" หรือ "additional" ให้ตรงกับเอกสาร พร้อมกำหนด standards_type ของทุกแผนให้ตรงกัน (basic ใช้ indicators, additional ใช้ learning_outcomes) หากต้องหยุดถามครูตามข้อ 5 ให้ตอบเป็นคำถามสั้น ๆ ได้โดยไม่ต้องสร้าง JSON; หลังครูยืนยันแล้วจึงตอบ JSON ตามรูปแบบนี้
 
 JSON Schema ตัวอย่าง:
@@ -310,9 +310,12 @@ function validatePayload(raw, mode, scheduleConfig = null, planConfig = null) {
         if (!['teaching', 'midterm_exam', 'final_exam', 'break'].includes(w.week_type)) throw new Error(`week_type ของสัปดาห์ลำดับ ${i + 1} ไม่ถูกต้อง`)
         if (w.date_start != null && !isoDate(w.date_start)) throw new Error(`date_start ของสัปดาห์ลำดับ ${i + 1} ต้องเป็น YYYY-MM-DD หรือ null`)
         if (w.date_end != null && !isoDate(w.date_end)) throw new Error(`date_end ของสัปดาห์ลำดับ ${i + 1} ต้องเป็น YYYY-MM-DD หรือ null`)
-        if (scheduleConfig?.scheduledDays?.length) {
-          const expectedRange = schoolWeekRange(start, scheduleConfig.semesterStart, scheduleConfig.semesterEnd, scheduleConfig.scheduledDays)
-          if (w.date_start !== expectedRange.start || w.date_end !== expectedRange.end) throw new Error(`ช่วงวันที่สัปดาห์ที่ ${start} ต้องตรงกับวันสอนจริงของครู (${expectedRange.start ?? 'ไม่มีวันสอน'} ถึง ${expectedRange.end ?? 'ไม่มีวันสอน'})`)
+        if (scheduleConfig?.semesterStart) {
+          const expectedStart = schoolWeekRange(start, scheduleConfig.semesterStart, scheduleConfig.semesterEnd, [], true).start
+          const expectedEnd = schoolWeekRange(end, scheduleConfig.semesterStart, scheduleConfig.semesterEnd, [], true).end
+          if (expectedStart && expectedEnd && (w.date_start !== expectedStart || w.date_end !== expectedEnd)) {
+            throw new Error(`ช่วงวันที่สัปดาห์ ${start}${end !== start ? `–${end}` : ''} ต้องตรงกับปฏิทินภาคเรียนในระบบ (${expectedStart} ถึง ${expectedEnd})`)
+          }
         }
         for (let weekNo = start; weekNo <= end; weekNo++) {
           if (occupiedWeeks.has(weekNo)) throw new Error(`สัปดาห์ที่ ${weekNo} ซ้ำหรือช่วงสัปดาห์ทับซ้อนกัน`)
