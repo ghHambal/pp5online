@@ -3623,7 +3623,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
   setTitle('ตารางสอน', 'schedule')
 
   const cfg      = cfgIn ?? await getSystemConfig().catch(()=>({}))
-  const hasFri   = cfg.hasFriday === 'true'
+  const hasFridaySetting = cfg.hasFriday === true || cfg.hasFriday === 'true'
   const visionOn = cfg.scheduleVisionEnabled === 'true'
   const geminiKey= _resolveGeminiKey(cfg, teacher)
 
@@ -3636,6 +3636,7 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
     teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
   ])
   const roomColorMap = Object.fromEntries((roomColorRows ?? []).map(r => [r.room_key, r.color_hex]))
+  const hasFri   = hasFridaySetting || scheduleData.some(row => Number(row.day_of_week) === 5)
 
   // map scheduleId → linked class (ใช้ class แรกที่ link ถ้ามีหลาย)
   const classMap = Object.fromEntries(allClasses.map(c => [c.id, c]))
@@ -3735,6 +3736,8 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
               const dispSubj  = entry?.subject_name ?? subj?.subject_name ?? null
               const dispClass = entry?.class_name   ?? null
               const dispTeach = entry?.teacher_name ?? null
+              const entryNote = String(entry?.note ?? '').trim()
+              const problemNote = /ปัญหา|ชน|ซ้ำ|ไม่ตรง|ไม่ชัด|อ่านไม่ออก|ต้องยืนยัน|ตรวจสอบ/i.test(entryNote) ? entryNote : ''
               // สีล็อกตามครู+ห้องเรียน ให้คงที่ข้ามเครื่องและข้ามวัน
               const clrInfo   = _entryColor(entry, subj)
               // height:1px บน td → ทำให้ h-full ของ child ทำงานใน table cell ได้
@@ -3745,10 +3748,11 @@ export async function renderScheduleGrid(teacher, academicYear, semester, cfgIn 
                 ${span > 1 ? `rowspan="${span}"` : ''}>
                 ${dispSubj ? `
                 <div class="w-full h-full rounded-none flex flex-col justify-center items-center
-                  gap-1 px-2 py-2 text-center" style="min-height:64px;background:${clrInfo.soft};color:${clrInfo.text};border-left:4px solid ${clrInfo.dot}">
+                  gap-1 px-2 py-2 text-center" title="${problemNote ? _htmlEsc(`ปัญหา: ${problemNote}`) : ''}" style="min-height:64px;background:${clrInfo.soft};color:${clrInfo.text};border-left:4px solid ${problemNote ? '#f43f5e' : clrInfo.dot}">
                   <p class="font-extrabold leading-tight text-sm break-words w-full">${dispSubj}</p>
                   ${dispClass ? `<p class="text-[11px] font-semibold opacity-90 leading-tight w-full">${dispClass}</p>` : ''}
                   ${dispTeach ? `<p class="text-[10px] opacity-65 leading-tight w-full">${dispTeach}</p>` : ''}
+                  ${problemNote ? `<p class="text-[10px] font-bold text-rose-600 leading-tight w-full">⚠ ${_htmlEsc(problemNote)}</p>` : ''}
                 </div>` : `
                 <div class="w-full h-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity" style="min-height:52px">
                   <span class="text-indigo-200 text-2xl">＋</span>

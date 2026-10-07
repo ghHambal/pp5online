@@ -30,13 +30,20 @@ function termOptions(selectedYear, selectedSemester) {
 }
 
 function statusBadge(row, conflictSet) {
-  const conflicts = conflictSet.get(row.id) ?? []
-  if (conflicts.length) return `<span class="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700">ชน ${esc(conflicts.join(' / '))}</span>`
+  const conflicts = scheduleProblemMessages(row, conflictSet)
+  if (conflicts.length) return `<span class="rounded-full bg-rose-50 px-2 py-1 text-[11px] font-bold text-rose-700">ปัญหา: ${esc(conflicts.join(' / '))}</span>`
   return '<span class="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-bold text-emerald-700">ปกติ</span>'
 }
 
+function scheduleProblemMessages(row, conflictSet) {
+  const messages = [...(conflictSet.get(row.id) ?? [])]
+  const note = String(row?.note ?? '').trim()
+  if (note && /ปัญหา|ชน|ซ้ำ|ไม่ตรง|ไม่ชัด|อ่านไม่ออก|ต้องยืนยัน|ตรวจสอบ/i.test(note)) messages.push(note)
+  return [...new Set(messages)]
+}
+
 function teacherCardStyle(rows, conflictSet, missingTeacher = false) {
-  if (missingTeacher || rows.some(row => conflictSet.has(row.id))) {
+  if (missingTeacher || rows.some(row => scheduleProblemMessages(row, conflictSet).length)) {
     return {
       border: 'border-rose-400',
       glow: 'shadow-[0_0_18px_rgba(244,63,94,0.38)]',
@@ -97,7 +104,7 @@ function renderTeacherScheduleGridPopup({ teacher, rows, state, subjectById, con
   modal.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-3 sm:p-5'
   const teacherName = teacher?.full_name || 'ไม่พบครู'
   const teacherCode = teacher?.teacher_code ? ` (${esc(teacher.teacher_code)})` : ''
-  const days = Array.from({ length: cfg?.hasFriday === true || cfg?.hasFriday === 'true' ? 6 : 5 }, (_, index) => index)
+  const days = Array.from({ length: cfg?.hasFriday === true || cfg?.hasFriday === 'true' || rows.some(row => Number(row.day_of_week) === 5) ? 6 : 5 }, (_, index) => index)
   const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์']
   const dayColors = ['bg-red-50', 'bg-yellow-50', 'bg-pink-50', 'bg-green-50', 'bg-orange-50', 'bg-purple-50']
   const close = () => modal.remove()
@@ -109,7 +116,7 @@ function renderTeacherScheduleGridPopup({ teacher, rows, state, subjectById, con
     }
   })
   const render = () => {
-    const problemRows = rows.filter(row => conflictSet.has(row.id)).length
+    const problemRows = rows.filter(row => scheduleProblemMessages(row, conflictSet).length).length
     modal.innerHTML = `<div class="max-h-[94vh] w-full max-w-7xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
       <div class="flex items-start justify-between gap-4"><div><p class="text-xs font-semibold text-indigo-500">ตารางสอนรายบุคคล · ${state.semester}/${state.year}</p><h2 class="mt-1 text-xl font-extrabold text-gray-800">${esc(teacherName)}${teacherCode}</h2><p class="mt-1 text-sm text-gray-500">คลิกช่องว่างเพื่อเพิ่มรายการ หรือคลิกรายวิชาเพื่อแก้ไข</p></div><button type="button" data-close class="text-2xl text-gray-400 hover:text-gray-700">×</button></div>
       <div class="mt-5 overflow-auto rounded-2xl border border-gray-200 shadow-sm"><table class="w-full min-w-[820px] border-collapse text-xs"><thead><tr class="bg-gray-50"><th class="w-24 border border-gray-100 px-3 py-2.5 text-center font-medium text-gray-500">คาบ / เวลา</th>${days.map(day => `<th class="border border-gray-100 px-3 py-2.5 text-center font-semibold text-gray-700 ${dayColors[day]}">${dayNames[day]}</th>`).join('')}</tr></thead><tbody>${state.periods.map(period => `<tr class="hover:bg-gray-50/50"><td class="border border-gray-100 bg-gray-50 px-3 py-2 text-center"><p class="font-bold text-gray-700">คาบ ${period.period_no}</p><p class="text-[10px] text-gray-400">${esc(String(period.start_time || '').slice(0, 5))}–${esc(String(period.end_time || '').slice(0, 5))}</p></td>${days.map(day => {
@@ -119,9 +126,11 @@ function renderTeacherScheduleGridPopup({ teacher, rows, state, subjectById, con
         const subjectName = entry?.subject_name || subject?.subject_name || null
         const className = entry?.class_name || null
         const color = resolveScheduleColor({ teacherId: teacher?.id, className, subjectName, fallbackId: entry?.subject_id || subject?.id }, {})
-        const hasConflict = entry && conflictSet.has(entry.id)
+        const problemMessages = entry ? scheduleProblemMessages(entry, conflictSet) : []
+        const hasConflict = problemMessages.length > 0
+        const problemMessage = problemMessages.join(' / ')
         const span = Number(entry?.span_periods || 1)
-        return `<td class="schedule-grid-cell border border-gray-100 p-0 ${entry ? 'cursor-pointer hover:bg-indigo-50/30' : 'cursor-pointer hover:bg-indigo-50/40'} transition-colors" style="height:1px" data-grid-entry="${entry?.id || ''}" data-grid-day="${day}" data-grid-period="${period.period_no}" ${span > 1 ? `rowspan="${span}"` : ''}><div class="group flex h-full min-h-[64px] w-full flex-col items-center justify-center gap-1 px-2 py-2 text-center" style="${entry ? `background:${color.soft};color:${color.text};border-left:4px solid ${hasConflict ? '#f43f5e' : color.dot};` : ''}">${entry ? `<p class="w-full break-words text-sm font-extrabold leading-tight">${esc(subjectName || 'ไม่ระบุวิชา')}</p><p class="w-full text-[11px] font-semibold leading-tight opacity-90">${esc(className || 'ไม่ระบุห้อง')}</p><p class="w-full text-[10px] leading-tight opacity-65">${esc(teacherName)}</p>${hasConflict ? '<span class="text-[10px] font-bold text-rose-600">⚠ มีปัญหา</span>' : ''}<span class="text-[10px] font-bold text-indigo-600 opacity-0 transition-opacity group-hover:opacity-100">แก้ไข</span>` : '<span class="text-2xl text-indigo-200 opacity-0 transition-opacity group-hover:opacity-100">＋</span>'}</div></td>`
+        return `<td class="schedule-grid-cell border border-gray-100 p-0 ${entry ? 'cursor-pointer hover:bg-indigo-50/30' : 'cursor-pointer hover:bg-indigo-50/40'} transition-colors" style="height:1px" data-grid-entry="${entry?.id || ''}" data-grid-day="${day}" data-grid-period="${period.period_no}" ${span > 1 ? `rowspan="${span}"` : ''}><div class="group flex h-full min-h-[64px] w-full flex-col items-center justify-center gap-1 px-2 py-2 text-center" title="${entry && problemMessage ? `ปัญหา: ${esc(problemMessage)}` : ''}" style="${entry ? `background:${color.soft};color:${color.text};border-left:4px solid ${hasConflict ? '#f43f5e' : color.dot};` : ''}">${entry ? `<p class="w-full break-words text-sm font-extrabold leading-tight">${esc(subjectName || 'ไม่ระบุวิชา')}</p><p class="w-full text-[11px] font-semibold leading-tight opacity-90">${esc(className || 'ไม่ระบุห้อง')}</p><p class="w-full text-[10px] leading-tight opacity-65">${esc(teacherName)}</p>${hasConflict ? `<span class="text-[10px] font-bold text-rose-600" title="${esc(problemMessage)}">⚠ ${esc(problemMessage)}</span>` : ''}<span class="text-[10px] font-bold text-indigo-600 opacity-0 transition-opacity group-hover:opacity-100">แก้ไข</span>` : '<span class="text-2xl text-indigo-200 opacity-0 transition-opacity group-hover:opacity-100">＋</span>'}</div></td>`
       }).join('')}</tr>`).join('')}</tbody></table></div>
       <div class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4"><p class="text-xs text-gray-500">ทั้งหมด ${rows.length} รายการ${problemRows ? ` · พบรายการที่มีปัญหา ${problemRows} รายการ` : ''}</p><div class="flex flex-wrap justify-end gap-2"><button type="button" data-add class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white">＋ เพิ่มรายการให้ครูคนนี้</button><button type="button" data-close class="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600">ปิด</button></div></div>
     </div>`
@@ -131,6 +140,8 @@ function renderTeacherScheduleGridPopup({ teacher, rows, state, subjectById, con
       const entry = rows.find(row => String(row.id) === String(cell.dataset.gridEntry))
       const row = entry || { teacher_id: teacher?.id, day_of_week: Number(cell.dataset.gridDay), period_no: Number(cell.dataset.gridPeriod), span_periods: 1 }
       if (entry?._secondary) return
+      const problems = entry ? scheduleProblemMessages(entry, conflictSet) : []
+      if (problems.length) showToast(`ปัญหา: ${problems.join(' / ')}`, 'error')
       renderForm({ row, state, onSaved: async () => { close(); await onChanged() } })
     }))
   }

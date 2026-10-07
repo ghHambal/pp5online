@@ -146,6 +146,8 @@ function buildPrompt({ teachers, subjects, periods, year, semester, fileNames = 
     '- ช่องว่างไม่ต้องสร้างรายการ',
     '- วัน: 0=อาทิตย์, 1=จันทร์, 2=อังคาร, 3=พุธ, 4=พฤหัสบดี, 5=ศุกร์',
     '- span_periods คือจำนวนคาบต่อเนื่องที่ช่องในไฟล์รวมกัน',
+    '- ต้องรวมรายการที่เป็นประชุม กิจกรรม อบรม หรือภารกิจของครูด้วย ห้ามตัดทิ้ง โดยใส่ข้อความจริงไว้ใน subject_name และใส่ category เป็น meeting หรือ activity เมื่อระบุได้',
+    '- รายการประชุม/กิจกรรมไม่จำเป็นต้องมี subject_code และต้องเก็บไว้ในตารางสอนของครูตามวันและคาบจริง',
     '',
     'รายชื่อครูอ้างอิงในระบบ:', JSON.stringify(teacherRoster),
     'รายวิชาอ้างอิงในระบบ:', JSON.stringify(subjectRoster),
@@ -160,6 +162,7 @@ function buildPrompt({ teachers, subjects, periods, year, semester, fileNames = 
       entries: [{
         teacher_code: '1087', teacher_name: 'ชื่อครูตามไฟล์',
         subject_code: 'ค33102', subject_name: 'คณิตศาสตร์พื้นฐาน',
+        category: 'subject',
         class_name: 'ม.6/2', day_of_week: 1, period_no: 1, span_periods: 2,
       }],
     }, null, 2),
@@ -380,6 +383,8 @@ async function importPrepared(state, message) {
   if (!rows.length) { message('ไม่มีรายการที่พร้อมนำเข้า', false); return }
   const payload = rows.map(row => {
     const subject = matchSubject(row.entry, state.subjects, row.teacher.id)
+    const category = text(row.entry.category)
+    const note = [category ? `ประเภท: ${category}` : '', text(row.entry.note)].filter(Boolean).join(' · ')
     return {
       teacher_id: row.teacher.id,
       subject_id: subject?.id ?? null,
@@ -389,7 +394,7 @@ async function importPrepared(state, message) {
       day_of_week: row.entry.day_of_week,
       period_no: row.entry.period_no,
       span_periods: row.entry.span_periods,
-      note: row.entry.note || null,
+      note: note || null,
       academic_year: state.year,
       semester: state.semester,
     }
