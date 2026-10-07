@@ -4,6 +4,7 @@ import {
   deleteScheduleEntry, getAdminAcademicAuditLogs,
 } from './api.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { resolveScheduleColor } from './teacher-schedule-colors.js'
 
 const DAYS = [
   [0, 'อาทิตย์'], [1, 'จันทร์'], [2, 'อังคาร'], [3, 'พุธ'],
@@ -85,6 +86,52 @@ function renderTeacherSchedulePopup({ teacher, rows, state, subjectById, conflic
       const row = rows.find(item => String(item.id) === String(button.dataset.delete))
       if (!row || !confirm('ยืนยันลบรายการตารางสอนนี้หรือไม่? ระบบจะบันทึกประวัติการลบ')) return
       try { await deleteScheduleEntry(row.id); showToast('ลบรายการตารางสอนแล้ว', 'success'); close(); await onChanged() } catch (error) { showToast(`ลบไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error') }
+    }))
+  }
+  document.body.appendChild(modal)
+  render()
+}
+
+function renderTeacherScheduleGridPopup({ teacher, rows, state, subjectById, conflictSet, cfg, onChanged }) {
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[300] flex items-center justify-center bg-black/60 p-3 sm:p-5'
+  const teacherName = teacher?.full_name || 'ไม่พบครู'
+  const teacherCode = teacher?.teacher_code ? ` (${esc(teacher.teacher_code)})` : ''
+  const days = Array.from({ length: cfg?.hasFriday === true || cfg?.hasFriday === 'true' ? 6 : 5 }, (_, index) => index)
+  const dayNames = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์']
+  const dayColors = ['bg-red-50', 'bg-yellow-50', 'bg-pink-50', 'bg-green-50', 'bg-orange-50', 'bg-purple-50']
+  const close = () => modal.remove()
+  const scheduleMap = {}
+  rows.forEach(row => {
+    scheduleMap[`${row.day_of_week}-${row.period_no}`] = row
+    for (let offset = 1; offset < Number(row.span_periods || 1); offset += 1) {
+      scheduleMap[`${row.day_of_week}-${Number(row.period_no) + offset}`] = { ...row, _secondary: true }
+    }
+  })
+  const render = () => {
+    const problemRows = rows.filter(row => conflictSet.has(row.id)).length
+    modal.innerHTML = `<div class="max-h-[94vh] w-full max-w-7xl overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+      <div class="flex items-start justify-between gap-4"><div><p class="text-xs font-semibold text-indigo-500">ตารางสอนรายบุคคล · ${state.semester}/${state.year}</p><h2 class="mt-1 text-xl font-extrabold text-gray-800">${esc(teacherName)}${teacherCode}</h2><p class="mt-1 text-sm text-gray-500">คลิกช่องว่างเพื่อเพิ่มรายการ หรือคลิกรายวิชาเพื่อแก้ไข</p></div><button type="button" data-close class="text-2xl text-gray-400 hover:text-gray-700">×</button></div>
+      <div class="mt-5 overflow-auto rounded-2xl border border-gray-200 shadow-sm"><table class="w-full min-w-[820px] border-collapse text-xs"><thead><tr class="bg-gray-50"><th class="w-24 border border-gray-100 px-3 py-2.5 text-center font-medium text-gray-500">คาบ / เวลา</th>${days.map(day => `<th class="border border-gray-100 px-3 py-2.5 text-center font-semibold text-gray-700 ${dayColors[day]}">${dayNames[day]}</th>`).join('')}</tr></thead><tbody>${state.periods.map(period => `<tr class="hover:bg-gray-50/50"><td class="border border-gray-100 bg-gray-50 px-3 py-2 text-center"><p class="font-bold text-gray-700">คาบ ${period.period_no}</p><p class="text-[10px] text-gray-400">${esc(String(period.start_time || '').slice(0, 5))}–${esc(String(period.end_time || '').slice(0, 5))}</p></td>${days.map(day => {
+        const entry = scheduleMap[`${day}-${period.period_no}`]
+        if (entry?._secondary) return ''
+        const subject = subjectById[entry?.subject_id]
+        const subjectName = entry?.subject_name || subject?.subject_name || null
+        const className = entry?.class_name || null
+        const color = resolveScheduleColor({ teacherId: teacher?.id, className, subjectName, fallbackId: entry?.subject_id || subject?.id }, {})
+        const hasConflict = entry && conflictSet.has(entry.id)
+        const span = Number(entry?.span_periods || 1)
+        return `<td class="schedule-grid-cell border border-gray-100 p-0 ${entry ? 'cursor-pointer hover:bg-indigo-50/30' : 'cursor-pointer hover:bg-indigo-50/40'} transition-colors" style="height:1px" data-grid-entry="${entry?.id || ''}" data-grid-day="${day}" data-grid-period="${period.period_no}" ${span > 1 ? `rowspan="${span}"` : ''}><div class="group flex h-full min-h-[64px] w-full flex-col items-center justify-center gap-1 px-2 py-2 text-center" style="${entry ? `background:${color.soft};color:${color.text};border-left:4px solid ${hasConflict ? '#f43f5e' : color.dot};` : ''}">${entry ? `<p class="w-full break-words text-sm font-extrabold leading-tight">${esc(subjectName || 'ไม่ระบุวิชา')}</p><p class="w-full text-[11px] font-semibold leading-tight opacity-90">${esc(className || 'ไม่ระบุห้อง')}</p><p class="w-full text-[10px] leading-tight opacity-65">${esc(teacherName)}</p>${hasConflict ? '<span class="text-[10px] font-bold text-rose-600">⚠ มีปัญหา</span>' : ''}<span class="text-[10px] font-bold text-indigo-600 opacity-0 transition-opacity group-hover:opacity-100">แก้ไข</span>` : '<span class="text-2xl text-indigo-200 opacity-0 transition-opacity group-hover:opacity-100">＋</span>'}</div></td>`
+      }).join('')}</tr>`).join('')}</tbody></table></div>
+      <div class="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4"><p class="text-xs text-gray-500">ทั้งหมด ${rows.length} รายการ${problemRows ? ` · พบรายการที่มีปัญหา ${problemRows} รายการ` : ''}</p><div class="flex flex-wrap justify-end gap-2"><button type="button" data-add class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white">＋ เพิ่มรายการให้ครูคนนี้</button><button type="button" data-close class="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600">ปิด</button></div></div>
+    </div>`
+    modal.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', close))
+    modal.querySelector('[data-add]').addEventListener('click', () => renderForm({ state, row: { teacher_id: teacher?.id }, onSaved: async () => { close(); await onChanged() } }))
+    modal.querySelectorAll('[data-grid-entry]').forEach(cell => cell.addEventListener('click', () => {
+      const entry = rows.find(row => String(row.id) === String(cell.dataset.gridEntry))
+      const row = entry || { teacher_id: teacher?.id, day_of_week: Number(cell.dataset.gridDay), period_no: Number(cell.dataset.gridPeriod), span_periods: 1 }
+      if (entry?._secondary) return
+      renderForm({ row, state, onSaved: async () => { close(); await onChanged() } })
     }))
   }
   document.body.appendChild(modal)
@@ -243,7 +290,7 @@ export async function renderAdminScheduleManagement() {
       main.querySelector('[data-search]').addEventListener('input', event => { state.query = event.target.value; render() })
       main.querySelector('[data-day]').addEventListener('change', event => { state.day = event.target.value; render() })
       main.querySelector('[data-term]').addEventListener('change', async event => { const [year, semester] = event.target.value.split('|').map(Number); state.year = year; state.semester = semester; await load(); render() })
-      main.querySelectorAll('[data-view-teacher]').forEach(button => button.addEventListener('click', () => { const item = teacherItems[Number(button.dataset.viewTeacher)]; if (item) renderTeacherSchedulePopup({ teacher: item.teacher, rows: item.rows, state, subjectById, conflictSet, onChanged: async () => { await load(); render() } }) }))
+      main.querySelectorAll('[data-view-teacher]').forEach(button => button.addEventListener('click', () => { const item = teacherItems[Number(button.dataset.viewTeacher)]; if (item) renderTeacherScheduleGridPopup({ teacher: item.teacher, rows: item.rows, state, subjectById, conflictSet, cfg, onChanged: async () => { await load(); render() } }) }))
     }
     render()
   } catch (error) {

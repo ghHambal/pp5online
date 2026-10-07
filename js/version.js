@@ -1,2 +1,2 @@
 // อัปเดตเลขนี้ทุกครั้งที่ออกเวอร์ชันใหม่ (Semantic Versioning: major.minor.patch)
-export const APP_VERSION = '10.22.925'
+export const APP_VERSION = '10.22.926'
