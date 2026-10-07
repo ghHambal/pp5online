@@ -3,7 +3,7 @@ import {
   updateMyProfile, updateSubject, deleteSubject,
   getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
   getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
-  getTeacherPackageAccess, getSystemConfig, getRoomsByGrade,
+  getTeacherPackageAccess, getSystemConfig, getRoomsByGrade, getSubjectCatalog,
   getUniqueRooms, getUniqueReligionRooms, getHomeroomTeachers, getSubjectCoTeachers,
   getCourseSyllabus, getLessonPlans,
 } from './api.js'
@@ -1510,13 +1510,15 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
   setActiveNav('my-courses')
   setTitle(isClone ? 'ทำสำเนาคอร์สวิชา' : editData ? 'แก้ไขคอร์สวิชา' : 'ลงทะเบียนเปิดคอร์ส')
 
-  const [depts, teachers, coTeachers] = await Promise.all([
+  const [depts, teachers, coTeachers, subjectCatalog, termCfg] = await Promise.all([
     getDepartments().catch(()=>[]),
     getTeachers().catch(()=>[]),
     (editData && !isClone) ? getSubjectCoTeachers(editData.id).catch(err => {
       showToast('โหลดครูร่วมสอนไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
       return null
     }) : Promise.resolve([]),
+    getSubjectCatalog().catch(() => []),
+    getSystemConfig().catch(() => ({})),
   ])
   if (coTeachers === null) {
     setContent(`<div class="p-6 text-center text-gray-600">โหลดข้อมูลคอร์สไม่ครบ กรุณาเปิดคอร์สใหม่อีกครั้ง
@@ -1539,6 +1541,10 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
   const visibleSubgroups = teacherCat
     ? ALL_SUBGROUPS.filter(s => s.cat === teacherCat)
     : ALL_SUBGROUPS
+  const currentSemester = Number(termCfg.semester)
+  const catalogRows = subjectCatalog
+    .filter(row => ![1, 2].includes(currentSemester) || row.semester == null || Number(row.semester) === currentSemester)
+    .filter(row => visibleSubgroups.some(group => group.value === row.subject_group))
 
   // map subject_group → dept category
   const _sgToCategory = sg =>
@@ -1569,6 +1575,18 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
 
   // all unique dept heads (for typeahead)
   const allHeads = [...new Set(depts.map(d=>d.head_name).filter(Boolean))]
+  const catalogById = new Map(catalogRows.map(row => [String(row.id), row]))
+  const catalogOptions = [
+    '<option value="">— เลือกรายวิชาที่เตรียมไว้ (ถ้ามี) —</option>',
+    ...catalogRows.map(row => {
+      const code = row.subject_code ? row.subject_code + ' · ' : ''
+      const grade = row.grade_level ? ' · ' + row.grade_level : ''
+      const group = row.subject_group ? ' · ' + row.subject_group : ''
+      const label = code + row.subject_name + grade + group
+      const selected = String(editData?.catalog_id ?? '') === String(row.id) ? ' selected' : ''
+      return '<option value="' + row.id + '"' + selected + '>' + _htmlEsc(label) + '</option>'
+    }),
+  ].join('')
 
   setContent(`<div class="max-w-2xl mx-auto animate-fade">
     <div class="flex items-center gap-3 mb-6">
@@ -1583,6 +1601,15 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     </div>` : ''}
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-7">
       <form id="course-form" novalidate class="space-y-5">
+        <!-- รายวิชาจากคลังหลัก -->
+        <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+          <label class="block text-sm font-semibold text-blue-900 mb-1">เลือกรายวิชาที่เตรียมไว้</label>
+          <select id="cf-catalog" ${SELECT_CLS}>
+            ${catalogOptions}
+          </select>
+          <input type="hidden" id="cf-catalog-id" value="${editData?.catalog_id ?? ''}" />
+          <p class="text-xs text-blue-700/70 mt-1">ระบบจะเติมข้อมูลให้ก่อน แต่ครูยังแก้ไขรายละเอียดทุกช่องได้</p>
+        </div>
         <!-- กลุ่มวิชา -->
         <div>
           <label class="block text-sm font-semibold text-gray-700 mb-1">
@@ -1858,12 +1885,75 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     `).join('')
   }
 
+  const _catalogDeptCode = item => {
+    const raw = String(item?.dept_label ?? '').trim()
+    const code = String(item?.subject_code ?? '').trim()
+    const haystack = raw + ' ' + code + ' ' + String(item?.subject_name_arabic ?? '')
+    if (/อิสลามศึกษา|อัดดีนียะห์/u.test(raw) || /^(ศอ|อก|อศ|ฟป)/u.test(code)) return 'ISL'
+    if (/ภาษาอาหรับ/u.test(raw) || /^ภอ/u.test(code) || /العربية/u.test(haystack)) return 'ARB'
+    if (/ภาษามลายู/u.test(raw) || /^มล/u.test(code) || /الملايو/u.test(haystack)) return 'MLB'
+    if (/ภาษาไทย/u.test(raw)) return 'THAI'
+    if (/ภาษาต่างประเทศ/u.test(raw)) return 'ENG'
+    if (/คณิตศาสตร์/u.test(raw)) return 'MATH'
+    if (/วิทยาศาสตร์/u.test(raw)) return 'SC'
+    if (/สังคม/u.test(raw)) return 'SOC'
+    if (/ศิลปะ/u.test(raw)) return 'ART'
+    if (/สุขศึกษา|พลศึกษา/u.test(raw)) return 'HEALTH'
+    if (/การงานอาชีพ|เทคโนโลยี/u.test(raw)) return item.subject_group === 'ACDMVOC' ? 'VOC' : 'OCC'
+    return ''
+  }
+
+  const _applyCatalog = item => {
+    if (!item) return
+    const subgEl = document.getElementById('cf-subg')
+    const deptEl = document.getElementById('cf-dept')
+    const nameEl = document.getElementById('cf-name')
+    const codeEl = document.getElementById('cf-code')
+    const creditEl = document.getElementById('cf-credit')
+    const gradeEl = document.getElementById('cf-grade')
+    const headEl = document.getElementById('cf-dept-head')
+    const sg = visibleSubgroups.some(group => group.value === item.subject_group) ? item.subject_group : ''
+    if (sg && subgEl.value !== sg) {
+      subgEl.value = sg
+      subgEl.dispatchEvent(new Event('change'))
+    }
+    if (nameEl) nameEl.value = item.subject_name ?? ''
+    if (codeEl) codeEl.value = item.subject_code ?? ''
+    if (creditEl && item.credit != null) {
+      const credit = String(item.credit)
+      if (![...creditEl.options].some(option => option.value === credit)) {
+        creditEl.appendChild(new Option(credit, credit))
+      }
+      creditEl.value = credit
+    }
+    if (gradeEl && item.grade_level) {
+      if (![...gradeEl.options].some(option => option.value === item.grade_level)) {
+        gradeEl.appendChild(new Option(item.grade_level, item.grade_level))
+      }
+      gradeEl.value = item.grade_level
+    }
+    const wantedDept = _catalogDeptCode(item)
+    if (deptEl && wantedDept && _filterDepts(sg).some(dept => dept.dept_code === wantedDept)) {
+      deptEl.value = wantedDept
+      deptEl.dispatchEvent(new Event('change'))
+    }
+    if (headEl && item.learning_area) headEl.value = item.learning_area
+  }
+
   const HINTS = {
     ACDM: 'มัธยม: แนะนำรูปแบบ ค32110 (ตัวอักษร+เลข 5 หลัก)',
     AGM: 'ศาสนา: อิสระ เช่น ฮ21101',
     ACDMVOC: 'ปวช: อิสระ',
     AGMVOC: 'ศาสนาปวช: อิสระ',
   }
+
+  document.getElementById('cf-catalog')?.addEventListener('change', event => {
+    const id = event.target.value
+    document.getElementById('cf-catalog-id').value = id
+    _applyCatalog(catalogById.get(String(id)))
+  })
+
+  if (editData?.catalog_id) _applyCatalog(catalogById.get(String(editData.catalog_id)))
 
   // 1. กลุ่มวิชา → กรองกลุ่มสาระ/สาขาวิชา + อัปเดต labels + grade options + hint
   document.getElementById('cf-subg').addEventListener('change', e => {
@@ -2201,6 +2291,9 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
       const coTeacherIds = toggleEl.checked ? _selectedCoTeachers.map(t => t.id) : []
       
       await onSave({
+        catalog_id: document.getElementById('cf-catalog-id').value
+          ? Number(document.getElementById('cf-catalog-id').value)
+          : null,
         subject_group: subg,
         dept:          dept || null,
         subject_name:  name,

@@ -83,6 +83,10 @@ const SKILL_GROUPS = {
 }
 
 export async function renderClassForm(teacher, course, opts = {}) {
+  if (!course?.id) {
+    showToast('ไม่พบคอร์สวิชา จึงยังสร้างห้องเรียนไม่ได้', 'error')
+    return
+  }
   // opts.cloneFrom = classId ของห้องต้นฉบับที่จะสำเนาช่องคะแนน
   const cloneFrom = opts.cloneFrom ?? null
 

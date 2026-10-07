@@ -563,14 +563,14 @@ async function _getMySubjects(teacherId, currentOnly = true) {
   // 1. owned subjects
   let ownPromise = supabase
     .from('master_subjects')
-    .select('id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id, academic_year, semester')
+    .select('id, catalog_id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id, academic_year, semester')
     .eq('teacher_id', teacherId)
   if (hasTerm) ownPromise = ownPromise.eq('academic_year', academicYear).eq('semester', semester)
 
   // 2. co-taught subjects
   const coPromise = supabase
     .from('subject_co_teachers')
-    .select('subject_id, master_subjects(id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id, academic_year, semester)')
+    .select('subject_id, master_subjects(id, catalog_id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id, academic_year, semester)')
     .eq('teacher_id', teacherId)
 
   const [ownRes, coRes] = await Promise.all([ownPromise, coPromise])
@@ -710,10 +710,33 @@ export async function mergeTeacherAccounts(keepId, mergeId) {
 export async function getMasterSubjects() {
   const { data, error } = await supabase
     .from('master_subjects')
-    .select('id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id, academic_year, semester')
+    .select('id, catalog_id, subject_code, subject_name, dept, subject_group, credit, grade_level, learning_area, teacher_id, academic_year, semester')
     .order('subject_code')
   if (error) throw error
   return data ?? []
+}
+
+// คลังรายวิชาที่เตรียมจากหลักสูตร — ครูอ่านได้ แต่การเลือกจะสร้าง
+// master_subjects ของครูแยกต่างหาก ไม่ทำให้รายการกลางกลายเป็นคอร์สของครู
+export function getSubjectCatalog(filters = {}) {
+  return readInFlight(['subject-catalog', JSON.stringify(filters)], async () => {
+    const rows = await _fetchAllRows(() => {
+      let q = supabase
+        .from('subject_catalog')
+        .select('id, catalog_key, subject_code, subject_name, subject_name_arabic, credit, subject_group, dept_label, grade_level, curriculum, course_type, learning_area, academic_year, semester, source_file')
+        .eq('is_active', true)
+        .order('subject_group')
+        .order('grade_level')
+        .order('subject_code')
+        .order('subject_name')
+      if (filters.subjectGroup) q = q.eq('subject_group', filters.subjectGroup)
+      if (filters.gradeLevel) q = q.eq('grade_level', filters.gradeLevel)
+      if (Number.isInteger(Number(filters.academicYear))) q = q.eq('academic_year', Number(filters.academicYear))
+      if ([1, 2].includes(Number(filters.semester))) q = q.eq('semester', Number(filters.semester))
+      return q
+    })
+    return rows
+  })
 }
 
 // ─── Classes ──────────────────────────────────────────────────────────────────
@@ -2043,6 +2066,9 @@ export async function deleteClass(id) {
 }
 
 export async function createClass(payload, teacherId = null) {
+  if (!payload?.course_id) {
+    throw new Error('ต้องเลือกคอร์สวิชาก่อนสร้างห้องเรียน เพื่อเชื่อมข้อมูลรายวิชาให้ครบถ้วน')
+  }
   const normalizedPayload = Object.prototype.hasOwnProperty.call(payload, 'skill_group')
     ? { ...payload, skill_group: normalizeSkillGroup(payload.skill_group) }
     : payload
