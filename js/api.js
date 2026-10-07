@@ -668,6 +668,17 @@ export async function getTeachers() {
   return data ?? []
 }
 
+// ลายเซ็นที่บันทึกในโปรไฟล์ครู ใช้เป็นตัวเลือกลงนามในเอกสารที่ได้รับอนุญาต
+export async function getTeachersWithSignatures() {
+  const { data, error } = await supabase
+    .from('teachers')
+    .select('id, full_name, dept, signature_url')
+    .not('signature_url', 'is', null)
+    .order('full_name')
+  if (error) throw error
+  return data ?? []
+}
+
 export async function getTeacherById(id) {
   const { data, error } = await supabase
     .from('teachers')

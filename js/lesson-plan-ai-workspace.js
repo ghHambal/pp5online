@@ -2,15 +2,20 @@
 // ระบบไม่เรียก AI เอง: สร้าง Prompt + JSON Schema ให้ครูนำไปใช้กับ AI ส่วนตัว แล้วนำ JSON กลับมาบันทึก
 import {
   createSyllabusItem, updateSyllabusItem, createLessonPlan, updateLessonPlan,
-  getLessonPlanReflection, upsertLessonPlanReflection, getDepartments,
+  getLessonPlanReflection, getLessonPlanReflectionsForPlan, upsertLessonPlanReflection, getDepartments, getTeachersWithSignatures,
 } from './api.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
-import { uploadLessonPlanSignature, getLessonPlanAssetUrl } from './storage.js'
+import { uploadLessonPlanSignature, getLessonPlanAssetUrl, uploadCouncilTeacherSignature } from './storage.js'
+import { updateMySignature } from './council-api.js'
 
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[ch])
 const asText = value => Array.isArray(value) ? value.map(v => typeof v === 'string' ? v : JSON.stringify(v)).join('\n') : value == null ? '' : String(value)
 const asInt = (value, fallback = null) => Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : fallback
 const isoDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? '')) ? String(value) : null
+const thaiShortDate = value => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ''))
+  return match ? `${match[3]}/${match[2]}/${String(Number(match[1]) + 543).slice(-2)}` : '........................'
+}
 const stripFence = text => String(text ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
 const WEEKDAY_LABELS = { 1: 'วันจันทร์', 2: 'วันอังคาร', 3: 'วันพุธ', 4: 'วันพฤหัสบดี', 5: 'วันศุกร์', 6: 'วันเสาร์', 7: 'วันอาทิตย์' }
 const normalizeScheduleDays = days => [...new Set((days ?? []).map(day => asInt(day)).filter(day => day >= 1 && day <= 7 && day !== 6))].sort((a, b) => (a % 7) - (b % 7))
@@ -491,7 +496,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
           const payload = {
             course_id: courseId, teacher_id: teacher.id, title: String(p.title).trim(),
             week_start: asInt(p.week_start), week_end: asInt(p.week_end, asInt(p.week_start)), session_number: asInt(p.session_number, 1),
-            lesson_date: isoDate(p.lesson_date), duration_minutes: durationMinutes, unit_title: asText(p.unit_title) || null,
+            lesson_date: isoDate(p.lesson_date) ?? dateForWeek(asInt(p.week_start)).dates[0] ?? null, duration_minutes: durationMinutes, unit_title: asText(p.unit_title) || null,
             standards: asText(p.standards) || null, objectives: asText(p.objectives) || null, key_concept: asText(p.key_concept || p.topic) || null,
             activities_intro: asText(activities.intro ?? p.activities_intro) || null,
             activities_main: asText(activities.main ?? p.activities_main) || null,
@@ -499,7 +504,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
             media: asText(p.media) || null, assessment: asText(p.assessment) || null, homework: asText(p.homework) || null,
             teacher_notes: asText(p.teacher_notes) || null, schedule_alignment: p.schedule_alignment || null,
             deviation_reason: asText(p.deviation_reason) || null,
-            source_json: { ...p, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: durationMinutes },
+            source_json: { ...p, lesson_date: isoDate(p.lesson_date) ?? dateForWeek(asInt(p.week_start)).dates[0] ?? null, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: durationMinutes },
           }
           const existing = (lessonPlans ?? []).find(x => x.week_start === payload.week_start && (x.session_number ?? 1) === payload.session_number)
           if (existing) await updateLessonPlan(existing.id, payload); else await createLessonPlan(payload)
@@ -510,9 +515,16 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
   })
 }
 
-function signaturePadHTML(key, label, name, currentUrl) {
+function signaturePadHTML(key, label, name, currentUrl, savedOptions = [], sourceMode = 'custom', saveProfile = false, isDeptHead = false) {
+  const savedSelect = savedOptions.length
+    ? `<label data-sign-saved-wrap class="block text-[10px] font-bold text-gray-500 mt-2">เลือกลายเซ็นที่บันทึกไว้<select data-sign-saved class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white font-normal">${savedOptions.map((option, index) => `<option value="${esc(option.path)}" data-name="${esc(option.name)}" data-preview="${esc(option.previewUrl)}" ${option.selected ? 'selected' : index === 0 && !savedOptions.some(item => item.selected) ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}</select></label>`
+    : `<p data-sign-no-saved class="text-[10px] text-amber-600 mt-2">ยังไม่มีลายเซ็นที่บันทึกไว้สำหรับรายการนี้</p>`
   return `<div class="rounded-2xl border border-gray-200 p-3" data-sign-role="${key}">
-    <div class="flex justify-between gap-2"><div><p class="text-xs font-bold text-gray-700">${label}</p><input data-sign-name class="mt-1 border rounded-lg px-2 py-1 text-xs w-full" value="${esc(name)}" placeholder="ชื่อผู้ลงนาม"></div>${currentUrl ? `<img data-sign-current src="${esc(currentUrl)}" class="h-14 w-28 object-contain border rounded-lg bg-white">` : '<span class="text-[10px] text-gray-300">ยังไม่มีลายเซ็น</span>'}</div>
+    <p class="text-xs font-bold text-gray-700">${label}</p><input data-sign-name class="mt-1 border rounded-lg px-2 py-1 text-xs w-full" value="${esc(name)}" placeholder="ชื่อผู้ลงนาม">
+    <label class="block text-[10px] font-bold text-gray-500 mt-2">การลงชื่อ<select data-sign-source class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white"><option value="saved" ${sourceMode === 'saved' ? 'selected' : ''} ${savedOptions.length ? '' : 'disabled'}>ใช้ลายเซ็นที่บันทึกไว้</option><option value="custom" ${sourceMode === 'custom' ? 'selected' : ''}>วาด/พิมพ์/อัปโหลดลายเซ็น</option><option value="blank" ${sourceMode === 'blank' ? 'selected' : ''}>เว้นช่องไว้เซ็นเอง</option></select></label>
+    ${savedSelect}
+    <img data-sign-current src="${esc(currentUrl ?? '')}" class="h-14 w-28 object-contain border rounded-lg bg-white mt-2" ${currentUrl && sourceMode === 'saved' ? '' : 'hidden'}>
+    <div data-sign-custom-controls ${sourceMode === 'custom' ? '' : 'hidden'}>
     <div class="grid grid-cols-2 gap-2 mt-2">
       <label class="text-[10px] font-bold text-gray-500">วิธีลงชื่อ<select data-sign-mode class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white"><option value="draw">วาดลายเซ็น</option><option value="type">พิมพ์ชื่อ</option></select></label>
       <label class="text-[10px] font-bold text-gray-500">สีปากกา/ตัวอักษร<input data-sign-color type="color" value="#173b78" class="mt-1 w-full h-8 border rounded-lg bg-white p-1"></label>
@@ -524,12 +536,18 @@ function signaturePadHTML(key, label, name, currentUrl) {
     <canvas data-sign-canvas width="700" height="180" class="mt-2 w-full h-24 border rounded-xl bg-white touch-none"></canvas>
     <div class="flex items-center justify-between gap-2 mt-2"><button data-sign-clear type="button" class="text-[11px] text-red-500">ล้างที่วาด</button><label class="text-[11px] font-bold text-indigo-600 cursor-pointer">📤 อัปโหลดภาพ<input data-sign-file type="file" accept="image/png,image/jpeg,image/webp" class="hidden"></label></div>
     <p data-sign-file-name class="text-[10px] text-gray-400 mt-1"></p>
+    ${key === 'teacher' ? `<label class="mt-2 flex items-start gap-2 text-[10px] text-gray-600"><input data-sign-save-profile type="checkbox" class="mt-0.5" ${saveProfile ? 'checked' : ''}><span>บันทึกลายเซ็นนี้ในโปรไฟล์ครู เพื่อเลือกใช้กับเอกสารครั้งต่อไป</span></label>` : ''}
+    </div>
+    ${isDeptHead ? `<label class="block text-[10px] font-bold text-gray-500 mt-2">ขอบเขตการตั้งค่านี้<select data-sign-scope class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white"><option value="session">ใช้เฉพาะครั้งนี้</option><option value="plan">ใช้เป็นค่าเริ่มต้นทั้งแผน</option></select></label>` : ''}
   </div>`
 }
 
 function bindPad(box) {
   const canvas = box.querySelector('[data-sign-canvas]'), ctx = canvas.getContext('2d')
   const mode = box.querySelector('[data-sign-mode]'), color = box.querySelector('[data-sign-color]')
+  const source = box.querySelector('[data-sign-source]'), saved = box.querySelector('[data-sign-saved]')
+  const savedWrap = box.querySelector('[data-sign-saved-wrap]'), preview = box.querySelector('[data-sign-current]')
+  const customControls = box.querySelector('[data-sign-custom-controls]')
   const typedControls = box.querySelector('[data-sign-typed-controls]'), typed = box.querySelector('[data-sign-typed]'), font = box.querySelector('[data-sign-font]')
   ctx.strokeStyle = color.value; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
   let drawing = false, drawn = false, last = null
@@ -555,18 +573,41 @@ function bindPad(box) {
   const end = () => { drawing = false }
   canvas.addEventListener('pointerdown', start); canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerup', end); canvas.addEventListener('pointerleave', end)
   mode.addEventListener('change', setMode)
+  const updateSource = () => {
+    const useSaved = source.value === 'saved'
+    const useCustom = source.value === 'custom'
+    if (savedWrap) savedWrap.hidden = !useSaved
+    customControls.hidden = !useCustom
+    preview.hidden = !useSaved || !saved?.selectedOptions[0]?.dataset.preview
+    if (useSaved && saved?.selectedOptions[0]) {
+      preview.src = saved.selectedOptions[0].dataset.preview
+      box.querySelector('[data-sign-name]').value = saved.selectedOptions[0].dataset.name || ''
+    }
+  }
+  source.addEventListener('change', updateSource)
+  saved?.addEventListener('change', updateSource)
   color.addEventListener('input', () => { ctx.strokeStyle = color.value; if (mode.value === 'type') renderTyped() })
   typed.addEventListener('input', renderTyped); font.addEventListener('change', renderTyped)
   box.querySelector('[data-sign-clear]').addEventListener('click', () => { ctx.clearRect(0,0,canvas.width,canvas.height); if (mode.value === 'type') typed.value = ''; drawn=false })
   box.querySelector('[data-sign-file]').addEventListener('change', e => { box.querySelector('[data-sign-file-name]').textContent = e.target.files[0]?.name ?? '' })
-  return { canvas, hasDrawn: () => drawn, file: () => box.querySelector('[data-sign-file]').files[0] ?? null, name: () => box.querySelector('[data-sign-name]').value.trim() }
+  updateSource()
+  return {
+    canvas, hasDrawn: () => drawn,
+    file: () => box.querySelector('[data-sign-file]').files[0] ?? null,
+    name: () => box.querySelector('[data-sign-name]').value.trim(),
+    sourceMode: () => source.value,
+    savedPath: () => saved?.value || null,
+    savedName: () => saved?.selectedOptions[0]?.dataset.name || '',
+    saveToProfile: () => box.querySelector('[data-sign-save-profile]')?.checked === true,
+    scope: () => box.querySelector('[data-sign-scope]')?.value ?? 'session',
+  }
 }
 
 const canvasBlob = canvas => new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
 
 function printLessonPlan({ plan, cls, teacher, reflection, urls, dept }) {
   const meta = courseMeta(cls)
-  const date = plan.lesson_date ? new Date(plan.lesson_date + 'T00:00:00').toLocaleDateString('th-TH-u-nu-latn') : '........................'
+  const date = plan.lesson_date ? thaiShortDate(plan.lesson_date) : '........................'
   const rawClassName = String(meta.class_name ?? '').trim()
   const gradeText = String(meta.grade_level ?? '').replace(/ม\./g, '').trim()
   const className = /^ม\./.test(rawClassName) ? rawClassName.replace(/^ม\./, '') : [gradeText, rawClassName].filter(Boolean).join(' ')
@@ -611,11 +652,16 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept }) {
 
 export async function openLessonPlanDocument({ plan, cls, teacher, classId, currentWeek }) {
   document.getElementById('lp-document-modal')?.remove()
-  const departments = await getDepartments().catch(() => [])
+  const [departments, signatureTeachers, planReflections] = await Promise.all([
+    getDepartments().catch(() => []),
+    getTeachersWithSignatures().catch(() => []),
+    getLessonPlanReflectionsForPlan(plan.id).catch(() => []),
+  ])
   const deptKey = String(cls?.master_subjects?.dept ?? teacher?.dept ?? '').trim().toLowerCase()
   const dept = departments.find(d => [d.dept_code,d.dept_name,d.category].some(v => String(v ?? '').trim().toLowerCase() === deptKey)) ?? null
   const headRel = cls?.students
   const classHeadDefault = (Array.isArray(headRel) ? headRel[0]?.full_name : headRel?.full_name) ?? ''
+  const signaturePreferences = () => plan.source_json?.signature_preferences ?? {}
   let weekNo = currentWeek >= plan.week_start && currentWeek <= plan.week_end ? currentWeek : plan.week_start
   const m = document.createElement('div'); m.id='lp-document-modal'; m.className='fixed inset-0 z-[98] bg-black/60 flex items-center justify-center p-3'; document.body.appendChild(m)
 
@@ -627,13 +673,63 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
       resolve(reflection?.teacher_signature_path || reflection?.signature_data_url),
       resolve(reflection?.dept_head_signature_path || dept?.head_sign_url),
     ])
+    const preference = signaturePreferences()
+    const deptPlanPreference = preference['dept-head']
+    const deptSessionPreference = deptPlanPreference?.session_overrides?.[String(weekNo)]
+    const currentPaths = {
+      'class-head': reflection?.class_head_signature_path,
+      teacher: reflection?.teacher_signature_path || reflection?.signature_data_url,
+      'dept-head': reflection?.dept_head_signature_path,
+    }
+    const profileTeacher = signatureTeachers.find(person => Number(person.id) === Number(teacher.id))
+    const savedOptions = { 'class-head': [], teacher: [], 'dept-head': [] }
+    const addSaved = (role, path, name, label, previewUrl = null) => {
+      if (!path || savedOptions[role].some(option => option.path === path)) return
+      savedOptions[role].push({ path, name: name || '', label, previewUrl: previewUrl || path })
+    }
+    if (currentPaths['class-head']) addSaved('class-head', currentPaths['class-head'], reflection?.class_head_name || classHeadDefault, 'ลายเซ็นครั้งนี้', classHeadUrl)
+    for (const item of planReflections.filter(item => Number(item.class_id) === Number(classId) && item.class_head_signature_path)) {
+      const previewUrl = await resolve(item.class_head_signature_path)
+      addSaved('class-head', item.class_head_signature_path, item.class_head_name || classHeadDefault, `ลายเซ็นเดิม · ${item.class_head_name || 'หัวหน้าห้อง'}`, previewUrl)
+    }
+    if (currentPaths.teacher) addSaved('teacher', currentPaths.teacher, reflection?.teacher_name || teacher.full_name, 'ลายเซ็นครั้งนี้', teacherUrl)
+    if (profileTeacher?.signature_url) addSaved('teacher', profileTeacher.signature_url, profileTeacher.full_name || teacher.full_name, 'ลายเซ็นที่บันทึกในโปรไฟล์ครู')
+    if (currentPaths['dept-head']) addSaved('dept-head', currentPaths['dept-head'], reflection?.dept_head_name || dept?.head_name, 'ลายเซ็นครั้งนี้', deptHeadUrl)
+    if (dept?.head_sign_url) addSaved('dept-head', dept.head_sign_url, dept.head_name, 'ลายเซ็นหัวหน้ากลุ่มสาระที่บันทึกไว้')
+    for (const person of signatureTeachers) {
+      addSaved('dept-head', person.signature_url, person.full_name, `ใช้ลายเซ็นที่มีในระบบ · ${person.full_name}`)
+    }
+    if (deptPlanPreference?.signature_path) {
+      const previewUrl = await resolve(deptPlanPreference.signature_path)
+      addSaved('dept-head', deptPlanPreference.signature_path, deptPlanPreference.name, 'ค่าเริ่มต้นของแผน', previewUrl)
+    }
+    const sourceFor = role => {
+      if (currentPaths[role]) return 'saved'
+      const savedPreference = role === 'dept-head' ? deptPlanPreference : preference[role]
+      const sessionPreference = role === 'dept-head' ? deptSessionPreference : null
+      if (sessionPreference?.mode === 'blank') return 'blank'
+      if (sessionPreference?.signature_path) return 'saved'
+      if (sessionPreference?.mode === 'custom') return 'custom'
+      if (savedPreference?.mode === 'blank') return 'blank'
+      if (savedPreference?.signature_path) return 'saved'
+      if (savedPreference?.mode === 'custom') return 'custom'
+      return savedOptions[role].length ? 'saved' : 'custom'
+    }
+    const makePadOptions = role => savedOptions[role].map(option => ({
+      ...option,
+      selected: currentPaths[role] ? option.path === currentPaths[role]
+        : role === 'dept-head' && deptSessionPreference?.signature_path ? option.path === deptSessionPreference.signature_path
+          : role === 'dept-head' && deptPlanPreference?.signature_path ? option.path === deptPlanPreference.signature_path
+          : role === 'teacher' && profileTeacher?.signature_url ? option.path === profileTeacher.signature_url
+            : false,
+    }))
     m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
       <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-bold text-gray-800">📝 ${esc(plan.title)}</h3><p class="text-xs text-gray-400">บันทึกหลังสอนและลายเซ็นครบ 3 ฝ่าย</p></div><button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button></div>
       <label class="text-xs font-bold text-gray-500">ครั้งที่<select id="lp-doc-week" class="ml-2 border rounded-lg px-2 py-1 bg-white">${Array.from({length:plan.week_end-plan.week_start+1},(_,i)=>({ week:plan.week_start+i, session:asInt(plan.session_number,1)+i })).map(item=>`<option value="${item.week}" ${item.week===weekNo?'selected':''}>${item.session}</option>`).join('')}</select></label>
       <div class="grid sm:grid-cols-3 gap-3 mt-4">
-        ${signaturePadHTML('class-head','หัวหน้าห้อง',reflection?.class_head_name || classHeadDefault,classHeadUrl)}
-        ${signaturePadHTML('teacher','ครูผู้สอน',reflection?.teacher_name || teacher.full_name,teacherUrl)}
-        ${signaturePadHTML('dept-head','หัวหน้ากลุ่มสาระ',reflection?.dept_head_name || dept?.head_name || '',deptHeadUrl)}
+        ${signaturePadHTML('class-head','หัวหน้าห้อง',reflection?.class_head_name || classHeadDefault,classHeadUrl,makePadOptions('class-head'),sourceFor('class-head'))}
+        ${signaturePadHTML('teacher','ครูผู้สอน',reflection?.teacher_name || teacher.full_name,teacherUrl,makePadOptions('teacher'),sourceFor('teacher'),Boolean(profileTeacher?.signature_url))}
+        ${signaturePadHTML('dept-head','หัวหน้ากลุ่มสาระ',reflection?.dept_head_name || dept?.head_name || '',deptHeadUrl,makePadOptions('dept-head'),sourceFor('dept-head'),false,true)}
       </div>
       <div class="grid sm:grid-cols-3 gap-3 mt-4"><label class="text-xs font-bold text-gray-500">ผลการจัดการเรียนรู้<textarea id="lp-doc-result" rows="4" class="mt-1 w-full border rounded-xl p-2 font-normal">${esc(reflection?.reflection_text || '')}</textarea></label><label class="text-xs font-bold text-gray-500">ปัญหา/แนวทางแก้ไข<textarea id="lp-doc-issues" rows="4" class="mt-1 w-full border rounded-xl p-2 font-normal">${esc(reflection?.issues_solutions || '')}</textarea></label><label class="text-xs font-bold text-gray-500">ข้อเสนอแนะ<textarea id="lp-doc-suggestions" rows="4" class="mt-1 w-full border rounded-xl p-2 font-normal">${esc(reflection?.suggestions || '')}</textarea></label></div>
       <div class="grid grid-cols-2 gap-2 mt-4"><button id="lp-doc-save" class="py-3 rounded-xl bg-emerald-600 text-white text-xs font-bold">💾 บันทึกทั้งหมด</button><button id="lp-doc-print" class="py-3 rounded-xl bg-indigo-600 text-white text-xs font-bold">🖨️ บันทึกแล้วพิมพ์</button></div>
@@ -644,23 +740,57 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
 
     const save = async () => {
       const roleMap = { 'class-head':'class_head_signature_path', teacher:'teacher_signature_path', 'dept-head':'dept_head_signature_path' }
-      const existingPaths = { 'class-head':reflection?.class_head_signature_path, teacher:reflection?.teacher_signature_path, 'dept-head':reflection?.dept_head_signature_path }
-      const nextPaths = { ...existingPaths }
+      const nextPaths = { 'class-head':null, teacher:null, 'dept-head':null }
       for (const [role,pad] of Object.entries(pads)) {
+        if (pad.sourceMode() === 'blank') continue
+        if (pad.sourceMode() === 'saved') {
+          nextPaths[role] = pad.savedPath()
+          continue
+        }
         const source = pad.file() || (pad.hasDrawn() ? await canvasBlob(pad.canvas) : null)
-        if (source) nextPaths[role] = await uploadLessonPlanSignature(plan.id,classId,role,source)
+        if (!source) continue
+        if (role === 'teacher' && pad.saveToProfile()) {
+          const signatureUrl = await uploadCouncilTeacherSignature(teacher.id, source)
+          await updateMySignature(teacher.id, signatureUrl)
+          teacher.signature_url = signatureUrl
+          nextPaths[role] = signatureUrl
+        } else {
+          nextPaths[role] = await uploadLessonPlanSignature(plan.id,classId,role,source)
+        }
       }
-      return upsertLessonPlanReflection({
+      const saved = await upsertLessonPlanReflection({
         lesson_plan_id:plan.id,class_id:classId,teacher_id:teacher.id,week_no:weekNo,
         reflection_text:m.querySelector('#lp-doc-result').value.trim()||null,issues_solutions:m.querySelector('#lp-doc-issues').value.trim()||null,suggestions:m.querySelector('#lp-doc-suggestions').value.trim()||null,
-        class_head_name:pads['class-head'].name()||null,class_head_signature_path:nextPaths['class-head']||null,class_head_signed_at:nextPaths['class-head']?new Date().toISOString():null,
-        teacher_name:pads.teacher.name()||null,teacher_signature_path:nextPaths.teacher||null,teacher_signed_at:nextPaths.teacher?new Date().toISOString():null,
-        dept_head_name:pads['dept-head'].name()||null,dept_head_signature_path:nextPaths['dept-head']||null,dept_head_signed_at:nextPaths['dept-head']?new Date().toISOString():null,
-        signature_data_url:reflection?.signature_data_url||null,signed_at:(nextPaths.teacher||reflection?.signature_data_url)?new Date().toISOString():null,
+        class_head_name:pads['class-head'].name()||pads['class-head'].savedName()||null,class_head_signature_path:nextPaths['class-head']||null,class_head_signed_at:nextPaths['class-head']?new Date().toISOString():null,
+        teacher_name:pads.teacher.name()||pads.teacher.savedName()||null,teacher_signature_path:nextPaths.teacher||null,teacher_signed_at:nextPaths.teacher?new Date().toISOString():null,
+        dept_head_name:pads['dept-head'].name()||pads['dept-head'].savedName()||null,dept_head_signature_path:nextPaths['dept-head']||null,dept_head_signed_at:nextPaths['dept-head']?new Date().toISOString():null,
+        signature_data_url:null,signed_at:nextPaths.teacher?new Date().toISOString():null,
       })
+      {
+        const previousDeptPreference = signaturePreferences()['dept-head'] ?? {}
+        const nextDeptPreference = { ...previousDeptPreference }
+        if (pads['dept-head'].scope() === 'plan') {
+          nextDeptPreference.mode = pads['dept-head'].sourceMode()
+          nextDeptPreference.signature_path = nextPaths['dept-head']
+          nextDeptPreference.name = saved.dept_head_name
+          const overrides = { ...(nextDeptPreference.session_overrides ?? {}) }
+          delete overrides[String(weekNo)]
+          nextDeptPreference.session_overrides = overrides
+        } else {
+          nextDeptPreference.session_overrides = {
+            ...(nextDeptPreference.session_overrides ?? {}),
+            [String(weekNo)]: { mode: pads['dept-head'].sourceMode(), signature_path: nextPaths['dept-head'], name: saved.dept_head_name },
+          }
+        }
+        const nextPreferences = { ...signaturePreferences(), 'dept-head': nextDeptPreference }
+        const nextSource = { ...(plan.source_json ?? {}), signature_preferences: nextPreferences }
+        await updateLessonPlan(plan.id, { source_json: nextSource })
+        plan.source_json = nextSource
+      }
+      return saved
     }
     m.querySelector('#lp-doc-save').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังบันทึก...';try{await save();showToast('บันทึกเอกสารและลายเซ็นแล้ว ✅','success');await render()}catch(err){showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error');b.disabled=false;b.textContent='💾 บันทึกทั้งหมด'}})
-    m.querySelector('#lp-doc-print').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังเตรียมเอกสาร...';try{const saved=await save();const urls={classHead:await resolve(saved.class_head_signature_path),teacher:await resolve(saved.teacher_signature_path||saved.signature_data_url),deptHead:await resolve(saved.dept_head_signature_path||dept?.head_sign_url)};printLessonPlan({plan,cls,teacher,reflection:saved,urls,dept});showToast('เปิดหน้าพิมพ์แล้ว','success')}catch(err){showToast('เตรียมเอกสารไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')}finally{b.disabled=false;b.textContent='🖨️ บันทึกแล้วพิมพ์'}})
+    m.querySelector('#lp-doc-print').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังเตรียมเอกสาร...';try{const saved=await save();const urls={classHead:await resolve(saved.class_head_signature_path),teacher:await resolve(saved.teacher_signature_path||saved.signature_data_url),deptHead:await resolve(saved.dept_head_signature_path)};printLessonPlan({plan,cls,teacher,reflection:saved,urls,dept});showToast('เปิดหน้าพิมพ์แล้ว','success')}catch(err){showToast('เตรียมเอกสารไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')}finally{b.disabled=false;b.textContent='🖨️ บันทึกแล้วพิมพ์'}})
   }
   m.addEventListener('click',e=>{if(e.target===m)m.remove()}); await render()
 }

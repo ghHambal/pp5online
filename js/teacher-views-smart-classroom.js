@@ -1862,7 +1862,8 @@ export async function renderSmartClassroom(teacher, classId) {
     const courseScheduledDays = [...new Set((mySchedule ?? [])
       .filter(row => Number(row.subject_id) === Number(courseId))
       .map(row => Number(row.day_of_week))
-      .filter(day => Number.isInteger(day) && day >= 1 && day <= 7))]
+      .map(day => day === 0 ? 7 : day)
+      .filter(day => Number.isInteger(day) && day >= 1 && day <= 7 && day !== 6))]
     document.querySelectorAll('.sc-sched-tab').forEach(b => {
       b.classList.toggle('active', b.dataset.sched === _schedMode)
       b.addEventListener('click', () => {
@@ -2124,6 +2125,28 @@ export async function renderSmartClassroom(teacher, classId) {
     const classDisplay = /^ม\./.test(rawClassName) ? rawClassName.replace(/^ม\./, '') : [gradeText, rawClassName].filter(Boolean).join(' ')
     const classHeadRel = cls?.students
     const classHeadName = (Array.isArray(classHeadRel) ? classHeadRel[0]?.full_name : classHeadRel?.full_name) ?? '................................'
+    const courseDays = [...new Set((mySchedule ?? []).filter(row => Number(row.subject_id) === Number(courseId)).map(row => Number(row.day_of_week)).map(day => day === 0 ? 7 : day).filter(day => Number.isInteger(day) && day >= 1 && day <= 7 && day !== 6))].sort((a, b) => (a % 7) - (b % 7))
+    const lessonDateForWeek = weekNo => {
+      if (!cfg?.semester_start || !Number.isInteger(Number(weekNo)) || Number(weekNo) < 1 || !courseDays.length) return null
+      const [year, month, day] = cfg.semester_start.split('-').map(Number)
+      const termStart = new Date(year, month - 1, day)
+      const sunday = new Date(termStart)
+      sunday.setDate(termStart.getDate() - termStart.getDay() + (Number(weekNo) - 1) * 7)
+      const dates = []
+      for (let offset = 0; offset <= 5; offset++) {
+        const date = new Date(sunday)
+        date.setDate(sunday.getDate() + offset)
+        if (date < termStart || (cfg.semester_end && date > new Date(`${cfg.semester_end}T23:59:59`))) continue
+        const dayNo = date.getDay() || 7
+        if (courseDays.includes(dayNo)) dates.push(`${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`)
+      }
+      return dates[0] ?? null
+    }
+    const initialLessonDate = p.lesson_date || lessonDateForWeek(Number(p.week_start || curWeek || 1)) || ''
+    const formatThaiShortDate = value => {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ''))
+      return match ? `${match[3]}/${match[2]}/${String(Number(match[1]) + 543).slice(-2)}` : 'ยังไม่ระบุ'
+    }
     const m = document.createElement('div')
     m.id = 'sc-plan-modal'
     m.className = 'fixed inset-0 z-[95] bg-slate-100 flex flex-col'
@@ -2164,7 +2187,7 @@ export async function renderSmartClassroom(teacher, classId) {
           <section class="lp-meta">
             <label>ครั้งที่ <input id="lp-session-number" type="number" min="1" class="lp-doc-input" value="${p.session_number ?? 1}"></label>
             <label>เวลา <input id="lp-duration" type="number" min="1" class="lp-doc-input" value="${p.duration_minutes ?? 100}"> นาที</label>
-            <label>วันที่ <input id="lp-lesson-date" type="date" class="lp-doc-input" value="${_htmlEsc(p.lesson_date ?? '')}"></label>
+            <label>วันที่ <span><input id="lp-lesson-date" type="date" class="lp-doc-input" value="${_htmlEsc(initialLessonDate)}"><small id="lp-date-thai" class="block text-center text-[10px] text-gray-500">${formatThaiShortDate(initialLessonDate)}</small></span></label>
           </section>
           <section class="lp-columns">
             <div>
@@ -2176,8 +2199,8 @@ export async function renderSmartClassroom(teacher, classId) {
             <div>
               <div class="lp-box lp-media"><div class="lp-box-title">5.สื่อการเรียนรู้</div><div class="lp-box-body"><textarea id="lp-media" class="lp-doc-area" rows="3">${_htmlEsc(p.media ?? '')}</textarea></div></div>
               <div class="lp-sign-pair">
-                <div class="lp-sign"><div class="lp-sign-space"></div><div>ลงชื่อ</div><div class="lp-sign-line"></div><div>หัวหน้าห้อง</div><div>( ${_htmlEsc(classHeadName)} )</div><div>วันที่ ${p.lesson_date ? _htmlEsc(p.lesson_date) : '........................'}</div></div>
-                <div class="lp-sign"><div class="lp-sign-space"></div><div>ลงชื่อ</div><div class="lp-sign-line"></div><div>ครูผู้สอน</div><div>( ${_htmlEsc(teacher?.full_name ?? '................................')} )</div><div>วันที่ ${p.lesson_date ? _htmlEsc(p.lesson_date) : '........................'}</div></div>
+                <div class="lp-sign"><div class="lp-sign-space"></div><div>ลงชื่อ</div><div class="lp-sign-line"></div><div>หัวหน้าห้อง</div><div>( ${_htmlEsc(classHeadName)} )</div><div>วันที่ <span class="lp-sign-date">${formatThaiShortDate(initialLessonDate)}</span></div></div>
+                <div class="lp-sign"><div class="lp-sign-space"></div><div>ลงชื่อ</div><div class="lp-sign-line"></div><div>ครูผู้สอน</div><div>( ${_htmlEsc(teacher?.full_name ?? '................................')} )</div><div>วันที่ <span class="lp-sign-date">${formatThaiShortDate(initialLessonDate)}</span></div></div>
               </div>
               <div class="lp-reflect"><h3>บันทึกหลังการสอน</h3><div class="lp-rule">ผลการจัดการเรียนรู้:</div><div class="lp-rule"></div><div class="lp-rule">แนวทางการแก้ปัญหา:</div><div class="lp-rule"></div></div>
               <div class="lp-suggestion"><h3>ข้อเสนอแนะ</h3><div class="lp-rule"></div><div class="lp-rule"></div><div class="lp-rule"></div></div>
@@ -2195,6 +2218,27 @@ export async function renderSmartClassroom(teacher, classId) {
       m.querySelector('#lp-week-start').value = e.target.value
       m.querySelector('#lp-week-end').value = e.target.value
     })
+    let lastAutoDate = initialLessonDate
+    const refreshAutoLessonDate = () => {
+      const dateInput = m.querySelector('#lp-lesson-date')
+      const suggested = lessonDateForWeek(parseInt(m.querySelector('#lp-week-start').value, 10))
+      if (suggested && (!dateInput.value || dateInput.value === lastAutoDate)) {
+        dateInput.value = suggested
+        lastAutoDate = suggested
+      }
+      const thaiDate = formatThaiShortDate(dateInput.value)
+      m.querySelector('#lp-date-thai').textContent = thaiDate
+      m.querySelectorAll('.lp-sign-date').forEach(el => { el.textContent = thaiDate })
+    }
+    m.querySelector('#lp-lesson-date').addEventListener('change', () => {
+      const value = m.querySelector('#lp-lesson-date').value
+      lastAutoDate = ''
+      const thaiDate = formatThaiShortDate(value)
+      m.querySelector('#lp-date-thai').textContent = thaiDate
+      m.querySelectorAll('.lp-sign-date').forEach(el => { el.textContent = thaiDate })
+    })
+    m.querySelector('#lp-week-start').addEventListener('change', refreshAutoLessonDate)
+    m.querySelector('#lp-week-mobile')?.addEventListener('change', refreshAutoLessonDate)
     m.querySelector('#lp-delete')?.addEventListener('click', async () => {
       if (!confirm(`ลบแผน "${p.title}"? บันทึกหลังสอน/ลายเซ็นที่ผูกกับแผนนี้จะหายไปด้วย`)) return
       try { await deleteLessonPlan(p.id); showToast('ลบแผนแล้ว', 'success'); m.remove(); _reload() }
@@ -2213,7 +2257,7 @@ export async function renderSmartClassroom(teacher, classId) {
         teacher_id: teacher.id,
         title, week_start: weekStart, week_end: weekEnd,
         session_number: parseInt(m.querySelector('#lp-session-number').value, 10) || 1,
-        lesson_date: m.querySelector('#lp-lesson-date').value || null,
+        lesson_date: m.querySelector('#lp-lesson-date').value || lessonDateForWeek(weekStart) || null,
         duration_minutes: parseInt(m.querySelector('#lp-duration').value, 10) || null,
         unit_title: m.querySelector('#lp-unit-title').value.trim() || null,
         standards: m.querySelector('#lp-standards').value.trim() || null,

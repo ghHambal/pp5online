@@ -1,5 +1,5 @@
 import {
-  getMySubjects, getMyClasses, getDepartments, getTeachers, getMasterSubjects,
+  getMySubjects, getMyClasses, getDepartments, getTeachers, getTeachersWithSignatures, getMasterSubjects,
   updateMyProfile, updateSubject, deleteSubject,
   getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
   getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
@@ -300,7 +300,7 @@ export async function renderMyCourses(teacher) {
 
 }
 
-function openCourseSchedulePreview({ subject, teacher, syllabusItems, semester, academicYear, semesterStart, semesterEnd, showNotesContent = true }) {
+function openCourseSchedulePreview({ subject, teacher, syllabusItems, roomNames = [], semester, academicYear, semesterStart, semesterEnd, showNotesContent = true, departmentHead, signatureTeachers = [] }) {
   const rows = [...(syllabusItems ?? [])].sort((a, b) => Number(a.week_start) - Number(b.week_start))
   const includeNotesContent = showNotesContent === true
   const esc = _htmlEsc
@@ -342,9 +342,8 @@ function openCourseSchedulePreview({ subject, teacher, syllabusItems, semester, 
     const end = (isSingleWeekRow ? item.date_end : null) || dates?.end
     return formatShortRange(start, end)
   }
-  const periodWeeks = semesterStart && semesterEnd
-    ? Math.max(1, Math.min(30, Math.ceil((new Date(`${semesterEnd}T00:00:00`) - new Date(`${semesterStart}T00:00:00`) + 86400000) / 604800000)))
-    : Math.max(20, ...rows.map(row => Number(row.week_end) || 1))
+  // แสดงถึงสัปดาห์ท้ายสุดที่ยังมีรายการในกำหนดการ ไม่เติมแถวว่างตามวันสิ้นสุดภาคเรียน
+  const periodWeeks = Math.min(30, Math.max(0, ...rows.map(row => Number(row.week_end) || Number(row.week_start) || 0)))
   const printableRows = Array.from({ length: periodWeeks }, (_, index) => {
     const weekNo = index + 1
     const item = rows.find(row => weekNo >= Number(row.week_start) && weekNo <= Number(row.week_end))
@@ -355,13 +354,22 @@ function openCourseSchedulePreview({ subject, teacher, syllabusItems, semester, 
   }).join('')
   const meta = subject ?? {}
   const periodsPerWeek = meta.periods_per_week ?? (Number(meta.credit) > 0 ? Number(meta.credit) * 2 : null)
+  const roomLabel = [...new Set(roomNames.map(name => String(name ?? '').trim()).filter(Boolean))].join(' , ')
+  const teacherSigners = signatureTeachers.filter(person => person?.signature_url)
+  const currentTeacherSignature = teacher?.signature_url ?? teacherSigners.find(person => Number(person.id) === Number(teacher?.id))?.signature_url ?? ''
+  const deptSigners = [
+    ...(departmentHead?.head_sign_url ? [{ id: `dept-${departmentHead.id}`, name: departmentHead.head_name || 'หัวหน้ากลุ่มสาระ', signature_url: departmentHead.head_sign_url }] : []),
+    ...teacherSigners,
+  ].filter((person, index, all) => all.findIndex(other => other.signature_url === person.signature_url) === index)
+  const teacherOptions = `<option value="">เว้นช่องไว้เซ็นเอง</option>${currentTeacherSignature ? `<option value="${esc(currentTeacherSignature)}" data-name="${esc(teacher?.full_name ?? '')}" selected>ใช้ลายเซ็นที่บันทึกไว้</option>` : ''}`
+  const deptOptions = `<option value="">เว้นช่องไว้เซ็นเอง</option>${deptSigners.map(person => `<option value="${esc(person.signature_url)}" data-name="${esc(person.name ?? person.full_name ?? '')}" ${person.signature_url === departmentHead?.head_sign_url ? 'selected' : ''}>${esc(person.name ?? person.full_name ?? 'ผู้ลงนาม')}</option>`).join('')}`
   const w = window.open('', '_blank')
   if (!w) { showToast('เบราว์เซอร์บล็อกหน้าต่างตัวอย่าง กรุณาอนุญาต Pop-up', 'warning'); return }
   const columnCount = 5
   const logoUrl = new URL('pp5-form-logo.png', window.location.href).href
   w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>กำหนดการสอน ${esc(meta.subject_name)}</title><style>
-    @page{size:A4;margin:13mm}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:11pt;line-height:1.5}.toolbar{position:sticky;top:0;padding:10px;background:#f3f4f6;text-align:center}.toolbar button{border:0;border-radius:8px;background:#1d4ed8;color:white;padding:10px 20px;font-weight:bold;font-size:14px;cursor:pointer}.page{width:184mm;min-height:271mm;margin:0 auto;padding:8mm 5mm;background:white}.cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;page-break-after:always}.cover-logo{width:32mm;height:32mm;object-fit:contain;filter:grayscale(1);mix-blend-mode:multiply;margin-bottom:8mm}.cover h1{font-size:25pt;margin:0 0 18mm}.cover .course{font-size:16pt;font-weight:bold;margin:0 0 5mm}.cover p{font-size:14pt;margin:2mm 0}.cover .signatures{width:100%;margin-top:20mm;text-align:left;font-size:13pt}.cover .signatures p{margin:11mm 0}.table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:4mm;font-size:9.5pt}.table col.col-week{width:10mm}.table col.col-date{width:31mm}.table col.col-topic{width:53mm}.table col.col-methods{width:45mm}.table col.col-notes{width:35mm}.table th,.table td{border:1px solid #555;padding:2mm 2.2mm;vertical-align:top;overflow-wrap:anywhere}.table th{background:#e8eefb;text-align:center}.table .week{text-align:center;white-space:nowrap}.table .date-cell{text-align:center;vertical-align:middle;white-space:nowrap;font-size:9pt}.table .note-cell{font-size:9pt;line-height:1.35}.table tr{break-inside:avoid;page-break-inside:avoid}.table thead{display:table-header-group}.table .doc-title th{border:0;background:white;font-size:18pt;padding:0;text-align:center}.table .doc-meta th{border:0;background:white;font-size:10pt;font-weight:normal;padding:0;text-align:center}@media print{.toolbar{display:none}.page{margin:0;width:auto;min-height:0;padding:0}.schedule{page-break-before:always}}
-  </style></head><body><div class="toolbar"><button onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button></div><section class="page cover"><img class="cover-logo" src="${esc(logoUrl)}" alt="ตราโรงเรียน"><h1>กำหนดการสอน</h1><p class="course">รายวิชา ${esc(meta.subject_name || '................................')} (${esc(meta.subject_code || '.............')})</p><p>ครูผู้สอน ${esc(teacher?.full_name || '................................')}</p><p>ชั้น ${esc(meta.grade_level || '....................')}</p><p>จำนวน ${esc(periodsPerWeek || '........')} คาบ/สัปดาห์</p><p>ภาคเรียนที่ ${esc(semester || '....')} ปีการศึกษา ${esc(academicYear || '........')}</p><div class="signatures"><p>ลงชื่อ............................................................................ครูผู้สอน</p><p>ลงชื่อ.......................................................................หัวหน้ากลุ่มสาระการเรียนรู้</p><p>ลงชื่อ......................................................................ผู้อำนวยการโรงเรียน</p></div></section><section class="page schedule"><table class="table"><colgroup><col class="col-week"><col class="col-date"><col class="col-topic"><col class="col-methods"><col class="col-notes"></colgroup><thead><tr class="doc-title"><th colspan="${columnCount}">กำหนดการสอน</th></tr><tr class="doc-meta"><th colspan="${columnCount}">รายวิชา ${esc(meta.subject_name || '—')} รหัส ${esc(meta.subject_code || '—')} ${esc(meta.grade_level || '')} · คุณครู ${esc(teacher?.full_name || '—')}</th></tr><tr class="doc-meta"><th colspan="${columnCount}">ภาคเรียนที่ ${esc(semester || '—')} ปีการศึกษา ${esc(academicYear || '—')}</th></tr><tr><th>สัปดาห์ที่</th><th>วัน/เดือน/ปี</th><th>เนื้อหา</th><th>รูปแบบการสอน</th><th>หมายเหตุ</th></tr></thead><tbody>${printableRows}</tbody></table></section></body></html>`)
+    @page{size:A4;margin:13mm}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:11pt;line-height:1.5}.toolbar{position:sticky;top:0;padding:10px;background:#f3f4f6;text-align:center}.toolbar button{border:0;border-radius:8px;background:#1d4ed8;color:white;padding:10px 20px;font-weight:bold;font-size:14px;cursor:pointer}.toolbar label{display:inline-flex;align-items:center;gap:6px;margin:4px;padding:7px;border:1px solid #d1d5db;border-radius:8px;background:white;font-size:12px}.toolbar select{max-width:230px;padding:6px;border:1px solid #d1d5db;border-radius:6px}.page{width:184mm;min-height:271mm;margin:0 auto;padding:8mm 5mm;background:white}.cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;page-break-after:always}.cover-logo{width:32mm;height:32mm;object-fit:contain;filter:grayscale(1);mix-blend-mode:multiply;margin-bottom:8mm}.cover h1{font-size:25pt;margin:0 0 18mm}.cover .course{font-size:16pt;font-weight:bold;margin:0 0 5mm}.cover p{font-size:14pt;margin:2mm 0}.cover .cover-info{align-self:center;width:min(100%,145mm);text-align:left}.cover .signatures{width:100%;margin-top:20mm;text-align:center;font-size:13pt}.cover .signatures p{margin:11mm 0;text-align:center}.cover .sign-img{height:14mm;max-width:52mm;object-fit:contain;vertical-align:middle}.table{width:100%;table-layout:fixed;border-collapse:collapse;margin-top:4mm;font-size:9.5pt}.table col.col-week{width:10mm}.table col.col-date{width:31mm}.table col.col-topic{width:53mm}.table col.col-methods{width:45mm}.table col.col-notes{width:35mm}.table th,.table td{border:1px solid #555;padding:2mm 2.2mm;vertical-align:top;overflow-wrap:anywhere}.table th{background:#e8eefb;text-align:center}.table .week{text-align:center;white-space:nowrap}.table .date-cell{text-align:center;vertical-align:middle;white-space:nowrap;font-size:9pt}.table .note-cell{font-size:9pt;line-height:1.35}.table tr{break-inside:avoid;page-break-inside:avoid}.table thead{display:table-header-group}.table .doc-title th{border:0;background:white;font-size:18pt;padding:0;text-align:center}.table .doc-meta th{border:0;background:white;font-size:10pt;font-weight:normal;padding:0;text-align:center}@media print{.toolbar{display:none}.page{margin:0;width:auto;min-height:0;padding:0}.schedule{page-break-before:always}}
+  </style></head><body><div class="toolbar"><label>ลายเซ็นครู<select id="cover-teacher-sign">${teacherOptions}</select></label><label>หัวหน้ากลุ่มสาระ<select id="cover-dept-sign">${deptOptions}</select></label><button onclick="window.print()">🖨️ พิมพ์ / บันทึก PDF</button></div><section class="page cover"><img class="cover-logo" src="${esc(logoUrl)}" alt="ตราโรงเรียน"><h1>กำหนดการสอน</h1><div class="cover-info"><p class="course">รายวิชา ${esc(meta.subject_name || '................................')} (${esc(meta.subject_code || '.............')})</p><p>ครูผู้สอน ${esc(teacher?.full_name || '................................')}</p><p>ชั้น ${esc(meta.grade_level || '....................')}</p><p>ห้องเรียน ${esc(roomLabel || '................................')}</p><p>จำนวน ${esc(periodsPerWeek || '........')} คาบ/สัปดาห์</p><p>ภาคเรียนที่ ${esc(semester || '....')} ปีการศึกษา ${esc(academicYear || '........')}</p></div><div class="signatures"><p>ลงชื่อ <img id="cover-teacher-sign-img" class="sign-img" src="${esc(currentTeacherSignature)}" alt="" style="${currentTeacherSignature ? '' : 'display:none'}"> ครูผู้สอน (${esc(teacher?.full_name || '................................')})</p><p>ลงชื่อ <img id="cover-dept-sign-img" class="sign-img" src="${esc(departmentHead?.head_sign_url ?? '')}" alt="" style="${departmentHead?.head_sign_url ? '' : 'display:none'}"> หัวหน้ากลุ่มสาระการเรียนรู้ (<span id="cover-dept-signer-name">${esc(departmentHead?.head_name || '................................')}</span>)</p><p>ลงชื่อ......................................................................ผู้อำนวยการโรงเรียน</p></div></section><section class="page schedule"><table class="table"><colgroup><col class="col-week"><col class="col-date"><col class="col-topic"><col class="col-methods"><col class="col-notes"></colgroup><thead><tr class="doc-title"><th colspan="${columnCount}">กำหนดการสอน</th></tr><tr class="doc-meta"><th colspan="${columnCount}">รายวิชา ${esc(meta.subject_name || '—')} รหัส ${esc(meta.subject_code || '—')} ${esc(meta.grade_level || '')} · คุณครู ${esc(teacher?.full_name || '—')}</th></tr><tr class="doc-meta"><th colspan="${columnCount}">ภาคเรียนที่ ${esc(semester || '—')} ปีการศึกษา ${esc(academicYear || '—')}</th></tr><tr><th>สัปดาห์ที่</th><th>วัน/เดือน/ปี</th><th>เนื้อหา</th><th>รูปแบบการสอน</th><th>หมายเหตุ</th></tr></thead><tbody>${printableRows}</tbody></table></section><script>for(const role of ['teacher','dept']){const select=document.querySelector('#cover-'+role+'-sign'),img=document.querySelector('#cover-'+role+'-sign-img'),key='pp5-course-sign-'+role+'-${Number(meta.id)||0}';const previous=localStorage.getItem(key);if(previous!==null&&[...select.options].some(option=>option.value===previous))select.value=previous;const update=()=>{const option=select.selectedOptions[0];img.src=select.value;img.style.display=select.value?'':'none';if(role==='dept')document.querySelector('#cover-dept-signer-name').textContent=option?.dataset.name||'................................';localStorage.setItem(key,select.value)};select.addEventListener('change',update);update()}</script></body></html>`)
   w.document.close()
 }
 
@@ -410,6 +418,17 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     const allowedClasses = courseClasses.filter(c => canUseSmartClassroomForClass(access.unlocked, teacher, c.id))
     const aiAllowed = access.unlocked || allowedClasses.length > 0
     const reopen = () => _openCourseWorkspace(teacher, subject, allClasses)
+    const [signatureTeachers, departments] = await Promise.all([
+      getTeachersWithSignatures().catch(() => []),
+      getDepartments().catch(() => []),
+    ])
+    const deptKey = String(courseClasses[0]?.master_subjects?.dept ?? subject.dept ?? teacher?.dept ?? '').trim().toLowerCase()
+    const courseDepartment = departments.find(d => [d.dept_code, d.dept_name, d.category].some(value => String(value ?? '').trim().toLowerCase() === deptKey)) ?? null
+    const courseRoomNames = [...new Set(courseClasses.map(cls => {
+      const room = String(cls.class_name ?? `ห้อง ${cls.id}`).trim()
+      const grade = String(cls.master_subjects?.grade_level ?? subject.grade_level ?? '').trim()
+      return grade && !_courseToken(room).startsWith(_courseToken(grade)) ? `${grade} ${room}` : room
+    }).filter(Boolean))]
     const semesterStart = /^\d{4}-\d{2}-\d{2}$/.test(String(termConfig.semester_start ?? '')) ? termConfig.semester_start : null
     const scheduleAcademicYear = Number(subject.academic_year ?? termConfig.academicYear ?? termConfig.academic_year)
     const scheduleSemester = Number(subject.semester ?? termConfig.semester)
@@ -419,7 +438,8 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     const courseScheduledDays = [...new Set(termSchedule
       .filter(row => Number(row.subject_id) === courseId)
       .map(row => Number(row.day_of_week))
-      .filter(day => Number.isInteger(day) && day >= 1 && day <= 7))]
+      .map(day => day === 0 ? 7 : day)
+      .filter(day => Number.isInteger(day) && day >= 1 && day <= 7 && day !== 6))]
     const weekDateRange = weekNo => {
       if (!semesterStart) return null
       const [year, month, day] = semesterStart.split('-').map(Number)
@@ -592,7 +612,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       const notesCheckbox = body.querySelector('#cw-schedule-show-notes')
       showScheduleNotes = notesCheckbox?.checked === true
       try { localStorage.setItem(`pp5-schedule-show-notes-${courseId}`, String(showScheduleNotes)) } catch {}
-      openCourseSchedulePreview({ subject, teacher, syllabusItems, semester: termConfig.semester ?? subject.semester, academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year, semesterStart, semesterEnd: termConfig.semester_end, showNotesContent: showScheduleNotes })
+      openCourseSchedulePreview({ subject, teacher, syllabusItems, roomNames: courseRoomNames, semester: termConfig.semester ?? subject.semester, academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year, semesterStart, semesterEnd: termConfig.semester_end, showNotesContent: showScheduleNotes, departmentHead: courseDepartment, signatureTeachers })
     })
     let selectedPlan = null
     const picker = body.querySelector('#cw-document-picker')
