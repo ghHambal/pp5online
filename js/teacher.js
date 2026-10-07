@@ -3511,10 +3511,16 @@ async function _checkScheduleLinkPopup() {
       getMySchedule(_teacher.id, academicYear, semester).catch(() => []),
       getClassScheduleLinks(_teacher.id).catch(() => []),
     ])
-    if (!classes.length) return
+    // getMyClasses() returns every term for historical score workflows. Only
+    // current-term rooms should drive this reminder; otherwise rooms from the
+    // previous semester keep the popup alive after the new rooms are linked.
+    const currentTermClasses = classes.filter(c =>
+      c.academic_year == null || (Number(c.academic_year) === academicYear && Number(c.semester) === semester)
+    )
+    if (!currentTermClasses.length) return
     if (!schedule.length) { _showScheduleLinkPrompt('no_schedule'); return }
     const linkedIds    = new Set(links.map(l => l.class_id))
-    const unlinkedList = classes.filter(c => !linkedIds.has(c.id))
+    const unlinkedList = currentTermClasses.filter(c => !linkedIds.has(c.id))
     if (unlinkedList.length > 0) _showScheduleLinkPrompt('has_unlinked', unlinkedList.length, unlinkedList.map(c => c.id))
   } catch {}
 }
