@@ -2706,7 +2706,7 @@ export async function getClassSessionDOWs(classId) {
 export async function getMySchedule(teacherId, academicYear, semester) {
   const { data, error } = await supabase
     .from('teacher_schedules')
-    .select('id, day_of_week, period_no, span_periods, note, subject_id, subject_name, class_name, teacher_name, master_subjects(subject_name, subject_code)')
+    .select('id, day_of_week, period_no, span_periods, note, subject_id, subject_name, subject_code, class_name, teacher_name, master_subjects(id, catalog_id, subject_name, subject_code, subject_group, grade_level, credit, dept, learning_area)')
     .eq('teacher_id', teacherId)
     .eq('academic_year', academicYear)
     .eq('semester', semester)

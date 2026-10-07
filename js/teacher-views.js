@@ -1331,7 +1331,7 @@ export function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg
 
 // ─── View: My Courses ─────────────────────────────────────────────────────────
 
-export { renderMyCourses, renderCourseForm, renderProfileSetup, renderProfile, openCourseDocPage2Modal } from './teacher-views-courses.js'
+export { renderMyCourses, renderCourseForm, renderProfileSetup, renderProfile, openCourseDocPage2Modal, openScheduleCourseReview } from './teacher-views-courses.js'
 export { renderMyClasses, renderClassDetail, renderSchedule, renderScheduleGrid, renderScheduleBuilder, renderCourseDocLangConfig, renderAnnouncementsView } from './teacher-views-classes.js'
 export { renderExamDocuments } from './teacher-views-exam-docs.js'
 export { renderAttendanceGrid, renderAttendance, renderLifeSkillScore, renderReadingScore, renderPrayerScore, renderPrayerRoomMonitor } from './teacher-views-attendance.js'

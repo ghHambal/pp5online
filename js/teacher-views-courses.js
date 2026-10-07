@@ -4,6 +4,7 @@ import {
   getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
   getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
   getTeacherPackageAccess, getSystemConfig, getRoomsByGrade, getSubjectCatalog,
+  getMySchedule, createSubject,
   getUniqueRooms, getUniqueReligionRooms, getHomeroomTeachers, getSubjectCoTeachers,
   getCourseSyllabus, getLessonPlans,
 } from './api.js'
@@ -17,6 +18,44 @@ import {
   setContent, setTitle, setActiveNav, _htmlEsc, formatPhone,
   SELECT_CLS, INPUT_CLS, GRADE_OPTS, CREDIT_OPTS,
 } from './teacher-views-utils.js'
+
+const _catalogDeptCode = item => {
+  const raw = String(item?.dept_label ?? '').trim()
+  const code = String(item?.subject_code ?? '').trim()
+  const haystack = raw + ' ' + code + ' ' + String(item?.subject_name_arabic ?? '')
+  if (/อิสลามศึกษา|อัดดีนียะห์/u.test(raw) || /^(ศอ|อก|อศ|ฟป)/u.test(code)) return 'ISL'
+  if (/ภาษาอาหรับ/u.test(raw) || /^ภอ/u.test(code) || /العربية/u.test(haystack)) return 'ARB'
+  if (/ภาษามลายู/u.test(raw) || /^มล/u.test(code) || /الملايو/u.test(haystack)) return 'MLB'
+  if (/ภาษาไทย/u.test(raw)) return 'THAI'
+  if (/ภาษาต่างประเทศ/u.test(raw)) return 'ENG'
+  if (/คณิตศาสตร์/u.test(raw)) return 'MATH'
+  if (/วิทยาศาสตร์/u.test(raw)) return 'SC'
+  if (/สังคม/u.test(raw)) return 'SOC'
+  if (/ศิลปะ/u.test(raw)) return 'ART'
+  if (/สุขศึกษา|พลศึกษา/u.test(raw)) return 'HEALTH'
+  if (/การงานอาชีพ|เทคโนโลยี/u.test(raw)) return item.subject_group === 'ACDMVOC' ? 'VOC' : 'OCC'
+  return ''
+}
+
+const _courseToken = value => String(value ?? '')
+  .toLocaleLowerCase('th-TH')
+  .normalize('NFKC')
+  .replace(/[^\p{L}\p{N}]+/gu, '')
+
+const _scheduleGrade = className => {
+  const raw = String(className ?? '').trim()
+  const match = raw.match(/(ปวช\.?|ปวส\.?|อป\.?|ม\.?)\s*([1-6])/iu)
+  if (!match) return ''
+  const prefix = match[1].replace(/\s+/g, '')
+  return prefix.startsWith('ม') ? `ม.${match[2]}` : `${prefix}${match[2]}`
+}
+
+const _catalogMatchesDept = (row, deptCode, depts) => {
+  if (!deptCode) return false
+  if (_catalogDeptCode(row) === deptCode) return true
+  const dept = depts.find(item => item.dept_code === deptCode)
+  return Boolean(dept?.dept_name && _courseToken(row.dept_label) === _courseToken(dept.dept_name))
+}
 
 function _renderAdvisorRoomChooser({ prefix, samaiRooms, religionRooms, homeroomRooms, assignments, teacherId, academicYear, semester }) {
   const renderGroup = (category, rooms, name, label, icon) => {
@@ -179,10 +218,16 @@ export async function renderMyCourses(teacher) {
           <p class="text-sm font-bold text-gray-700">รายวิชาที่เปิดสอน ${subjects.length} คอร์ส · ${allClasses.length} ห้องเรียน</p>
           <p class="text-xs text-gray-400 mt-1">จำนวนคาบคำนวณตามโครงสร้างหลักสูตร 1 หน่วยกิต = 2 คาบต่อสัปดาห์ = 40 คาบต่อภาคเรียน</p>
         </div>
-        <button onclick="window._openCourseForm()"
-          class="btn-primary min-h-[44px] px-5 py-2.5 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2 flex-shrink-0">
-          <span>＋</span> เปิดคอร์สใหม่
-        </button>
+        <div class="flex flex-col sm:flex-row gap-2 flex-shrink-0">
+          <button onclick="window._openScheduleCourseReview()"
+            class="min-h-[44px] px-4 py-2.5 text-indigo-700 bg-indigo-50 border border-indigo-200 hover:bg-indigo-100 text-sm font-bold rounded-xl flex items-center justify-center gap-2">
+            <span>📚</span> ตรวจสอบคอร์สจากตารางสอน
+          </button>
+          <button onclick="window._openCourseForm()"
+            class="btn-primary min-h-[44px] px-5 py-2.5 text-white text-sm font-bold rounded-xl flex items-center justify-center gap-2">
+            <span>＋</span> เปิดคอร์สใหม่
+          </button>
+        </div>
       </div>
       ${!subjects.length ? `
       <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-16 text-center text-gray-400">
@@ -1503,6 +1548,227 @@ Output language: ${L.aiLang}
   openCourseDescriptionGuide()
 }
 
+// ─── Review: build courses from the teacher schedule ────────────────────────
+export async function openScheduleCourseReview(teacher) {
+  if (!teacher?.id) {
+    showToast('ไม่พบข้อมูลครูผู้สอน', 'error')
+    return
+  }
+  document.getElementById('schedule-course-review-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'schedule-course-review-modal'
+  modal.className = 'fixed inset-0 z-[240] bg-slate-950/60 backdrop-blur-sm p-3 sm:p-5'
+  modal.innerHTML = `<section role="dialog" aria-modal="true" aria-labelledby="schedule-course-review-title"
+    class="h-full w-full overflow-hidden rounded-3xl bg-slate-50 shadow-2xl flex flex-col">
+    <div class="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-5 py-4 sm:px-7">
+      <div>
+        <h2 id="schedule-course-review-title" class="text-lg sm:text-xl font-extrabold text-gray-800">📚 ตรวจสอบคอร์สจากตารางสอน</h2>
+        <p class="mt-1 text-xs text-gray-500">กำลังรวบรวมรายวิชาและตรวจสอบคอร์สเดิมของคุณครู...</p>
+      </div>
+      <button type="button" data-review-close class="h-10 w-10 rounded-xl border border-gray-200 bg-white text-xl text-gray-500 hover:bg-gray-100">×</button>
+    </div>
+    <div class="flex-1 overflow-y-auto p-5 sm:p-7">
+      <div class="flex min-h-64 items-center justify-center text-sm text-gray-400">กำลังประมวลผลตารางสอน...</div>
+    </div>
+  </section>`
+  document.body.appendChild(modal)
+  modal.querySelector('[data-review-close]').addEventListener('click', () => modal.remove())
+
+  try {
+    const cfg = await getSystemConfig().catch(() => ({}))
+    const academicYear = Number(cfg.academicYear ?? cfg.academic_year)
+    const semester = Number(cfg.semester)
+    const [schedule, catalog, subjects, depts] = await Promise.all([
+      getMySchedule(teacher.id, academicYear, semester),
+      getSubjectCatalog(),
+      getMySubjects(teacher.id).catch(() => []),
+      getDepartments().catch(() => []),
+    ])
+    const allowedGroups = teacher.category === 'ศาสนา'
+      ? new Set(['AGM', 'AGMVOC'])
+      : teacher.category === 'สามัญ'
+        ? new Set(['ACDM', 'ACDMVOC'])
+        : null
+    const visibleCatalog = catalog.filter(row => !allowedGroups || allowedGroups.has(row.subject_group))
+    const catalogById = new Map(visibleCatalog.map(row => [String(row.id), row]))
+    const dayNames = ['', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์']
+
+    const matchCatalog = row => {
+      const linkedId = row.master_subjects?.catalog_id
+      if (linkedId && catalogById.has(String(linkedId))) return catalogById.get(String(linkedId))
+      const code = _courseToken(row.subject_code || row.master_subjects?.subject_code)
+      if (code) {
+        const codeMatches = visibleCatalog.filter(item => _courseToken(item.subject_code) === code)
+        if (codeMatches.length === 1) return codeMatches[0]
+        const grade = _scheduleGrade(row.class_name)
+        const gradeMatch = codeMatches.filter(item => grade && _courseToken(item.grade_level).includes(_courseToken(grade)))
+        if (gradeMatch.length === 1) return gradeMatch[0]
+      }
+      const name = _courseToken(row.subject_name || row.master_subjects?.subject_name)
+      if (!name) return null
+      const nameMatches = visibleCatalog.filter(item => _courseToken(item.subject_name) === name)
+      if (nameMatches.length === 1) return nameMatches[0]
+      const grade = _scheduleGrade(row.class_name)
+      const gradeMatch = nameMatches.filter(item => grade && _courseToken(item.grade_level).includes(_courseToken(grade)))
+      return gradeMatch.length === 1 ? gradeMatch[0] : null
+    }
+
+    const existingFor = (item, row) => {
+      const code = _courseToken(item?.subject_code || row.subject_code || row.master_subjects?.subject_code)
+      const name = _courseToken(item?.subject_name || row.subject_name || row.master_subjects?.subject_name)
+      return subjects.find(subject =>
+        (item && Number(subject.catalog_id) === Number(item.id)) ||
+        (code && _courseToken(subject.subject_code) === code && (!item?.subject_group || subject.subject_group === item.subject_group)) ||
+        (name && _courseToken(subject.subject_name) === name && (!item?.subject_group || subject.subject_group === item.subject_group))
+      )
+    }
+
+    const candidatesByKey = new Map()
+    for (const row of schedule) {
+      const item = matchCatalog(row)
+      const rawName = item?.subject_name || row.subject_name || row.master_subjects?.subject_name || ''
+      const rawCode = item?.subject_code || row.subject_code || row.master_subjects?.subject_code || ''
+      if (!rawName && !rawCode) continue
+      const key = item
+        ? `catalog:${item.id}`
+        : `review:${_courseToken(rawCode)}:${_courseToken(rawName)}:${_courseToken(row.master_subjects?.subject_group)}`
+      let candidate = candidatesByKey.get(key)
+      if (!candidate) {
+        const deptCode = item ? _catalogDeptCode(item) : ''
+        const dept = depts.find(entry => entry.dept_code === deptCode)
+        candidate = {
+          id: candidatesByKey.size + 1,
+          item,
+          name: rawName,
+          code: rawCode,
+          subjectGroup: item?.subject_group || row.master_subjects?.subject_group || '',
+          deptCode,
+          deptLabel: item?.dept_label || dept?.dept_name || 'ต้องตรวจสอบกลุ่มสาระ',
+          rows: [],
+          rooms: new Set(),
+          grades: new Set(),
+          existing: item ? existingFor(item, row) : null,
+        }
+        candidatesByKey.set(key, candidate)
+      }
+      candidate.rows.push(row)
+      if (row.class_name) candidate.rooms.add(row.class_name)
+      const grade = item?.grade_level || _scheduleGrade(row.class_name)
+      if (grade) candidate.grades.add(grade)
+    }
+
+    const candidates = [...candidatesByKey.values()].map(candidate => {
+      const grade = candidate.item?.grade_level || [...candidate.grades].join(', ')
+      const ready = Boolean(candidate.item && candidate.subjectGroup && candidate.deptCode && grade && !candidate.existing)
+      candidate.grade = grade
+      candidate.status = candidate.existing ? 'existing' : ready ? 'ready' : 'review'
+      candidate.payload = candidate.item ? {
+        catalog_id: candidate.item.id,
+        subject_group: candidate.item.subject_group,
+        dept: candidate.deptCode,
+        subject_name: candidate.item.subject_name,
+        subject_code: candidate.item.subject_code || null,
+        credit: candidate.item.credit ?? null,
+        grade_level: grade,
+        teacher_id: teacher.id,
+        learning_area: depts.find(entry => entry.dept_code === candidate.deptCode)?.head_name || null,
+      } : null
+      return candidate
+    })
+    const readyCount = candidates.filter(item => item.status === 'ready').length
+    const existingCount = candidates.filter(item => item.status === 'existing').length
+    const reviewCount = candidates.filter(item => item.status === 'review').length
+    const groupMap = new Map()
+    candidates.forEach(item => {
+      const key = item.deptCode || 'review'
+      if (!groupMap.has(key)) groupMap.set(key, { label: item.deptLabel, items: [] })
+      groupMap.get(key).items.push(item)
+    })
+    const statusBadge = status => status === 'ready'
+      ? '<span class="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-700">พร้อมสร้าง</span>'
+      : status === 'existing'
+        ? '<span class="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-bold text-blue-700">มีคอร์สแล้ว · ข้าม</span>'
+        : '<span class="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">ต้องตรวจสอบ</span>'
+    const renderCandidate = candidate => {
+      const slots = candidate.rows.map(row => `${dayNames[Number(row.day_of_week)] || `วัน${row.day_of_week ?? '?'}`} คาบ ${row.period_no ?? '—'}`).join(' · ')
+      const rooms = [...candidate.rooms].join(', ') || 'ไม่ระบุห้อง'
+      return `<article class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm" data-review-item="${candidate.id}">
+        <div class="flex items-start gap-3">
+          ${candidate.status === 'ready' ? `<input type="checkbox" data-review-select="${candidate.id}" checked class="mt-1 h-5 w-5 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500" />` : '<span class="mt-1 block h-5 w-5"></span>'}
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">${statusBadge(candidate.status)}
+              <span class="font-mono text-xs font-bold text-indigo-600">${_htmlEsc(candidate.code || 'ไม่มีรหัส')}</span>
+            </div>
+            <h4 class="mt-2 font-extrabold text-gray-800">${_htmlEsc(candidate.name)}</h4>
+            <p class="mt-1 text-xs text-gray-500">${_htmlEsc(candidate.grade || 'ไม่ระบุระดับชั้น')} · ${_htmlEsc(rooms)}</p>
+            <p class="mt-1 text-[11px] text-gray-400">${_htmlEsc(slots || 'ไม่มีช่วงเวลาที่ระบุ')}</p>
+            ${candidate.status === 'review' ? '<p class="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">ระบบยังจับคู่กับแคตตาล็อกไม่ได้แน่นอน จึงยังไม่สร้างอัตโนมัติ กรุณาเปิดคอร์สใหม่และเลือกรายวิชาด้วยตนเอง</p>' : ''}
+          </div>
+        </div>
+      </article>`
+    }
+    modal.querySelector('section').innerHTML = `
+      <div class="flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-5 py-4 sm:px-7">
+        <div><h2 id="schedule-course-review-title" class="text-lg sm:text-xl font-extrabold text-gray-800">📚 ตรวจสอบคอร์สจากตารางสอน</h2>
+          <p class="mt-1 text-xs text-gray-500">ภาคเรียน ${_htmlEsc(`${semester}/${academicYear}`)} · สร้างคอร์สเท่านั้น ยังไม่สร้างห้องเรียน</p></div>
+        <button type="button" data-review-close class="h-10 w-10 rounded-xl border border-gray-200 bg-white text-xl text-gray-500 hover:bg-gray-100">×</button>
+      </div>
+      <div class="flex-1 overflow-y-auto p-5 sm:p-7">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div class="rounded-2xl border border-indigo-100 bg-indigo-50 p-3"><p class="text-2xl font-extrabold text-indigo-700">${candidates.length}</p><p class="text-[11px] text-indigo-700/70">รายการจากตารางสอน</p></div>
+          <div class="rounded-2xl border border-emerald-100 bg-emerald-50 p-3"><p class="text-2xl font-extrabold text-emerald-700">${readyCount}</p><p class="text-[11px] text-emerald-700/70">พร้อมสร้าง</p></div>
+          <div class="rounded-2xl border border-blue-100 bg-blue-50 p-3"><p class="text-2xl font-extrabold text-blue-700">${existingCount}</p><p class="text-[11px] text-blue-700/70">มีคอร์สแล้ว</p></div>
+          <div class="rounded-2xl border border-amber-100 bg-amber-50 p-3"><p class="text-2xl font-extrabold text-amber-700">${reviewCount}</p><p class="text-[11px] text-amber-700/70">ต้องตรวจสอบ</p></div>
+        </div>
+        <div class="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/60 px-4 py-3 text-xs leading-relaxed text-indigo-800">ระบบจะไม่สร้างทับคอร์สเดิม และจะสร้างเฉพาะรายการที่จับคู่กับแคตตาล็อกได้ครบถ้วนเท่านั้น</div>
+        <div class="mt-6 space-y-7">
+          ${[...groupMap.values()].map(group => `<section><div class="mb-3 flex items-center gap-3"><div class="h-9 w-9 rounded-xl bg-emerald-100 text-center leading-9">🏷️</div><h3 class="font-extrabold text-gray-800">${_htmlEsc(group.label)}</h3><div class="h-px flex-1 bg-gray-200"></div></div><div class="grid grid-cols-1 gap-3 xl:grid-cols-2">${group.items.map(renderCandidate).join('')}</div></section>`).join('') || '<div class="rounded-2xl bg-white p-10 text-center text-sm text-gray-400">ไม่พบรายการตารางสอนที่นำมาสร้างคอร์สได้</div>'}
+        </div>
+      </div>
+      <div class="flex flex-col-reverse gap-2 border-t border-gray-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+        <p data-review-selected class="text-xs text-gray-500">เลือกสร้างแล้ว 0 คอร์ส</p>
+        <div class="flex gap-2"><button type="button" data-review-cancel class="flex-1 rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-600 hover:bg-gray-50 sm:flex-none">ยกเลิก</button>
+          <button type="button" data-review-create ${readyCount ? '' : 'disabled'} class="flex-1 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-gray-300 sm:flex-none">ยืนยันสร้างคอร์สที่เลือก</button></div>
+      </div>`
+    const close = () => modal.remove()
+    modal.querySelector('[data-review-close]').addEventListener('click', close)
+    modal.querySelector('[data-review-cancel]').addEventListener('click', close)
+    const selectedLabel = modal.querySelector('[data-review-selected]')
+    const createButton = modal.querySelector('[data-review-create]')
+    const refreshSelected = () => {
+      const count = modal.querySelectorAll('[data-review-select]:checked').length
+      selectedLabel.textContent = `เลือกสร้างแล้ว ${count} คอร์ส`
+      createButton.disabled = count === 0
+    }
+    modal.querySelectorAll('[data-review-select]').forEach(input => input.addEventListener('change', refreshSelected))
+    refreshSelected()
+    createButton.addEventListener('click', async () => {
+      const selectedIds = [...modal.querySelectorAll('[data-review-select]:checked')].map(input => Number(input.dataset.reviewSelect))
+      const selected = candidates.filter(item => selectedIds.includes(item.id) && item.status === 'ready')
+      if (!selected.length) return
+      createButton.disabled = true
+      createButton.textContent = 'กำลังสร้างคอร์ส...'
+      let created = 0
+      let failed = 0
+      for (const candidate of selected) {
+        try {
+          await createSubject(candidate.payload)
+          created += 1
+        } catch {
+          failed += 1
+        }
+      }
+      close()
+      if (failed) showToast(`สร้างคอร์สสำเร็จ ${created} รายการ · ไม่สำเร็จ ${failed} รายการ`, 'warning')
+      else showToast(`สร้างคอร์สจากตารางสอนสำเร็จ ${created} รายการ`, 'success')
+      window._navTo?.('my-courses')
+    })
+  } catch (error) {
+    modal.querySelector('section').innerHTML = `<div class="flex items-center justify-between border-b border-gray-200 bg-white px-5 py-4"><h2 class="font-extrabold text-gray-800">📚 ตรวจสอบคอร์สจากตารางสอน</h2><button type="button" data-review-close class="h-10 w-10 rounded-xl border border-gray-200 text-xl text-gray-500">×</button></div><div class="flex flex-1 items-center justify-center p-8 text-center text-sm text-red-500">โหลดข้อมูลตารางสอนไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(error))}</div>`
+    modal.querySelector('[data-review-close]').addEventListener('click', () => modal.remove())
+  }
+}
+
 // ─── Course Registration Form (2.1) ──────────────────────────────────────────
 
 export async function renderCourseForm(teacher, onSave, editData = null, opts = {}) {
@@ -1576,17 +1842,26 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
   // all unique dept heads (for typeahead)
   const allHeads = [...new Set(depts.map(d=>d.head_name).filter(Boolean))]
   const catalogById = new Map(catalogRows.map(row => [String(row.id), row]))
-  const catalogOptions = [
-    '<option value="">— เลือกรายวิชาที่เตรียมไว้ (ถ้ามี) —</option>',
-    ...catalogRows.map(row => {
-      const code = row.subject_code ? row.subject_code + ' · ' : ''
-      const grade = row.grade_level ? ' · ' + row.grade_level : ''
-      const group = row.subject_group ? ' · ' + row.subject_group : ''
-      const label = code + row.subject_name + grade + group
-      const selected = String(editData?.catalog_id ?? '') === String(row.id) ? ' selected' : ''
-      return '<option value="' + row.id + '"' + selected + '>' + _htmlEsc(label) + '</option>'
-    }),
-  ].join('')
+  const initialCatalog = catalogById.get(String(editData?.catalog_id ?? ''))
+  const initialDeptCode = editData?.dept || _catalogDeptCode(initialCatalog) || ''
+  const _catalogRowsFor = (sg = '', deptCode = '') => catalogRows.filter(row =>
+    (!sg || row.subject_group === sg) && _catalogMatchesDept(row, deptCode, uniqueDepts)
+  )
+  const _catalogOptions = (sg = '', deptCode = '', selectedId = '') => {
+    if (!deptCode) return '<option value="">— เลือกกลุ่มสาระก่อน —</option>'
+    const rows = _catalogRowsFor(sg, deptCode)
+    return [
+      '<option value="">— เลือกรายวิชาภายใต้กลุ่มสาระ —</option>',
+      ...rows.map(row => {
+        const code = row.subject_code ? row.subject_code + ' · ' : ''
+        const grade = row.grade_level ? ' · ' + row.grade_level : ''
+        const group = row.subject_group ? ' · ' + row.subject_group : ''
+        const label = code + row.subject_name + grade + group
+        const selected = String(selectedId ?? '') === String(row.id) ? ' selected' : ''
+        return '<option value="' + row.id + '"' + selected + '>' + _htmlEsc(label) + '</option>'
+      }),
+    ].join('')
+  }
 
   setContent(`<div class="max-w-2xl mx-auto animate-fade">
     <div class="flex items-center gap-3 mb-6">
@@ -1601,15 +1876,6 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     </div>` : ''}
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-7">
       <form id="course-form" novalidate class="space-y-5">
-        <!-- รายวิชาจากคลังหลัก -->
-        <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
-          <label class="block text-sm font-semibold text-blue-900 mb-1">เลือกรายวิชาที่เตรียมไว้</label>
-          <select id="cf-catalog" ${SELECT_CLS}>
-            ${catalogOptions}
-          </select>
-          <input type="hidden" id="cf-catalog-id" value="${editData?.catalog_id ?? ''}" />
-          <p class="text-xs text-blue-700/70 mt-1">ระบบจะเติมข้อมูลให้ก่อน แต่ครูยังแก้ไขรายละเอียดทุกช่องได้</p>
-        </div>
         <!-- กลุ่มวิชา -->
         <div>
           <label class="block text-sm font-semibold text-gray-700 mb-1">
@@ -1626,8 +1892,17 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
             ${_deptLabel(_initSg)} <span class="text-red-400">*</span>
           </label>
           <select id="cf-dept" class="${SELECT_CLS}">
-            ${_deptOptions(editData?.subject_group ? _filterDepts(editData.subject_group) : (teacherCat ? uniqueDepts.filter(d=>d.category===teacherCat) : uniqueDepts), editData?.dept??'')}
+            ${_deptOptions(editData?.subject_group ? _filterDepts(editData.subject_group) : (teacherCat ? uniqueDepts.filter(d=>d.category===teacherCat) : uniqueDepts), initialDeptCode)}
           </select>
+        </div>
+        <!-- รายวิชาภายใต้กลุ่มสาระ -->
+        <div class="rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+          <label class="block text-sm font-semibold text-blue-900 mb-1">รายวิชาภายใต้กลุ่มสาระ</label>
+          <select id="cf-catalog" ${SELECT_CLS} ${initialDeptCode ? '' : 'disabled'}>
+            ${_catalogOptions(_initSg, initialDeptCode, editData?.catalog_id)}
+          </select>
+          <input type="hidden" id="cf-catalog-id" value="${editData?.catalog_id ?? ''}" />
+          <p class="text-xs text-blue-700/70 mt-1">เลือกรายวิชาจากกลุ่มสาระที่เลือก ระบบจะเติมข้อมูลให้ แต่ครูยังแก้ไขรายละเอียดทุกช่องได้</p>
         </div>
         <!-- ชื่อวิชา + รหัสวิชา -->
         <div class="grid grid-cols-2 gap-3">
@@ -1885,22 +2160,12 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     `).join('')
   }
 
-  const _catalogDeptCode = item => {
-    const raw = String(item?.dept_label ?? '').trim()
-    const code = String(item?.subject_code ?? '').trim()
-    const haystack = raw + ' ' + code + ' ' + String(item?.subject_name_arabic ?? '')
-    if (/อิสลามศึกษา|อัดดีนียะห์/u.test(raw) || /^(ศอ|อก|อศ|ฟป)/u.test(code)) return 'ISL'
-    if (/ภาษาอาหรับ/u.test(raw) || /^ภอ/u.test(code) || /العربية/u.test(haystack)) return 'ARB'
-    if (/ภาษามลายู/u.test(raw) || /^มล/u.test(code) || /الملايو/u.test(haystack)) return 'MLB'
-    if (/ภาษาไทย/u.test(raw)) return 'THAI'
-    if (/ภาษาต่างประเทศ/u.test(raw)) return 'ENG'
-    if (/คณิตศาสตร์/u.test(raw)) return 'MATH'
-    if (/วิทยาศาสตร์/u.test(raw)) return 'SC'
-    if (/สังคม/u.test(raw)) return 'SOC'
-    if (/ศิลปะ/u.test(raw)) return 'ART'
-    if (/สุขศึกษา|พลศึกษา/u.test(raw)) return 'HEALTH'
-    if (/การงานอาชีพ|เทคโนโลยี/u.test(raw)) return item.subject_group === 'ACDMVOC' ? 'VOC' : 'OCC'
-    return ''
+  const catalogEl = document.getElementById('cf-catalog')
+  const _renderCatalogOptions = (subjectGroup, deptCode, selectedId = '') => {
+    if (!catalogEl) return
+    catalogEl.innerHTML = _catalogOptions(subjectGroup, deptCode, selectedId)
+    catalogEl.disabled = !deptCode
+    if (selectedId) catalogEl.value = String(selectedId)
   }
 
   const _applyCatalog = item => {
@@ -1938,6 +2203,10 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
       deptEl.dispatchEvent(new Event('change'))
     }
     if (headEl && item.learning_area) headEl.value = item.learning_area
+    if (catalogEl) {
+      document.getElementById('cf-catalog-id').value = item.id
+      _renderCatalogOptions(subgEl.value, deptEl?.value || '', item.id)
+    }
   }
 
   const HINTS = {
@@ -1947,13 +2216,11 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     AGMVOC: 'ศาสนาปวช: อิสระ',
   }
 
-  document.getElementById('cf-catalog')?.addEventListener('change', event => {
+  catalogEl?.addEventListener('change', event => {
     const id = event.target.value
     document.getElementById('cf-catalog-id').value = id
     _applyCatalog(catalogById.get(String(id)))
   })
-
-  if (editData?.catalog_id) _applyCatalog(catalogById.get(String(editData.catalog_id)))
 
   // 1. กลุ่มวิชา → กรองกลุ่มสาระ/สาขาวิชา + อัปเดต labels + grade options + hint
   document.getElementById('cf-subg').addEventListener('change', e => {
@@ -1968,6 +2235,7 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     deptEl.innerHTML = _deptOptions(_filterDepts(sg))
     deptEl.options[0].textContent = _deptPH(sg)
     if (prevVal) deptEl.value = prevVal
+    _renderCatalogOptions(sg, deptEl.value, '')
     // อัปเดต grade
     const gradeEl = document.getElementById('cf-grade')
     const opts = GRADE_OPTS[sg] ?? []
