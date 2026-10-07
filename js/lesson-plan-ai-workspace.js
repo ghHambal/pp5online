@@ -412,8 +412,9 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
       <div id="lp-ai-file-list" class="text-[11px] text-gray-500 mt-2"></div>
     </div>
     <div class="mt-4">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><div class="grid grid-cols-2 gap-2 sm:flex sm:justify-end"><button id="lp-ai-generate" class="min-h-[40px] px-3 rounded-xl ${isSchedule ? 'bg-blue-700' : 'bg-violet-700'} text-white text-xs font-bold">⚡ สร้าง Prompt</button><button id="lp-ai-copy" class="min-h-[40px] px-3 rounded-xl border ${isSchedule ? 'border-blue-200 text-blue-700 bg-blue-50' : 'border-violet-200 text-violet-700 bg-violet-50'} text-xs font-bold">📋 คัดลอก Prompt</button></div></div>
-      <textarea id="lp-ai-prompt" rows="8" class="w-full border rounded-xl p-3 text-[11px] font-mono"></textarea>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><div class="grid grid-cols-2 gap-2 sm:flex sm:justify-end"><button id="lp-ai-generate" class="min-h-[40px] px-3 rounded-xl ${isSchedule ? 'bg-blue-700' : 'bg-violet-700'} text-white text-xs font-bold">⚡ สร้าง Prompt</button><button id="lp-ai-copy" hidden disabled aria-disabled="true" class="min-h-[40px] px-3 rounded-xl border ${isSchedule ? 'border-blue-200 text-blue-700 bg-blue-50' : 'border-violet-200 text-violet-700 bg-violet-50'} text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed">📋 คัดลอก Prompt</button></div></div>
+      <p id="lp-ai-prompt-status" class="text-[10px] text-amber-700 mb-1">ยังไม่ได้สร้าง Prompt · ตรวจข้อมูลให้ครบแล้วกด “⚡ สร้าง Prompt”</p>
+      <textarea id="lp-ai-prompt" rows="8" class="w-full border rounded-xl p-3 text-[11px] font-mono" placeholder="กด “⚡ สร้าง Prompt” เพื่อสร้างคำสั่งจากข้อมูลล่าสุด"></textarea>
     </div>
     <div class="mt-4 pt-4 border-t">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">วาง JSON ที่ได้จาก AI</label><div class="grid grid-cols-2 gap-2 sm:flex sm:justify-end"><button id="lp-ai-validate" class="min-h-[40px] px-3 rounded-xl border ${isSchedule ? 'border-blue-200 text-blue-700' : 'border-violet-200 text-violet-700'} font-bold text-xs">🔎 ตรวจ JSON</button><button id="lp-ai-save" class="min-h-[40px] px-3 rounded-xl bg-emerald-600 text-white font-bold text-xs">💾 สร้างในระบบ</button></div></div>
@@ -422,6 +423,31 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     </div>
   </div>`
   document.body.appendChild(m)
+  let promptReady = false
+  const promptCopyButton = m.querySelector('#lp-ai-copy')
+  const promptStatus = m.querySelector('#lp-ai-prompt-status')
+  const markPromptStale = () => {
+    if (!promptReady) return
+    promptReady = false
+    promptCopyButton.disabled = true
+    promptCopyButton.setAttribute('aria-disabled', 'true')
+    promptCopyButton.hidden = true
+    promptStatus.textContent = 'ข้อมูลมีการเปลี่ยนแปลง · กด “⚡ สร้าง Prompt” ใหม่ก่อนคัดลอก'
+    promptStatus.className = 'text-[10px] text-amber-700 mb-1'
+  }
+  const markPromptReady = () => {
+    promptReady = true
+    promptCopyButton.disabled = false
+    promptCopyButton.setAttribute('aria-disabled', 'false')
+    promptCopyButton.hidden = false
+    promptStatus.textContent = 'Prompt สร้างจากข้อมูลล่าสุดแล้ว · แก้ข้อความในกล่องนี้ได้ก่อนคัดลอก'
+    promptStatus.className = 'text-[10px] text-emerald-700 mb-1'
+  }
+  const isPromptInput = target => target instanceof Element
+    && target.matches('input, textarea, select')
+    && !target.matches('#lp-ai-prompt, #lp-ai-json')
+  m.addEventListener('input', event => { if (isPromptInput(event.target)) markPromptStale() })
+  m.addEventListener('change', event => { if (isPromptInput(event.target)) markPromptStale() })
 
   const readTeachingUnits = () => [...m.querySelectorAll('[data-unit-row]')].map(row => ({
     title: row.querySelector('[data-unit-title]').value.trim(),
@@ -438,6 +464,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
       </div>
     </div>`).join('')
     wrap.querySelectorAll('[data-remove-unit]').forEach(btn => btn.addEventListener('click', () => {
+      markPromptStale()
       teachingUnits = readTeachingUnits()
       teachingUnits.splice(asInt(btn.dataset.removeUnit, 0), 1)
       if (!teachingUnits.length) teachingUnits.push({ title: '', description: '' })
@@ -476,6 +503,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
       teachingUnits.push({ title: '', description: '' })
       renderTeachingUnits()
       m.querySelector('[data-unit-row]:last-child [data-unit-title]')?.focus()
+      markPromptStale()
     })
   }
 
@@ -522,8 +550,6 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     box.className = `mt-2 rounded-xl px-3 py-2 text-xs ${ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'}`
     box.textContent = message
   }
-  try { m.querySelector('#lp-ai-prompt').value = prompt() }
-  catch (err) { showResult(err.message, false) }
   m.addEventListener('click', e => { if (e.target === m) m.remove() })
   m.querySelector('[data-close]').addEventListener('click', () => m.remove())
   m.querySelector('#lp-ai-files').addEventListener('change', e => {
@@ -531,13 +557,19 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     m.querySelector('#lp-ai-file-list').innerHTML = files.length ? files.map(f => `<span class="inline-block mr-1 mb-1 px-2 py-1 rounded-lg bg-white border">${esc(f.name)}</span>`).join('') : ''
   })
   m.querySelector('#lp-ai-generate').addEventListener('click', () => {
-    try { m.querySelector('#lp-ai-prompt').value = prompt(); showToast('สร้าง Prompt แล้ว', 'success') }
-    catch (err) { showToast(err.message, 'warning') }
+    try {
+      m.querySelector('#lp-ai-prompt').value = prompt()
+      markPromptReady()
+      showToast('สร้าง Prompt จากข้อมูลล่าสุดแล้ว', 'success')
+    } catch (err) {
+      markPromptStale()
+      showToast(err.message, 'warning')
+    }
   })
   m.querySelector('#lp-ai-copy').addEventListener('click', async () => {
-    let text
-    try { text = prompt() } catch (err) { showToast(err.message, 'warning'); return }
-    m.querySelector('#lp-ai-prompt').value = text
+    if (!promptReady) { showToast('กรุณากด “สร้าง Prompt” ใหม่หลังแก้ข้อมูลก่อนคัดลอก', 'warning'); return }
+    const text = m.querySelector('#lp-ai-prompt').value.trim()
+    if (!text) { showToast('ยังไม่มี Prompt ให้คัดลอก', 'warning'); return }
     try { await navigator.clipboard.writeText(text); showToast('คัดลอก Prompt แล้ว', 'success') }
     catch { m.querySelector('#lp-ai-prompt').select(); document.execCommand('copy'); showToast('คัดลอก Prompt แล้ว', 'success') }
   })

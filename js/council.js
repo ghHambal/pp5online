@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { createAIPromptCopyGate } from './ai-prompt-gate.js'
 import { getMyStudentProfile } from './student-api.js'
 import { getMyTeacherProfile, getMyHomeroomRooms, getTeachers } from './api.js'
 import { uploadCouncilApplicationPhoto, uploadCouncilTeacherSignature, uploadCouncilTeacherPhoto, uploadCouncilCertificate, uploadCertificateTemplateImage } from './storage.js'
@@ -3177,11 +3178,12 @@ function openDocAiImportModal() {
         <button type="button" id="btn-close-doc-ai-import" class="text-[var(--muted)] hover:text-[var(--bad)] text-2xl leading-none flex-shrink-0">✕</button>
       </div>
       <ol class="text-xs text-[var(--muted-2)] list-decimal list-inside space-y-1 mb-3">
-        <li>คัดลอกคำสั่งด้านล่าง</li>
+        <li>กด “⚡ สร้าง Prompt” แล้วจึงคัดลอกคำสั่ง</li>
         <li>วางในแชท ChatGPT (หรือ AI อื่น) พร้อมแนบไฟล์ใบโครงการเดิม (Word/PDF/รูปถ่าย)</li>
         <li>คัดลอกคำตอบที่ได้ (หรือดาวน์โหลดไฟล์ CSV ถ้า AI สร้างไฟล์ให้) แล้วนำกลับมาวาง/อัปโหลดด้านล่างนี้</li>
       </ol>
-      <button type="button" id="btn-doc-ai-copy-prompt" class="w-full py-2.5 rounded-xl border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)] font-bold text-xs mb-3">📋 คัดลอกคำสั่งสำหรับ AI</button>
+      <div class="flex gap-2 mb-3"><button type="button" id="btn-doc-ai-generate-prompt" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-white font-bold text-xs">⚡ สร้าง Prompt</button><button type="button" hidden disabled aria-disabled="true" id="btn-doc-ai-copy-prompt" class="flex-1 py-2.5 rounded-xl border border-[var(--primary-45)] text-[var(--primary)] hover:bg-[var(--primary-soft)] font-bold text-xs disabled:opacity-40">📋 คัดลอกคำสั่งสำหรับ AI</button></div>
+      <textarea id="doc-ai-prompt" readonly rows="9" placeholder="กด ⚡ สร้าง Prompt ก่อนคัดลอก" class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-xs font-mono resize-y bg-[var(--surface)] text-[var(--ink)] mb-3"></textarea>
       <div class="space-y-3 pt-2 border-t border-[var(--line-soft)]">
         <div>
           <label class="text-xs font-semibold text-[var(--muted)] mb-1 block">อัปโหลดไฟล์ CSV ที่ได้จาก AI</label>
@@ -3198,12 +3200,21 @@ function openDocAiImportModal() {
   modal.querySelector('#btn-close-doc-ai-import').addEventListener('click', () => modal.remove())
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
 
+  const docPrompt = modal.querySelector('#doc-ai-prompt')
+  const docPromptGate = createAIPromptCopyGate({ copyButton: modal.querySelector('#btn-doc-ai-copy-prompt') })
+  modal.querySelector('#btn-doc-ai-generate-prompt').addEventListener('click', () => {
+    docPrompt.value = buildDocAiPrompt()
+    docPromptGate.markGenerated()
+    showToast('สร้างคำสั่งสำหรับ AI แล้ว', 'success')
+  })
   modal.querySelector('#btn-doc-ai-copy-prompt').addEventListener('click', async () => {
+    if (!docPromptGate.isReady()) { showToast('กรุณากด “สร้าง Prompt” ก่อนคัดลอก', 'warning'); return }
     try {
-      await navigator.clipboard.writeText(buildDocAiPrompt())
+      await navigator.clipboard.writeText(docPrompt.value)
       showToast('คัดลอกคำสั่งแล้ว — ไปวางในแชท AI พร้อมแนบไฟล์ใบโครงการได้เลย', 'success')
     } catch (err) {
-      showToast('คัดลอกอัตโนมัติไม่ได้ — ลองคัดลอกเองจากคำสั่งที่แสดง', 'warning')
+      docPrompt.select(); document.execCommand('copy')
+      showToast('คัดลอกคำสั่งแล้ว — ไปวางในแชท AI พร้อมแนบไฟล์ใบโครงการได้เลย', 'success')
     }
   })
 

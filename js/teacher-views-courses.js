@@ -12,6 +12,7 @@ import { supabase } from './supabase.js'
 import { uploadTeacherPhoto } from './storage.js'
 import { openPP5CourseModal } from './pp5-doc.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { createAIPromptCopyGate } from './ai-prompt-gate.js'
 import { _openCourseColsModal } from './teacher-views-grades.js'
 import { _openLessonPlanApproval } from './teacher-views.js'
 import {
@@ -1376,12 +1377,12 @@ ${JSON.stringify(externalDocExample, null, 2)}`
       <div class="rounded-2xl border border-violet-100 bg-violet-50/70 p-4 mb-4">
         <p class="text-sm font-extrabold text-violet-900">ขั้นตอนใช้งาน</p>
         <ol class="mt-2 space-y-1 text-xs text-violet-800 list-decimal list-inside">
-          <li>กดคัดลอก Prompt แล้วนำไปวางใน AI ที่คุณใช้ พร้อมแนบเอกสารหลักสูตร/หนังสือเรียนถ้ามี</li>
+          <li>ตรวจข้อมูลในแบบฟอร์ม แล้วกดสร้าง Prompt ก่อนคัดลอกไปใช้กับ AI พร้อมแนบเอกสารหลักสูตร/หนังสือเรียนถ้ามี</li>
           <li>ให้ AI ตอบกลับเป็น JSON ตามคำสั่ง แล้วคัดลอก JSON มาวางในช่องด้านล่าง</li>
           <li>กดตรวจ JSON และนำเข้าข้อมูล จากนั้นตรวจทานในแบบฟอร์มก่อนกดบันทึก</li>
         </ol>
       </div>
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><div class="grid grid-cols-2 gap-2 sm:flex"><button id="cd2-external-generate" type="button" class="min-h-[40px] px-3 rounded-xl bg-violet-700 text-white text-xs font-bold">⚡ สร้าง Prompt ใหม่</button><button id="cd2-external-copy" type="button" class="min-h-[40px] px-3 rounded-xl border border-violet-200 text-violet-700 bg-violet-50 text-xs font-bold">📋 คัดลอก Prompt</button></div></div>
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><div class="grid grid-cols-2 gap-2 sm:flex"><button id="cd2-external-generate" type="button" class="min-h-[40px] px-3 rounded-xl bg-violet-700 text-white text-xs font-bold">⚡ สร้าง Prompt ใหม่</button><button id="cd2-external-copy" type="button" hidden disabled aria-disabled="true" class="min-h-[40px] px-3 rounded-xl border border-violet-200 text-violet-700 bg-violet-50 text-xs font-bold disabled:opacity-40">📋 คัดลอก Prompt</button></div></div>
       <textarea id="cd2-external-prompt" rows="12" readonly class="w-full border rounded-xl p-3 text-[11px] font-mono bg-gray-50"></textarea>
       <div class="mt-4 pt-4 border-t">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">วาง JSON ที่ได้จาก AI</label><div class="grid grid-cols-2 gap-2 sm:flex"><button id="cd2-external-validate" type="button" class="min-h-[40px] px-3 rounded-xl border border-violet-200 text-violet-700 font-bold text-xs">🔎 ตรวจ JSON</button><button id="cd2-external-import" type="button" class="min-h-[40px] px-3 rounded-xl bg-emerald-600 text-white font-bold text-xs">📥 นำเข้าแบบฟอร์ม</button></div></div>
@@ -1396,19 +1397,23 @@ ${JSON.stringify(externalDocExample, null, 2)}`
       box.className = `mt-2 rounded-xl px-3 py-2 text-xs ${ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'}`
       box.textContent = message
     }
-    external.querySelector('#cd2-external-prompt').value = promptText()
+    const promptEl = external.querySelector('#cd2-external-prompt')
+    const promptGate = createAIPromptCopyGate({ copyButton: external.querySelector('#cd2-external-copy') })
+    modal.addEventListener('input', event => { if (event.target instanceof Element && event.target.matches('input, textarea, select')) promptGate.invalidate() })
+    modal.addEventListener('change', event => { if (event.target instanceof Element && event.target.matches('input, textarea, select')) promptGate.invalidate() })
+    modal.addEventListener('click', event => { if (event.target.closest('button')) promptGate.invalidate() })
     const close = () => external.remove()
     external.addEventListener('click', event => { if (event.target === external) close() })
     external.querySelector('[data-external-close]').addEventListener('click', close)
     external.querySelector('#cd2-external-generate').addEventListener('click', () => {
-      external.querySelector('#cd2-external-prompt').value = promptText()
+      promptEl.value = promptText()
+      promptGate.markGenerated()
       showToast('สร้าง Prompt แล้ว', 'success')
     })
     external.querySelector('#cd2-external-copy').addEventListener('click', async () => {
-      const text = promptText()
-      external.querySelector('#cd2-external-prompt').value = text
-      try { await navigator.clipboard.writeText(text); showToast('คัดลอก Prompt แล้ว', 'success') }
-      catch { external.querySelector('#cd2-external-prompt').select(); document.execCommand('copy'); showToast('คัดลอก Prompt แล้ว', 'success') }
+      if (!promptGate.isReady()) { showToast('กรุณากด “สร้าง Prompt ใหม่” หลังแก้ข้อมูลก่อนคัดลอก', 'warning'); return }
+      try { await navigator.clipboard.writeText(promptEl.value); showToast('คัดลอก Prompt แล้ว', 'success') }
+      catch { promptEl.select(); document.execCommand('copy'); showToast('คัดลอก Prompt แล้ว', 'success') }
     })
     external.querySelector('#cd2-external-validate').addEventListener('click', () => {
       try {

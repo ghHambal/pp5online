@@ -5,6 +5,7 @@ import {
 } from './quiz-api.js'
 import { parseCSV } from './import.js'
 import { showToast, showDangerConfirm, setButtonLoading, getFriendlyErrorMessage } from './ui.js'
+import { createAIPromptCopyGate } from './ai-prompt-gate.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, SELECT_CLS, INPUT_CLS } from './teacher-views-utils.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 import { supabase } from './supabase.js'
@@ -610,11 +611,18 @@ function _renderAIGenerator(teacher, bank) {
   const countLabel = modal.querySelector('#ai-count-label')
   const formatJsonBtn = modal.querySelector('#ai-format-json')
   const formatCsvBtn = modal.querySelector('#ai-format-csv')
+  const promptWrap = modal.querySelector('#ai-prompt-wrap')
+  const promptGate = createAIPromptCopyGate({
+    copyButton: modal.querySelector('#btn-ai-copy-prompt'),
+    watchRoot: modal,
+    watchSelector: '#ai-topic, #ai-count, #ai-choices-count, #ai-difficulty',
+  })
 
   let currentMode = 'inapp' // 'inapp' | 'copy' — controls whether the 25-question cap (our own edge function's token budget) applies
   let responseFormat = 'json' // 'json' | 'csv' — only relevant in 'copy' mode
 
   const setMode = (mode) => {
+    if (currentMode !== mode) promptGate.invalidate()
     currentMode = mode
     const isInapp = mode === 'inapp'
     runBtn.classList.toggle('hidden', !isInapp)
@@ -647,7 +655,8 @@ function _renderAIGenerator(teacher, bank) {
     formatCsvBtn.classList.toggle('text-white', !isJson)
     formatCsvBtn.classList.toggle('border-gray-200', isJson)
     formatCsvBtn.classList.toggle('text-gray-500', isJson)
-    modal.querySelector('#ai-prompt-wrap').classList.add('hidden') // stale prompt no longer matches the newly picked format
+    promptGate.invalidate()
+    promptWrap.classList.add('hidden') // stale prompt no longer matches the newly picked format
   }
   formatJsonBtn.addEventListener('click', () => setFormat('json'))
   formatCsvBtn.addEventListener('click', () => setFormat('csv'))
@@ -672,10 +681,12 @@ function _renderAIGenerator(teacher, bank) {
     if (!topic) { showToast('กรุณาระบุหัวข้อที่ต้องการให้ AI ออกข้อสอบ', 'warning'); return }
     const prompt = _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, format: responseFormat })
     modal.querySelector('#ai-prompt-text').value = prompt
-    modal.querySelector('#ai-prompt-wrap').classList.remove('hidden')
+    promptGate.markGenerated()
+    promptWrap.classList.remove('hidden')
   })
 
   modal.querySelector('#btn-ai-copy-prompt').addEventListener('click', async (e) => {
+    if (!promptGate.isReady()) { showToast('กรุณาสร้างคำสั่งใหม่หลังแก้ข้อมูลก่อนคัดลอก', 'warning'); return }
     const promptEl = modal.querySelector('#ai-prompt-text')
     try {
       await navigator.clipboard.writeText(promptEl.value)

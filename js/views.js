@@ -40,6 +40,7 @@ import { renderLeaveMonitorWidget } from './leave-monitor.js?v=10.18.25'
 import { renderCourseForm, renderClassForm, renderClassEditForm, renderScoreColumns } from './teacher-views.js'
 import { clearFullBackupResume, clearTermBackupResume, createFullBackup, createTermBackup, getFullBackupResumeInfo, getLatestVerifiedBackupId, getTermBackupResumeInfo, requestFullBackupSaveTarget, requestTermBackupSaveTarget, restoreFullBackup } from './term-backup.js'
 import { showToast, showPageLoader, createTeacherSelect, createTeacherMultiSelect, createStudentMultiSelect, getFriendlyErrorMessage } from './ui.js'
+import { createAIPromptCopyGate } from './ai-prompt-gate.js'
 import { openTeacherModal, handleDeleteTeacher,
          openSubjectModal, handleDeleteSubject,
          openDeptModal, handleDeleteDept,
@@ -5349,9 +5350,9 @@ ${teacherRoster || 'ไม่พบรายชื่อครู'}`
                   <h4 class="font-semibold text-sm text-gray-800">1) คำสั่งสำหรับ AI</h4>
                   <p class="text-[11px] text-gray-400 mt-0.5">คัดลอกคำสั่งนี้ แล้วแนบเอกสารคำสั่งแต่งตั้งให้ AI</p>
                 </div>
-                <button id="hr-ai-copy-prompt" type="button" class="text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg">📋 คัดลอก</button>
+                <div class="flex gap-2"><button id="hr-ai-generate-prompt" type="button" class="text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg">⚡ สร้าง Prompt</button><button id="hr-ai-copy-prompt" type="button" hidden disabled aria-disabled="true" class="text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg disabled:opacity-40">📋 คัดลอก</button></div>
               </div>
-              <textarea id="hr-ai-prompt" readonly rows="15" class="w-full ${SELECT_CLS} text-xs leading-5 resize-y bg-gray-50"></textarea>
+              <textarea id="hr-ai-prompt" readonly rows="15" placeholder="กด ⚡ สร้าง Prompt ก่อนคัดลอก" class="w-full ${SELECT_CLS} text-xs leading-5 resize-y bg-gray-50"></textarea>
             </section>
 
             <section class="rounded-2xl border border-gray-200 p-4">
@@ -5382,18 +5383,25 @@ ${teacherRoster || 'ไม่พบรายชื่อครู'}`
       </div>`
     document.body.appendChild(m)
 
-    const promptText = _advisorAiPrompt()
-    m.querySelector('#hr-ai-prompt').value = promptText
+    const promptEl = m.querySelector('#hr-ai-prompt')
+    const promptGate = createAIPromptCopyGate({ copyButton: m.querySelector('#hr-ai-copy-prompt') })
     const close = () => m.remove()
     m.querySelector('#hr-ai-close').addEventListener('click', close)
     m.querySelector('#hr-ai-cancel').addEventListener('click', close)
     m.addEventListener('click', e => { if (e.target === m) close() })
+    m.querySelector('#hr-ai-generate-prompt').addEventListener('click', () => {
+      promptEl.value = _advisorAiPrompt()
+      promptGate.markGenerated()
+      m.querySelector('#hr-ai-copy-prompt').textContent = '📋 คัดลอก'
+      showToast('สร้างคำสั่ง AI รายชื่อครูที่ปรึกษาแล้ว', 'success')
+    })
     m.querySelector('#hr-ai-copy-prompt').addEventListener('click', async e => {
+      if (!promptGate.isReady()) { showToast('กรุณากด “สร้าง Prompt” ก่อนคัดลอก', 'warning'); return }
       try {
-        await navigator.clipboard.writeText(promptText)
+        await navigator.clipboard.writeText(promptEl.value)
         e.currentTarget.textContent = 'คัดลอกแล้ว ✅'
         setTimeout(() => { if (document.body.contains(e.currentTarget)) e.currentTarget.textContent = '📋 คัดลอก' }, 1500)
-      } catch { showToast('คัดลอกไม่สำเร็จ กรุณาคัดลอกจากช่องข้อความแทน', 'warning') }
+      } catch { promptEl.select(); document.execCommand('copy'); showToast('คัดลอกแล้ว ✅', 'success') }
     })
 
     let previewRows = []
@@ -13246,20 +13254,28 @@ function _workCalendarPromptModal({ academicYear, semester, events, teacher, imp
     <div class="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-gray-100 px-5 sm:px-7 py-4 flex items-start justify-between gap-4"><div><h3 class="font-bold text-gray-800">🤖 เพิ่มปฏิทินจาก JSON ที่ AI สร้าง</h3><p class="text-xs text-gray-500 mt-1">อัปโหลด PDF/ภาพให้ AI ภายนอก แล้วนำ JSON กลับมาตรวจสอบที่นี่ก่อนบันทึก</p></div><button id="wcal-ai-close" class="text-gray-400 hover:text-gray-700 text-xl">✕</button></div>
     <div class="p-5 sm:p-7 space-y-5">
       <div class="rounded-2xl border border-violet-100 bg-violet-50 p-4 text-xs text-violet-900 leading-relaxed"><b>ความปลอดภัย:</b> ระบบจะไม่ส่งข้อมูลเข้า database จาก JSON ทันที ต้องตรวจสอบรายการและกดยืนยันก่อนทุกครั้ง รายการวันที่และชื่อซ้ำจะถูกข้ามโดยไม่เขียนทับข้อมูลเดิม</div>
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4"><section class="rounded-2xl border border-gray-200 p-4"><div class="flex items-center justify-between gap-2 mb-2"><div><h4 class="font-semibold text-sm text-gray-800">1) Prompt สำหรับ AI</h4><p class="text-[11px] text-gray-400 mt-0.5">คัดลอกคำสั่งนี้ แล้วแนบเอกสารต้นฉบับให้ AI</p></div><button id="wcal-ai-copy" class="text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg">📋 คัดลอก</button></div><textarea id="wcal-ai-prompt" readonly rows="18" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs leading-5 resize-y bg-gray-50"></textarea></section>
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4"><section class="rounded-2xl border border-gray-200 p-4"><div class="flex items-center justify-between gap-2 mb-2"><div><h4 class="font-semibold text-sm text-gray-800">1) Prompt สำหรับ AI</h4><p class="text-[11px] text-gray-400 mt-0.5">กดสร้าง Prompt ก่อนคัดลอก แล้วแนบเอกสารต้นฉบับให้ AI</p></div><div class="flex gap-2"><button id="wcal-ai-generate" type="button" class="text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg">⚡ สร้าง Prompt</button><button id="wcal-ai-copy" type="button" hidden disabled aria-disabled="true" class="text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg disabled:opacity-40">📋 คัดลอก</button></div></div><textarea id="wcal-ai-prompt" readonly rows="18" placeholder="กด ⚡ สร้าง Prompt ก่อนคัดลอก" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs leading-5 resize-y bg-gray-50"></textarea></section>
       <section class="rounded-2xl border border-gray-200 p-4"><h4 class="font-semibold text-sm text-gray-800">2) วาง JSON ที่ AI สร้าง</h4><p class="text-[11px] text-gray-400 mt-0.5 mb-2">รองรับ JSON ที่ครอบด้วย \`\`\`json ... \`\`\`</p><textarea id="wcal-ai-json" rows="18" class="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs leading-5 resize-y font-mono" placeholder="วาง JSON ที่ได้จาก AI ที่นี่"></textarea><button id="wcal-ai-parse" class="w-full mt-3 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold">🔍 ตรวจสอบ JSON และแสดงตัวอย่าง</button><p id="wcal-ai-error" class="hidden text-xs text-red-600 mt-2 whitespace-pre-wrap"></p></section></div>
       <section id="wcal-ai-preview-wrap" class="hidden rounded-2xl border border-gray-200 overflow-hidden"><div class="bg-gray-50 px-4 py-3 border-b border-gray-200"><h4 class="font-semibold text-sm text-gray-800">3) ตรวจสอบก่อนนำเข้า</h4><p id="wcal-ai-summary" class="text-xs text-gray-500 mt-0.5"></p><p class="text-[11px] text-amber-700 mt-1">หากรายการใดขึ้น “ข้อมูลไม่ครบ” ให้กด 🗑️ ลบรายการนี้ก่อนยืนยันนำเข้า</p></div><div id="wcal-ai-preview" class="p-4 space-y-2 max-h-[40vh] overflow-y-auto"></div></section>
     </div><div class="sticky bottom-0 bg-white/95 backdrop-blur border-t border-gray-100 px-5 sm:px-7 py-4 flex flex-col-reverse sm:flex-row justify-end gap-2"><button id="wcal-ai-cancel" class="px-5 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ยกเลิก</button><button id="wcal-ai-apply" disabled class="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold disabled:opacity-40">✅ ยืนยันนำเข้าปฏิทิน</button></div></div>`
   document.body.appendChild(modal)
-  const promptText = _workCalendarPrompt(academicYear, semester)
-  modal.querySelector('#wcal-ai-prompt').value = promptText
+  const promptEl = modal.querySelector('#wcal-ai-prompt')
+  const promptCopyButton = modal.querySelector('#wcal-ai-copy')
+  const promptGate = createAIPromptCopyGate({ copyButton: promptCopyButton })
   const close = () => modal.remove()
   modal.querySelector('#wcal-ai-close').onclick = close
   modal.querySelector('#wcal-ai-cancel').onclick = close
   modal.addEventListener('click', event => { if (event.target === modal) close() })
-  modal.querySelector('#wcal-ai-copy').onclick = async event => {
-    try { await navigator.clipboard.writeText(promptText); event.currentTarget.textContent = 'คัดลอกแล้ว ✅'; setTimeout(() => { if (document.body.contains(event.currentTarget)) event.currentTarget.textContent = '📋 คัดลอก' }, 1500) }
-    catch { showToast('คัดลอกไม่สำเร็จ กรุณาคัดลอกจากช่องข้อความแทน', 'warning') }
+  modal.querySelector('#wcal-ai-generate').onclick = () => {
+    promptEl.value = _workCalendarPrompt(academicYear, semester)
+    promptGate.markGenerated()
+    promptCopyButton.textContent = '📋 คัดลอก'
+    showToast('สร้าง Prompt ปฏิทินแล้ว', 'success')
+  }
+  promptCopyButton.onclick = async event => {
+    if (!promptGate.isReady()) { showToast('กรุณากด “สร้าง Prompt” ก่อนคัดลอก', 'warning'); return }
+    try { await navigator.clipboard.writeText(promptEl.value); event.currentTarget.textContent = 'คัดลอกแล้ว ✅'; setTimeout(() => { if (document.body.contains(event.currentTarget)) event.currentTarget.textContent = '📋 คัดลอก' }, 1500) }
+    catch { promptEl.select(); document.execCommand('copy'); showToast('คัดลอกแล้ว ✅', 'success') }
   }
 
   const errorEl = modal.querySelector('#wcal-ai-error')

@@ -1,4 +1,5 @@
 import { showToast } from './ui.js'
+import { createAIPromptCopyGate } from './ai-prompt-gate.js'
 
 const DAY_NAMES = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัส', 'ศุกร์']
 const SCHEMA_VERSION = 'pp5.teacher_schedule.v1'
@@ -100,7 +101,7 @@ export function openExternalScheduleAI({ teacher, subjects = [], periods = [], a
     '      <ol class="list-decimal pl-5 space-y-1"><li>เปิดตารางสอนจากระบบดูแลของโรงเรียน แล้วแคปหน้าจอให้เห็นตารางทั้งหมด</li><li>ภาพต้องเห็นคอลัมน์คาบ/เวลาและหัววันครบทุกวัน</li><li>ถ้าครูมีคาบสอนวันศุกร์ ต้องเห็นคอลัมน์วันศุกร์ในภาพด้วย ห้ามตัดออก</li><li>นำภาพนี้พร้อม Prompt ด้านล่างไปสั่ง AI ของครู แล้วคัดลอก JSON กลับมาวาง</li></ol>',
     '    </div>',
     '    <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">⚠️ ระบบจะยังไม่บันทึกตารางจนกว่าครูจะตรวจสอบผลลัพธ์และกดบันทึกแต่ละกลุ่ม</div>',
-    '    <div class="flex items-center justify-between gap-2"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><div class="flex gap-2"><button type="button" data-generate class="min-h-[40px] px-3 rounded-xl bg-violet-700 text-white text-xs font-bold">⚡ สร้าง Prompt</button><button type="button" data-copy class="min-h-[40px] px-3 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-xs font-bold">📋 คัดลอก Prompt</button></div></div>',
+    '    <div class="flex items-center justify-between gap-2"><label class="text-xs font-bold text-gray-500">Prompt สำหรับนำไปใช้กับ AI</label><div class="flex gap-2"><button type="button" data-generate class="min-h-[40px] px-3 rounded-xl bg-violet-700 text-white text-xs font-bold">⚡ สร้าง Prompt</button><button type="button" data-copy hidden disabled aria-disabled="true" class="min-h-[40px] px-3 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-xs font-bold disabled:opacity-40">📋 คัดลอก Prompt</button></div></div>',
     '    <textarea data-prompt rows="15" readonly class="w-full border border-gray-200 rounded-xl p-3 text-[11px] leading-relaxed font-mono bg-gray-50"></textarea>',
     '    <div class="border-t border-gray-100 pt-4">',
     '      <div class="flex items-center justify-between gap-2 mb-2"><label class="text-xs font-bold text-gray-500">วาง JSON ที่ได้จาก AI</label><div class="flex gap-2"><button type="button" data-validate class="min-h-[40px] px-3 rounded-xl border border-violet-200 text-violet-700 text-xs font-bold">🔎 ตรวจ JSON</button><button type="button" data-import class="min-h-[40px] px-3 rounded-xl bg-emerald-600 text-white text-xs font-bold">📥 นำเข้าเพื่อตรวจสอบ</button></div></div>',
@@ -114,8 +115,7 @@ export function openExternalScheduleAI({ teacher, subjects = [], periods = [], a
   const promptEl = wrap.querySelector('[data-prompt]')
   const jsonEl = wrap.querySelector('[data-json]')
   const resultEl = wrap.querySelector('[data-result]')
-  const prompt = buildPrompt({ teacher, subjects, periods, academicYear, semester, hasFriday })
-  promptEl.value = prompt
+  const promptGate = createAIPromptCopyGate({ copyButton: wrap.querySelector('[data-copy]') })
   const close = () => wrap.remove()
   const showResult = (message, ok) => {
     resultEl.className = `mt-2 rounded-xl px-3 py-2 text-xs ${ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-red-50 text-red-700 border border-red-100'}`
@@ -124,9 +124,9 @@ export function openExternalScheduleAI({ teacher, subjects = [], periods = [], a
   const parse = () => parseScheduleJSON(jsonEl.value, { subjects, periods, hasFriday })
   wrap.querySelector('[data-close]').addEventListener('click', close)
   wrap.addEventListener('click', event => { if (event.target === wrap) close() })
-  wrap.querySelector('[data-generate]').addEventListener('click', () => { promptEl.value = buildPrompt({ teacher, subjects, periods, academicYear, semester, hasFriday }); showToast('สร้าง Prompt ตารางสอนแล้ว', 'success') })
+  wrap.querySelector('[data-generate]').addEventListener('click', () => { promptEl.value = buildPrompt({ teacher, subjects, periods, academicYear, semester, hasFriday }); promptGate.markGenerated(); showToast('สร้าง Prompt ตารางสอนแล้ว', 'success') })
   wrap.querySelector('[data-copy]').addEventListener('click', async () => {
-    promptEl.value = buildPrompt({ teacher, subjects, periods, academicYear, semester, hasFriday })
+    if (!promptGate.isReady()) { showToast('กรุณากด “สร้าง Prompt” ก่อนคัดลอก', 'warning'); return }
     try { await navigator.clipboard.writeText(promptEl.value); showToast('คัดลอก Prompt ตารางสอนแล้ว', 'success') }
     catch { promptEl.select(); document.execCommand('copy'); showToast('คัดลอก Prompt ตารางสอนแล้ว', 'success') }
   })

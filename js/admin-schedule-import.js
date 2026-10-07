@@ -4,6 +4,7 @@ import {
   upsertTeacherNameAliases, upsertScheduleEntries,
 } from './api.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { createAIPromptCopyGate } from './ai-prompt-gate.js'
 
 const SCHEMA_VERSION = 'pp5.school_teacher_schedule.v1'
 const SOURCE_SYSTEM = 'school_schedule'
@@ -181,7 +182,7 @@ function renderShell(state) {
     <section class="rounded-2xl border border-violet-100 bg-gradient-to-r from-violet-50 to-white p-5 shadow-sm">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div><h2 class="font-bold text-violet-900">🤖 สร้าง Prompt สำหรับ AI</h2><p class="mt-1 text-xs text-violet-700">แนบไฟล์ตารางสอนทั้งโรงเรียนไปพร้อม Prompt แล้วนำ JSON กลับมาตรวจสอบ</p></div>
-        <div class="flex gap-2"><button id="asi-generate" type="button" class="rounded-xl bg-violet-700 px-3 py-2 text-xs font-bold text-white">⚡ สร้าง Prompt</button><button id="asi-copy" type="button" class="rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-700">📋 คัดลอก</button></div>
+        <div class="flex gap-2"><button id="asi-generate" type="button" class="rounded-xl bg-violet-700 px-3 py-2 text-xs font-bold text-white">⚡ สร้าง Prompt</button><button id="asi-copy" type="button" hidden disabled aria-disabled="true" class="rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold text-violet-700 disabled:opacity-40">📋 คัดลอก</button></div>
       </div>
       <textarea id="asi-prompt" rows="13" readonly class="mt-4 w-full rounded-xl border border-violet-100 bg-white p-3 font-mono text-[11px] leading-relaxed"></textarea>
       <div class="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-gray-500"><label class="cursor-pointer rounded-xl border border-gray-200 bg-white px-3 py-2 font-semibold hover:bg-gray-50">📎 เลือกไฟล์อ้างอิง<input id="asi-files" type="file" multiple accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.html" class="hidden" /></label><div id="asi-file-list" class="flex flex-wrap gap-1">${fileNames}</div></div>
@@ -254,7 +255,7 @@ export async function renderAdminScheduleImport({ onBack = null } = {}) {
     })
     const prompt = () => buildPrompt({ ...state, fileNames: state.fileNames })
     const promptEl = document.getElementById('asi-prompt')
-    promptEl.value = prompt()
+    const promptGate = createAIPromptCopyGate({ copyButton: document.getElementById('asi-copy') })
 
     const message = (value, good = false) => {
       const el = document.getElementById('asi-message')
@@ -268,11 +269,12 @@ export async function renderAdminScheduleImport({ onBack = null } = {}) {
       document.getElementById('asi-file-list').innerHTML = state.fileNames.length
         ? state.fileNames.map(name => `<span class="rounded-lg bg-sky-100 px-2 py-1">${esc(name)}</span>`).join('')
         : '<span class="text-gray-400">ยังไม่ได้เลือกไฟล์</span>'
-      promptEl.value = prompt()
+      promptEl.value = ''
+      promptGate.invalidate()
     })
-    document.getElementById('asi-generate').addEventListener('click', () => { promptEl.value = prompt(); showToast('สร้าง Prompt ตารางสอนทั้งโรงเรียนแล้ว', 'success') })
+    document.getElementById('asi-generate').addEventListener('click', () => { promptEl.value = prompt(); promptGate.markGenerated(); showToast('สร้าง Prompt ตารางสอนทั้งโรงเรียนแล้ว', 'success') })
     document.getElementById('asi-copy').addEventListener('click', async () => {
-      promptEl.value = prompt()
+      if (!promptGate.isReady()) { showToast('กรุณากด “สร้าง Prompt” ใหม่หลังเปลี่ยนไฟล์ก่อนคัดลอก', 'warning'); return }
       try { await navigator.clipboard.writeText(promptEl.value) } catch { promptEl.select(); document.execCommand('copy') }
       showToast('คัดลอก Prompt แล้ว — อย่าลืมแนบไฟล์ที่เลือกไปกับ AI', 'success')
     })
