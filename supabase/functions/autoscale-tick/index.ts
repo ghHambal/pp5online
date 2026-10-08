@@ -191,6 +191,22 @@ async function notify(title: string, message: string) {
   }
 }
 
+async function confirmPendingTier(state: Record<string, any>, currentTier: string, guardrail: ReturnType<typeof normalizeGuardrail>) {
+  const confirmed = state.pendingTier
+  const previousTier = state.pendingFromTier || currentTier
+  state.pendingTier = null
+  state.pendingFromTier = null
+  state.lastConfirmedAt = new Date().toISOString()
+  state.lastAction = `confirmed -> ${confirmed} @ ${state.lastConfirmedAt}`
+  state.lastError = null
+  if (isComputeTier(confirmed) && tierRank(confirmed) > 1) {
+    Object.assign(state, holdAfterTierConfirmation(state, confirmed, new Date(), guardrail))
+  }
+  await saveState(state)
+  const direction = tierRank(confirmed) > tierRank(previousTier) ? 'อัปเกรด' : 'ลดระดับ'
+  await notify(`✅ ยืนยันการ${direction}ฐานข้อมูลแล้ว`, `ระดับเครื่องเปลี่ยนจาก ${tierLabel(previousTier)} เป็น ${tierLabel(confirmed)} และระบบตรวจสุขภาพผ่านแล้ว`)
+}
+
 async function runAutoscale() {
   const state = await loadState()
   const { data, error } = await admin.from('system_config').select('value').eq('key', 'autoscaleSchedule').maybeSingle()
@@ -202,26 +218,57 @@ async function runAutoscale() {
   state.scheduleSchemaVersion = 2
   state.targetTier = target
   state.lastCheckedAt = new Date().toISOString()
-  if (!target) {
-    state.status = 'disabled'
-    await saveState(state)
-    return state
-  }
   let computeInfo
   try { computeInfo = await getComputeInfo() } catch (error) {
     state.lastError = String(error)
-    state.status = 'read_failed'
+    state.status = target ? 'read_failed' : 'disabled'
     await saveState(state)
     return state
   }
   const currentTier = computeInfo.currentTier
   const previousTier = state.currentTier
   state.currentTier = currentTier
+  state.currentTierObservedAt = new Date().toISOString()
+
+  if (!target) {
+    state.status = 'disabled'
+    if (state.pendingTier && currentTier === state.pendingTier) {
+      const health = await checkHealthy().then(value => ({ known: true, healthy: value })).catch(error => {
+        state.lastHealthStatus = 'unknown'
+        state.lastHealthError = String(error)
+        return { known: false, healthy: false }
+      })
+      if (health.known && health.healthy) {
+        state.lastHealthStatus = 'healthy'
+        state.lastHealthError = null
+        await confirmPendingTier(state, currentTier, guardrail)
+      }
+    } else if (isComputeTier(previousTier) && isComputeTier(currentTier) && previousTier !== currentTier) {
+      if (tierRank(currentTier) > tierRank(previousTier)) {
+        Object.assign(state, holdAfterTierConfirmation(state, currentTier, new Date(), guardrail))
+        state.lastAction = `manual scale-up hold -> ${currentTier} @ ${state.lastScaleUpConfirmedAt}`
+        state.lastDecisionReason = 'manual_scale_up_minimum_hold'
+      }
+      const direction = tierRank(currentTier) > tierRank(previousTier) ? 'อัปเกรด' : 'ลดระดับ'
+      await notify(`🖥️ ตรวจพบการ${direction}ฐานข้อมูล`, `ระดับเครื่องเปลี่ยนจาก ${tierLabel(previousTier)} เป็น ${tierLabel(currentTier)} ขณะปิดตารางปรับกำลังเครื่อง`)
+    }
+    state.status = 'disabled'
+    await saveState(state)
+    return state
+  }
+
+  const matchesPendingTier = Boolean(state.pendingTier && currentTier === state.pendingTier)
   if (isComputeTier(previousTier) && isComputeTier(currentTier) && previousTier !== currentTier
-    && tierRank(currentTier) > tierRank(previousTier) && !state.pendingTier) {
+    && tierRank(currentTier) > tierRank(previousTier) && !matchesPendingTier) {
     Object.assign(state, holdAfterTierConfirmation(state, currentTier, new Date(), guardrail))
     state.lastAction = `manual scale-up hold -> ${currentTier} @ ${state.lastScaleUpConfirmedAt}`
     state.lastDecisionReason = 'manual_scale_up_minimum_hold'
+  }
+  const observedExternalChange = isComputeTier(previousTier) && isComputeTier(currentTier)
+    && previousTier !== currentTier && !matchesPendingTier
+  if (observedExternalChange) {
+    const direction = tierRank(currentTier) > tierRank(previousTier) ? 'อัปเกรด' : 'ลดระดับ'
+    await notify(`🖥️ ตรวจพบการ${direction}ฐานข้อมูล`, `ระดับเครื่องเปลี่ยนจาก ${tierLabel(previousTier)} เป็น ${tierLabel(currentTier)} (ตรวจจาก Supabase)`)
   }
   const healthBefore = state.lastHealthStatus
   const health = await checkHealthy().then(value => ({ known: true, healthy: value })).catch(error => {
@@ -250,16 +297,7 @@ async function runAutoscale() {
   }
   // billing addon อาจเปลี่ยนก่อน restart เสร็จ ตรวจ health ยืนยันในรอบถัดไป
   if (state.pendingTier && currentTier === state.pendingTier && health.known && health.healthy) {
-    const confirmed = state.pendingTier
-    const previousRequestedTier = state.pendingFromTier || currentTier
-    state.pendingTier = null
-    state.pendingFromTier = null
-    state.lastConfirmedAt = new Date().toISOString()
-    state.lastAction = `confirmed -> ${confirmed} @ ${state.lastConfirmedAt}`
-    state.lastError = null
-    if (isComputeTier(confirmed) && tierRank(confirmed) > 1) Object.assign(state, holdAfterTierConfirmation(state, confirmed, new Date(), guardrail))
-    await saveState(state)
-    await notify(tierRank(confirmed) > tierRank(previousRequestedTier) ? '⚠️ ระบบ PP5 Online ปรับ compute ตามตารางเวลา' : '✅ ระบบ PP5 Online ลด compute ตามตารางเวลา', `ตรวจยืนยันระดับ ${tierLabel(confirmed)} และสุขภาพระบบปกติแล้ว (ตารางเวลาไทย)`)
+    await confirmPendingTier(state, currentTier, guardrail)
   }
   // ไม่ย้อนคำสั่งหรือ retry ถี่ ระหว่าง resize / หลังเพิ่งสั่งเปลี่ยนเครื่อง
   if (Date.now() < Date.parse(state.nextResizeAllowedAt || '1970-01-01')) {
