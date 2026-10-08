@@ -53,7 +53,7 @@ import {
   _parseDateOnly, _dateInputValue, _fmtDate, _calcSixPeriodDates,
   _DAYS_TH_SHORT, _DAYS_TH_FULL,
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
-  _resolveGeminiKey, _transparentEdgeDarkLogo,
+  _resolveGeminiKey, _transparentEdgeDarkLogo, _currentWeek,
   getMainContentRef, setMainContentRef, _generateSessions,
 } from './teacher-views-utils.js'
 
@@ -536,6 +536,43 @@ export async function renderMyClasses(teacher) {
       ? await getTeacherRegradeSubmissionStatuses(visibleClasses.map(c => c.id)).catch(() => [])
       : []
     const regradeStatusMap = new Map((regradeStatuses ?? []).map(row => [Number(row.class_id), row]))
+    const classIds = visibleClasses.map(c => c.id).filter(Boolean)
+    const courseIds = [...new Set(visibleClasses.map(c => c.course_id ?? c.master_subjects?.id).filter(Boolean))]
+    const currentWeek = _currentWeek(copyCfg.semester_start)
+    const [enrollmentRows, syllabusRows] = await Promise.all([
+      classIds.length
+        ? (async () => {
+            const rows = []
+            const pageSize = 1000
+            for (let offset = 0; ; offset += pageSize) {
+              const { data, error } = await supabase.from('class_students')
+                .select('class_id').in('class_id', classIds).range(offset, offset + pageSize - 1)
+              if (error) throw error
+              rows.push(...(data ?? []))
+              if ((data ?? []).length < pageSize) break
+            }
+            return rows
+          })()
+            .catch(err => { console.warn('[renderMyClasses] โหลดจำนวนนักเรียนไม่สำเร็จ', err); return [] })
+        : Promise.resolve([]),
+      courseIds.length
+        ? supabase.from('course_syllabus_items')
+            .select('course_id, week_start, week_end, topic, source_json')
+            .in('course_id', courseIds)
+            .order('week_start', { ascending: true })
+            .then(({ data, error }) => { if (error) throw error; return data ?? [] })
+            .catch(err => { console.warn('[renderMyClasses] โหลดกำหนดการสอนไม่สำเร็จ', err); return [] })
+        : Promise.resolve([]),
+    ])
+    const studentCountByClass = enrollmentRows.reduce((counts, row) => {
+      counts[row.class_id] = (counts[row.class_id] || 0) + 1
+      return counts
+    }, {})
+    const syllabusByCourse = new Map()
+    syllabusRows.forEach(item => {
+      if (!syllabusByCourse.has(item.course_id)) syllabusByCourse.set(item.course_id, [])
+      syllabusByCourse.get(item.course_id).push(item)
+    })
     window._classCache  = Object.fromEntries(visibleClasses.map(c => [c.id, c]))
     window._classesFlat = visibleClasses
     const courseGroupMap = new Map()
@@ -611,6 +648,14 @@ export async function renderMyClasses(teacher) {
               : null
           const cr        = c.classroom_id ? classroomMap[c.classroom_id] : null
           const nextMins  = _nextPeriodMins(c.id, linksByClass, scheduleMap, periodMap)
+          const courseId = c.course_id ?? ms?.id
+          const thisWeekItem = (syllabusByCourse.get(courseId) ?? []).find(item => {
+            const weekType = item.source_json?.week_type ?? 'teaching'
+            return currentWeek > 0 && currentWeek >= Number(item.week_start)
+              && currentWeek <= Number(item.week_end ?? item.week_start)
+              && weekType !== 'break'
+          })
+          const topicLabel = thisWeekItem?.topic?.trim()
           const countdown = (() => {
             if (!(linksByClass[c.id]??[]).length)
               return `<button onclick="event.stopPropagation();window._openCombinedEdit(${c.id},'schedule')"
@@ -658,6 +703,14 @@ export async function renderMyClasses(teacher) {
                   <p class="text-sm text-gray-500 mt-0.5">ห้อง: <span class="font-semibold" style="color:${classColor.text}">${c.class_name}</span>
                     ${cr ? `<span class="ml-2 text-[11px] text-gray-400">📍 ${cr.building} ${cr.room_number}</span>` : ''}
                   </p>
+                  <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
+                    <span>👥 นักเรียน ${studentCountByClass[c.id] ?? 0} คน</span>
+                    ${topicLabel
+                      ? `<span class="min-w-0 truncate" title="${_htmlEsc(topicLabel)}">📘 สัปดาห์ ${currentWeek}: ${_htmlEsc(topicLabel)}</span>`
+                      : currentWeek > 0
+                        ? `<span class="text-gray-400">📘 ยังไม่มีหัวข้อสัปดาห์ ${currentWeek}</span>`
+                        : ''}
+                  </div>
                 </div>
                 <div class="flex gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
                   <button onclick="event.stopPropagation();window._openClassDashboard(${c.id})"
