@@ -7,6 +7,21 @@ export async function getRegradeConfig() {
   return Object.fromEntries((data ?? []).map(r => [r.key, r.value]))
 }
 
+// ปุ่มส่งสรุปเกรดจะแสดงเฉพาะเมื่อแอดมินตั้งวันเริ่มและวันสิ้นสุดครบ และวันนี้อยู่ในช่วงดังกล่าว
+export function isLiveGradeSubmitWindowOpen(config, now = new Date()) {
+  const start = String(config?.live_submit_open_date ?? '')
+  const end = String(config?.live_submit_close_date ?? '')
+  const isDate = value => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+    const [year, month, day] = value.split('-').map(Number)
+    const parsed = new Date(year, month - 1, day)
+    return parsed.getFullYear() === year && parsed.getMonth() === month - 1 && parsed.getDate() === day
+  }
+  if (!isDate(start) || !isDate(end) || start > end) return false
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return today >= start && today <= end
+}
+
 export async function updateRegradeConfig(updates) {
   const { data: { session } } = await supabase.auth.getSession()
   // value เป็นคอลัมน์ jsonb NOT NULL — ส่ง JS null ตรงๆ จะกลายเป็น SQL NULL (ไม่ใช่ jsonb 'null')

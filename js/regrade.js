@@ -1803,10 +1803,16 @@ async function renderSettings() {
 
         <div class="rg-card p-5">
           <p class="text-sm font-bold text-[var(--ink)] mb-1">ปุ่ม "ส่งสรุปเกรดเข้าระบบ" ในหน้าบันทึกคะแนนของครู</p>
-          <p class="text-xs text-[var(--muted-2)] mb-3">ครูจะเห็นปุ่มนี้ในหน้าบันทึกคะแนนของแต่ละห้อง (pp5 ปกติ) ก็ต่อเมื่อถึงวันที่กำหนดไว้นี้แล้วเท่านั้น — กดแล้วระบบจะสรุปว่านักเรียนคนไหนติด 0/ถูกบังคับเกรด แล้วส่งเข้าระบบแก้ค้างเก่าอัตโนมัติ (ไม่ทับรายการที่มีอยู่แล้ว กดซ้ำได้ปลอดภัย)</p>
-          <label class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">แสดงปุ่มตั้งแต่วันที่</label>
-          <input id="regrade-set-live-submit-date" type="date" value="${escHtml(c.live_submit_open_date || '')}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm">
-          <p class="text-[11px] text-[var(--muted-2)] mt-1.5">เว้นว่างไว้ = ยังไม่แสดงปุ่มนี้เลย</p>
+          <p class="text-xs text-[var(--muted-2)] mb-3">ปุ่มส่งเกรดจะแสดงในหน้าบันทึกคะแนนและการ์ดห้องเรียนเฉพาะช่วงวันที่นี้เท่านั้น โดยรวมวันเริ่มและวันสิ้นสุดไว้ในช่วงที่เปิดรับ</p>
+          <div class="grid gap-3 sm:grid-cols-2">
+            <label class="block text-[11px] font-bold text-[var(--ink-2)]">แสดงปุ่มตั้งแต่วันที่
+              <input id="regrade-set-live-submit-date" type="date" value="${escHtml(c.live_submit_open_date || '')}" class="mt-1 w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm">
+            </label>
+            <label class="block text-[11px] font-bold text-[var(--ink-2)]">ถึงวันที่
+              <input id="regrade-set-live-submit-end" type="date" value="${escHtml(c.live_submit_close_date || '')}" class="mt-1 w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm">
+            </label>
+          </div>
+          <p class="text-[11px] text-[var(--muted-2)] mt-1.5">ต้องกำหนดวันเริ่มและวันสิ้นสุดให้ครบ จึงจะแสดงปุ่ม</p>
         </div>
 
         <div class="rg-card p-5">
@@ -2078,6 +2084,12 @@ async function renderSettings() {
     try { await addRegradeExecutive(teacher.profile_id); input.value = ''; showToast('เพิ่มแล้ว ✅', 'success'); renderSettings() } catch (err) { showToast(err.message, 'error') }
   })
   document.getElementById('regrade-set-save').addEventListener('click', async () => {
+    const liveSubmitStart = document.getElementById('regrade-set-live-submit-date').value
+    const liveSubmitEnd = document.getElementById('regrade-set-live-submit-end').value
+    if (liveSubmitStart && liveSubmitEnd && liveSubmitEnd < liveSubmitStart) {
+      showToast('วันสิ้นสุดการแสดงปุ่มส่งเกรดต้องไม่ก่อนวันเริ่มต้น', 'warning')
+      return
+    }
     const ok = await showRegradeConfirm({ title: 'ยืนยันบันทึกการตั้งค่า', message: 'บันทึกการตั้งค่าทั้งหมดนี้ใช่หรือไม่? จะมีผลกับทุกคนทันที', confirmText: 'บันทึก' })
     if (!ok) return
     try {
@@ -2089,6 +2101,7 @@ async function renderSettings() {
         response_window_start: document.getElementById('regrade-set-response-start').value,
         response_window_end: document.getElementById('regrade-set-response-end').value,
         live_submit_open_date: document.getElementById('regrade-set-live-submit-date').value,
+        live_submit_close_date: document.getElementById('regrade-set-live-submit-end').value,
         show_deadline_banner: isToggleOn(content, 'regrade-set-show-deadline'),
         visibility: {
           student_menu: isToggleOn(content, 'regrade-set-vis-student'),

@@ -12,7 +12,7 @@ import {
   updateClassStudentSpecialResult, exportClassGradesToGradeOnline,
   applyScoreOverride,
 } from './api.js'
-import { getRegradeConfig, submitClassGradesToRegrade } from './regrade-api.js'
+import { getRegradeConfig, isLiveGradeSubmitWindowOpen, submitClassGradesToRegrade } from './regrade-api.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { supabase } from './supabase.js'
 import { renderScoreColumns, evalFormula, assignBonusVars } from './teacher-score-columns.js'
@@ -276,9 +276,8 @@ export async function renderGradesGrid(teacher, classData) {
     const currentYear = parseInt(sysCfg.academicYear ?? 2568)
     const currentSemester = parseInt(sysCfg.semester ?? 1)
     const isHistoricalTerm = classYear !== currentYear || classSemester !== currentSemester
-    // ปุ่ม "ส่งสรุปเกรดเข้าระบบแก้ค้างเก่า" โชว์เฉพาะตั้งแต่วันที่แอดมินตั้งไว้ใน regrade_config เท่านั้น
-    const showRegradeSubmitBtn = !!regradeCfg.live_submit_open_date
-      && new Date().toISOString().slice(0, 10) >= regradeCfg.live_submit_open_date
+    // ปุ่มส่งสรุปเกรดแสดงเฉพาะในช่วงวันที่แอดมินกำหนดครบทั้งวันเริ่มและวันสิ้นสุด
+    const showRegradeSubmitBtn = isLiveGradeSubmitWindowOpen(regradeCfg)
     applyReadingGradesFromConfig(sysCfg)
 
     // ตรวจหาวิชาเดียวกันในห้องอื่น (หน่วงหลัง render)

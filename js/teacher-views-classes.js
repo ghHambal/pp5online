@@ -32,6 +32,7 @@ import { supabase } from './supabase.js'
 import { showToast, showDangerConfirm, getFriendlyErrorMessage } from './ui.js'
 import {
   getRegradeConfig,
+  isLiveGradeSubmitWindowOpen,
   getTeacherRegradeSubmissionStatuses,
   previewClassGradesToRegrade,
   submitClassGradesToRegrade,
@@ -530,8 +531,7 @@ export async function renderMyClasses(teacher) {
     // ประวัติคะแนนของภาคเรียนก่อนหน้าให้เปิดจากหน้า "บันทึกคะแนน" โดยตรง
     const isCurrentTerm = c => c.academic_year == null || (+c.academic_year === academicYear && +c.semester === semester)
     const visibleClasses = classes.filter(isCurrentTerm)
-    const regradeOpenDate = regradeCfg?.live_submit_open_date
-    const regradeSubmitOpen = !!regradeOpenDate && new Date().toISOString().slice(0, 10) >= regradeOpenDate
+    const regradeSubmitOpen = isLiveGradeSubmitWindowOpen(regradeCfg)
     const regradeStatuses = regradeSubmitOpen
       ? await getTeacherRegradeSubmissionStatuses(visibleClasses.map(c => c.id)).catch(() => [])
       : []
