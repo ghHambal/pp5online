@@ -4216,14 +4216,14 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
             style="background:${clr.dot}" title="สีประจำห้อง" data-gi="${gi}"></button>
           <div class="flex-1 space-y-1.5 min-w-0">
             <div class="flex items-center gap-1.5">
-              <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">วิชา</span>
+              <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">วิชา/กิจกรรม</span>
               <input list="subj-list-${gi}" class="vg-subj-name flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs font-semibold"
-                value="${g.subject_name ?? ''}" placeholder="ชื่อวิชา" data-gi="${gi}" />
+                value="${g.subject_name ?? ''}" placeholder="ชื่อวิชาหรือกิจกรรม" data-gi="${gi}" />
             </div>
             <div class="flex items-center gap-1.5">
-              <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">ห้อง</span>
+              <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">ห้อง (ถ้ามี)</span>
               <input list="room-list-${gi}" class="vg-class flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs"
-                value="${g.class_name ?? ''}" placeholder="ชั้น/ห้อง เช่น ม.6/2" data-gi="${gi}" />
+                value="${g.class_name ?? ''}" placeholder="ชั้น/ห้อง (ไม่บังคับ)" data-gi="${gi}" />
             </div>
             <div class="flex items-center gap-1.5">
               <span class="text-[10px] text-gray-400 w-12 flex-shrink-0">ครู</span>
@@ -4368,7 +4368,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
       const subjList   = subjects.map(s=>`"${s.subject_name}" (id:${s.id})`).join(', ')
       const periodList = periods.map(p=>`คาบ ${p.period_no}: ${p.start_time?.slice(0,5)}-${p.end_time?.slice(0,5)}`).join(', ')
       const prompt = `วิเคราะห์ตารางสอนในภาพนี้อย่างละเอียด
-แต่ละช่องในตารางมี 3 ส่วน: บรรทัด1=ชื่อวิชา(ตัวหนาภาษาอังกฤษ), บรรทัด2=ชั้น/ห้องเรียน, บรรทัด3=ชื่อครู
+แต่ละช่องในตารางอาจมีชื่อวิชา/กิจกรรม, ชั้น/ห้องเรียน และชื่อครู โดยห้องเรียนอาจไม่มีสำหรับการประชุมหรือกิจกรรมพิเศษ
 คาบเรียน: ${periodList}
 วันเรียน: 0=อาทิตย์,1=จันทร์,2=อังคาร,3=พุธ,4=พฤหัส,5=ศุกร์
 วิชาที่ครูสอน (อาจตรงกับในตาราง): ${subjList || 'ไม่ระบุ'}
@@ -4387,6 +4387,7 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
   ]
 }]
 - subject_id: ใส่ id ถ้า subject_name ตรงกับวิชาในรายการ ถ้าไม่ตรงให้ null
+- หากเป็นการประชุมหรือกิจกรรมพิเศษ ให้ใส่ชื่อใน subject_name, ตั้ง subject_id เป็น null และตั้ง class_name เป็นค่าว่างได้เมื่อไม่มีห้อง ห้ามเดาห้อง
 - span_periods: 1,2,3,4 ตามจำนวนช่องที่รวมกัน (merged cells)
 - ช่องว่างไม่ต้องใส่`
 
@@ -4456,8 +4457,8 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
     for (const [groupIndex, group] of groups.entries()) {
       const subjectName = String(group.subject_name ?? '').trim()
       const className = String(group.class_name ?? '').trim()
-      if (!subjectName || !className || !group.sessions?.length) {
-        showToast(`กลุ่มที่ ${groupIndex + 1} ต้องมีชื่อวิชา ห้องเรียน และคาบสอนอย่างน้อย 1 คาบ`, 'warning')
+      if (!subjectName || !group.sessions?.length) {
+        showToast(`กลุ่มที่ ${groupIndex + 1} ต้องมีชื่อวิชาหรือกิจกรรม และคาบสอนอย่างน้อย 1 คาบ (ห้องเรียนไม่บังคับ)`, 'warning')
         return
       }
       for (const session of group.sessions) {
