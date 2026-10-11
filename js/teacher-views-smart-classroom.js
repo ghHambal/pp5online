@@ -980,11 +980,41 @@ export async function renderSmartClassroom(teacher, classId) {
   // ── แผนการจัดการเรียนรู้ (ผูกกับรายวิชา ยืดหยุ่นจำนวนแผน) ────────────────────
   const _lessonPlansHTML = () => {
     if (!lessonPlans.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่มีแผนการสอน — กด "➕ สร้างแผน" เพื่อเริ่ม</p>`
-    return `<div class="max-h-72 lg:max-h-[28rem] overflow-y-auto space-y-2 pr-1">${lessonPlans.map(p => `
+    const dayNames = { 1:'จันทร์', 2:'อังคาร', 3:'พุธ', 4:'พฤหัสบดี', 5:'ศุกร์', 6:'เสาร์', 7:'อาทิตย์' }
+    const scheduleByDay = new Map()
+    for (const row of (mySchedule ?? []).filter(row => Number(row.subject_id) === Number(courseId))) {
+      const day = Number(row.day_of_week) || 7
+      if (!scheduleByDay.has(day)) scheduleByDay.set(day, [])
+      scheduleByDay.get(day).push({ start: Number(row.period_no), count: Math.max(1, Number(row.span_periods) || 1) })
+    }
+    const sortedScheduleDays = [...scheduleByDay.keys()].sort((a, b) => (a % 7) - (b % 7))
+    const planPeriodCount = p => {
+      const stored = Number(p.source_json?.period_count)
+      if (Number.isInteger(stored) && stored > 0) return stored
+      const duration = Number(p.duration_minutes) || 45
+      return duration % 45 === 0 ? duration / 45 : (duration === 100 ? 2 : 1)
+    }
+    const planScheduleLabel = p => {
+      const count = planPeriodCount(p)
+      const date = p.lesson_date || p.source_json?.lesson_date
+      const dateDay = /^\d{4}-\d{2}-\d{2}$/.test(String(date ?? '')) ? (new Date(`${date}T00:00:00`).getDay() || 7) : null
+      const weeklyIndex = Number(p.source_json?.session_in_week)
+      const day = dateDay ?? (Number.isInteger(weeklyIndex) && weeklyIndex > 0 ? sortedScheduleDays[weeklyIndex - 1] : null)
+      const slots = scheduleByDay.get(day) ?? []
+      const covered = slots.reduce((sum, slot) => sum + slot.count, 0)
+      if (covered !== count) return ''
+      const ranges = slots.sort((a, b) => a.start - b.start).map(slot => slot.count > 1 ? `${slot.start}–${slot.start + slot.count - 1}` : `${slot.start}`)
+      return ` · วัน${dayNames[day]} คาบ ${ranges.join(', ')}`
+    }
+    const sortedPlans = [...lessonPlans].sort((a, b) => Number(a.week_start || 0) - Number(b.week_start || 0)
+      || Number(a.session_number || 0) - Number(b.session_number || 0)
+      || Number(a.week_end || 0) - Number(b.week_end || 0)
+      || String(a.title ?? '').localeCompare(String(b.title ?? ''), 'th'))
+    return `<div class="max-h-72 lg:max-h-[28rem] overflow-y-auto space-y-2 pr-1">${sortedPlans.map(p => `
       <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 bg-gray-50">
         <button class="sc-plan-row flex-1 min-w-0 text-left" data-planid="${p.id}">
           <p class="text-xs font-bold text-gray-700 truncate">${_htmlEsc(p.title)}</p>
-          <p class="text-[10px] text-gray-400">สัปดาห์ ${p.week_start}${p.week_end !== p.week_start ? `-${p.week_end}` : ''}</p>
+          <p class="text-[10px] text-gray-400">สัปดาห์ ${p.week_start}${p.week_end !== p.week_start ? `-${p.week_end}` : ''} · ครั้งที่ ${p.session_number || 1} · ${planPeriodCount(p)} คาบ · ${Number(p.duration_minutes) || Number(p.source_json?.duration_minutes) || planPeriodCount(p) * Number(p.source_json?.minutes_per_period || 45)} นาที${planScheduleLabel(p)}</p>
         </button>
         <button class="sc-plan-reflect text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 flex-shrink-0" data-planid="${p.id}">✍️ ลงนาม/พิมพ์</button>
         <button type="button" class="sc-plan-delete text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-red-200 text-red-600 flex-shrink-0" data-planid="${p.id}" aria-label="ลบแผน ${_htmlEsc(p.title)}">ลบ</button>
@@ -2125,6 +2155,15 @@ export async function renderSmartClassroom(teacher, classId) {
     const classDisplay = /^ม\./.test(rawClassName) ? rawClassName.replace(/^ม\./, '') : [gradeText, rawClassName].filter(Boolean).join(' ')
     const classHeadRel = cls?.students
     const classHeadName = (Array.isArray(classHeadRel) ? classHeadRel[0]?.full_name : classHeadRel?.full_name) ?? '................................'
+    const existingDuration = Number(p.duration_minutes) || Number(p.source_json?.duration_minutes) || 45
+    const storedPeriodCount = Number(p.source_json?.period_count)
+    const storedMinutesPerPeriod = Number(p.source_json?.minutes_per_period)
+    const initialPeriodCount = Number.isInteger(storedPeriodCount) && storedPeriodCount > 0
+      ? storedPeriodCount : (existingDuration % 45 === 0 ? existingDuration / 45 : (existingDuration === 100 ? 2 : 1))
+    const initialMinutesPerPeriod = Number.isInteger(storedMinutesPerPeriod) && storedMinutesPerPeriod > 0
+      ? storedMinutesPerPeriod : (existingDuration % 45 === 0 ? 45 : (existingDuration === 100 ? 50 : existingDuration))
+    const rawUnitTitle = String(p.unit_title ?? '').trim()
+    const editableUnitTitle = rawUnitTitle.replace(/^หน่วยการเรียนรู้ที่\s*/,'').replace(/^หน่วยที่\s*/,'').replace(/^ที่\s*/,'')
     const courseDays = [...new Set((mySchedule ?? []).filter(row => Number(row.subject_id) === Number(courseId)).map(row => Number(row.day_of_week)).map(day => day === 0 ? 7 : day).filter(day => Number.isInteger(day) && day >= 1 && day <= 7 && day !== 6))].sort((a, b) => (a % 7) - (b % 7))
     const lessonDateForWeek = weekNo => {
       if (!cfg?.semester_start || !Number.isInteger(Number(weekNo)) || Number(weekNo) < 1 || !courseDays.length) return null
@@ -2159,7 +2198,7 @@ export async function renderSmartClassroom(teacher, classId) {
         #sc-plan-modal .lp-head{text-align:center}.lp-head img{width:58px;height:58px;object-fit:contain;margin:auto}.lp-head h1{font-size:23px;line-height:1.15;font-weight:800;margin:5px 0 4px}.lp-head h2{font-size:17px;line-height:1.2;font-weight:700;margin:0 0 4px}.lp-subject-line{font-size:14px;margin:2px 0}.lp-unit-row{display:flex;align-items:center;justify-content:center;gap:4px;white-space:nowrap}.lp-unit-row input{min-width:0;text-align:center}
         #sc-plan-modal .lp-doc-input,#sc-plan-modal .lp-doc-area{font:inherit;color:#111;background:transparent;border:1px dashed transparent;border-radius:4px;padding:2px 4px;outline:none;width:100%;resize:none;overflow:hidden}
         #sc-plan-modal .lp-doc-input:hover,#sc-plan-modal .lp-doc-area:hover{background:#f8fafc;border-color:#cbd5e1}#sc-plan-modal .lp-doc-input:focus,#sc-plan-modal .lp-doc-area:focus{background:#fffef2;border-color:#0f7a42;box-shadow:0 0 0 2px rgba(15,122,66,.12)}
-        #sc-plan-modal .lp-meta{display:grid;grid-template-columns:1fr 1fr 1fr;align-items:center;border-top:1.5px solid #176b3a;border-bottom:1.5px solid #176b3a;margin-top:10px;padding:6px 7px}.lp-meta label{display:flex;align-items:center;gap:3px;white-space:nowrap}.lp-meta label:nth-child(2){justify-content:center}.lp-meta label:last-child{justify-content:flex-end}.lp-meta input[type=number]{width:58px}.lp-meta input[type=date]{width:128px}
+        #sc-plan-modal .lp-meta{display:grid;grid-template-columns:.8fr .85fr .9fr 1fr 1.25fr;align-items:center;gap:4px;border-top:1.5px solid #176b3a;border-bottom:1.5px solid #176b3a;margin-top:10px;padding:6px 7px}.lp-meta label{display:flex;align-items:center;gap:3px;white-space:nowrap}.lp-meta label:nth-child(2),.lp-meta label:nth-child(3),.lp-meta label:nth-child(4){justify-content:center}.lp-meta label:last-child{justify-content:flex-end}.lp-meta input[type=number]{width:48px}.lp-meta input[type=date]{width:112px}.lp-duration-total{font-weight:700;color:#176b3a}
         #sc-plan-modal .lp-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}.lp-box{border:1.2px solid #17743d;border-radius:5px;overflow:hidden;margin-bottom:11px}.lp-box-title{background:#d8f6e2;color:#145f35;font-size:15px;padding:7px 10px;border-bottom:1px solid #17743d}.lp-box-body{padding:8px 10px}.lp-box-body textarea{min-height:62px}.lp-activities textarea{min-height:48px}.lp-activities .main{min-height:126px}.lp-media textarea{min-height:48px}
         #sc-plan-modal .lp-sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:36px}.lp-sign{text-align:center;font-size:12px;line-height:1.55}.lp-sign-space{height:44px}.lp-sign-line{border-bottom:1px dotted #111;height:1px;margin:0 4px 5px}.lp-reflect{margin-top:28px}.lp-reflect h3,.lp-suggestion h3{font-size:14px;font-weight:500;border-bottom:1px solid #111;padding-bottom:4px;margin:0 0 9px}.lp-rule{height:31px;border-bottom:1px solid #8ca1bd;color:#176b3a;padding:3px 8px;font-size:12px}.lp-suggestion{margin-top:22px}.lp-dept-sign{width:72%;margin:72px auto 0;text-align:center;font-size:12px;line-height:1.6}.lp-dept-sign .lp-sign-line{display:inline-block;width:180px;vertical-align:middle}
         #sc-plan-modal .lp-extra{position:relative;flex:none}.lp-extra summary{cursor:pointer;list-style:none}.lp-extra-content{position:absolute;top:46px;right:0;width:360px;background:#fff;border:1px solid #dbe2ea;border-radius:14px;box-shadow:0 16px 40px rgba(15,23,42,.18);padding:14px;z-index:5}.lp-extra textarea{width:100%;border:1px solid #dbe2ea;border-radius:9px;padding:8px;font-size:12px;resize:vertical}
@@ -2182,11 +2221,13 @@ export async function renderSmartClassroom(teacher, classId) {
             <h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1>
             <h2>กลุ่มสาระการเรียนรู้${_htmlEsc(learningArea)}</h2>
             <p class="lp-subject-line">วิชา ${_htmlEsc(ms.subject_name ?? '')} รหัสวิชา ${_htmlEsc(ms.subject_code ?? '')} ชั้นมัธยมศึกษาปีที่ ${_htmlEsc(classDisplay || '................................')}</p>
-            <div class="lp-unit-row">หน่วยการเรียนรู้ <input id="lp-unit-title" class="lp-doc-input" value="${_htmlEsc(p.unit_title ?? '')}" placeholder="หน่วยการเรียนรู้ที่ 1"> เรื่อง <input id="lp-key_concept" class="lp-doc-input" value="${_htmlEsc(p.key_concept ?? '')}" placeholder="เรื่องที่สอน"></div>
+            <div class="lp-unit-row"><span>หน่วยการเรียนรู้ที่</span><input id="lp-unit-title" class="lp-doc-input" value="${_htmlEsc(editableUnitTitle)}" placeholder="เลขหน่วยและชื่อหน่วย"> เรื่อง <input id="lp-key_concept" class="lp-doc-input" value="${_htmlEsc(p.key_concept ?? '')}" placeholder="เรื่องที่สอน"></div>
           </section>
           <section class="lp-meta">
             <label>ครั้งที่ <input id="lp-session-number" type="number" min="1" class="lp-doc-input" value="${p.session_number ?? 1}"></label>
-            <label>เวลา <input id="lp-duration" type="number" min="1" class="lp-doc-input" value="${p.duration_minutes ?? 100}"> นาที</label>
+            <label>จำนวน <input id="lp-period-count" type="number" min="1" class="lp-doc-input" value="${initialPeriodCount}"> คาบ</label>
+            <label>นาที/คาบ <input id="lp-minutes-per-period" type="number" min="1" class="lp-doc-input" value="${initialMinutesPerPeriod}"></label>
+            <label>รวมเวลา <span><output id="lp-duration-total" class="lp-duration-total">${initialPeriodCount * initialMinutesPerPeriod}</output> นาที</span></label>
             <label>วันที่ <span><input id="lp-lesson-date" type="date" class="lp-doc-input" value="${_htmlEsc(initialLessonDate)}"><small id="lp-date-thai" class="block text-center text-[10px] text-gray-500">${formatThaiShortDate(initialLessonDate)}</small></span></label>
           </section>
           <section class="lp-columns">
@@ -2211,6 +2252,13 @@ export async function renderSmartClassroom(teacher, classId) {
       </main>`
     document.body.appendChild(m)
     m.querySelector('#lp-close').addEventListener('click', () => m.remove())
+    const updateDurationTotal = () => {
+      const periodCount = Math.max(1, parseInt(m.querySelector('#lp-period-count').value, 10) || 1)
+      const minutesPerPeriod = Math.max(1, parseInt(m.querySelector('#lp-minutes-per-period').value, 10) || 45)
+      m.querySelector('#lp-duration-total').textContent = String(periodCount * minutesPerPeriod)
+    }
+    m.querySelector('#lp-period-count').addEventListener('input', updateDurationTotal)
+    m.querySelector('#lp-minutes-per-period').addEventListener('input', updateDurationTotal)
     const desktopTitle = m.querySelector('#lp-title'), mobileTitle = m.querySelector('#lp-title-mobile')
     mobileTitle?.addEventListener('input', () => { desktopTitle.value = mobileTitle.value })
     desktopTitle?.addEventListener('input', () => { if (mobileTitle) mobileTitle.value = desktopTitle.value })
@@ -2252,13 +2300,17 @@ export async function renderSmartClassroom(teacher, classId) {
       if (!weekStart || !weekEnd || weekEnd < weekStart) { showToast('กำหนดช่วงสัปดาห์ให้ถูกต้อง', 'warning'); return }
       const btn = m.querySelector('#lp-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+      const periodCount = Math.max(1, parseInt(m.querySelector('#lp-period-count').value, 10) || 1)
+      const minutesPerPeriod = Math.max(1, parseInt(m.querySelector('#lp-minutes-per-period').value, 10) || 45)
+      const durationMinutes = periodCount * minutesPerPeriod
       const payload = {
         course_id: courseId,
         teacher_id: teacher.id,
         title, week_start: weekStart, week_end: weekEnd,
         session_number: parseInt(m.querySelector('#lp-session-number').value, 10) || 1,
         lesson_date: m.querySelector('#lp-lesson-date').value || lessonDateForWeek(weekStart) || null,
-        duration_minutes: parseInt(m.querySelector('#lp-duration').value, 10) || null,
+        duration_minutes: durationMinutes,
+        source_json: { ...(p.source_json ?? {}), period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: durationMinutes },
         unit_title: m.querySelector('#lp-unit-title').value.trim() || null,
         standards: m.querySelector('#lp-standards').value.trim() || null,
         objectives: m.querySelector('#lp-objectives').value.trim() || null,

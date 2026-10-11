@@ -776,17 +776,21 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept, semesterS
   const className = /^ม\./.test(rawClassName) ? rawClassName.replace(/^ม\./, '') : [gradeText, rawClassName].filter(Boolean).join(' ')
   const areaCodes = { MATH:'คณิตศาสตร์', THAI:'ภาษาไทย', SCI:'วิทยาศาสตร์และเทคโนโลยี', ENG:'ภาษาต่างประเทศ', SOC:'สังคมศึกษา ศาสนาและวัฒนธรรม', PE:'สุขศึกษาและพลศึกษา', ART:'ศิลปะ', CAREER:'การงานอาชีพ', ISLAM:'อิสลามศึกษา' }
   const learningArea = areaCodes[String(cls?.master_subjects?.dept ?? meta.learning_area ?? '').trim().toUpperCase()] || cls?.master_subjects?.dept || meta.learning_area || '................................'
-  const duration = Number(plan.duration_minutes) > 0 && Number(plan.duration_minutes) % 60 === 0
-    ? `${Number(plan.duration_minutes) / 60} ชั่วโมง`
-    : `${plan.duration_minutes || '...........'} นาที`
+  const periodCount = Number(plan.source_json?.period_count) > 0
+    ? Number(plan.source_json.period_count)
+    : (Number(plan.duration_minutes) === 100 ? 2 : Number(plan.duration_minutes) > 0 && Number(plan.duration_minutes) % 45 === 0 ? Number(plan.duration_minutes) / 45 : 1)
+  const totalMinutes = Number(plan.duration_minutes) || Number(plan.source_json?.duration_minutes) || periodCount * Number(plan.source_json?.minutes_per_period || 45)
+  const duration = totalMinutes > 0 && totalMinutes % 60 === 0
+    ? `${totalMinutes / 60} ชั่วโมง`
+    : `${totalMinutes || '...........'} นาที`
   const rawUnitTitle = String(plan.unit_title ?? '').trim()
   const standardsType = plan.standards_type ?? plan.source_json?.standards_type ?? null
-  const unitTitle = !rawUnitTitle ? ''
-    : /^หน่วยการเรียนรู้ที่\s*/.test(rawUnitTitle) ? rawUnitTitle
-      : /^หน่วยที่\s*/.test(rawUnitTitle) ? rawUnitTitle.replace(/^หน่วยที่\s*/, 'หน่วยการเรียนรู้ที่ ')
-        : /^ที่\s*/.test(rawUnitTitle) ? `หน่วยการเรียนรู้${rawUnitTitle}`
-          : `หน่วยการเรียนรู้ที่ ${rawUnitTitle}`
-  const lessonHeading = [unitTitle, plan.key_concept ? `เรื่อง ${String(plan.key_concept).replace(/^เรื่อง\s*/, '')}` : ''].filter(Boolean).join(' ')
+  const unitTitle = rawUnitTitle
+    .replace(/^หน่วยการเรียนรู้ที่\s*/,'')
+    .replace(/^หน่วยที่\s*/,'')
+    .replace(/^ที่\s*/,'')
+  const formattedUnitTitle = unitTitle ? `หน่วยการเรียนรู้ที่ ${unitTitle}` : ''
+  const lessonHeading = [formattedUnitTitle, plan.key_concept ? `เรื่อง ${String(plan.key_concept).replace(/^เรื่อง\s*/, '')}` : ''].filter(Boolean).join(' ')
   const nl = value => esc(value || '-').replace(/\n/g, '<br>')
   const logoUrl = new URL('./pp5-form-logo.png', window.location.href).href
   const sig = (url, name, role) => `<div class="sig"><div class="sig-img">${url ? `<img src="${esc(url)}">` : ''}</div><div class="sig-sign-row"><span>ลงชื่อ</span><span class="sig-line"></span></div><div>${role}</div><div contenteditable="true" spellcheck="false">( ${esc(name || '................................')} )</div><div>วันที่ <span data-sign-date>${date}</span></div></div>`
@@ -803,7 +807,7 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept, semesterS
     @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:10.5px;line-height:1.42;background:#eef2f7}.print-toolbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:12px;padding:10px;background:#172b4d;color:#fff;font-size:13px}.print-toolbar label{display:flex;align-items:center;gap:7px}.print-toolbar input{padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;color:#111;background:#fff}.print-toolbar button{padding:7px 14px;border:0;border-radius:7px;background:#16a36a;color:#fff;font-weight:700;cursor:pointer}.page{width:210mm;min-height:297mm;padding:10mm 11mm 11mm;margin:8mm auto;background:#fff;box-shadow:0 2px 16px #0002}.head{text-align:center}.logo{width:15mm;height:15mm;object-fit:contain}.head h1{font-size:18px;line-height:1.15;margin:1mm 0}.head h2{font-size:13px;line-height:1.15;margin:0 0 1mm}.head p{font-size:10.5px;margin:.5mm 0}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #176b3a;border-bottom:1px solid #176b3a;padding:1.7mm 2mm;margin-top:2.5mm;font-size:10.5px}.meta span:nth-child(2){text-align:center}.meta span:last-child{text-align:right}.cols{display:grid;grid-template-columns:1fr 1fr;gap:3.5mm;margin-top:3mm}.box{border:.8px solid #17743d;border-radius:1.2mm;margin-bottom:2.7mm;overflow:hidden}.box h3{font-size:11px;font-weight:500;margin:0;padding:1.5mm 2.2mm;background:#d8f6e2;color:#145f35;border-bottom:.8px solid #17743d}.box .content{padding:1.8mm 2.2mm;line-height:1.5;min-height:15mm;white-space:pre-wrap;outline:none}.activities{min-height:80mm!important}.sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:7mm;margin-top:10mm}.sig{text-align:center;font-size:9px;line-height:1.55}.sig-img{height:12mm;display:flex;align-items:flex-end;justify-content:center}.sig-img img{max-height:12mm;max-width:35mm;object-fit:contain}.sig-sign-row{display:flex;align-items:center;justify-content:center;gap:1.5mm}.sig-line{display:inline-block;width:31mm;border-bottom:1px dotted #111;vertical-align:middle}.reflection-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:10mm 0 2mm}.ruled{margin-top:0}.rule{min-height:7mm;border-bottom:.6px solid #8ca1bd;padding:1mm 2mm;color:#111;outline:none}.rule.title{color:#176b3a}.drawing-rule{height:22mm;display:flex;align-items:center}.note-drawing{width:100%;height:100%;object-fit:contain}.suggest-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:5mm 0 2mm}.dept{width:72%;margin:18mm auto 0;text-align:center;font-size:9.5px;line-height:1.6}.dept .sig-img{height:12mm}.dept-line{display:inline-block;width:38mm;border-bottom:1px dotted #111;vertical-align:middle}.dept-date{display:inline-block;min-width:34mm;min-height:1em;border-bottom:1px dotted #111;outline:none}@media print{body{background:#fff;print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-toolbar{display:none}.page{margin:0;box-shadow:none}}</style></head><body>
     <div class="print-toolbar"><span>คลิกข้อความในเอกสารเพื่อแก้ไขก่อนพิมพ์</span><label>วันที่สอน<input id="lesson-date" type="date" value="${esc(initialDate)}"></label><button id="print-document" type="button">🖨️ พิมพ์เอกสาร</button></div><div class="page">
     <div class="head"><img class="logo" src="${esc(logoUrl)}"><h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1><h2>กลุ่มสาระการเรียนรู้${esc(learningArea)}</h2><p>วิชา ${esc(meta.subject_name)} รหัสวิชา ${esc(meta.subject_code)} ชั้นมัธยมศึกษาปีที่ ${esc(className)}</p><p contenteditable="true" spellcheck="true">${esc(lessonHeading || 'เรื่อง ................................')}</p></div>
-    <div class="meta"><span>ครั้งที่ ${plan.session_number || 1}</span><span>เวลา ${duration}</span><span>วันที่ <span data-plan-date>${date}</span></span></div>
+    <div class="meta"><span>ครั้งที่ ${plan.session_number || 1} · ${periodCount} คาบ</span><span>เวลา ${duration}</span><span>วันที่ <span data-plan-date>${date}</span></span></div>
     <div class="cols"><div>
       <section class="box"><h3>1.${standardsType === 'learning_outcomes' ? 'ผลการเรียนรู้' : standardsType === 'indicators' ? 'มาตรฐานการเรียนรู้/ตัวชี้วัด' : 'มาตรฐาน/ตัวชี้วัด (ผลการเรียนรู้)'}</h3><div class="content" contenteditable="true" spellcheck="true">${nl(plan.standards)}</div></section>
       <section class="box"><h3>2.จุดประสงค์การเรียนรู้</h3><div class="content" contenteditable="true" spellcheck="true">${nl(plan.objectives)}</div></section>
