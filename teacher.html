@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="/pp5online/manifest.json" />
+  <meta name="theme-color" content="#10b981" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="ปพ.5 ออนไลน์" />
+  <link rel="apple-touch-icon" href="/pp5online/vite.svg" />
+  <title>ปพ.5 ออนไลน์ — ครูผู้สอน</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  
+  <style>
+    /* ซ่อน scrollbar ของ sidebar nav — คงเลื่อนได้แต่ไม่มีแถบ */
+    #sidebar nav::-webkit-scrollbar { display: none; }
+    #sidebar nav { scrollbar-width: none; -ms-overflow-style: none; }
+    .sidebar-menu-group { margin: 0 0 7px; }
+    .sidebar-menu-group-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      min-height: 34px;
+      padding: 5px 10px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: #86efac;
+      font: inherit;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-align: left;
+      text-transform: uppercase;
+      transition: background .16s ease, color .16s ease;
+    }
+    .sidebar-menu-group-toggle:hover,
+    .sidebar-menu-group-toggle[aria-expanded="true"] { background: rgba(6, 78, 59, .58); color: #fff; }
+    .sidebar-menu-group-toggle-label { display: flex; align-items: center; gap: 7px; min-width: 0; }
+    .sidebar-menu-group-chevron { font-size: 12px; transition: transform .18s ease; }
+    .sidebar-menu-group.is-collapsed .sidebar-menu-group-chevron { transform: rotate(-90deg); }
+    .sidebar-menu-group-items { padding-top: 2px; }
+    .sidebar-menu-group.is-collapsed .sidebar-menu-group-items { display: none; }
+    #sidebar .sidebar-group-legacy-label { display: none !important; }
+
+    /* โหมดเต็มจอสำหรับ Smart Classroom — ซ่อน sidebar+header ชั่วคราว คืนค่าเมื่อกดย้อนกลับ */
+    body.sc-fullscreen #sidebar { display: none !important; }
+    body.sc-fullscreen #app-main-col { margin-left: 0 !important; }
+    body.sc-fullscreen #app-main-col > header { display: none !important; }
+    body.sc-fullscreen #mobile-teacher-nav,
+    body.sc-fullscreen #mobile-nav-backdrop,
+    body.sc-fullscreen #mobile-nav-sheet,
+    body.sc-fullscreen #mobile-profile-backdrop,
+    body.sc-fullscreen #mobile-profile-sheet { display: none !important; }
+    body.mobile-sidebar-open #mobile-teacher-nav { display: none !important; }
+
+    /* เมนูหลักสำหรับมือถือ — desktop ยังคงใช้ sidebar เดิม */
+    #mobile-teacher-nav,
+    #mobile-nav-backdrop,
+    #mobile-nav-sheet,
+    #mobile-profile-backdrop,
+    #mobile-profile-sheet { display: none; }
+    @media (max-width: 767px) {
+      body:not(.sc-fullscreen) #app-main-col > main {
+        padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)) !important;
+      }
+      #app-main-col > header {
+        height: 3.75rem;
+        padding-right: .75rem;
+        padding-left: .75rem;
+      }
+      #app-main-col > header h1 {
+        max-width: 34vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: .95rem;
+      }
+      #app-main-col > header > div:first-child { min-width: 0; }
+      #app-main-col > header > div:last-child { gap: .25rem; }
+      #app-main-col > header #btn-menu { padding: .25rem; font-size: 1.1rem; display: none; }
+      #app-main-col > header #btn-quick-leave-scanner {
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: .75rem;
+        font-size: 1.15rem;
+      }
+      #app-main-col > header #btn-refresh { width: 2rem; height: 2rem; font-size: .9rem; }
+      #app-main-col > header #user-avatar { width: 1.9rem; height: 2.35rem; font-size: .75rem; }
+      #app-main-col > header #btn-switch-admin {
+        width: 2rem;
+        height: 2rem;
+        justify-content: center;
+        padding: 0;
+        margin-right: 0;
+      }
+      #app-main-col > header #btn-switch-admin > span:last-child { display: none; }
+      #mobile-teacher-nav {
+        position: fixed;
+        z-index: 80;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 3px;
+        padding: 6px 7px calc(6px + env(safe-area-inset-bottom));
+        background: rgba(255, 255, 255, .97);
+        border-top: 1px solid #dbe7e3;
+        box-shadow: 0 -8px 24px rgba(15, 118, 110, .12);
+        backdrop-filter: blur(16px);
+      }
+      .mobile-nav-group {
+        position: relative;
+        min-width: 0;
+        min-height: 52px;
+        padding: 5px 2px 4px;
+        border: 0;
+        border-radius: 14px;
+        background: transparent;
+        color: #64748b;
+        font: inherit;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.15;
+        transition: color .16s ease, background .16s ease, transform .16s ease;
+      }
+      .mobile-nav-group:active { transform: scale(.96); }
+      .mobile-nav-group.active,
+      .mobile-nav-group[aria-expanded="true"] {
+        color: #047857;
+        background: #ecfdf5;
+      }
+      .mobile-nav-group-icon {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 19px;
+        line-height: 1;
+      }
+      .mobile-nav-group-badge {
+        position: absolute;
+        top: 2px;
+        right: calc(50% - 22px);
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        border-radius: 999px;
+        background: #ef4444;
+        color: #fff;
+        font-size: 10px;
+        font-weight: 800;
+        line-height: 18px;
+        text-align: center;
+        box-shadow: 0 1px 5px rgba(239, 68, 68, .3);
+      }
+      #mobile-nav-backdrop {
+        position: fixed;
+        z-index: 90;
+        inset: 0;
+        display: block;
+        background: rgba(15, 23, 42, .38);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .2s ease;
+      }
+      #mobile-nav-backdrop.mobile-nav-open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #mobile-nav-sheet {
+        position: fixed;
+        z-index: 100;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: flex;
+        flex-direction: column;
+        max-height: min(72vh, 560px);
+        padding: 9px 16px calc(16px + env(safe-area-inset-bottom));
+        border-radius: 22px 22px 0 0;
+        background: #fff;
+        box-shadow: 0 -12px 34px rgba(15, 23, 42, .2);
+        transform: translateY(105%);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform .24s cubic-bezier(.22, 1, .36, 1), opacity .2s ease;
+      }
+      #mobile-nav-sheet.mobile-nav-open {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .mobile-nav-sheet-handle {
+        width: 42px;
+        height: 4px;
+        margin: 0 auto 10px;
+        border-radius: 999px;
+        background: #cbd5e1;
+      }
+      .mobile-nav-sheet-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 0 2px 12px;
+      }
+      .mobile-nav-sheet-title {
+        margin: 0;
+        color: #0f172a;
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .mobile-nav-sheet-subtitle {
+        margin: 2px 0 0;
+        color: #94a3b8;
+        font-size: 11px;
+      }
+      .mobile-nav-sheet-close {
+        width: 34px;
+        height: 34px;
+        border: 0;
+        border-radius: 999px;
+        background: #f1f5f9;
+        color: #64748b;
+        font-size: 20px;
+        line-height: 1;
+      }
+      #mobile-nav-sheet-items {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        overflow-y: auto;
+        padding: 2px 1px 4px;
+      }
+      .mobile-nav-sheet-item {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-height: 48px;
+        padding: 8px 10px;
+        border: 1px solid #e2e8f0;
+        border-radius: 13px;
+        background: #fff;
+        color: #334155;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        text-align: left;
+        transition: border-color .16s ease, background .16s ease, color .16s ease;
+      }
+      .mobile-nav-sheet-item:active,
+      .mobile-nav-sheet-item:hover {
+        border-color: #6ee7b7;
+        background: #ecfdf5;
+        color: #047857;
+      }
+      .mobile-nav-sheet-item-icon { flex: 0 0 24px; font-size: 18px; text-align: center; }
+      .mobile-nav-sheet-empty {
+        grid-column: 1 / -1;
+        padding: 20px 8px;
+        color: #94a3b8;
+        font-size: 12px;
+        text-align: center;
+      }
+      #mobile-profile-backdrop {
+        position: fixed;
+        z-index: 90;
+        inset: 0;
+        display: block;
+        background: rgba(15, 23, 42, .38);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity .2s ease;
+      }
+      #mobile-profile-backdrop.mobile-profile-open {
+        opacity: 1;
+        pointer-events: auto;
+      }
+      #mobile-profile-sheet {
+        position: fixed;
+        z-index: 100;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        display: flex;
+        flex-direction: column;
+        max-height: min(78vh, 600px);
+        padding: 9px 16px calc(16px + env(safe-area-inset-bottom));
+        border-radius: 22px 22px 0 0;
+        background: #fff;
+        box-shadow: 0 -12px 34px rgba(15, 23, 42, .2);
+        transform: translateY(105%);
+        opacity: 0;
+        pointer-events: none;
+        transition: transform .24s cubic-bezier(.22, 1, .36, 1), opacity .2s ease;
+      }
+      #mobile-profile-sheet.mobile-profile-open {
+        transform: translateY(0);
+        opacity: 1;
+        pointer-events: auto;
+      }
+      .mobile-profile-summary {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 3px 2px 14px;
+        border-bottom: 1px solid #e2e8f0;
+      }
+      .mobile-profile-avatar {
+        width: 52px;
+        height: 58px;
+        flex: 0 0 52px;
+        overflow: hidden;
+        display: grid;
+        place-items: center;
+        border: 3px solid #d1fae5;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #34d399, #0d9488);
+        color: #fff;
+        font-size: 22px;
+        font-weight: 800;
+      }
+      .mobile-profile-avatar img { width: 100%; height: 100%; -o-object-fit: cover; object-fit: cover; }
+      .mobile-profile-name { color: #0f172a; font-size: 16px; font-weight: 800; }
+      .mobile-profile-meta { margin-top: 3px; color: #64748b; font-size: 11px; line-height: 1.45; }
+      .mobile-profile-actions { display: grid; gap: 8px; padding-top: 14px; overflow-y: auto; }
+      .mobile-profile-action {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        min-height: 48px;
+        padding: 10px 12px;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        background: #fff;
+        color: #334155;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 700;
+        text-align: left;
+      }
+      .mobile-profile-action:active { transform: scale(.99); }
+      .mobile-profile-action-icon { flex: 0 0 24px; font-size: 19px; text-align: center; }
+      .mobile-profile-action-sub { display: block; margin-top: 2px; color: #94a3b8; font-size: 10px; font-weight: 400; }
+      .mobile-profile-account-group {
+        margin-top: 5px;
+        padding-top: 11px;
+        border-top: 1px solid #e2e8f0;
+      }
+      .mobile-profile-account-label { margin-bottom: 7px; color: #94a3b8; font-size: 10px; font-weight: 800; letter-spacing: .04em; }
+      .mobile-profile-action-danger { color: #dc2626; border-color: #fecaca; background: #fffafa; }
+    }
+
+    /* ป๊อบอัพเต็มหน้าจอ (แท็บคะแนน/เช็คชื่อ ฝังใน Smart Classroom) ต้องคลุมทับแถบเมนูมือถือ/
+       แผงอ้างอิงของ Smart Classroom ให้หมด — 2 อย่างนี้มี z-index (90/80) สูงกว่าป๊อบอัพเต็มจอ (75)
+       เพราะป๊อบอัพต้องอยู่ต่ำกว่าป๊อบอัพย่อยข้างในตัวมันเอง (ต่ำสุด z-80) จึงต้องซ่อนแทนแก้ที่ z-index */
+    body.fsg-overlay-open .sc-mobile-ref-nav,
+    body.fsg-overlay-open .sc-reference-panel.mobile-open { display: none !important; }
+
+    /* ─── Smart Classroom: ปุ่ม/แท็บพรีเมี่ยม (โทนทอง+น้ำเงินเข้ม ให้เข้ากับมงกุฎ 👑) ─── */
+    .sc-tabbar {
+      background: #faf6ea;
+      border: 1px solid #f0e3bd;
+      border-radius: 9999px;
+      padding: 3px;
+      display: inline-flex;
+      gap: 2px;
+      flex-wrap: wrap;
+    }
+    .sc-tab-pill {
+      padding: 0.5rem 1rem;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #8a7a4a;
+      background: transparent;
+      border: none;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: background .18s ease, color .18s ease, box-shadow .18s ease;
+    }
+    .sc-tab-pill:hover:not(.active) { background: rgba(169,120,26,0.10); color: #6d5a1f; }
+    .sc-tab-pill.active {
+      color: #fff;
+      background: linear-gradient(135deg,#d9b654,#a9781a 65%,#7a5810);
+      box-shadow: 0 3px 10px rgba(138,106,20,0.35), inset 0 1px 0 rgba(255,255,255,0.35);
+    }
+
+    .sc-btn-dark {
+      background: linear-gradient(135deg,#3730a3,#1e1b4b);
+      color: #fff;
+      border: none;
+      box-shadow: 0 3px 10px rgba(30,27,75,0.28), inset 0 1px 0 rgba(255,255,255,0.12);
+      transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    }
+    .sc-btn-dark:hover { filter: brightness(1.15); transform: translateY(-1px); box-shadow: 0 5px 14px rgba(30,27,75,0.34); }
+    .sc-btn-dark:active { transform: translateY(0); filter: brightness(1.05); }
+    .sc-btn-dark:disabled { opacity: .55; transform: none; filter: none; cursor: default; }
+
+    .sc-btn-gold {
+      background: linear-gradient(135deg,#eccf82,#c9a227 55%,#8a6a14);
+      color: #3b2a05;
+      border: 1px solid rgba(138,106,20,0.3);
+      box-shadow: 0 3px 10px rgba(138,106,20,0.28), inset 0 1px 0 rgba(255,255,255,0.5);
+      transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
+    }
+    .sc-btn-gold:hover { filter: brightness(1.05); transform: translateY(-1px); box-shadow: 0 5px 14px rgba(138,106,20,0.35); }
+    .sc-btn-gold:active { transform: translateY(0); }
+
+    /* Smart Classroom บนมือถือ: เมนูอ้างอิงต้องเข้าถึงได้ตลอด โดยไม่ต้องเลื่อนลงท้ายหน้า */
+    .sc-mobile-ref-nav, .sc-mobile-ref-head, .sc-desktop-quick-action { display: none; }
+    @media (max-width: 1023px) {
+      body.sc-fullscreen #content { padding-bottom: calc(5.75rem + env(safe-area-inset-bottom)); }
+      .sc-mobile-ref-nav {
+        position: fixed;
+        z-index: 90;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 2px;
+        padding: 7px 6px calc(7px + env(safe-area-inset-bottom));
+        background: rgba(255,255,255,.97);
+        border-top: 1px solid #eadfbe;
+        box-shadow: 0 -6px 22px rgba(62,48,13,.12);
+        backdrop-filter: blur(14px);
+      }
+      .sc-mobile-ref-btn {
+        position: relative;
+        min-height: 52px;
+        border: 0;
+        border-radius: 13px;
+        background: transparent;
+        color: #756b50;
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.1;
+      }
+      .sc-mobile-ref-btn .sc-mobile-ref-icon { display: block; margin-bottom: 4px; font-size: 18px; line-height: 1; }
+      .sc-mobile-ref-btn.active { color: #6d4a08; background: #fff3ce; }
+      .sc-mobile-ref-count {
+        position: absolute;
+        top: 2px;
+        right: calc(50% - 22px);
+        min-width: 18px;
+        height: 18px;
+        padding: 0 4px;
+        border-radius: 9999px;
+        background: #dc2626;
+        color: #fff;
+        font-size: 10px;
+        line-height: 18px;
+        text-align: center;
+        box-shadow: 0 1px 5px rgba(220,38,38,.35);
+      }
+      .sc-reference-panel { display: none; }
+      .sc-reference-panel.mobile-open {
+        display: block;
+        position: fixed;
+        z-index: 80;
+        inset: 0;
+        overflow-y: auto;
+        margin: 0;
+        padding: 16px 14px calc(6.25rem + env(safe-area-inset-bottom));
+        border: 0;
+        border-radius: 0;
+        background: #f8fafc;
+      }
+      .sc-reference-panel.mobile-open .sc-mobile-ref-head {
+        position: sticky;
+        z-index: 2;
+        top: -16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin: -16px -14px 16px;
+        padding: 14px;
+        background: rgba(255,255,255,.97);
+        border-bottom: 1px solid #eadfbe;
+        backdrop-filter: blur(14px);
+      }
+      .sc-desktop-ref-tabs { display: none !important; }
+      .sc-mobile-app-section { display: none; }
+      .sc-mobile-app-section.mobile-active { display: block; }
+      .sc-mobile-ref-subtabs { display: flex; gap: 6px; overflow-x: auto; margin: 0 0 14px; padding: 2px 0 4px; }
+      .sc-mobile-ref-subtabs button { min-height: 40px; padding: 0 12px; border: 1px solid #eadfbe; border-radius: 12px; background: #fff; color: #756b50; font-size: 11px; font-weight: 700; white-space: nowrap; }
+      .sc-mobile-ref-subtabs button.active { background: #fff3ce; color: #6d4a08; border-color: #dfc36e; }
+    }
+    @media (min-width: 1024px) {
+      .sc-desktop-quick-action { display: inline-flex; }
+      .sc-mobile-app-section { display: block; }
+      .sc-desktop-ref-tabs {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .sc-desktop-ref-tabs .sc-reftab-btn {
+        min-height: 72px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid #e5e7eb;
+        border-radius: 16px;
+        background: #f8fafc;
+        color: #475569;
+        transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease, background .15s ease;
+      }
+      .sc-desktop-ref-tabs .sc-reftab-btn:hover {
+        transform: translateY(-1px);
+        border-color: #d6b85e;
+        background: #fffbeb;
+        box-shadow: 0 5px 14px rgba(138,106,20,.10);
+      }
+      .sc-desktop-ref-tabs .sc-reftab-btn.active {
+        border-color: #c69a28;
+        background: linear-gradient(145deg,#fff9e8,#fff);
+        color: #6d4a08;
+        box-shadow: 0 6px 18px rgba(138,106,20,.16), inset 0 0 0 1px rgba(201,162,39,.18);
+      }
+      .sc-ref-tab-icon {
+        width: 38px;
+        height: 38px;
+        flex: 0 0 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        font-size: 18px;
+      }
+      .sc-desktop-ref-tabs .sc-reftab-btn.active .sc-ref-tab-icon { border-color: #ead18b; background: #fff4cf; }
+      .sc-desktop-ref-tabs b { display: block; font-size: 12px; line-height: 1.25; }
+      .sc-desktop-ref-tabs small { display: block; margin-top: 3px; color: #94a3b8; font-size: 9px; line-height: 1.2; }
+    }
+
+    /* ─── Global CSS Tooltip (title attribute) ─── */
+    /* ยกเว้น th/td/tr เพื่อไม่ทับ position:sticky ของตาราง */
+    [title]:not(th):not(td):not(tr) { position: relative; }
+    [title]:not(th):not(td):not(tr)::after {
+      content: attr(title);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: #1e293b;
+      color: #f8fafc;
+      font-size: 11px;
+      font-family: inherit;
+      white-space: nowrap;
+      padding: 4px 9px;
+      border-radius: 6px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+      z-index: 9999;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+    }
+    [title]:not(th):not(td):not(tr):hover::after { opacity: 1; }
+  </style>
+  <script type="module" crossorigin src="/pp5online/assets/teacher-DWNv09jt.js"></script>
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/supabase-BV-W2lsh.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/ui-CdgrLWzs.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/impersonation-0xVfgYVY.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/supabase-errors-BniCCodr.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/skill-groups-BY1NTbf4.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/api-C-roKrdU.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/browser-JP79f-a9.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/promptpay-CIuxvxIA.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/sync-GIjLHUjs.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/theme-qDnPEUQn.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/version.js_v_10.22-A-Q3FjCD.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/anti-pull-refresh-BGrI1pMY.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/push-notify-CDJXdrOK.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/teacher-views-utils-D0Lb_BpE.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/wen-sso-CcN06Rhh.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/azizgames-modal-CZNvwg6f.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/academic-term-switcher-JTnW63gE.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/sports-awards-admin-6oCPrlSb.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/print-overlay-BVfxEd6n.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/storage-CuUjCgvI.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/sports-portals.js_v_10.22-Bl6mvaSs.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/tutorial-D9xKLgCL.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/terangganu-api-C1IjZK4l.js">
+  <link rel="modulepreload" crossorigin href="/pp5online/assets/regrade-api-CbX4L_dw.js">
+  <link rel="stylesheet" crossorigin href="/pp5online/assets/main-Bx2iv1uk.css">
+</head>
+
+<body class="bg-gray-50 flex h-screen overflow-hidden">
+
+  <!-- ─── Sidebar ──────────────────────────────────────────────────────────── -->
+  <div id="sidebar-overlay" class="hidden fixed inset-0 z-[60] bg-black/50"></div>
+  <aside id="sidebar"
+    class="w-64 bg-emerald-900 text-white flex flex-col flex-shrink-0
+           fixed inset-y-0 left-0 z-[70] shadow-2xl
+           -translate-x-full md:translate-x-0
+           transition-transform duration-200">
+
+    <!-- App Header -->
+    <div class="px-4 py-4 border-b border-emerald-800 flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <div id="school-logo-wrap" class="brand-logo-ring w-14 h-14 flex-shrink-0">
+          <div class="brand-logo-inner">
+            <img id="school-logo" src="" alt="" class="w-full h-full object-contain rounded-full hidden"/>
+            <span id="school-logo-fallback" class="text-xl">🏫</span>
+          </div>
+        </div>
+        <div class="min-w-0">
+          <h2 class="text-sm font-bold tracking-tight leading-tight">ปพ.5 ออนไลน์</h2>
+          <p id="sidebar-term" class="text-[11px] text-emerald-300 truncate">—</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Teacher Profile Mini (คลิกได้) -->
+    <div class="px-4 py-3 border-b border-emerald-800 flex items-center gap-3
+                cursor-pointer hover:bg-emerald-800 transition" onclick="window._navTo('profile')"
+         title="คลิกเพื่อแก้ไขโปรไฟล์">
+      <div id="t-avatar"
+        class="w-9 h-11 rounded-lg border border-emerald-300/40 shadow-sm bg-gradient-to-tr from-emerald-400 to-teal-400
+               flex items-center justify-center font-bold text-sm flex-shrink-0 overflow-hidden">
+        ?
+      </div>
+      <div class="min-w-0">
+        <p id="t-name" class="text-sm font-semibold truncate">—</p>
+        <p id="t-code" class="text-xs text-emerald-300 truncate">—</p>
+      </div>
+    </div>
+
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+      <a href="#" data-nav="announcements-view"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📢</span> ประกาศ
+        <span id="badge-ann" class="hidden ml-auto bg-amber-400 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center font-bold">!</span>
+      </a>
+      <a href="#" data-nav="work-calendar-view"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📅</span> ปฏิทินปฏิบัติงาน
+      </a>
+      <a href="council.html" id="menu-council"
+        class="hidden items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🏛️</span> ระบบสภานักเรียน
+      </a>
+      <a href="terangganu.html" id="menu-terangganu"
+        class="hidden items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>⚜️</span> ค่าย TERANGGANU 2026
+      </a>
+      <a href="regrade.html" id="menu-regrade"
+        class="hidden items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📋</span> แก้ค้างเก่า
+      </a>
+      <a href="#" id="menu-sports-shortcut" data-nav="sports"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🏆</span> ระบบกีฬาสี
+      </a>
+      <a href="#" data-nav="certificates"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🏅</span> ระบบเกียรติบัตร
+      </a>
+      <a href="#" id="menu-advisor-students" data-nav="advisor-students"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>👥</span> นักเรียนที่ปรึกษา
+      </a>
+      <a href="#" id="menu-my-team" data-nav="my-team-workspace"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🛡️</span> จัดการสีของฉัน
+      </a>
+      <a href="#" id="menu-shirt-summary" data-nav="shirt-summary"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📦</span> สรุปยอดเสื้อกีฬาสี
+      </a>
+      <a href="#" id="menu-sports-fund-admin" data-nav="sports-fund-admin"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>💰</span> บัญชีเงินกีฬาสี
+      </a>
+      <a href="#" id="menu-sports-overview-admin" data-nav="sports-overview-admin"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📊</span> ภาพรวมกีฬาสี
+      </a>
+      <a href="#" id="menu-sports-competition-manager" data-nav="sports-competition-manager"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🏟️</span> รายการแข่งขันของฉัน
+      </a>
+      <a href="sports-checkin.html" id="menu-sports-checkin" target="_blank" rel="noopener"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📷</span> รับรายงานตัวนักกีฬา
+      </a>
+      <section id="menu-awards-group" class="hidden my-3 border-t border-emerald-700 pt-3">
+        <p class="px-4 text-xs text-emerald-300">🏅 ศูนย์มอบเหรียญ</p>
+        <a href="sports-awards.html" target="_blank" rel="noopener" class="block px-4 py-3 rounded-xl text-sm text-emerald-100 hover:bg-emerald-800">เปิดศูนย์มอบเหรียญ ↗</a>
+      </section>
+      <a href="#" id="menu-sports-evaluation" data-nav="sports-evaluation"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🧑‍⚖️</span> ประเมินกีฬาสี
+      </a>
+      <a href="#" id="menu-shirt-vote-dashboard" data-nav="shirt-vote-dashboard"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🗳️</span> ผลโหวตแบบเสื้อ
+      </a>
+      <a href="#" id="menu-qr-reissue-requests" data-nav="student-qr-print"
+        class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🎫</span> พิมพ์/คำขอ QR Code
+      </a>
+      <div class="border-t border-emerald-800/50 my-1"></div>
+      <p class="px-4 pt-1 pb-1 text-xs text-emerald-400 uppercase tracking-widest">รายวิชา</p>
+      <a href="#" data-nav="overview"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               bg-emerald-800 text-white">
+        <span>📊</span> ภาพรวม
+      </a>
+      <a href="#" id="menu-my-courses" data-nav="my-courses"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📖</span> คอร์สวิชาของฉัน
+      </a>
+      <a href="#" id="menu-my-classes" data-nav="my-classes"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>🏫</span> ห้องเรียนของฉัน
+      </a>
+      <a href="#" id="menu-dashboard"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📈</span> Dashboard ห้องเรียน
+      </a>
+
+      <!-- งานรายภาคเรียน (หัวข้อแสดงเสมอ, รายการแสดงตามบทบาท) -->
+      <div id="sem-work-section">
+        <p class="px-4 pt-3 pb-1 text-xs text-emerald-400 uppercase tracking-widest">งานรายภาคเรียน</p>
+        <a id="menu-life-skill" href="#" data-nav="life-skill-score"
+          class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🌱</span> บันทึกคะแนนทักษะชีวิต
+        </a>
+        <a id="menu-reading" href="#" data-nav="reading-score"
+          class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📖</span> บันทึกคะแนนอ่านคิดวิเคราะห์
+        </a>
+        <a id="menu-prayer" href="#" data-nav="prayer-score"
+          class="hidden flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🕌</span> บันทึกคะแนนละหมาด
+        </a>
+      </div>
+
+      <!-- งานรายวัน — เครื่องมือรายห้อง/รายนักเรียนทั้งหมด ซ่อนให้บัญชี "ผู้บริหาร" ล้วนๆ
+           (ไม่มีภาระสอน) เพื่อลดเมนูที่ไม่เกี่ยวข้อง (v10.22.560) -->
+      <div id="daily-work-section">
+        <p class="px-4 pt-3 pb-1 text-xs text-emerald-400 uppercase tracking-widest">งานรายวัน</p>
+        <a href="#" id="btn-quick-attendance"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>✅</span> เช็คชื่อ
+        </a>
+        <a href="#" id="btn-quick-grades"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📝</span> บันทึกคะแนน
+        </a>
+        <a href="#" data-nav="requests"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🔔</span> คำร้องนักเรียน
+          <span id="badge-requests" class="hidden ml-auto bg-red-500 text-white text-xs
+                 rounded-full w-5 h-5 flex items-center justify-center font-bold">0</span>
+        </a>
+        <a href="#" data-nav="schedule"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🗓️</span> ตารางสอน
+        </a>
+        <a href="#" data-nav="flashcards"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🃏</span> บัตรคำศัพท์ (Flash Cards)
+        </a>
+        <a href="#" data-nav="quiz-system"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📝</span> แบบทดสอบออนไลน์ (Quiz)
+        </a>
+        <a href="#" data-nav="exam-docs"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📄</span> เอกสารช่วงสอบ
+        </a>
+        <a href="#" data-nav="student-qr-print"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>🖨️</span> พิมพ์ QR Code นักเรียน
+        </a>
+        <a href="#" data-nav="student-leave-scanner"
+          class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+                 text-emerald-200 hover:bg-emerald-800 hover:text-white">
+          <span>📋</span> ตรวจสอบใบอนุญาตออกนอกห้อง
+        </a>
+      </div>
+      <a href="#" data-nav="tutorial"
+        class="flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition
+               text-emerald-200 hover:bg-emerald-800 hover:text-white">
+        <span>📖</span> คู่มือการใช้งาน
+      </a>
+    </nav>
+
+    <!-- ช่องทางติดต่อ (โหลดโดย loadSidebarHeader) -->
+    <div id="sidebar-contact" class="hidden px-4 py-3 border-t border-emerald-800 flex-shrink-0"></div>
+
+    <div class="p-3 border-t border-emerald-800 flex-shrink-0">
+      <button id="btn-logout"
+        class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm
+               font-medium text-emerald-200 hover:bg-red-500 hover:text-white transition">
+        🚪 ออกจากระบบ
+      </button>
+      <div class="mt-2 text-center">
+        <p class="text-[10px] text-emerald-600 leading-relaxed">
+          พัฒนาโดย <span class="text-emerald-400 font-medium">KruHambalWaji</span><br/>
+          ปพ.5 ออนไลน์ © 2026 <span id="app-version" class="text-emerald-700"></span>
+        </p>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ─── Main ─────────────────────────────────────────────────────────────── -->
+  <div id="app-main-col" class="flex-1 flex flex-col min-w-0 h-screen overflow-hidden md:ml-64">
+
+    <header class="bg-white shadow-sm h-16 flex items-center justify-between px-5 z-20 flex-shrink-0">
+      <div class="flex items-center gap-3">
+        <button id="btn-menu" class="md:hidden text-gray-500 hover:text-emerald-600 text-xl p-1">☰</button>
+        <h1 id="page-title" class="text-lg font-bold text-gray-800">ภาพรวม</h1>
+      </div>
+      <div class="flex items-center gap-3">
+        <button id="btn-quick-leave-scanner"
+          title="เปิดเมนูสแกน"
+          aria-label="เปิดเมนูสแกน"
+          class="w-11 h-11 flex items-center justify-center rounded-xl text-[22px] leading-none
+                 bg-emerald-600 border border-emerald-700 text-white
+                 shadow-[0_5px_0_#047857,0_9px_18px_rgba(5,150,105,0.24)]
+                 hover:bg-emerald-700 hover:-translate-y-0.5
+                 active:translate-y-[3px] active:shadow-[0_2px_0_#047857,0_4px_10px_rgba(5,150,105,0.18)] transition">
+          <span aria-hidden="true">📷</span>
+        </button>
+        <button id="btn-refresh"
+          onclick="window._refreshCurrentView && window._refreshCurrentView()"
+          title="รีเฟรชหน้านี้"
+          class="w-8 h-8 flex items-center justify-center rounded-full text-gray-400
+                 hover:bg-emerald-50 hover:text-emerald-600 transition text-base">
+          ↺
+        </button>
+        <div class="text-right hidden sm:block">
+          <p id="user-name" class="text-sm font-semibold text-gray-800">—</p>
+          <p id="user-role-label" class="text-xs text-emerald-500">ครูผู้สอน</p>
+        </div>
+        <div id="user-avatar" role="button" tabindex="0" aria-label="เปิดโปรไฟล์คุณครู" title="เปิดโปรไฟล์คุณครู"
+          class="w-8 h-10 bg-gradient-to-tr from-emerald-500 to-teal-500 text-white border border-emerald-300/40
+                 rounded-lg flex items-center justify-center font-bold text-sm shadow-sm overflow-hidden cursor-pointer">
+          ?
+        </div>
+      </div>
+    </header>
+
+    <!-- Impersonation Banner -->
+    <div id="impersonation-banner" class="hidden flex-shrink-0 bg-red-600 text-white px-5 py-2.5 flex items-center justify-between gap-3 z-30">
+      <div class="flex items-center gap-2 text-sm font-medium">
+        <span class="text-lg">🎭</span>
+        <span>กำลังสวมบทบาทเป็น <strong id="impersonation-name"></strong></span>
+        <span class="text-red-200 text-xs hidden sm:inline">— เมนู ข้อมูล และการบันทึกใช้สิทธิ์ของครูคนนี้</span>
+      </div>
+      <button id="impersonation-exit"
+        class="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-sm font-semibold transition">
+        ← ออกจากโหมดนี้
+      </button>
+    </div>
+
+    <main class="flex-1 overflow-y-auto p-5 sm:p-6">
+      <div id="main-content">
+        <!-- rendered by teacher-views.js -->
+      </div>
+    </main>
+  </div>
+
+  <!-- ─── Mobile bottom navigation ───────────────────────────────────────── -->
+  <div id="mobile-nav-backdrop" aria-hidden="true"></div>
+  <section id="mobile-nav-sheet" aria-hidden="true" aria-labelledby="mobile-nav-sheet-title">
+    <div class="mobile-nav-sheet-handle" aria-hidden="true"></div>
+    <div class="mobile-nav-sheet-header">
+      <div>
+        <h2 id="mobile-nav-sheet-title" class="mobile-nav-sheet-title">เมนู</h2>
+        <p class="mobile-nav-sheet-subtitle">เลือกเมนูที่ต้องการใช้งาน</p>
+      </div>
+      <button id="mobile-nav-sheet-close" class="mobile-nav-sheet-close" type="button" aria-label="ปิดเมนู">×</button>
+    </div>
+    <div id="mobile-nav-sheet-items"></div>
+  </section>
+  <nav id="mobile-teacher-nav" aria-label="เมนูหลักบนมือถือ">
+    <button type="button" class="mobile-nav-group" data-mobile-group="home" aria-label="ภาพรวม" aria-expanded="false">
+      <span class="mobile-nav-group-icon" aria-hidden="true">🏠</span><span>ภาพรวม</span>
+    </button>
+    <button type="button" class="mobile-nav-group" data-mobile-group="teaching" aria-label="งานสอน" aria-expanded="false">
+      <span class="mobile-nav-group-icon" aria-hidden="true">📚</span><span>งานสอน</span><span class="mobile-nav-group-badge hidden" data-mobile-badge="teaching"></span>
+    </button>
+    <button type="button" class="mobile-nav-group" data-mobile-group="students" aria-label="นักเรียน" aria-expanded="false">
+      <span class="mobile-nav-group-icon" aria-hidden="true">👥</span><span>นักเรียน</span>
+    </button>
+    <button type="button" class="mobile-nav-group" data-mobile-group="tools" aria-label="เครื่องมือ" aria-expanded="false">
+      <span class="mobile-nav-group-icon" aria-hidden="true">🧰</span><span>เครื่องมือ</span>
+    </button>
+    <button type="button" class="mobile-nav-group" data-mobile-group="more" aria-label="เพิ่มเติม" aria-expanded="false">
+      <span class="mobile-nav-group-icon" aria-hidden="true">☰</span><span>เพิ่มเติม</span><span class="mobile-nav-group-badge hidden" data-mobile-badge="more"></span>
+    </button>
+  </nav>
+  <div id="mobile-profile-backdrop" aria-hidden="true"></div>
+  <section id="mobile-profile-sheet" aria-hidden="true" aria-labelledby="mobile-profile-title">
+    <div class="mobile-nav-sheet-handle" aria-hidden="true"></div>
+    <div class="mobile-nav-sheet-header">
+      <div>
+        <h2 id="mobile-profile-title" class="mobile-nav-sheet-title">โปรไฟล์คุณครู</h2>
+        <p class="mobile-nav-sheet-subtitle">บัญชีผู้ใช้งาน ปพ.5 ออนไลน์</p>
+      </div>
+      <button id="mobile-profile-close" class="mobile-nav-sheet-close" type="button" aria-label="ปิดโปรไฟล์">×</button>
+    </div>
+    <div class="mobile-profile-summary">
+      <div id="mobile-profile-avatar" class="mobile-profile-avatar">?</div>
+      <div class="min-w-0">
+        <div id="mobile-profile-name" class="mobile-profile-name truncate">—</div>
+        <div id="mobile-profile-meta" class="mobile-profile-meta">—</div>
+      </div>
+    </div>
+    <div class="mobile-profile-actions">
+      <button id="mobile-profile-edit" type="button" class="mobile-profile-action">
+        <span class="mobile-profile-action-icon" aria-hidden="true">👤</span>
+        <span>แก้ไขโปรไฟล์<span class="mobile-profile-action-sub">ชื่อ รูปภาพ เบอร์โทร และข้อมูลครู</span></span>
+      </button>
+      <button id="mobile-profile-password" type="button" class="mobile-profile-action">
+        <span class="mobile-profile-action-icon" aria-hidden="true">🔒</span>
+        <span>เปลี่ยนรหัสผ่าน<span class="mobile-profile-action-sub">ตั้งรหัสผ่านใหม่ของบัญชีนี้</span></span>
+      </button>
+      <button id="mobile-profile-contact" type="button" class="mobile-profile-action">
+        <span class="mobile-profile-action-icon" aria-hidden="true">📞</span>
+        <span>ติดต่อแอดมิน<span class="mobile-profile-action-sub">ติดต่อผู้ดูแลระบบหรือส่งเรื่องสอบถาม</span></span>
+      </button>
+      <div class="mobile-profile-account-group">
+        <div class="mobile-profile-account-label">บัญชีผู้ใช้งาน</div>
+        <button id="mobile-profile-logout" type="button" class="mobile-profile-action mobile-profile-action-danger">
+          <span class="mobile-profile-action-icon" aria-hidden="true">🚪</span><span>ออกจากระบบ</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Scripts -->
+
+</body>
+</html>
