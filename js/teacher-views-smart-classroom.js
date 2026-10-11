@@ -1303,7 +1303,14 @@ export async function renderSmartClassroom(teacher, classId) {
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
     m.querySelector('#sc-switch-close').addEventListener('click', () => m.remove())
 
-    const otherClasses = (await getMyClasses(teacher.id).catch(() => [])).filter(c => c.id !== classId)
+    const academicYear = Number(cfg.academicYear ?? cfg.academic_year)
+    const semester = Number(cfg.semester)
+    const hasCurrentTerm = Number.isInteger(academicYear) && academicYear > 0 && [1, 2].includes(semester)
+    const otherClasses = (await getMyClasses(teacher.id).catch(() => []))
+      .filter(c => hasCurrentTerm
+        && Number(c.academic_year) === academicYear
+        && Number(c.semester) === semester
+        && c.id !== classId)
     const listEl = m.querySelector('#sc-switch-list')
     if (!otherClasses.length) {
       listEl.innerHTML = `<p class="text-center py-6 text-xs text-gray-400">ไม่มีห้องอื่นให้สลับ</p>`

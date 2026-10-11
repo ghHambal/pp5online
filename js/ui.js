@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.954': [
+    '🏫 กรองรายการสลับห้อง Smart Classroom ให้ตรงกับภาคเรียนปัจจุบัน ไม่แสดงห้องจากภาคเรียนเก่าปะปน',
+  ],
   '10.22.953': [
     '🔁 เพิ่มการใช้รูปแบบจำนวนคาบและเวลาต่อครั้งจากสัปดาห์แรกกับแผนทุกสัปดาห์',
   ],
