@@ -2844,16 +2844,24 @@ export async function upsertTeacherNameAliases(rows) {
   if (error) throw error
 }
 
+function normalizeTeacherSchedulePayload(payload = {}) {
+  const normalized = { ...payload }
+  for (const field of ['subject_name', 'class_name', 'teacher_name', 'note']) {
+    if (typeof normalized[field] === 'string') normalized[field] = normalized[field].trim() || null
+  }
+  return normalized
+}
+
 export async function upsertScheduleEntry(payload) {
   const { error } = await supabase
     .from('teacher_schedules')
-    .upsert(payload, { onConflict: 'teacher_id,day_of_week,period_no,academic_year,semester' })
+    .upsert(normalizeTeacherSchedulePayload(payload), { onConflict: 'teacher_id,day_of_week,period_no,academic_year,semester' })
   if (error) throw error
 }
 
 export async function updateScheduleEntry(id, payload) {
   const { error } = await supabase.from('teacher_schedules')
-    .update(payload).eq('id', id)
+    .update(normalizeTeacherSchedulePayload(payload)).eq('id', id)
   if (error) throw error
 }
 
@@ -2861,9 +2869,10 @@ export async function updateScheduleEntry(id, payload) {
 // และไม่เหลือข้อมูลเพียงบางกลุ่มเมื่อคำขอใดคำขอหนึ่งล้มเหลว
 export async function upsertScheduleEntries(payloads) {
   if (!Array.isArray(payloads) || payloads.length === 0) return
+  const normalizedPayloads = payloads.map(normalizeTeacherSchedulePayload)
   const { error } = await supabase
     .from('teacher_schedules')
-    .upsert(payloads, { onConflict: 'teacher_id,day_of_week,period_no,academic_year,semester' })
+    .upsert(normalizedPayloads, { onConflict: 'teacher_id,day_of_week,period_no,academic_year,semester' })
   if (error) throw error
 }
 

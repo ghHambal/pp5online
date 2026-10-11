@@ -14,6 +14,7 @@ const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[char]))
 const text = value => String(value ?? '').trim()
+const firstText = (...values) => values.map(text).find(Boolean) ?? ''
 const normalizeCode = value => text(value).toLocaleLowerCase('th-TH').replace(/[^\p{L}\p{N}]+/gu, '')
 const normalizeName = value => text(value)
   .normalize('NFKC')
@@ -74,6 +75,7 @@ function parseImportJSON(raw) {
     const teacherName = text(entry.teacher_name ?? entry.teacher?.name)
     const subjectCode = text(entry.subject_code)
     const subjectName = text(entry.subject_name)
+    const className = firstText(entry.class_name, entry.room_name, entry.room, entry.location, entry.venue)
     const day = Number(entry.day_of_week)
     const period = Number(entry.period_no)
     const span = Number(entry.span_periods ?? 1)
@@ -90,7 +92,8 @@ function parseImportJSON(raw) {
       subject_name: subjectName,
       category: text(entry.category ?? entry.teacher_category),
       dept: text(entry.dept ?? entry.teacher_dept),
-      class_name: text(entry.class_name ?? entry.room_name ?? entry.room),
+      // ห้อง/สถานที่เป็นข้อมูลเสริม รายการประชุมหรือกิจกรรมอาจไม่มีค่าใด ๆ
+      class_name: className,
       day_of_week: day,
       period_no: period,
       span_periods: span,
@@ -149,6 +152,7 @@ function buildPrompt({ teachers, subjects, periods, year, semester, fileNames = 
     '- span_periods คือจำนวนคาบต่อเนื่องที่ช่องในไฟล์รวมกัน',
     '- ต้องรวมรายการที่เป็นประชุม กิจกรรม อบรม หรือภารกิจของครูด้วย ห้ามตัดทิ้ง โดยใส่ข้อความจริงไว้ใน subject_name และใส่ category เป็น meeting หรือ activity เมื่อระบุได้',
     '- รายการประชุม/กิจกรรมไม่จำเป็นต้องมี subject_code และต้องเก็บไว้ในตารางสอนของครูตามวันและคาบจริง',
+    '- class_name ใช้เก็บห้องเรียน/กลุ่มเรียน/สถานที่ถ้ามี แต่ไม่บังคับ หากต้นฉบับไม่มีห้องหรือสถานที่ให้ส่งเป็นค่าว่างหรือ null ห้ามเดา',
     '',
     'รายชื่อครูอ้างอิงในระบบ:', JSON.stringify(teacherRoster),
     'รายวิชาอ้างอิงในระบบ:', JSON.stringify(subjectRoster),
@@ -164,7 +168,7 @@ function buildPrompt({ teachers, subjects, periods, year, semester, fileNames = 
         teacher_code: '1087', teacher_name: 'ชื่อครูตามไฟล์',
         subject_code: 'ค33102', subject_name: 'คณิตศาสตร์พื้นฐาน',
         category: 'subject',
-        class_name: 'ม.6/2', day_of_week: 1, period_no: 1, span_periods: 2,
+        class_name: 'ม.6/2', location: '', day_of_week: 1, period_no: 1, span_periods: 2,
       }],
     }, null, 2),
   ].filter(Boolean).join('\n')
@@ -287,7 +291,7 @@ export async function renderAdminScheduleImport({ onBack = null } = {}) {
         <div class="mt-4 overflow-x-auto"><table class="w-full min-w-[920px] text-left text-xs"><thead class="bg-gray-50 text-gray-500"><tr><th class="px-3 py-2">ชื่อ/รหัสจากไฟล์</th><th class="px-3 py-2">ครูในระบบ</th><th class="px-3 py-2">คะแนน</th><th class="px-3 py-2">รายการ</th><th class="px-3 py-2">สถานะ</th></tr></thead><tbody class="divide-y divide-gray-100">${state.groups.map((group, index) => {
           const selected = state.teachers.find(teacher => String(teacher.id) === String(group.selectedTeacherId))
           const options = group.candidates.map(candidate => `<option value="${candidate.teacher.id}" ${String(group.selectedTeacherId) === String(candidate.teacher.id) ? 'selected' : ''}>${esc(teacherLabel(candidate.teacher))}</option>`).join('')
-          return `<tr><td class="px-3 py-3"><div class="font-semibold text-gray-800">${esc(group.source.teacher_name || 'ไม่ระบุชื่อ')}</div><div class="text-[10px] text-gray-400">${esc(group.source.teacher_code || 'ไม่มีรหัส')}</div></td><td class="px-3 py-3"><select data-map-group="${index}" class="w-full min-w-[260px] rounded-lg border border-gray-200 bg-white px-2 py-2"><option value="">— ต้องเลือกครู —</option>${options}<option value="__skip__" ${group.selectedTeacherId === '__skip__' ? 'selected' : ''}>ข้ามรายการนี้</option></select></td><td class="px-3 py-3">${group.candidates[0] ? `${Math.round(group.candidates[0].score * 100)}%<div class="text-[10px] text-gray-400">${group.candidates[0].exact ? 'รหัส/ชื่อ/alias ตรง' : 'ชื่อคล้ายกัน'}</div>` : '<span class="text-red-600">ไม่พบ</span>'}</td><td class="px-3 py-3">${group.entries.length} คาบ<div class="text-[10px] text-gray-400">${esc(group.entries.slice(0, 2).map(entry => `${entry.subject_code || entry.subject_name} · ${entry.class_name || 'ไม่ระบุห้อง'}`).join(' | '))}</div></td><td class="px-3 py-3">${statusLabel({ ...group, selectedTeacherId: selected?.id ?? group.selectedTeacherId })}</td></tr>`
+          return `<tr><td class="px-3 py-3"><div class="font-semibold text-gray-800">${esc(group.source.teacher_name || 'ไม่ระบุชื่อ')}</div><div class="text-[10px] text-gray-400">${esc(group.source.teacher_code || 'ไม่มีรหัส')}</div></td><td class="px-3 py-3"><select data-map-group="${index}" class="w-full min-w-[260px] rounded-lg border border-gray-200 bg-white px-2 py-2"><option value="">— ต้องเลือกครู —</option>${options}<option value="__skip__" ${group.selectedTeacherId === '__skip__' ? 'selected' : ''}>ข้ามรายการนี้</option></select></td><td class="px-3 py-3">${group.candidates[0] ? `${Math.round(group.candidates[0].score * 100)}%<div class="text-[10px] text-gray-400">${group.candidates[0].exact ? 'รหัส/ชื่อ/alias ตรง' : 'ชื่อคล้ายกัน'}</div>` : '<span class="text-red-600">ไม่พบ</span>'}</td><td class="px-3 py-3">${group.entries.length} คาบ<div class="text-[10px] text-gray-400">${esc(group.entries.slice(0, 2).map(entry => `${entry.subject_code || entry.subject_name} · ${entry.class_name || 'ไม่ระบุห้อง/สถานที่'}`).join(' | '))}</div></td><td class="px-3 py-3">${statusLabel({ ...group, selectedTeacherId: selected?.id ?? group.selectedTeacherId })}</td></tr>`
         }).join('')}</tbody></table></div>`
       section.classList.remove('hidden')
       section.querySelectorAll('[data-map-group]').forEach(select => select.addEventListener('change', event => {
@@ -391,7 +395,7 @@ async function importPrepared(state, message) {
       teacher_id: row.teacher.id,
       subject_id: subject?.id ?? null,
       subject_name: row.entry.subject_name || row.entry.subject_code,
-      class_name: row.entry.class_name || '',
+      class_name: text(row.entry.class_name) || null,
       teacher_name: row.teacher.full_name || row.entry.teacher_name || null,
       day_of_week: row.entry.day_of_week,
       period_no: row.entry.period_no,

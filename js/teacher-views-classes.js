@@ -4405,6 +4405,9 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
       const raw = JSON.parse(jsonStr)
       groups = raw.map(g => ({
         ...g,
+        // ห้อง/สถานที่เป็นข้อมูลเสริม และ AI อาจใช้ชื่อฟิลด์ต่างกัน
+        class_name: [g.class_name, g.room_name, g.room, g.location, g.venue]
+          .map(value => String(value ?? '').trim()).find(Boolean) ?? '',
         sessions: (g.sessions ?? []).map(s => ({ ...s })),
       }))
 
@@ -4532,7 +4535,8 @@ async function _openVisionUpload(teacher, subjects, periods, academicYear, semes
         }))
         await upsertScheduleEntries(rows)
         scheduleSaved = true
-        await Promise.all(groups.filter(g => g.subject_name || g.class_name).map(g => {
+        // สีประจำห้องเป็นข้อมูลเสริม: ถ้าไม่มีห้อง/สถานที่ ไม่ต้องสร้างแถวสี
+        await Promise.all(groups.filter(g => String(g.class_name ?? '').trim()).map(g => {
           const colorHex = g.color_hex ?? resolveScheduleColor({
             teacherId: teacher.id,
             className: g.class_name,

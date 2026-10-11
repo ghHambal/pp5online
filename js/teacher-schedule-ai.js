@@ -5,6 +5,7 @@ const DAY_NAMES = ['อาทิตย์', 'จันทร์', 'อังค�
 const SCHEMA_VERSION = 'pp5.teacher_schedule.v1'
 
 const text = value => String(value ?? '').trim()
+const firstText = (...values) => values.map(text).find(Boolean) ?? ''
 const normalizeKey = value => text(value).toLowerCase().replace(/\s+/g, '')
 const stripJsonFence = value => text(value).replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
 
@@ -34,7 +35,7 @@ function buildPrompt({ teacher, subjects, periods, academicYear, semester, hasFr
     '- ช่องที่รวมหลายคาบต่อเนื่อง ให้ใช้ span_periods เป็นจำนวนคาบที่รวมกัน',
     '- ช่องว่างไม่ต้องสร้างรายการ',
     '- รายการประชุมหรือกิจกรรมพิเศษให้ใส่ subject_name เป็นชื่อประชุม/กิจกรรม, subject_id เป็น null และ class_name เป็นค่าว่างได้เมื่อไม่มีห้อง',
-    '- class_name เป็นข้อมูลเสริม ไม่บังคับ หากในภาพไม่มีห้องให้ส่ง class_name เป็นค่าว่าง โดยห้ามเดาห้อง',
+    '- class_name ใช้เก็บห้องเรียน/กลุ่มเรียน/สถานที่ถ้ามี เป็นข้อมูลเสริมไม่บังคับ หากในภาพไม่มีห้องหรือสถานที่ให้ส่ง class_name หรือ location เป็นค่าว่าง โดยห้ามเดา',
     '',
     'กติกาสำคัญ:',
     '- สกัดเฉพาะรายการจากภาพ ห้ามเดาชื่อวิชา ห้องเรียน วัน หรือคาบที่มองไม่เห็น',
@@ -52,7 +53,7 @@ function buildPrompt({ teacher, subjects, periods, academicYear, semester, hasFr
       schema_version: SCHEMA_VERSION, type: 'teacher_schedule', academic_year: academicYear, semester,
       groups: [
         { subject_name: 'คณิตศาสตร์พื้นฐาน', class_name: 'ม.6/2', teacher_name: text(teacher?.full_name), sessions: [{ day_of_week: 1, period_no: 1, span_periods: 2 }] },
-        { subject_name: 'ประชุมครู', subject_id: null, class_name: '', teacher_name: text(teacher?.full_name), sessions: [{ day_of_week: 1, period_no: 5, span_periods: 1 }] },
+        { subject_name: 'ประชุมครู', subject_id: null, class_name: '', location: '', teacher_name: text(teacher?.full_name), sessions: [{ day_of_week: 1, period_no: 5, span_periods: 1 }] },
       ],
     }, null, 2),
   ].join('\n')
@@ -69,7 +70,7 @@ function parseScheduleJSON(raw, { subjects, periods, hasFriday }) {
   if (!periodNos.length) throw new Error('ยังไม่มีรายการคาบเรียนในระบบให้ตรวจสอบ')
   const groups = data.groups.map((group, groupIndex) => {
     const subjectName = text(group?.subject_name)
-    const className = text(group?.class_name)
+    const className = firstText(group?.class_name, group?.room_name, group?.room, group?.location, group?.venue)
     if (!subjectName) throw new Error(`กลุ่มที่ ${groupIndex + 1} ต้องระบุชื่อวิชาหรือชื่อกิจกรรม (ห้องเรียนไม่บังคับ)`)
     if (!Array.isArray(group?.sessions) || !group.sessions.length) throw new Error(`กลุ่มที่ ${groupIndex + 1} ต้องมี sessions`)
     const subject = subjectForName(subjects, subjectName)
@@ -89,7 +90,7 @@ function parseScheduleJSON(raw, { subjects, periods, hasFriday }) {
 
 export function openExternalScheduleAI({ teacher, subjects = [], periods = [], academicYear, semester, cfg = {}, onImport }) {
   document.getElementById('external-schedule-ai')?.remove()
-  const hasFriday = cfg.hasFriday === 'true'
+  const hasFriday = cfg.hasFriday === true || cfg.hasFriday === 'true' || cfg.hasFriday === 1 || cfg.hasFriday === '1'
   const wrap = document.createElement('div')
   wrap.id = 'external-schedule-ai'
   wrap.className = 'fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4'
