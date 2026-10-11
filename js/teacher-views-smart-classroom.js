@@ -1921,7 +1921,7 @@ export async function renderSmartClassroom(teacher, classId) {
       const row = e.target.closest('.sc-plan-row')
       if (reflectBtn) {
         const p = lessonPlans.find(x => x.id === parseInt(reflectBtn.dataset.planid, 10))
-        if (p) openLessonPlanDocument({ plan: p, cls, teacher, classId, currentWeek: curWeek || p.week_start })
+        if (p) openLessonPlanDocument({ plan: p, cls, teacher, classId, currentWeek: curWeek || p.week_start, semesterStart: cfg.semester_start, semesterEnd: cfg.semester_end, scheduledDays: courseScheduledDays })
       } else if (row) {
         const p = lessonPlans.find(x => x.id === parseInt(row.dataset.planid, 10))
         if (p) _openLessonPlanModal(p)

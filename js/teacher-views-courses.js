@@ -659,7 +659,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       const cls = allowedClasses.find(c => c.id === classId)
       if (!selectedPlan || !cls) return
       hidePicker()
-      openLessonPlanDocument({ plan: selectedPlan, cls, teacher, classId: cls.id, currentWeek: selectedPlan.week_start })
+      openLessonPlanDocument({ plan: selectedPlan, cls, teacher, classId: cls.id, currentWeek: selectedPlan.week_start, semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: courseScheduledDays })
     })
   } catch (err) {
     body.innerHTML = `<div class="rounded-2xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">โหลดศูนย์จัดการคอร์สไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(err))}</div>`
