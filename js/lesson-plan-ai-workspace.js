@@ -17,6 +17,7 @@ const thaiShortDate = value => {
   return match ? `${match[3]}/${match[2]}/${String(Number(match[1]) + 543).slice(-2)}` : '........................'
 }
 const REFLECTION_NOTE_PREFIX = 'pp5-reflection-v1:'
+const DEFAULT_MINUTES_PER_PERIOD = 45
 const REFLECTION_NOTE_FONTS = [
   ['Sarabun', 'สารบรรณ'], ['TH Sarabun New', 'TH Sarabun New'],
   ['Mali', 'Mali · ลายมือ'], ['Itim', 'Itim · ลายมือ'], ['Sriracha', 'Sriracha · ลายมือ'],
@@ -156,7 +157,7 @@ const lessonSchema = {
   course: { course_type: 'basic' },
   plans: [{
     title: 'แผนการจัดการเรียนรู้ ครั้งที่ 1', week_start: 1, week_end: 1, session_number: 1,
-    lesson_date: '2026-05-11', period_count: 2, minutes_per_period: 50, duration_minutes: 100, unit_title: 'หน่วยการเรียนรู้ที่ 1',
+    lesson_date: '2026-05-11', period_count: 2, minutes_per_period: 45, duration_minutes: 90, unit_title: 'หน่วยการเรียนรู้ที่ 1',
     standards_type: 'indicators', standards: ['ค.1.2 ม.2/1 : อธิบายความสัมพันธ์ของจำนวนและการดำเนินการ'], standards_source: ['หลักสูตรแกนกลางฯ หน้า ...'], objectives: ['อธิบายความหมายของเลขยกกำลังได้'], key_concept: 'ความหมายของเลขยกกำลัง',
     activities: { intro: ['ทบทวนเลขยกกำลังด้วยโจทย์สั้น'], main: ['แยกตัวประกอบและตรวจคำตอบ'], wrap: ['สรุปวิธีคิด 1 ประโยค'] },
     media: ['หนังสือเรียน'], assessment: ['ตรวจคำตอบจากแบบฝึกหัด'], homework: '', teacher_notes: '',
@@ -188,7 +189,7 @@ function scheduledLessonSessions(syllabusItems = [], sessionsPerWeek = 1, weekly
       for (let sessionInWeek = 1; sessionInWeek <= sessionsPerWeek; sessionInWeek++) {
         const config = weeklySessionConfigs[sessionInWeek - 1] ?? {}
         const periodCount = Math.max(1, asInt(config.periodCount, 2))
-        const minutesPerPeriod = Math.max(1, asInt(config.minutesPerPeriod, 50))
+        const minutesPerPeriod = Math.max(1, asInt(config.minutesPerPeriod, DEFAULT_MINUTES_PER_PERIOD))
         sessions.push({
           session_number: sessions.length + 1, session_in_week: sessionInWeek, sessions_per_week: sessionsPerWeek,
           week_start: week, week_end: week, lesson_date: null, week_type: weekType,
@@ -383,7 +384,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
   const dateForWeek = weekNo => schoolWeekRange(weekNo, semesterStart, semesterEnd, actualScheduleDays)
   let files = []
   let teachingUnits = [{ title: '', description: '' }]
-  let weeklySessionValues = [{ periodCount: 2, minutesPerPeriod: 50 }]
+  let weeklySessionValues = [{ periodCount: 2, minutesPerPeriod: DEFAULT_MINUTES_PER_PERIOD }]
   m.innerHTML = `<div class="bg-white w-full h-full overflow-y-auto p-4 sm:p-6">
     <div class="flex items-start justify-between gap-3 mb-4">
       <div><span class="inline-flex px-2.5 py-1 rounded-full ${isSchedule ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'} text-[10px] font-extrabold mb-2">${isSchedule ? '📘 กำหนดการสอน' : '📝 แผนหน้าเดียว'}</span><h3 class="font-extrabold text-gray-800 text-lg">${isSchedule ? 'สร้างกำหนดการสอนด้วย AI' : 'สร้างแผนการสอนหน้าเดียวด้วย AI'}</h3><p class="text-xs text-gray-400 mt-1">สร้าง Prompt → ใช้กับ AI ที่ครูเลือก → นำ JSON กลับมาวาง → ระบบสร้าง${isSchedule ? 'กำหนดการสอน' : 'แผนการสอน'}</p></div>
@@ -525,13 +526,13 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
   }
   const readWeeklySessionConfigs = () => [...m.querySelectorAll('[data-weekly-session-config]')].map(row => ({
     periodCount: Math.max(1, asInt(row.querySelector('[data-session-period-count]').value, 1)),
-    minutesPerPeriod: Math.max(1, asInt(row.querySelector('[data-session-minutes-per-period]').value, 50)),
+    minutesPerPeriod: Math.max(1, asInt(row.querySelector('[data-session-minutes-per-period]').value, DEFAULT_MINUTES_PER_PERIOD)),
   }))
   const renderWeeklySessionConfigs = () => {
     const existing = readWeeklySessionConfigs()
     const source = existing.length ? existing : weeklySessionValues
     const count = getSessionsPerWeek()
-    weeklySessionValues = Array.from({ length: count }, (_, index) => source[index] ?? source.at(-1) ?? { periodCount: 2, minutesPerPeriod: 50 })
+    weeklySessionValues = Array.from({ length: count }, (_, index) => source[index] ?? source.at(-1) ?? { periodCount: 2, minutesPerPeriod: DEFAULT_MINUTES_PER_PERIOD })
     m.querySelector('#lp-ai-weekly-session-configs').innerHTML = weeklySessionValues.map((config, index) => `<div data-weekly-session-config class="rounded-xl border border-violet-100 bg-white p-3">
       <p class="text-xs font-extrabold text-violet-800 mb-2">ครั้งที่ ${index + 1} ในสัปดาห์</p>
       <div class="grid grid-cols-2 gap-2">
@@ -648,7 +649,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
         for (const p of data.plans) {
           const activities = p.activities ?? {}
           const periodCount = Math.max(1, asInt(p.period_count, 1))
-          const minutesPerPeriod = Math.max(1, asInt(p.minutes_per_period, asInt(p.duration_minutes, 50)))
+          const minutesPerPeriod = Math.max(1, asInt(p.minutes_per_period, asInt(p.duration_minutes, DEFAULT_MINUTES_PER_PERIOD)))
           const durationMinutes = asInt(p.duration_minutes, periodCount * minutesPerPeriod)
           const payload = {
             course_id: courseId, teacher_id: teacher.id, title: String(p.title).trim(),
@@ -738,7 +739,9 @@ function bindPad(box) {
     preview.hidden = !useSaved || !saved?.selectedOptions[0]?.dataset.preview
     if (useSaved && saved?.selectedOptions[0]) {
       preview.src = saved.selectedOptions[0].dataset.preview
-      box.querySelector('[data-sign-name]').value = saved.selectedOptions[0].dataset.name || ''
+      if (box.dataset.signRole !== 'dept-head') {
+        box.querySelector('[data-sign-name]').value = saved.selectedOptions[0].dataset.name || ''
+      }
     }
   }
   source.addEventListener('change', updateSource)
@@ -837,11 +840,11 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     || scopedDepartments[0]
     || (courseHeadName && departments.find(d => String(d.head_name ?? '').trim() === courseHeadName))
     || null
-  const matchingCourseHead = signatureTeachers.find(person => String(person.full_name ?? '').trim() === courseHeadName)
-  const courseHeadSignature = matchingCourseHead?.signature_url
-    || (dept && String(dept.head_name ?? '').trim() === courseHeadName ? dept.head_sign_url : null)
   const isManagementName = value => /ทีมผู้บริหาร|ทีมบริหาร|ฝ่ายบริหาร/.test(String(value ?? '').trim())
   const deptHeadName = courseHeadName || (dept && !isManagementName(dept.head_name) ? dept.head_name : '') || ''
+  const matchingCourseHead = signatureTeachers.find(person => String(person.full_name ?? '').trim() === deptHeadName)
+  const courseHeadSignature = matchingCourseHead?.signature_url
+    || (dept && String(dept.head_name ?? '').trim() === deptHeadName ? dept.head_sign_url : null)
   const headRel = cls?.students
   const classHeadDefault = (Array.isArray(headRel) ? headRel[0]?.full_name : headRel?.full_name) ?? ''
   const signaturePreferences = () => plan.source_json?.signature_preferences ?? {}
@@ -852,7 +855,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     const reflection = await getLessonPlanReflection(plan.id, classId, weekNo).catch(() => null)
     const resolve = path => getLessonPlanAssetUrl(path).catch(() => null)
     const persistedDeptName = String(reflection?.dept_head_name ?? '').trim()
-    const staleDeptHeadReflection = Boolean(courseHeadName && persistedDeptName && persistedDeptName !== courseHeadName && (dept?.head_name === persistedDeptName || isManagementName(persistedDeptName)))
+    const staleDeptHeadReflection = Boolean(deptHeadName && persistedDeptName && persistedDeptName !== deptHeadName)
     const effectiveReflectionDeptName = staleDeptHeadReflection ? null : reflection?.dept_head_name
     const effectiveReflectionDeptPath = staleDeptHeadReflection ? null : reflection?.dept_head_signature_path
     const [classHeadUrl, teacherUrl, deptHeadUrl] = await Promise.all([
@@ -862,7 +865,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     ])
     const preference = signaturePreferences()
     const storedDeptPlanPreference = preference['dept-head']
-    const deptPlanPreference = courseHeadName && storedDeptPlanPreference?.name !== courseHeadName && (storedDeptPlanPreference?.name === dept?.head_name || isManagementName(storedDeptPlanPreference?.name))
+    const deptPlanPreference = deptHeadName && storedDeptPlanPreference?.name !== deptHeadName
       ? null
       : storedDeptPlanPreference
     const deptSessionPreference = deptPlanPreference?.session_overrides?.[String(weekNo)]
@@ -886,7 +889,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     if (profileTeacher?.signature_url) addSaved('teacher', profileTeacher.signature_url, profileTeacher.full_name || teacher.full_name, 'ลายเซ็นที่บันทึกในโปรไฟล์ครู')
     if (currentPaths['dept-head']) addSaved('dept-head', currentPaths['dept-head'], effectiveReflectionDeptName || deptHeadName, 'ลายเซ็นครั้งนี้', deptHeadUrl)
     if (courseHeadSignature) addSaved('dept-head', courseHeadSignature, deptHeadName, 'ลายเซ็นหัวหน้ากลุ่มสาระของรายวิชา')
-    for (const person of signatureTeachers) {
+    for (const person of signatureTeachers.filter(person => String(person.full_name ?? '').trim() === deptHeadName)) {
       addSaved('dept-head', person.signature_url, person.full_name, `ใช้ลายเซ็นที่มีในระบบ · ${person.full_name}`)
     }
     if (deptPlanPreference?.signature_path) {
