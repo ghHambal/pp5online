@@ -652,7 +652,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
           const minutesPerPeriod = Math.max(1, asInt(p.minutes_per_period, asInt(p.duration_minutes, DEFAULT_MINUTES_PER_PERIOD)))
           const durationMinutes = asInt(p.duration_minutes, periodCount * minutesPerPeriod)
           const payload = {
-            course_id: courseId, teacher_id: teacher.id, title: String(p.title).trim(),
+            course_id: courseId, teacher_id: teacher.id, title: String(p.title).trim().replace(/(ครั้งที่\s*)\d+/g, `$1${asInt(p.session_number, 1)}`),
             week_start: asInt(p.week_start), week_end: asInt(p.week_end, asInt(p.week_start)), session_number: asInt(p.session_number, 1),
             lesson_date: isoDate(p.lesson_date) ?? dateForWeek(asInt(p.week_start)).dates[0] ?? null, duration_minutes: durationMinutes, unit_title: asText(p.unit_title) || null,
             standards: asText(p.standards) || null, objectives: asText(p.objectives) || null, key_concept: asText(p.key_concept || p.topic) || null,

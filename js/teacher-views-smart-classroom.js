@@ -978,6 +978,26 @@ export async function renderSmartClassroom(teacher, classId) {
   }
 
   // ── แผนการจัดการเรียนรู้ (ผูกกับรายวิชา ยืดหยุ่นจำนวนแผน) ────────────────────
+  const orderedLessonPlans = () => [...lessonPlans].sort((a, b) => {
+    const weekDifference = Number(a.week_start || 0) - Number(b.week_start || 0)
+    if (weekDifference) return weekDifference
+    const dateA = String(a.lesson_date || a.source_json?.lesson_date || '')
+    const dateB = String(b.lesson_date || b.source_json?.lesson_date || '')
+    if (dateA && dateB && dateA !== dateB) return dateA.localeCompare(dateB)
+    return Number(a.source_json?.session_in_week || 0) - Number(b.source_json?.session_in_week || 0)
+      || Number(a.session_number || 0) - Number(b.session_number || 0)
+      || Number(a.week_end || 0) - Number(b.week_end || 0)
+      || String(a.title ?? '').localeCompare(String(b.title ?? ''), 'th')
+  })
+  const lessonPlanSequenceNumber = plan => {
+    const index = orderedLessonPlans().findIndex(item => String(item.id) === String(plan?.id))
+    return index >= 0 ? index + 1 : Number(plan?.session_number) || 1
+  }
+  const numberedLessonPlan = plan => {
+    const sessionNumber = lessonPlanSequenceNumber(plan)
+    const title = String(plan?.title ?? '').replace(/(ครั้งที่\s*)\d+/g, `$1${sessionNumber}`)
+    return { ...plan, title, session_number: sessionNumber }
+  }
   const _lessonPlansHTML = () => {
     if (!lessonPlans.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่มีแผนการสอน — กด "➕ สร้างแผน" เพื่อเริ่ม</p>`
     const dayNames = { 1:'จันทร์', 2:'อังคาร', 3:'พุธ', 4:'พฤหัสบดี', 5:'ศุกร์', 6:'เสาร์', 7:'อาทิตย์' }
@@ -1006,11 +1026,10 @@ export async function renderSmartClassroom(teacher, classId) {
       const ranges = slots.sort((a, b) => a.start - b.start).map(slot => slot.count > 1 ? `${slot.start}–${slot.start + slot.count - 1}` : `${slot.start}`)
       return ` · วัน${dayNames[day]} คาบ ${ranges.join(', ')}`
     }
-    const sortedPlans = [...lessonPlans].sort((a, b) => Number(a.week_start || 0) - Number(b.week_start || 0)
-      || Number(a.session_number || 0) - Number(b.session_number || 0)
-      || Number(a.week_end || 0) - Number(b.week_end || 0)
-      || String(a.title ?? '').localeCompare(String(b.title ?? ''), 'th'))
-    return `<div class="max-h-72 lg:max-h-[28rem] overflow-y-auto space-y-2 pr-1">${sortedPlans.map(p => `
+    const sortedPlans = orderedLessonPlans()
+    return `<div class="max-h-72 lg:max-h-[28rem] overflow-y-auto space-y-2 pr-1">${sortedPlans.map((sourcePlan, index) => {
+      const p = { ...sourcePlan, ...numberedLessonPlan(sourcePlan), session_number: index + 1 }
+      return `
       <div class="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-100 bg-gray-50">
         <button class="sc-plan-row flex-1 min-w-0 text-left" data-planid="${p.id}">
           <p class="text-xs font-bold text-gray-700 truncate">${_htmlEsc(p.title)}</p>
@@ -1018,7 +1037,8 @@ export async function renderSmartClassroom(teacher, classId) {
         </button>
         <button class="sc-plan-reflect text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-indigo-200 text-indigo-600 hover:bg-indigo-50 flex-shrink-0" data-planid="${p.id}">✍️ ลงนาม/พิมพ์</button>
         <button type="button" class="sc-plan-delete text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-white border border-red-200 text-red-600 flex-shrink-0" data-planid="${p.id}" aria-label="ลบแผน ${_htmlEsc(p.title)}">ลบ</button>
-      </div>`).join('')}</div>`
+      </div>`
+    }).join('')}</div>`
   }
 
   // ── โซนอ้างอิง — แท็บรวมข้อมูลที่ไม่ได้ใช้ระหว่างสอนสดทุกวินาที (เดิมแยกการ์ดเรียงยาว 3 แถว) ──
@@ -1951,10 +1971,10 @@ export async function renderSmartClassroom(teacher, classId) {
       const row = e.target.closest('.sc-plan-row')
       if (reflectBtn) {
         const p = lessonPlans.find(x => x.id === parseInt(reflectBtn.dataset.planid, 10))
-        if (p) openLessonPlanDocument({ plan: p, cls, teacher, classId, currentWeek: curWeek || p.week_start, semesterStart: cfg.semester_start, semesterEnd: cfg.semester_end, scheduledDays: courseScheduledDays })
+        if (p) openLessonPlanDocument({ plan: numberedLessonPlan(p), cls, teacher, classId, currentWeek: curWeek || p.week_start, semesterStart: cfg.semester_start, semesterEnd: cfg.semester_end, scheduledDays: courseScheduledDays })
       } else if (row) {
         const p = lessonPlans.find(x => x.id === parseInt(row.dataset.planid, 10))
-        if (p) _openLessonPlanModal(p)
+        if (p) _openLessonPlanModal(numberedLessonPlan(p))
       }
     })
     document.getElementById('sc-add-assignment')?.addEventListener('click', () => _openAssignmentModal())
@@ -2145,7 +2165,7 @@ export async function renderSmartClassroom(teacher, classId) {
   function _openLessonPlanModal(plan) {
     document.getElementById('sc-plan-modal')?.remove()
     const isEdit = !!plan
-    const p = plan ?? {}
+    const p = plan ? numberedLessonPlan(plan) : {}
     const ms = cls?.master_subjects ?? {}
     const areaCodes = { MATH:'คณิตศาสตร์', THAI:'ภาษาไทย', SCI:'วิทยาศาสตร์และเทคโนโลยี', ENG:'ภาษาต่างประเทศ', SOC:'สังคมศึกษา ศาสนาและวัฒนธรรม', PE:'สุขศึกษาและพลศึกษา', ART:'ศิลปะ', CAREER:'การงานอาชีพ', ISLAM:'อิสลามศึกษา' }
     const rawArea = String(ms.dept ?? ms.subject_group ?? '').trim()
@@ -2200,7 +2220,7 @@ export async function renderSmartClassroom(teacher, classId) {
         #sc-plan-modal .lp-doc-input:hover,#sc-plan-modal .lp-doc-area:hover{background:#f8fafc;border-color:#cbd5e1}#sc-plan-modal .lp-doc-input:focus,#sc-plan-modal .lp-doc-area:focus{background:#fffef2;border-color:#0f7a42;box-shadow:0 0 0 2px rgba(15,122,66,.12)}
         #sc-plan-modal .lp-meta{display:grid;grid-template-columns:.8fr .85fr .9fr 1fr 1.25fr;align-items:center;gap:4px;border-top:1.5px solid #176b3a;border-bottom:1.5px solid #176b3a;margin-top:10px;padding:6px 7px}.lp-meta label{display:flex;align-items:center;gap:3px;white-space:nowrap}.lp-meta label:nth-child(2),.lp-meta label:nth-child(3),.lp-meta label:nth-child(4){justify-content:center}.lp-meta label:last-child{justify-content:flex-end}.lp-meta input[type=number]{width:48px}.lp-meta input[type=date]{width:112px}.lp-duration-total{font-weight:700;color:#176b3a}
         #sc-plan-modal .lp-columns{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:12px}.lp-box{border:1.2px solid #17743d;border-radius:5px;overflow:hidden;margin-bottom:11px}.lp-box-title{background:#d8f6e2;color:#145f35;font-size:15px;padding:7px 10px;border-bottom:1px solid #17743d}.lp-box-body{padding:8px 10px}.lp-box-body textarea{min-height:62px}.lp-activities textarea{min-height:48px}.lp-activities .main{min-height:126px}.lp-media textarea{min-height:48px}
-        #sc-plan-modal .lp-sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:36px}.lp-sign{text-align:center;font-size:12px;line-height:1.55}.lp-sign-space{height:44px}.lp-sign-line{border-bottom:1px dotted #111;height:1px;margin:0 4px 5px}.lp-reflect{margin-top:28px}.lp-reflect h3,.lp-suggestion h3{font-size:14px;font-weight:500;border-bottom:1px solid #111;padding-bottom:4px;margin:0 0 9px}.lp-rule{height:31px;border-bottom:1px solid #8ca1bd;color:#176b3a;padding:3px 8px;font-size:12px}.lp-suggestion{margin-top:22px}.lp-dept-sign{width:72%;margin:72px auto 0;text-align:center;font-size:12px;line-height:1.6}.lp-dept-sign .lp-sign-line{display:inline-block;width:180px;vertical-align:middle}
+        #sc-plan-modal .lp-sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:36px}.lp-sign{text-align:center;font-size:12px;line-height:1.55}.lp-sign-space{height:44px}.lp-sign-row{display:flex;align-items:center;justify-content:center;gap:4px}.lp-sign-line{display:inline-block;flex:1;border-bottom:1px dotted #111;height:1px;margin:0 4px 5px}.lp-reflect{margin-top:28px}.lp-reflect h3,.lp-suggestion h3{font-size:14px;font-weight:500;border-bottom:1px solid #111;padding-bottom:4px;margin:0 0 9px}.lp-rule{height:31px;border-bottom:1px solid #8ca1bd;color:#176b3a;padding:3px 8px;font-size:12px}.lp-suggestion{margin-top:22px}.lp-dept-sign{width:72%;margin:72px auto 0;text-align:center;font-size:12px;line-height:1.6}.lp-dept-sign .lp-sign-line{display:inline-block;width:180px;vertical-align:middle}
         #sc-plan-modal .lp-extra{position:relative;flex:none}.lp-extra summary{cursor:pointer;list-style:none}.lp-extra-content{position:absolute;top:46px;right:0;width:360px;background:#fff;border:1px solid #dbe2ea;border-radius:14px;box-shadow:0 16px 40px rgba(15,23,42,.18);padding:14px;z-index:5}.lp-extra textarea{width:100%;border:1px solid #dbe2ea;border-radius:9px;padding:8px;font-size:12px;resize:vertical}
         @media(max-width:720px){#sc-plan-modal .lp-toolbar{height:auto;min-height:64px;flex-wrap:wrap;padding:8px}.lp-toolbar .lp-hide-mobile{display:none}#sc-plan-modal .lp-editor-scroll{padding:10px}.lp-extra-content{position:fixed!important;right:8px!important;top:62px!important;width:calc(100vw - 16px)!important}}
       </style>
@@ -2240,8 +2260,8 @@ export async function renderSmartClassroom(teacher, classId) {
             <div>
               <div class="lp-box lp-media"><div class="lp-box-title">5.สื่อการเรียนรู้</div><div class="lp-box-body"><textarea id="lp-media" class="lp-doc-area" rows="3">${_htmlEsc(p.media ?? '')}</textarea></div></div>
               <div class="lp-sign-pair">
-                <div class="lp-sign"><div class="lp-sign-space"></div><div>ลงชื่อ</div><div class="lp-sign-line"></div><div>หัวหน้าห้อง</div><div>( ${_htmlEsc(classHeadName)} )</div><div>วันที่ <span class="lp-sign-date">${formatThaiShortDate(initialLessonDate)}</span></div></div>
-                <div class="lp-sign"><div class="lp-sign-space"></div><div>ลงชื่อ</div><div class="lp-sign-line"></div><div>ครูผู้สอน</div><div>( ${_htmlEsc(teacher?.full_name ?? '................................')} )</div><div>วันที่ <span class="lp-sign-date">${formatThaiShortDate(initialLessonDate)}</span></div></div>
+                <div class="lp-sign"><div class="lp-sign-space"></div><div class="lp-sign-row"><span>ลงชื่อ</span><span class="lp-sign-line"></span></div><div>หัวหน้าห้อง</div><div>( ${_htmlEsc(classHeadName)} )</div><div>วันที่ <span class="lp-sign-date">${formatThaiShortDate(initialLessonDate)}</span></div></div>
+                <div class="lp-sign"><div class="lp-sign-space"></div><div class="lp-sign-row"><span>ลงชื่อ</span><span class="lp-sign-line"></span></div><div>ครูผู้สอน</div><div>( ${_htmlEsc(teacher?.full_name ?? '................................')} )</div><div>วันที่ <span class="lp-sign-date">${formatThaiShortDate(initialLessonDate)}</span></div></div>
               </div>
               <div class="lp-reflect"><h3>บันทึกหลังการสอน</h3><div class="lp-rule">ผลการจัดการเรียนรู้:</div><div class="lp-rule"></div><div class="lp-rule">แนวทางการแก้ปัญหา:</div><div class="lp-rule"></div></div>
               <div class="lp-suggestion"><h3>ข้อเสนอแนะ</h3><div class="lp-rule"></div><div class="lp-rule"></div><div class="lp-rule"></div></div>
