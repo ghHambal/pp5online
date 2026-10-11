@@ -998,6 +998,16 @@ export async function renderSmartClassroom(teacher, classId) {
     const title = String(plan?.title ?? '').replace(/(ครั้งที่\s*)\d+/g, `$1${sessionNumber}`)
     return { ...plan, title, session_number: sessionNumber }
   }
+  const lessonPlanPeriodConfig = plan => {
+    const duration = Number(plan.duration_minutes) || Number(plan.source_json?.duration_minutes) || 45
+    const storedCount = Number(plan.source_json?.period_count)
+    const periodCount = Number.isInteger(storedCount) && storedCount > 0
+      ? storedCount : duration === 100 ? 2 : duration % 45 === 0 ? duration / 45 : 1
+    const storedMinutes = Number(plan.source_json?.minutes_per_period)
+    const minutesPerPeriod = Number.isInteger(storedMinutes) && storedMinutes > 0
+      ? storedMinutes : duration === 100 ? 50 : duration % 45 === 0 ? 45 : Math.round(duration / periodCount)
+    return { periodCount, minutesPerPeriod, durationMinutes: periodCount * minutesPerPeriod }
+  }
   const _lessonPlansHTML = () => {
     if (!lessonPlans.length) return `<p class="text-center py-6 text-xs text-gray-400">ยังไม่มีแผนการสอน — กด "➕ สร้างแผน" เพื่อเริ่ม</p>`
     const dayNames = { 1:'จันทร์', 2:'อังคาร', 3:'พุธ', 4:'พฤหัสบดี', 5:'ศุกร์', 6:'เสาร์', 7:'อาทิตย์' }
@@ -1009,10 +1019,7 @@ export async function renderSmartClassroom(teacher, classId) {
     }
     const sortedScheduleDays = [...scheduleByDay.keys()].sort((a, b) => (a % 7) - (b % 7))
     const planPeriodCount = p => {
-      const stored = Number(p.source_json?.period_count)
-      if (Number.isInteger(stored) && stored > 0) return stored
-      const duration = Number(p.duration_minutes) || 45
-      return duration % 45 === 0 ? duration / 45 : (duration === 100 ? 2 : 1)
+      return lessonPlanPeriodConfig(p).periodCount
     }
     const planScheduleLabel = p => {
       const count = planPeriodCount(p)
@@ -1092,7 +1099,7 @@ export async function renderSmartClassroom(teacher, classId) {
     if (tab === 'plans') return `
       <div class="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50 to-white p-4 lg:p-5 mb-4">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div><p class="text-base font-extrabold text-violet-950">📝 แผนการสอนหน้าเดียว</p><p class="text-xs text-violet-700/70 mt-1">สร้างแผนรายครั้ง บันทึกหลังสอน และลงลายเซ็นครบ 3 ฝ่าย</p><div class="flex gap-2 mt-2"><span class="px-2 py-1 rounded-lg bg-white border border-violet-100 text-[10px] font-bold text-violet-700">${lessonPlans.length} แผน</span><span class="px-2 py-1 rounded-lg bg-white border border-violet-100 text-[10px] font-bold text-violet-700">เชื่อมกำหนดการสอน</span></div></div>
+          <div><p class="text-base font-extrabold text-violet-950">📝 แผนการสอนหน้าเดียว</p><p class="text-xs text-violet-700/70 mt-1">สร้างแผนรายครั้ง บันทึกหลังสอน และลงลายเซ็นครบ 3 ฝ่าย</p><div class="flex flex-wrap gap-2 mt-2"><span class="px-2 py-1 rounded-lg bg-white border border-violet-100 text-[10px] font-bold text-violet-700">${lessonPlans.length} แผน</span><span class="px-2 py-1 rounded-lg bg-white border border-violet-100 text-[10px] font-bold text-violet-700">เชื่อมกำหนดการสอน</span>${lessonPlans.some(p => Number(p.week_start) === 1) && new Set(lessonPlans.map(p => Number(p.week_start))).size > 1 ? '<button id="sc-sync-plan-pattern" type="button" class="px-2 py-1 rounded-lg bg-white border border-violet-200 text-[10px] font-bold text-violet-700 hover:bg-violet-50">🔁 ใช้รูปแบบคาบจากสัปดาห์แรก</button>' : ''}</div></div>
           <div class="grid grid-cols-2 gap-2 sm:min-w-[300px]">
             <button id="sc-ai-plan" class="min-h-[48px] rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-xs font-bold shadow-sm">🤖 สร้างแผนด้วย AI</button>
             <button id="sc-add-plan" class="min-h-[48px] rounded-xl bg-white border border-violet-200 text-violet-800 text-xs font-bold hover:bg-violet-50">＋ สร้างแผนเอง</button>
@@ -1952,6 +1959,66 @@ export async function renderSmartClassroom(teacher, classId) {
       teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek: curWeek || 1, initialMode: 'plan',
       semesterStart: cfg.semester_start, semesterEnd: cfg.semester_end, scheduledDays: courseScheduledDays, onSaved: () => _reload(),
     }))
+    document.getElementById('sc-sync-plan-pattern')?.addEventListener('click', async event => {
+      const weeklyPlans = new Map()
+      for (const plan of orderedLessonPlans()) {
+        const week = Number(plan.week_start)
+        if (!Number.isInteger(week) || week < 1) continue
+        if (!weeklyPlans.has(week)) weeklyPlans.set(week, [])
+        weeklyPlans.get(week).push(plan)
+      }
+      const weeks = [...weeklyPlans.keys()].sort((a, b) => a - b)
+      const firstWeekPlans = weeklyPlans.get(1) ?? []
+      if (!weeklyPlans.has(1) || !weeks.some(week => week > 1) || !firstWeekPlans.length) return showToast('ต้องมีแผนในสัปดาห์ที่ 1 และสัปดาห์ถัดไปก่อน', 'warning')
+      const updates = []
+      for (const week of weeks.filter(week => week > 1)) {
+        const plans = weeklyPlans.get(week) ?? []
+        plans.forEach((plan, index) => {
+          const pattern = firstWeekPlans[index]
+          if (!pattern) return
+          const config = lessonPlanPeriodConfig(pattern)
+          const current = lessonPlanPeriodConfig(plan)
+          const sessionNumber = lessonPlanSequenceNumber(plan)
+          const title = String(plan.title ?? '').replace(/(ครั้งที่\s*)\d+/g, `$1${sessionNumber}`)
+          if (current.periodCount === config.periodCount && current.minutesPerPeriod === config.minutesPerPeriod
+            && Number(plan.duration_minutes) === config.durationMinutes
+            && Number(plan.source_json?.period_count) === config.periodCount
+            && Number(plan.source_json?.minutes_per_period) === config.minutesPerPeriod
+            && Number(plan.session_number) === sessionNumber
+            && Number(plan.source_json?.session_in_week) === index + 1
+            && Number(plan.source_json?.sessions_per_week) === firstWeekPlans.length
+            && plan.title === title) return
+          updates.push({ plan, config, sessionNumber, sessionInWeek: index + 1, title })
+        })
+      }
+      if (!updates.length) return showToast('ทุกสัปดาห์ใช้รูปแบบคาบเดียวกับสัปดาห์แรกอยู่แล้ว', 'success')
+      const patternText = firstWeekPlans.map((plan, index) => {
+        const config = lessonPlanPeriodConfig(plan)
+        return `ครั้งที่ ${index + 1}: ${config.periodCount} คาบ × ${config.minutesPerPeriod} นาที`
+      }).join(', ')
+      if (!confirm(`จะปรับเลขครั้ง ชื่อแผน จำนวนคาบ และเวลารวมของ ${updates.length} แผนในสัปดาห์ถัดไป ให้ตรงกับรูปแบบสัปดาห์แรก (${patternText}) โดยไม่แก้เนื้อหาการสอน ดำเนินการหรือไม่?`)) return
+      const button = event.currentTarget
+      button.disabled = true
+      let updated = 0
+      try {
+        for (const { plan, config, sessionNumber, sessionInWeek, title } of updates) {
+          await updateLessonPlan(plan.id, {
+            title,
+            session_number: sessionNumber,
+            duration_minutes: config.durationMinutes,
+            source_json: { ...(plan.source_json ?? {}), session_number: sessionNumber, session_in_week: sessionInWeek, sessions_per_week: firstWeekPlans.length, period_count: config.periodCount, minutes_per_period: config.minutesPerPeriod, duration_minutes: config.durationMinutes },
+          })
+          updated++
+        }
+        showToast(`ปรับรูปแบบคาบแล้ว ${updated} แผน ✅`, 'success')
+        _reload()
+      } catch (err) {
+        showToast(`ปรับแล้ว ${updated}/${updates.length} แผน ก่อนเกิดข้อผิดพลาด: ${getFriendlyErrorMessage(err)}`, 'error')
+        _reload()
+      } finally {
+        button.disabled = false
+      }
+    })
     document.getElementById('sc-plan-list')?.addEventListener('click', e => {
       const deleteButton = e.target.closest('.sc-plan-delete')
       if (deleteButton) {
