@@ -174,7 +174,7 @@ function courseMeta(cls) {
   }
 }
 
-function scheduledLessonSessions(syllabusItems = []) {
+function scheduledLessonSessions(syllabusItems = [], sessionsPerWeek = 1) {
   const sessions = []
   const coveredWeeks = new Set()
   for (const item of [...syllabusItems].sort((a, b) => asInt(a.week_start) - asInt(b.week_start))) {
@@ -185,22 +185,20 @@ function scheduledLessonSessions(syllabusItems = []) {
     for (let week = weekStart; week <= weekEnd; week++) {
       if (coveredWeeks.has(week)) continue
       coveredWeeks.add(week)
-      sessions.push({
-        session_number: sessions.length + 1, week_start: week, week_end: week,
-        lesson_date: null,
-        week_type: weekType,
-        topic: item.topic ?? '',
-        teaching_methods: item.teaching_methods ?? '',
-        notes: item.notes ?? '',
-        unit_title: item.unit_title ?? item.source_json?.unit_title ?? '',
-        key_concept: item.topic ?? '',
-      })
+      for (let sessionInWeek = 1; sessionInWeek <= sessionsPerWeek; sessionInWeek++) {
+        sessions.push({
+          session_number: sessions.length + 1, session_in_week: sessionInWeek, sessions_per_week: sessionsPerWeek,
+          week_start: week, week_end: week, lesson_date: null, week_type: weekType,
+          topic: item.topic ?? '', teaching_methods: item.teaching_methods ?? '', notes: item.notes ?? '',
+          unit_title: item.unit_title ?? item.source_json?.unit_title ?? '', key_concept: item.topic ?? '',
+        })
+      }
     }
   }
   return sessions
 }
 
-function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCount, minutesPerPeriod, calendarWeeks, midtermWeeks, finalWeeks, semesterStart, semesterEnd, scheduledDays = [], includeUnitTitle = true, topic, teachingUnits, files }) {
+function makePrompt({ mode, cls, teacher, syllabusItems, week, session, sessionsPerWeek = 1, periodCount, minutesPerPeriod, calendarWeeks, midtermWeeks, finalWeeks, semesterStart, semesterEnd, scheduledDays = [], includeUnitTitle = true, topic, teachingUnits, files }) {
   const meta = courseMeta(cls)
   const normalizedScheduleDays = normalizeScheduleDays(scheduledDays)
   const scheduledWeekdays = normalizedScheduleDays.map(day => WEEKDAY_LABELS[day])
@@ -224,7 +222,7 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
     })),
   ].sort((a, b) => a.week_start - b.week_start) : []
   const planSessions = mode === 'plan'
-    ? scheduledLessonSessions(syllabusItems).map(item => ({
+    ? scheduledLessonSessions(syllabusItems, sessionsPerWeek).map(item => ({
       ...item,
       available_lesson_dates: dateForWeek(item.week_start).dates,
       unit_title: includeUnitTitle ? item.unit_title : '',
@@ -243,7 +241,7 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
   } : {
     ...lessonSchema,
     course: { ...meta, course_type: 'ให้จำแนกจากหลักสูตรหรือเอกสารแนบ', total_sessions: planSessions.length, include_unit_title: includeUnitTitle },
-    plans: planSessions.map(item => ({ ...lessonSchema.plans[0], ...item,
+    plans: planSessions.map(item => ({ ...lessonSchema.plans[0], ...item, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: periodCount * minutesPerPeriod,
       title: `แผนการจัดการเรียนรู้ ครั้งที่ ${item.session_number}`,
       unit_title: includeUnitTitle && item.week_type === 'teaching' ? item.unit_title || 'หน่วยการเรียนรู้ที่ 1' : item.unit_title || '',
       key_concept: item.key_concept || 'หัวข้อตามกำหนดการสอน',
@@ -265,15 +263,15 @@ function makePrompt({ mode, cls, teacher, syllabusItems, week, session, periodCo
 งานที่ต้องทำ: ${mode === 'schedule' ? 'สร้างกำหนดการสอนทั้งภาคเรียน โดยแสดงเป็นภาพรวมรายสัปดาห์' : `สร้างแผนการจัดการเรียนรู้หน้าเดียวให้ครบทุกครั้งจากกำหนดการสอน จำนวน ${planSessions.length} ครั้ง ในคำตอบชุดเดียว`}
 
 ข้อมูลจากระบบ PP5:
-${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_week: week, session_number: session, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: duration, calendar_weeks: mode === 'schedule' ? calendarWeeks : null, semester_start: semesterStart, week_first_day: 'วันอาทิตย์', week_last_instructional_day: 'วันศุกร์', scheduled_weekdays: scheduledWeekdays, schedule_days_found: normalizedScheduleDays.length > 0, schedule_days_required: mode === 'plan', date_range_source: mode === 'schedule' ? 'school_calendar' : 'teacher_timetable', weekly_date_ranges: weeklyDateRanges, teaching_weeks_excluding_exams: mode === 'schedule' ? teachingWeeks : null, midterm_exam_weeks: mode === 'schedule' ? midtermWeeks : null, final_exam_weeks: mode === 'schedule' ? finalWeeks : null, include_unit_title: mode === 'plan' ? includeUnitTitle : null, requested_sessions: mode === 'plan' ? planSessions : null, requested_topic: topic, requested_teaching_units: teachingUnits, existing_schedule: relevant }, null, 2)}
+${JSON.stringify({ ...meta, teacher_name: teacher?.full_name ?? '', selected_week: week, sessions_per_week: mode === 'plan' ? sessionsPerWeek : null, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: duration, calendar_weeks: mode === 'schedule' ? calendarWeeks : null, semester_start: semesterStart, week_first_day: 'วันอาทิตย์', week_last_instructional_day: 'วันศุกร์', scheduled_weekdays: scheduledWeekdays, schedule_days_found: normalizedScheduleDays.length > 0, schedule_days_required: mode === 'plan', date_range_source: mode === 'schedule' ? 'school_calendar' : 'teacher_timetable', weekly_date_ranges: weeklyDateRanges, teaching_weeks_excluding_exams: mode === 'schedule' ? teachingWeeks : null, midterm_exam_weeks: mode === 'schedule' ? midtermWeeks : null, final_exam_weeks: mode === 'schedule' ? finalWeeks : null, include_unit_title: mode === 'plan' ? includeUnitTitle : null, requested_sessions: mode === 'plan' ? planSessions : null, requested_topic: topic, requested_teaching_units: teachingUnits, existing_schedule: relevant }, null, 2)}
 
 ไฟล์ที่ผู้ใช้จะอัปโหลดให้คุณอ่านประกอบ:
 ${attachmentText}
 
 ข้อกำหนดสำคัญ:
 1. ตรวจประเภทวิชาและอ่านหนังสือเรียน เอกสารหลักสูตร ผลการเรียนรู้/มาตรฐานและตัวชี้วัด รวมถึงแบบฟอร์มที่แนบก่อนตอบ ห้ามเดาประเภทวิชาจากรหัสวิชาเพียงอย่างเดียว
-2. ${mode === 'schedule' ? `สร้างแถวให้ครบสัปดาห์ตามปฏิทิน 1-${calendarWeeks} โดยเลขสัปดาห์เป็นเลขจริง ห้ามเลื่อนหรือยุบเลขหลังช่วงสอบ สัปดาห์สอบกลางภาคคือ ${midtermWeeks?.join(', ') || 'ไม่มี'} และปลายภาคคือ ${finalWeeks?.join(', ') || 'ไม่มี'} ให้ใส่แถวสอบตาม week_type ที่ตรงกัน แล้วกระจายหน่วยการเรียนรู้ให้ครบในสัปดาห์สอนจริงที่เหลือ รวม ${teachingWeeks} สัปดาห์ ห้ามละเว้นหรือเปลี่ยนสาระสำคัญ; topic ให้เป็นชื่อเรื่องสั้น ๆ เท่านั้น ไม่เขียนบรรยายหรือเรียงความ` : `สร้างแผนหนึ่งรายการต่อทุก session ใน requested_sessions ให้ครบทั้งสัปดาห์เรียนและสัปดาห์สอบ เรียง session_number ตั้งแต่ 1 และคง week_start/week_end/week_type ตามข้อมูล ห้ามสร้างแผนเฉพาะสัปดาห์หยุด`}
-3. ${mode === 'schedule' ? 'ใช้ week_type เป็น teaching, midterm_exam, final_exam หรือ break; แต่ละสัปดาห์สอบต้องมี topic ระบุชื่อการสอบ และห้ามใส่หน่วยการเรียนรู้ในแถวสอบ' : `แต่ละแผนมี ${periodCount} คาบ คาบละ ${minutesPerPeriod} นาที รวม ${duration} นาที และ session_number/week ต้องตรงกับ requested_sessions ให้เลือก lesson_date จาก available_lesson_dates ของครั้งนั้นเท่านั้น หากไม่มีวันที่ให้ใช้ null`}
+2. ${mode === 'schedule' ? `สร้างแถวให้ครบสัปดาห์ตามปฏิทิน 1-${calendarWeeks} โดยเลขสัปดาห์เป็นเลขจริง ห้ามเลื่อนหรือยุบเลขหลังช่วงสอบ สัปดาห์สอบกลางภาคคือ ${midtermWeeks?.join(', ') || 'ไม่มี'} และปลายภาคคือ ${finalWeeks?.join(', ') || 'ไม่มี'} ให้ใส่แถวสอบตาม week_type ที่ตรงกัน แล้วกระจายหน่วยการเรียนรู้ให้ครบในสัปดาห์สอนจริงที่เหลือ รวม ${teachingWeeks} สัปดาห์ ห้ามละเว้นหรือเปลี่ยนสาระสำคัญ; topic ให้เป็นชื่อเรื่องสั้น ๆ เท่านั้น ไม่เขียนบรรยายหรือเรียงความ` : `สร้างแผนหนึ่งรายการต่อทุก session ใน requested_sessions รวม ${sessionsPerWeek} ครั้งต่อสัปดาห์ตามค่าที่กำหนด โดยแต่ละสัปดาห์ให้มี session_in_week ตั้งแต่ 1-${sessionsPerWeek} และเรียง session_number ต่อเนื่องทั้งภาคเรียน คง week_start/week_end/week_type ตามข้อมูล ห้ามสร้างแผนเฉพาะสัปดาห์หยุด`}
+3. ${mode === 'schedule' ? 'ใช้ week_type เป็น teaching, midterm_exam, final_exam หรือ break; แต่ละสัปดาห์สอบต้องมี topic ระบุชื่อการสอบ และห้ามใส่หน่วยการเรียนรู้ในแถวสอบ' : `แต่ละแผนมี ${periodCount} คาบต่อครั้ง คาบละ ${minutesPerPeriod} นาที รวม ${duration} นาที โดยทุกครั้งในสัปดาห์ใช้จำนวนคาบเท่ากัน ต้องระบุ session_in_week และ session_number/week ให้ตรงกับ requested_sessions เลือก lesson_date จาก available_lesson_dates ของครั้งนั้นเท่านั้นและกระจายคนละครั้งคนละวันเมื่อมีวันสอนเพียงพอ หากไม่มีวันที่ให้ใช้ null`}
 4. ${mode === 'schedule' ? 'สรุปเฉพาะหัวข้อที่จะสอนใน topic; description ให้เป็นสตริงว่าง; รูปแบบการสอนใช้คำหรือวลีสั้น ๆ และหมายเหตุให้สรุปใจความกระชับไม่เกิน 50 ตัวอักษร ห้ามเขียนเป็นประโยคยาว' : `ทุกช่องให้สรุปใจความสั้น ๆ ใช้ bullet หรือวลี ห้ามเขียนเรียงความ: จุดประสงค์ไม่เกิน 3 ข้อ; ขั้นนำ/สอน/สรุปอย่างละไม่เกิน 2 ข้อ; ช่องอื่นไม่เกิน 2 ข้อ เพื่อให้พอดีกับแบบฟอร์มหน้าเดียว${includeUnitTitle ? ' สัปดาห์สอนให้ใส่ชื่อหน่วยใน unit_title; สัปดาห์สอบใส่หน่วยที่เกี่ยวข้องเฉพาะเมื่อข้อมูลในเอกสารระบุชัด มิฉะนั้นให้เว้นว่าง' : ' ให้ unit_title เป็นสตริงว่าง ไม่ต้องใส่ชื่อหน่วย'}; สำหรับ week_type midterm_exam/final_exam ให้ปรับจุดประสงค์ กิจกรรม และการประเมินให้เป็นการสอบ: ชี้แจงกติกา ทำข้อสอบ และส่งข้อสอบ/สรุปการสอบ ห้ามเขียนเป็นกิจกรรมสอนเนื้อหาใหม่; key_concept ใส่ชื่อเรื่องสั้น ๆ`}
 5. ${mode === 'schedule' ? 'ยึดหน่วยและหัวข้อจากเอกสารหลักสูตร หากแหล่งข้อมูลไม่พอให้หยุดและแจ้งครูให้อัปโหลดไฟล์หลักสูตร; หากครูยืนยันให้ AI ดำเนินการต่อ ให้ค้นหรือประเมินข้อมูลที่สอดคล้องกับหน่วยและหัวข้อของแต่ละครั้ง โดยอ้างอิงแหล่งข้อมูลที่ตรวจสอบได้แบบสั้นใน notes และห้ามแต่งรหัสขึ้นเอง' : `จำแนกประเภทวิชาและเลือกข้อมูลอ้างอิงให้ตรงประเภท: ถ้าเป็นรายวิชาพื้นฐาน ให้ standards_type เป็น "indicators" และเขียน standards เป็นรหัสพร้อมข้อความตัวชี้วัดในรูปแบบ "ค.1.2 ม.2/1 : ..." โดยใช้รหัสและข้อความที่ตรวจสอบได้จากหลักสูตร; ถ้าเป็นรายวิชาเพิ่มเติม ให้ standards_type เป็น "learning_outcomes" และเขียน standards เป็นผลการเรียนรู้ที่สอดคล้องกับรายวิชาและหน่วย/เรื่องของครั้งนั้น ไม่ใช้มาตรฐาน/ตัวชี้วัดแทนผลการเรียนรู้ หากเอกสารหรือข้อมูลไม่พอที่จะระบุประเภทวิชา มาตรฐาน/ตัวชี้วัด หรือผลการเรียนรู้ได้ ให้หยุดก่อนสร้าง JSON และขอให้ครูอัปโหลดไฟล์หลักสูตรหรือเอกสารรายวิชา พร้อมถามว่าต้องการให้ AI ค้นหา/ประเมินต่อหรือไม่ เมื่อครูยืนยันให้ดำเนินการต่อ ให้ค้นแหล่งข้อมูลหลักสูตรที่เชื่อถือได้เมื่อทำได้ และประเมินข้อมูลให้สอดคล้องกับหน่วยและหัวข้อของแต่ละครั้ง ระบุชื่อเอกสาร/หน้า/URL ใน standards_source; หากค้นแหล่งข้อมูลไม่ได้ ให้แจ้งข้อจำกัดและทำผลลัพธ์เป็นข้อเสนอชั่วคราวเพื่อให้ครูตรวจทาน ห้ามอ้างว่าข้อเสนอที่ AI ประเมินเองเป็นผลการเรียนรู้อย่างเป็นทางการ`}
 6. คำตอบต้องมี JSON ทั้งหมดในกล่อง Markdown \`\`\`json เพียงกล่องเดียว ห้ามมีข้อความก่อนหรือหลังกล่อง
@@ -349,6 +347,10 @@ function validatePayload(raw, mode, scheduleConfig = null, planConfig = null) {
       seenSessions.add(sessionNo)
       const expected = expectedBySession.get(sessionNo)
       if (planConfig?.sessions?.length && (!expected || asInt(p.week_start) !== expected.week_start || asInt(p.week_end, asInt(p.week_start)) !== expected.week_end)) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องตรงกับสัปดาห์ที่ ${expected?.week_start ?? 'กำหนดการสอน'}`)
+      if (expected && asInt(p.session_in_week) !== expected.session_in_week) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องระบุ session_in_week เป็น ${expected.session_in_week}`)
+      if (planConfig && asInt(p.period_count) !== planConfig.periodCount) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องมี ${planConfig.periodCount} คาบตามที่ระบุ`)
+      if (planConfig && asInt(p.minutes_per_period) !== planConfig.minutesPerPeriod) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องใช้เวลาคาบละ ${planConfig.minutesPerPeriod} นาทีตามที่ระบุ`)
+      if (planConfig && asInt(p.duration_minutes) !== planConfig.periodCount * planConfig.minutesPerPeriod) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องมีเวลารวม ${planConfig.periodCount * planConfig.minutesPerPeriod} นาที`)
       if (p.lesson_date != null && !isoDate(p.lesson_date)) throw new Error(`วันที่ของแผนครั้งที่ ${sessionNo} ต้องเป็น YYYY-MM-DD หรือ null`)
       if (expected?.available_lesson_dates?.length && !expected.available_lesson_dates.includes(p.lesson_date)) throw new Error(`วันที่ของแผนครั้งที่ ${sessionNo} ต้องเลือกจากวันสอนจริงของครู: ${expected.available_lesson_dates.join(', ')}`)
       if (planConfig?.includeUnitTitle && expected?.week_type === 'teaching' && !String(p.unit_title ?? '').trim()) throw new Error(`แผนครั้งที่ ${sessionNo} ต้องระบุชื่อหน่วยการเรียนรู้ตามตัวเลือก`)
@@ -400,10 +402,12 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     </section>` : `<section class="rounded-2xl border border-violet-100 bg-violet-50/70 p-4 mb-4">
       <p class="text-sm font-bold text-violet-800">สร้างแผนให้ครบทุกครั้งในครั้งเดียว</p>
       <p id="lp-ai-session-summary" class="text-[11px] text-violet-700 mt-1"></p>
-      <div class="grid sm:grid-cols-2 gap-2 mt-3">
+      <div class="grid sm:grid-cols-3 gap-2 mt-3">
+        <label class="text-xs font-bold text-gray-600">จำนวนครั้งต่อสัปดาห์<input id="lp-ai-sessions-per-week" type="number" min="1" max="5" value="1" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
         <label class="text-xs font-bold text-gray-600">จำนวนคาบต่อครั้ง<input id="lp-ai-period-count" type="number" min="1" value="2" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
         <label class="text-xs font-bold text-gray-600">นาทีต่อคาบ<input id="lp-ai-minutes-per-period" type="number" min="1" value="50" class="mt-1 w-full border rounded-xl px-3 py-2 font-normal"></label>
       </div>
+      <p class="text-[10px] text-violet-600 mt-2">ตัวอย่าง: สัปดาห์ละ 2 ครั้ง ครั้งละ 1 คาบ · ใช้จำนวนครั้งและจำนวนคาบเท่ากันตลอดภาคเรียน</p>
       <label class="flex items-center gap-2 mt-3 text-xs font-bold text-violet-900"><input id="lp-ai-include-unit" type="checkbox" checked class="h-4 w-4 accent-violet-700"> ให้ AI ใส่ชื่อหน่วยการเรียนรู้บนแผน</label>
       <p class="text-[10px] text-violet-600 mt-1">เมื่อไม่เลือก ระบบจะเว้นชื่อหน่วยและแสดงเฉพาะ “เรื่อง …”</p>
     </section>
@@ -510,28 +514,39 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     })
   }
 
+  const getSessionsPerWeek = () => {
+    if (isSchedule) return null
+    const input = m.querySelector('#lp-ai-sessions-per-week')
+    const value = Math.min(5, Math.max(1, asInt(input.value, 1)))
+    input.value = String(value)
+    return value
+  }
   const getPeriodCount = () => isSchedule ? null : Math.max(1, asInt(m.querySelector('#lp-ai-period-count').value, 1))
   const getMinutesPerPeriod = () => isSchedule ? null : Math.max(1, asInt(m.querySelector('#lp-ai-minutes-per-period').value, 50))
   const getPlanConfig = () => {
     if (isSchedule) return null
-    const sessions = scheduledLessonSessions(syllabusItems).map(item => ({
+    const sessionsPerWeek = getSessionsPerWeek()
+    const sessions = scheduledLessonSessions(syllabusItems, sessionsPerWeek).map(item => ({
       ...item,
       available_lesson_dates: dateForWeek(item.week_start).dates,
     }))
     if (!sessions.length) throw new Error('กรุณาสร้างกำหนดการสอนที่มีสัปดาห์เรียนหรือสัปดาห์สอบก่อน จึงจะสร้างแผนให้ครบทั้งภาคเรียนได้')
-    return { sessions, includeUnitTitle: m.querySelector('#lp-ai-include-unit').checked }
+    return { sessions, sessionsPerWeek, periodCount: getPeriodCount(), minutesPerPeriod: getMinutesPerPeriod(), includeUnitTitle: m.querySelector('#lp-ai-include-unit').checked }
   }
   const paintDurationSummary = () => {
     if (isSchedule) return
-    m.querySelector('#lp-ai-duration-summary').textContent = `${getPeriodCount()} คาบ × ${getMinutesPerPeriod()} นาที = รวมเวลา ${getPeriodCount() * getMinutesPerPeriod()} นาที`
+    const sessionsPerWeek = getSessionsPerWeek()
+    m.querySelector('#lp-ai-duration-summary').textContent = `สัปดาห์ละ ${sessionsPerWeek} ครั้ง × ${getPeriodCount()} คาบต่อครั้ง × ${getMinutesPerPeriod()} นาที = ${sessionsPerWeek * getPeriodCount()} คาบ / ${sessionsPerWeek * getPeriodCount() * getMinutesPerPeriod()} นาทีต่อสัปดาห์ · ${getPeriodCount() * getMinutesPerPeriod()} นาทีต่อครั้ง`
+    const scheduledWeeks = scheduledLessonSessions(syllabusItems).length
+    m.querySelector('#lp-ai-session-summary').textContent = scheduledWeeks
+      ? `พบ ${scheduledWeeks} สัปดาห์ตามกำหนดการ · จะสร้าง ${scheduledWeeks * sessionsPerWeek} แผน (${sessionsPerWeek} ครั้ง/สัปดาห์) · วันสอนจริง: ${actualScheduleDays.map(day => WEEKDAY_LABELS[day]).join(', ') || 'ไม่พบตารางสอนรายวิชา'} · ข้ามสัปดาห์หยุด`
+      : 'ยังไม่มีกำหนดการสอน กรุณาสร้างกำหนดการก่อน'
   }
   if (!isSchedule) {
-    const sessions = scheduledLessonSessions(syllabusItems)
+    const scheduledWeeks = scheduledLessonSessions(syllabusItems).length
     const sessionSummary = m.querySelector('#lp-ai-session-summary')
-    sessionSummary.textContent = sessions.length
-      ? `พบ ${sessions.length} ครั้งตามกำหนดการ · วันสอนจริง: ${actualScheduleDays.map(day => WEEKDAY_LABELS[day]).join(', ') || 'ไม่พบตารางสอนรายวิชา'} · สร้างแผนสัปดาห์เรียนและสัปดาห์สอบ โดยข้ามสัปดาห์หยุด`
-      : 'ยังไม่มีกำหนดการสอน กรุณาสร้างกำหนดการก่อน'
-    if (!sessions.length) sessionSummary.classList.add('text-red-600')
+    if (!scheduledWeeks) sessionSummary.classList.add('text-red-600')
+    m.querySelector('#lp-ai-sessions-per-week').addEventListener('input', paintDurationSummary)
     m.querySelector('#lp-ai-period-count').addEventListener('input', paintDurationSummary)
     m.querySelector('#lp-ai-minutes-per-period').addEventListener('input', paintDurationSummary)
     paintDurationSummary()
@@ -541,7 +556,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     const planConfig = getPlanConfig()
     return makePrompt({
       mode, cls, teacher, syllabusItems, week: null, session: null,
-      periodCount: getPeriodCount(), minutesPerPeriod: getMinutesPerPeriod(), ...getScheduleConfig(),
+      sessionsPerWeek: getSessionsPerWeek(), periodCount: getPeriodCount(), minutesPerPeriod: getMinutesPerPeriod(), ...getScheduleConfig(),
       scheduledDays: actualScheduleDays,
       includeUnitTitle: planConfig?.includeUnitTitle, topic: '',
       teachingUnits: isSchedule ? readTeachingUnits().filter(unit => unit.title || unit.description) : [], files,
