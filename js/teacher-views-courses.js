@@ -624,15 +624,35 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     })
     body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: courseScheduledDays, onSaved: reopen }))
     body.querySelector('#cw-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'plan', semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: courseScheduledDays, onSaved: reopen }))
-    body.querySelector('#cw-plans-print-all')?.addEventListener('click', () => openLessonPlansPrint({
+    const printCoursePlans = roomGroups => openLessonPlansPrint({
       plans: lessonPlans,
       subject,
       teacher,
-      roomNames: courseRoomNames,
+      roomNames: roomGroups.flatMap(group => group.roomNames ?? []),
+      roomGroups,
       semester: termConfig.semester ?? subject.semester,
       academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year,
       departmentHead: courseDepartment,
-    }))
+    })
+    body.querySelector('#cw-plans-print-all')?.addEventListener('click', () => {
+      const roomGroups = courseRoomNames.map((name, index) => ({ id: index, label: name, roomNames: [name] }))
+      if (roomGroups.length <= 1) {
+        printCoursePlans(roomGroups)
+        return
+      }
+      const chooser = document.createElement('div')
+      chooser.className = 'fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4'
+      chooser.innerHTML = `<div class="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h3 class="text-base font-extrabold text-gray-900">เลือกห้องเรียนสำหรับพิมพ์แผน</h3><p class="mt-1 text-xs text-gray-500">เลือกห้องเดียว หรือเปิดทุกห้องเพื่อสลับแท็บและบันทึกเป็น PDF เดียว</p><select data-plan-room-select class="mt-4 w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm"><option value="all">เปิดทุกห้อง</option>${roomGroups.map((group, index) => `<option value="${index}">${_htmlEsc(group.label)}</option>`).join('')}</select><div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3"><button type="button" data-plan-room-cancel class="min-h-[42px] rounded-xl border border-gray-200 text-xs font-bold text-gray-600">ยกเลิก</button><button type="button" data-plan-room-open class="min-h-[42px] rounded-xl bg-violet-700 text-xs font-bold text-white sm:col-span-2">เปิดแผน</button></div></div>`
+      document.body.appendChild(chooser)
+      const closeChooser = () => chooser.remove()
+      chooser.querySelector('[data-plan-room-cancel]').addEventListener('click', closeChooser)
+      chooser.addEventListener('click', event => { if (event.target === chooser) closeChooser() })
+      chooser.querySelector('[data-plan-room-open]').addEventListener('click', () => {
+        const selected = chooser.querySelector('[data-plan-room-select]')?.value
+        closeChooser()
+        printCoursePlans(selected === 'all' ? roomGroups : [roomGroups[Number(selected)]])
+      })
+    })
     body.querySelector('#cw-schedule-preview')?.addEventListener('click', () => {
       const notesCheckbox = body.querySelector('#cw-schedule-show-notes')
       showScheduleNotes = notesCheckbox?.checked === true
