@@ -632,13 +632,6 @@ export async function renderSmartClassroom(teacher, classId) {
     const assignmentStatus = _rosterSort.key.startsWith('assignment:')
       ? _studentAssignmentStatus(parseInt(_rosterSort.key.slice('assignment:'.length), 10), s.id)
       : null
-    const wheelActions = [
-      ['info', '👤', 'ข้อมูล', 'bg-indigo-600'],
-      ['attendance', '✅', 'สถานะ', 'bg-emerald-600'],
-      ['leave', '🚪', out ? 'กลับเข้า' : 'ออกห้อง', 'bg-orange-600'],
-      ['score', '⭐', 'ให้คะแนน', 'bg-violet-600'],
-      ['star', '🎯', 'เพิ่มดาว', 'bg-pink-600'],
-    ]
     return `<div class="sc-stu-wrap relative" data-student-wrap data-sid="${s.id}">
       <div role="button" tabindex="0" data-sid="${s.id}"
         class="sc-stu relative border rounded-xl px-2 py-2.5 text-center hover:border-indigo-300 hover:-translate-y-0.5 transition cursor-pointer ${out ? 'border-amber-300 bg-amber-50' : 'border-gray-100 bg-gray-50'}">
@@ -653,9 +646,6 @@ export async function renderSmartClassroom(teacher, classId) {
       ${assignmentStatus
         ? `<div class="mt-1 px-1.5 py-0.5 rounded-lg border text-[9px] font-bold truncate ${assignmentStatus.cls}">${assignmentStatus.icon} ${assignmentStatus.label}</div>`
         : sortVal ? `<div class="text-[10px] font-bold text-amber-600 mt-0.5">${_htmlEsc(sortVal)}</div>` : ''}
-      </div>
-      <div class="sc-stu-wheel" aria-label="เมนูด่วน ${_htmlEsc(s.full_name ?? '')}">
-        ${wheelActions.map(([action, icon, label, color], i) => `<button type="button" data-student-action="${action}" data-sid="${s.id}" class="sc-wheel-item ${color}" style="--wheel-i:${i}" title="${label}"><span>${icon}</span><small>${label}</small></button>`).join('')}
       </div>
     </div>`
   }).join('')
@@ -1158,34 +1148,72 @@ export async function renderSmartClassroom(teacher, classId) {
       <div id="sc-assignment-list">${_assignmentsHTML()}</div>`
   }
 
-  setContent(`<div class="animate-fade max-w-6xl mx-auto">
+  setContent(`<div class="animate-fade max-w-none w-full px-2 sm:px-4 lg:px-6">
     <style>
       #sc-roster { overflow: visible; }
       .sc-stu-wrap { min-width: 0; z-index: 1; }
       .sc-stu-wrap:hover, .sc-stu-wrap:focus-within, .sc-stu-wrap.is-focus { z-index: 30; }
       .sc-stu { transform-origin: center; }
-      .sc-stu-wrap:hover .sc-stu, .sc-stu-wrap:focus-within .sc-stu, .sc-stu-wrap.is-focus .sc-stu {
+      .sc-stu-wrap.is-focus .sc-stu {
         transform: scale(1.08); border-color: #818cf8; background: #eef2ff; box-shadow: 0 12px 28px rgba(79,70,229,.18);
       }
-      .sc-stu-wheel { position: absolute; z-index: 40; inset: 50% auto auto 50%; width: 0; height: 0; opacity: 0; pointer-events: none; transition: opacity .16s ease; }
-      .sc-stu-wrap:hover .sc-stu-wheel, .sc-stu-wrap:focus-within .sc-stu-wheel, .sc-stu-wrap.is-focus .sc-stu-wheel { opacity: 1; pointer-events: auto; }
-      .sc-wheel-item { position: absolute; left: -23px; top: -23px; width: 46px; height: 46px; border-radius: 999px; color: white; border: 3px solid white; box-shadow: 0 4px 12px rgba(15,23,42,.24); display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(calc(cos(var(--wheel-angle)) * 57px), calc(sin(var(--wheel-angle)) * 57px)); transition: transform .18s ease, filter .15s ease; }
-      .sc-wheel-item:hover { filter: brightness(1.12); transform: translate(calc(cos(var(--wheel-angle)) * 64px), calc(sin(var(--wheel-angle)) * 64px)) scale(1.08); }
-      .sc-wheel-item span { font-size: 15px; line-height: 15px; }
-      .sc-wheel-item small { font-size: 8px; font-weight: 800; line-height: 10px; white-space: nowrap; }
-      .sc-wheel-item:nth-child(1) { --wheel-angle: -145deg; }
-      .sc-wheel-item:nth-child(2) { --wheel-angle: -72deg; }
-      .sc-wheel-item:nth-child(3) { --wheel-angle: 0deg; }
-      .sc-wheel-item:nth-child(4) { --wheel-angle: 72deg; }
-      .sc-wheel-item:nth-child(5) { --wheel-angle: 145deg; }
-      @supports not (transform: translate(calc(cos(0deg) * 1px), calc(sin(0deg) * 1px))) {
-        .sc-wheel-item { transform: translateY(-58px); }
-        .sc-wheel-item:nth-child(2) { transform: translate(42px,-42px); }
-        .sc-wheel-item:nth-child(3) { transform: translateX(58px); }
-        .sc-wheel-item:nth-child(4) { transform: translate(42px,42px); }
-        .sc-wheel-item:nth-child(5) { transform: translateY(58px); }
+      .sc-student-dock { position: fixed; z-index: 120; transform: translate(-50%, -100%); transition: left .16s ease, top .16s ease, opacity .16s ease; }
+      .sc-student-dock.below { transform: translate(-50%, 0); }
+      .sc-dock-shell { display: flex; align-items: center; gap: 6px; max-width: min(96vw, 620px); padding: 7px; border: 1px solid rgba(255,255,255,.75); border-radius: 999px; background: rgba(15,23,42,.72); box-shadow: 0 16px 38px rgba(15,23,42,.28), 0 0 0 5px rgba(255,255,255,.3); backdrop-filter: blur(18px) saturate(145%); }
+      .sc-dock-student { max-width: 150px; padding: 0 8px; color: white; font-size: 10px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .sc-dock-close { width: 28px; height: 28px; border-radius: 999px; color: rgba(255,255,255,.7); font-size: 16px; flex: 0 0 auto; }
+      .sc-dock-close:hover { background: rgba(255,255,255,.15); color: white; }
+      .sc-dock-group { position: relative; }
+      .sc-dock-main, .sc-dock-subitem { border: 0; color: white; font-weight: 800; cursor: pointer; }
+      .sc-dock-main { min-width: 62px; min-height: 46px; padding: 4px 8px; border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; transition: transform .15s ease, filter .15s ease, background .15s ease; }
+      .sc-dock-main:hover, .sc-dock-group.is-open .sc-dock-main { transform: translateY(3px); filter: brightness(1.13); background: rgba(255,255,255,.18); }
+      .sc-dock-main span { font-size: 20px; line-height: 20px; }
+      .sc-dock-main small { font-size: 9px; white-space: nowrap; }
+      .sc-dock-submenu { position: absolute; left: 50%; top: calc(100% + 9px); display: flex; gap: 6px; padding: 7px; border: 1px solid rgba(255,255,255,.8); border-radius: 18px; background: rgba(15,23,42,.78); box-shadow: 0 12px 26px rgba(15,23,42,.26); backdrop-filter: blur(18px); opacity: 0; pointer-events: none; transform: translate(-50%, -5px); transition: opacity .14s ease, transform .14s ease; }
+      .sc-dock-group:hover .sc-dock-submenu, .sc-dock-group.is-open .sc-dock-submenu { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+      .sc-dock-subitem { min-width: 56px; min-height: 42px; padding: 4px 7px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; }
+      .sc-dock-subitem:hover { background: rgba(255,255,255,.17); transform: translateY(-1px); }
+      .sc-dock-subitem span { font-size: 18px; line-height: 18px; }
+      .sc-dock-subitem small { font-size: 8px; white-space: nowrap; }
+      .sc-dock-below .sc-dock-submenu { top: auto; bottom: calc(100% + 9px); transform: translate(-50%, 5px); }
+      .sc-dock-below .sc-dock-group:hover .sc-dock-submenu, .sc-dock-below .sc-dock-group.is-open .sc-dock-submenu { transform: translate(-50%, 0); }
+      @media (max-width: 640px) {
+        .sc-student-dock { left: 50% !important; right: 0; width: 100vw; transform: translate(-50%, -100%); }
+        .sc-student-dock.below { transform: translate(-50%, 0); }
+        .sc-dock-shell { width: max-content; max-width: 96vw; margin: 0 auto; overflow-x: auto; justify-content: flex-start; border-radius: 22px; }
+        .sc-dock-student { max-width: 92px; }
       }
     </style>
+
+    <div id="sc-student-action-dock" class="sc-student-dock hidden" aria-label="เมนูด่วนของนักเรียน">
+      <div class="sc-dock-shell">
+        <span id="sc-dock-student" class="sc-dock-student"></span>
+        <div class="sc-dock-group" data-dock-group="attendance">
+          <button type="button" class="sc-dock-main bg-emerald-600" data-dock-main-action="attendance"><span>✅</span><small>เช็คชื่อ</small></button>
+          <div class="sc-dock-submenu" data-dock-submenu="attendance">
+            ${Object.entries(ATT_STATUS).map(([key, meta]) => `<button type="button" data-dock-att-status="${key}" class="sc-dock-subitem ${meta.bg} ${meta.color}"><span>${meta.label}</span><small>${key === 'present' ? 'มาเรียน' : key === 'absent' ? 'ขาด' : key === 'late' ? 'มาสาย' : key === 'excused' ? 'ลากิจ' : 'ลาป่วย'}</small></button>`).join('')}
+          </div>
+        </div>
+        <div class="sc-dock-group" data-dock-group="leave">
+          <button type="button" class="sc-dock-main bg-orange-600" data-dock-main-action="leave"><span>🚪</span><small>ห้องเรียน</small></button>
+          <div class="sc-dock-submenu" data-dock-submenu="leave">
+            <button type="button" data-dock-leave="out" class="sc-dock-subitem bg-orange-600"><span>🚪</span><small>ออกห้อง</small></button>
+            <button type="button" data-dock-leave="in" class="sc-dock-subitem bg-emerald-600"><span>↩️</span><small>กลับเข้า</small></button>
+          </div>
+        </div>
+        <div class="sc-dock-group" data-dock-group="score">
+          <button type="button" class="sc-dock-main bg-violet-600" data-dock-main-action="score"><span>📊</span><small>ให้คะแนน</small></button>
+        </div>
+        <div class="sc-dock-group" data-dock-group="star">
+          <button type="button" class="sc-dock-main bg-pink-600" data-dock-main-action="star"><span>⭐</span><small>เพิ่มดาว</small></button>
+          <div class="sc-dock-submenu" data-dock-submenu="star">
+            <button type="button" data-dock-star="open" class="sc-dock-subitem bg-pink-600"><span>⭐</span><small>เปิดคะแนน</small></button>
+            <button type="button" data-dock-star="more" class="sc-dock-subitem bg-indigo-600"><span>＋</span><small>คะแนนเพิ่ม</small></button>
+          </div>
+        </div>
+        <button type="button" id="sc-dock-close" class="sc-dock-close" title="ปิดเมนู">✕</button>
+      </div>
+    </div>
 
     <div class="relative overflow-hidden bg-white border border-amber-200 rounded-2xl shadow-sm px-5 py-4 mb-4 flex items-center gap-4 flex-wrap">
       <div class="absolute inset-x-0 top-0 h-1" style="background:linear-gradient(90deg,#e6c988,#a9781a,#e6c988)"></div>
@@ -1207,7 +1235,7 @@ export async function renderSmartClassroom(teacher, classId) {
 
     ${_urgentAssignmentsCardHTML('mobile')}
 
-    <div class="grid grid-cols-1 lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
+    <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(390px,1fr)] gap-5 items-start">
 
       <div id="sc-mobile-room-section" class="sc-mobile-app-section mobile-active">
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
@@ -1557,69 +1585,130 @@ export async function renderSmartClassroom(teacher, classId) {
     render()
   }
 
-  function _openStudentAttendancePicker(student, anchor) {
-    document.getElementById('sc-student-att-picker')?.remove()
-    const picker = document.createElement('div')
-    picker.id = 'sc-student-att-picker'
-    picker.className = 'fixed z-[98] w-44 rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl'
-    picker.innerHTML = `<p class="px-2 py-1 text-[10px] font-bold text-gray-400">สถานะของ ${_htmlEsc(student.full_name ?? '')}</p>${Object.entries(ATT_STATUS).map(([key, meta]) => `<button type="button" data-att-status="${key}" class="w-full rounded-xl px-2.5 py-2 text-left text-xs font-bold hover:bg-gray-50 ${meta.color}">${meta.label} · ${key === 'present' ? 'มาเรียน' : key === 'absent' ? 'ขาด' : key === 'late' ? 'มาสาย' : key === 'excused' ? 'ลากิจ' : 'ลาป่วย'}</button>`).join('')}`
-    document.body.appendChild(picker)
-    const rect = anchor.getBoundingClientRect()
-    picker.style.left = `${Math.min(window.innerWidth - 190, Math.max(8, rect.left - 60))}px`
-    picker.style.top = `${Math.min(window.innerHeight - 260, rect.bottom + 8)}px`
-    picker.querySelectorAll('[data-att-status]').forEach(btn => btn.addEventListener('click', async () => {
-      picker.remove()
-      const status = btn.dataset.attStatus
-      try {
-        const credit = cls.master_subjects?.credit ?? 1
-        const isACDMVOC = cls.master_subjects?.subject_group === 'ACDMVOC'
-        const dowPattern = isACDMVOC ? await getClassSessionDOWs(classId).catch(() => []) : []
-        const sessions = _generateSessions(cls, credit, dowPattern.length ? dowPattern : null, isACDMVOC)
-        const today = _dateInputValue(new Date())
-        const todays = sessions.filter(session => session.ds === today)
-        if (todays.length !== 1) {
-          showToast('วันนี้มีหลายคาบหรือไม่ตรงตาราง ระบบจะเปิดหน้าเช็คชื่อให้เลือกคาบ', 'warning')
-          _openTodayAttendance()
-          return
-        }
-        await saveAttendanceCell(classId, student.id, todays[0].n, today, status)
-        const rows = attendanceByStudent[student.id] ?? (attendanceByStudent[student.id] = [])
-        const row = rows.find(item => item.session_number === todays[0].n)
-        if (row) row.status = status
-        else rows.push({ student_id: student.id, session_number: todays[0].n, check_date: today, status })
-        _paintRoster()
-        showToast(`บันทึก ${ATT_STATUS[status].label} ${student.full_name} แล้ว`, 'success')
-      } catch (err) { showToast('บันทึกเช็คชื่อไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
-    }))
+  async function _saveQuickAttendanceStatus(student, status) {
+    const credit = cls.master_subjects?.credit ?? 1
+    const isACDMVOC = cls.master_subjects?.subject_group === 'ACDMVOC'
+    const dowPattern = isACDMVOC ? await getClassSessionDOWs(classId).catch(() => []) : []
+    const sessions = _generateSessions(cls, credit, dowPattern.length ? dowPattern : null, isACDMVOC)
+    const today = _dateInputValue(new Date())
+    const todays = sessions.filter(session => session.ds === today)
+    if (todays.length !== 1) {
+      showToast('วันนี้มีหลายคาบหรือไม่ตรงตาราง ระบบจะเปิดหน้าเช็คชื่อให้เลือกคาบ', 'warning')
+      _openTodayAttendance()
+      return
+    }
+    await saveAttendanceCell(classId, student.id, todays[0].n, today, status)
+    const rows = attendanceByStudent[student.id] ?? (attendanceByStudent[student.id] = [])
+    const row = rows.find(item => item.session_number === todays[0].n)
+    if (row) row.status = status
+    else rows.push({ student_id: student.id, session_number: todays[0].n, check_date: today, status })
+    _paintRoster()
+    showToast(`บันทึก ${ATT_STATUS[status].label} ${student.full_name} แล้ว`, 'success')
   }
 
-  // ── Wiring: roster click / wheel menu → student detail and quick actions ──
-  document.getElementById('sc-roster').addEventListener('click', e => {
-    const action = e.target.closest('[data-student-action]')
-    if (action) {
-      e.stopPropagation()
-      const student = studentsById[parseInt(action.dataset.sid, 10)]
-      if (!student) return
-      if (action.dataset.studentAction === 'info') _openStudentPanel(student)
-      else if (action.dataset.studentAction === 'attendance') _openStudentAttendancePicker(student, action)
-      else if (action.dataset.studentAction === 'score' || action.dataset.studentAction === 'star') _openStudentPanel(student, 'score')
-      else if (action.dataset.studentAction === 'leave') {
-        const leave = activeLeaveMap[student.id]
-        if (leave) closeLeavePermission(leave.id, 'returned').then(() => { showToast('บันทึกกลับเข้าห้องแล้ว', 'success'); _reload() }).catch(err => showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'))
-        else _openLeaveRequestModal(teacher, cls, student.id, student.full_name, student.image_url, activeLeaveMap, leaveMaxActive, _reload)
+  // ── Smart Classroom action dock: ล็อกเมนูไว้กับนักเรียนที่เลือก ──────────────
+  // เมนูจะไม่หายเมื่อเลื่อนจากการ์ดไปกดเมนูย่อย และจะย้ายตำแหน่งตามการ scroll
+  const roster = document.getElementById('sc-roster')
+  const studentDock = document.getElementById('sc-student-action-dock')
+  const dockStudent = document.getElementById('sc-dock-student')
+  let activeDockStudentId = null
+  let activeDockWrap = null
+
+  const _positionStudentDock = () => {
+    if (!activeDockWrap || studentDock.classList.contains('hidden')) return
+    const rect = activeDockWrap.getBoundingClientRect()
+    const placeAbove = rect.top > 150
+    studentDock.classList.toggle('below', !placeAbove)
+    studentDock.querySelector('.sc-dock-shell')?.classList.toggle('sc-dock-below', !placeAbove)
+    studentDock.style.left = `${rect.left + rect.width / 2}px`
+    studentDock.style.top = `${placeAbove ? rect.top - 10 : rect.bottom + 10}px`
+  }
+
+  const _hideStudentDock = () => {
+    activeDockWrap?.classList.remove('is-focus')
+    activeDockWrap = null
+    activeDockStudentId = null
+    studentDock.classList.add('hidden')
+    studentDock.querySelectorAll('.sc-dock-group.is-open').forEach(group => group.classList.remove('is-open'))
+  }
+
+  const _showStudentDock = (student, wrap) => {
+    if (!student || !wrap) return
+    activeDockWrap?.classList.remove('is-focus')
+    activeDockStudentId = student.id
+    activeDockWrap = wrap
+    activeDockWrap.classList.add('is-focus')
+    dockStudent.textContent = student.full_name ?? 'นักเรียน'
+    studentDock.classList.remove('hidden')
+    _positionStudentDock()
+  }
+
+  roster.addEventListener('pointerover', event => {
+    const wrap = event.target.closest('[data-student-wrap]')
+    if (!wrap || !roster.contains(wrap) || (event.relatedTarget && wrap.contains(event.relatedTarget))) return
+    _showStudentDock(studentsById[parseInt(wrap.dataset.sid, 10)], wrap)
+  })
+  roster.addEventListener('click', event => {
+    const card = event.target.closest('.sc-stu')
+    if (!card) return
+    const wrap = card.closest('[data-student-wrap]')
+    _showStudentDock(studentsById[parseInt(card.dataset.sid, 10)], wrap)
+    event.stopPropagation()
+  })
+
+  studentDock.addEventListener('click', async event => {
+    const student = studentsById[activeDockStudentId]
+    if (!student) return
+    const mainAction = event.target.closest('[data-dock-main-action]')
+    if (mainAction) {
+      const action = mainAction.dataset.dockMainAction
+      if (action === 'score') {
+        _openStudentPanel(student, 'score')
+        return
+      }
+      const group = mainAction.closest('.sc-dock-group')
+      const wasOpen = group.classList.contains('is-open')
+      studentDock.querySelectorAll('.sc-dock-group.is-open').forEach(item => item.classList.remove('is-open'))
+      if (!wasOpen) group.classList.add('is-open')
+      return
+    }
+
+    const attendanceButton = event.target.closest('[data-dock-att-status]')
+    if (attendanceButton) {
+      studentDock.querySelectorAll('.sc-dock-group.is-open').forEach(item => item.classList.remove('is-open'))
+      try {
+        await _saveQuickAttendanceStatus(student, attendanceButton.dataset.dockAttStatus)
+      } catch (err) {
+        showToast('บันทึกเช็คชื่อไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
       }
       return
     }
-    const card = e.target.closest('.sc-stu')
-    if (!card) return
-    const student = studentsById[parseInt(card.dataset.sid, 10)]
-    const wrap = card.closest('[data-student-wrap]')
-    if (student && window.matchMedia('(hover: none)').matches && !wrap?.classList.contains('is-focus')) {
-      document.querySelectorAll('[data-student-wrap].is-focus').forEach(item => item.classList.remove('is-focus'))
-      wrap?.classList.add('is-focus')
+
+    const leaveButton = event.target.closest('[data-dock-leave]')
+    if (leaveButton) {
+      studentDock.querySelectorAll('.sc-dock-group.is-open').forEach(item => item.classList.remove('is-open'))
+      if (leaveButton.dataset.dockLeave === 'in' && activeLeaveMap[student.id]) {
+        closeLeavePermission(activeLeaveMap[student.id].id, 'returned')
+          .then(() => { showToast('บันทึกกลับเข้าห้องแล้ว', 'success'); _reload() })
+          .catch(err => showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'))
+      } else if (leaveButton.dataset.dockLeave === 'out') {
+        _openLeaveRequestModal(teacher, cls, student.id, student.full_name, student.image_url, activeLeaveMap, leaveMaxActive, _reload)
+      }
       return
     }
-    if (student) _openStudentPanel(student)
+
+    const starButton = event.target.closest('[data-dock-star]')
+    if (starButton) {
+      studentDock.querySelectorAll('.sc-dock-group.is-open').forEach(item => item.classList.remove('is-open'))
+      _openStudentPanel(student, 'score')
+    }
+  })
+  document.getElementById('sc-dock-close').addEventListener('click', _hideStudentDock)
+  window.addEventListener('scroll', _positionStudentDock, true)
+  window.addEventListener('resize', _positionStudentDock)
+  document.addEventListener('keydown', event => { if (event.key === 'Escape') _hideStudentDock() })
+  document.addEventListener('click', event => {
+    if (activeDockStudentId && !event.target.closest('#sc-student-action-dock') && !event.target.closest('[data-student-wrap]')) _hideStudentDock()
   })
   document.getElementById('sc-organize-class').addEventListener('click', _openClassOrganizer)
 
