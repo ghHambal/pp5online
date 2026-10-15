@@ -115,12 +115,24 @@ export async function getMyCertificatesAsTeacher(teacherId) {
 // ประวัติ/ค้นหาสำหรับหน้าจัดการของครู — RLS จำกัดให้เห็นเฉพาะที่ตัวเองออก (หรือแอดมินเห็นทั้งหมด) อยู่แล้ว
 export async function getIssuedCertificates({ query, limit = 200 } = {}) {
   let q = supabase.from('certificates')
-    .select('id, certificate_no, student_id, teacher_id, recipient_type, recipient_name, title, layout_snapshot, variables, source_system, issued_at, certificate_templates(id, name), students(id, student_code, gender, main_room)')
+    .select('id, certificate_no, student_id, teacher_id, recipient_type, recipient_name, title, layout_snapshot, variables, source_system, issued_at, reissued_from_id, superseded_by_id, superseded_at, certificate_templates(id, name), students(id, student_code, gender, main_room)')
     .order('issued_at', { ascending: false })
     .limit(limit)
+  q = q.is('superseded_by_id', null)
   const search = (query ?? '').trim()
   if (search) q = q.or(`recipient_name.ilike.%${search}%,certificate_no.ilike.%${search}%`)
   const { data, error } = await q
+  if (error) throw error
+  return data ?? []
+}
+
+export async function reissueCertificates({ certificateIds, issuedByTeacherId }) {
+  const ids = (certificateIds ?? []).map(Number).filter(Number.isFinite)
+  if (!ids.length) return []
+  const { data, error } = await supabase.rpc('reissue_certificates', {
+    p_certificate_ids: ids,
+    p_issued_by_teacher_id: issuedByTeacherId,
+  })
   if (error) throw error
   return data ?? []
 }

@@ -4,7 +4,7 @@ import {
   getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate, updateCertificateTemplateLayout,
   issueCertificate, getIssuedCertificates, deleteCertificate, getMyCertificatesAsTeacher,
   searchStudentsForCertificateIssuance, searchTeachersForCertificateIssuance,
-  getCertificateRecipientTables,
+  getCertificateRecipientTables, reissueCertificates,
 } from './certificates-api.js'
 import { CERT_PRESET_LABELS, openCertificatePrint, openCertificatesPrint } from './certificate-engine.js'
 import { openCertificateLayoutEditor } from './certificate-editor.js'
@@ -74,7 +74,7 @@ export async function renderCertificateManager(teacher) {
     })
     if (tab === 'templates') _renderTemplatesTab(teacher)
     if (tab === 'issue') _renderIssueTab(teacher, certificateDeepLink)
-    if (tab === 'history') _renderHistoryTab()
+    if (tab === 'history') _renderHistoryTab(teacher)
   }
   document.getElementById('cert-tab-templates').addEventListener('click', () => _selectTab('templates'))
   document.getElementById('cert-tab-issue').addEventListener('click', () => _selectTab('issue'))
@@ -427,7 +427,7 @@ function _renderQuickIssueTab(teacher, targetPanel = null, initial = null) {
 }
 
 // ─── แท็บ 3: ประวัติการออก ────────────────────────────────────────────────────
-async function _renderHistoryTab() {
+async function _renderHistoryTab(teacher) {
   const panel = document.getElementById('cert-tab-panel')
   panel.innerHTML = `
     <div class="space-y-2 mb-3">
@@ -503,6 +503,7 @@ async function _renderHistoryTab() {
         </div>
         <div class="flex gap-1.5 shrink-0">
           <button type="button" class="cert-hist-view px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px]" data-id="${c.id}">📄 ดู</button>
+          <button type="button" class="cert-hist-reissue px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-[11px]" data-id="${c.id}">🔁 ออกใหม่</button>
           <button type="button" class="cert-hist-delete px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px]" data-id="${c.id}">🗑️ ลบ</button>
         </div>
       </div>`).join('')}</div>`
@@ -515,6 +516,25 @@ async function _renderHistoryTab() {
         variables: { name: c.recipient_name, date: new Date(c.issued_at).toLocaleDateString('th-TH', { dateStyle: 'long' }), no: c.certificate_no, ...c.variables },
         docTitle: c.title,
       }, showToast)
+    }))
+    listEl.querySelectorAll('.cert-hist-reissue').forEach(btn => btn.addEventListener('click', async () => {
+      const certificate = visibleHistory.find(x => x.id === Number(btn.dataset.id))
+      if (!certificate) return
+      const confirmed = await showDangerConfirm({
+        title: 'ออกเกียรติบัตรใบนี้ใหม่?',
+        message: `ระบบจะใช้ Template ปัจจุบันสร้างใบใหม่ให้ ${certificate.recipient_name} พร้อมเลขที่ใหม่ ใบเดิมจะถูกเก็บไว้เป็นประวัติและซ่อนจากรายการปัจจุบัน`,
+        confirmText: 'ออกใหม่',
+      })
+      if (!confirmed) return
+      btn.disabled = true
+      try {
+        await reissueCertificates({ certificateIds: [certificate.id], issuedByTeacherId: teacher?.id })
+        showToast('ออกเกียรติบัตรใหม่จาก Template ปัจจุบันแล้ว ✅', 'success')
+        await _load(panel.querySelector('#cert-history-search')?.value)
+      } catch (err) {
+        btn.disabled = false
+        showToast('ออกใหม่ไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      }
     }))
     listEl.querySelectorAll('.cert-hist-delete').forEach(btn => btn.addEventListener('click', async () => {
       const confirmed = await showDangerConfirm({ title: 'ลบเกียรติบัตรนี้?', message: 'ลบแล้วไม่สามารถกู้คืนได้', confirmText: 'ลบเลย' })
