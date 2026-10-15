@@ -1,7 +1,7 @@
 // js/teacher-views-certificates.js — ระบบเกียรติบัตรกลาง เห็นได้ทุกคน ครูคนไหนก็สร้างเทมเพลต/
 // ออกเกียรติบัตรได้เอง ใช้เอนจินเดียวกับที่สภานักเรียนใช้ (certificate-engine.js/certificate-editor.js)
 import {
-  getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate, updateCertificateTemplateLayout,
+  getCertificateTemplates, createCertificateTemplate, deleteCertificateTemplate, updateCertificateTemplateLayout, updateCertificateTemplateName,
   issueCertificate, getIssuedCertificates, deleteCertificate, getMyCertificatesAsTeacher,
   searchStudentsForCertificateIssuance, searchTeachersForCertificateIssuance,
   getCertificateRecipientTables, reissueCertificates,
@@ -112,6 +112,7 @@ async function _renderTemplatesTab(teacher) {
           <p class="text-sm font-bold text-gray-800 truncate">${_esc(t.name)}</p>
           <div class="flex gap-1.5">
             <button type="button" class="cert-design-tpl flex-1 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px]" data-id="${t.id}">🎨 ออกแบบ</button>
+            <button type="button" title="แก้ไขชื่อเทมเพลต" class="cert-rename-tpl px-2.5 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-700 font-bold text-[11px]" data-id="${t.id}">✏️</button>
             <button type="button" title="คัดลอกทั้งดีไซน์ ฟอนต์ เอฟเฟกต์ และการผูกข้อมูล" class="cert-copy-tpl px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold text-[11px]" data-id="${t.id}">⧉</button>
             <button type="button" class="cert-delete-tpl px-2.5 py-1.5 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 font-bold text-[11px]" data-id="${t.id}">🗑️</button>
           </div>
@@ -208,6 +209,23 @@ async function _renderTemplatesTab(teacher) {
       } catch (err) {
         showToast('คัดลอกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
         btn.disabled = false
+      }
+    })
+  })
+  panel.querySelectorAll('.cert-rename-tpl').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const template = _templates.find(t => t.id === Number(btn.dataset.id))
+      if (!template) return
+      const nextName = window.prompt('แก้ไขชื่อเทมเพลต', template.name)?.trim()
+      if (!nextName || nextName === template.name) return
+      btn.disabled = true
+      try {
+        await updateCertificateTemplateName({ id: template.id, name: nextName })
+        showToast('เปลี่ยนชื่อเทมเพลตแล้ว ✅', 'success')
+        _renderTemplatesTab(teacher)
+      } catch (err) {
+        btn.disabled = false
+        showToast('เปลี่ยนชื่อไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
     })
   })

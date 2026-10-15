@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.959': [
+    '✏️ ระบบเกียรติบัตร: เพิ่มปุ่มแก้ไขชื่อ Template ได้โดยตรง รวมถึง Template ที่คัดลอกมา',
+  ],
   '10.22.958': [
     '🔁 ระบบเกียรติบัตร: เพิ่มปุ่มออกใหม่ทั้งชุดตามตัวกรองในครั้งเดียว ไม่ต้องกดทีละคน',
   ],

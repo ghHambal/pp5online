@@ -33,6 +33,15 @@ export async function updateCertificateTemplateLayout({ id, layout, backgroundIm
   if (error) throw error
 }
 
+export async function updateCertificateTemplateName({ id, name }) {
+  const nextName = String(name ?? '').trim()
+  if (!nextName) throw new Error('กรุณาระบุชื่อเทมเพลต')
+  const { error } = await supabase.from('certificate_templates')
+    .update({ name: nextName, updated_at: new Date().toISOString() })
+    .eq('id', id)
+  if (error) throw error
+}
+
 export async function deleteCertificateTemplate(id) {
   const { error } = await supabase.from('certificate_templates').delete().eq('id', id)
   if (error) throw error
