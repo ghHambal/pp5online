@@ -448,6 +448,9 @@ async function _renderHistoryTab(teacher) {
       </div>
       <div class="flex items-center gap-2 flex-wrap">
         <p id="cert-history-summary" class="text-xs text-gray-500 flex-1"></p>
+        <button id="cert-history-reissue" type="button" class="px-3 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed">
+          🔁 ออกใหม่ทั้งหมดที่กรอง
+        </button>
         <button id="cert-history-print" type="button" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed">
           🖨️ พิมพ์ / บันทึก PDF ที่กรอง
         </button>
@@ -461,6 +464,7 @@ async function _renderHistoryTab(teacher) {
   const genderSelect = panel.querySelector('#cert-history-gender')
   const roleSelect = panel.querySelector('#cert-history-role')
   const summaryEl = panel.querySelector('#cert-history-summary')
+  const reissueButton = panel.querySelector('#cert-history-reissue')
   const printButton = panel.querySelector('#cert-history-print')
   let visibleHistory = []
 
@@ -491,6 +495,7 @@ async function _renderHistoryTab(teacher) {
     const role = roleSelect.value
     visibleHistory = (_issuedHistory ?? []).filter(c => (!activity || activityOf(c) === activity) && (!gender || genderOf(c) === gender) && (!role || roleOf(c) === role))
     summaryEl.textContent = `แสดง ${visibleHistory.length} จาก ${(_issuedHistory ?? []).length} รายการ`
+    reissueButton.disabled = !visibleHistory.length
     printButton.disabled = !visibleHistory.length
     const listEl = panel.querySelector('#cert-history-list')
     listEl.innerHTML = !visibleHistory.length ? `
@@ -563,6 +568,25 @@ async function _renderHistoryTab(teacher) {
     searchTimer = setTimeout(() => _load(e.target.value), 300)
   })
   ;[activitySelect, genderSelect, roleSelect].forEach(select => select.addEventListener('change', renderFiltered))
+  reissueButton.addEventListener('click', async () => {
+    if (!visibleHistory.length) return
+    const confirmed = await showDangerConfirm({
+      title: `ออกเกียรติบัตรใหม่ ${visibleHistory.length} ใบ?`,
+      message: 'ระบบจะใช้ Template ปัจจุบันออกใหม่ให้ทุกรายการที่กรองไว้ในครั้งเดียว ใบเดิมจะถูกเก็บเป็นประวัติและซ่อนจากรายการปัจจุบัน',
+      confirmText: 'ออกใหม่ทั้งหมด',
+    })
+    if (!confirmed) return
+    reissueButton.disabled = true
+    printButton.disabled = true
+    try {
+      const result = await reissueCertificates({ certificateIds: visibleHistory.map(c => c.id), issuedByTeacherId: teacher?.id })
+      showToast(`ออกเกียรติบัตรใหม่สำเร็จ ${result.length} ใบ ✅`, 'success')
+      await _load(panel.querySelector('#cert-history-search')?.value)
+    } catch (err) {
+      renderFiltered()
+      showToast('ออกใหม่ทั้งชุดไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+    }
+  })
   printButton.addEventListener('click', () => {
     if (!visibleHistory.length) return
     openCertificatesPrint({
