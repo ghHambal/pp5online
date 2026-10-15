@@ -115,7 +115,7 @@ export async function getMyCertificatesAsTeacher(teacherId) {
 // ประวัติ/ค้นหาสำหรับหน้าจัดการของครู — RLS จำกัดให้เห็นเฉพาะที่ตัวเองออก (หรือแอดมินเห็นทั้งหมด) อยู่แล้ว
 export async function getIssuedCertificates({ query, limit = 200 } = {}) {
   let q = supabase.from('certificates')
-    .select('id, certificate_no, student_id, teacher_id, recipient_type, recipient_name, title, layout_snapshot, variables, source_system, issued_at, certificate_templates(id, name)')
+    .select('id, certificate_no, student_id, teacher_id, recipient_type, recipient_name, title, layout_snapshot, variables, source_system, issued_at, certificate_templates(id, name), students(id, student_code, gender, main_room)')
     .order('issued_at', { ascending: false })
     .limit(limit)
   const search = (query ?? '').trim()

@@ -6,7 +6,7 @@ import {
   searchStudentsForCertificateIssuance, searchTeachersForCertificateIssuance,
   getCertificateRecipientTables,
 } from './certificates-api.js'
-import { CERT_PRESET_LABELS, openCertificatePrint } from './certificate-engine.js'
+import { CERT_PRESET_LABELS, openCertificatePrint, openCertificatesPrint } from './certificate-engine.js'
 import { openCertificateLayoutEditor } from './certificate-editor.js'
 import { renderCertificateRecipientTable } from './certificate-recipient-table.js'
 import { uploadCertificateTemplateImage } from './storage.js'
@@ -430,28 +430,76 @@ function _renderQuickIssueTab(teacher, targetPanel = null, initial = null) {
 async function _renderHistoryTab() {
   const panel = document.getElementById('cert-tab-panel')
   panel.innerHTML = `
-    <input id="cert-history-search" type="search" placeholder="ค้นหาชื่อนักเรียนหรือเลขที่เกียรติบัตร..."
-      class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white mb-3" />
+    <div class="space-y-2 mb-3">
+      <input id="cert-history-search" type="search" placeholder="ค้นหาชื่อนักเรียนหรือเลขที่เกียรติบัตร..."
+        class="w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm bg-white" />
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <select id="cert-history-activity" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
+          <option value="">กิจกรรม / รายการทั้งหมด</option>
+        </select>
+        <select id="cert-history-gender" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
+          <option value="">เพศทั้งหมด</option>
+          <option value="M">ชาย</option>
+          <option value="W">หญิง</option>
+        </select>
+        <select id="cert-history-role" class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm bg-white">
+          <option value="">ฝ่าย / ตำแหน่งทั้งหมด</option>
+        </select>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap">
+        <p id="cert-history-summary" class="text-xs text-gray-500 flex-1"></p>
+        <button id="cert-history-print" type="button" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed">
+          🖨️ พิมพ์ / บันทึก PDF ที่กรอง
+        </button>
+      </div>
+    </div>
     <div id="cert-history-list" class="bg-gray-50/50 rounded-2xl px-3">
       <p class="text-xs text-gray-400 text-center py-6">กำลังโหลด...</p>
     </div>`
 
-  const _load = async (query) => {
+  const activitySelect = panel.querySelector('#cert-history-activity')
+  const genderSelect = panel.querySelector('#cert-history-gender')
+  const roleSelect = panel.querySelector('#cert-history-role')
+  const summaryEl = panel.querySelector('#cert-history-summary')
+  const printButton = panel.querySelector('#cert-history-print')
+  let visibleHistory = []
+
+  const genderOf = certificate => {
+    const gender = certificate.students?.gender
+    if (gender === 'M' || gender === 'W') return gender
+    const name = String(certificate.recipient_name ?? '')
+    return /^นาย|^เด็กชาย/.test(name) ? 'M' : /^นางสาว|^น.ส.|^เด็กหญิง/.test(name) ? 'W' : ''
+  }
+  const activityOf = certificate => certificate.title || certificate.certificate_templates?.name || ''
+  const roleOf = certificate => certificate.variables?.types || certificate.variables?.reason || ''
+  const optionLabel = value => value.length > 70 ? `${value.slice(0, 70)}…` : value
+
+  const refreshFilterOptions = () => {
+    const activities = [...new Set((_issuedHistory ?? []).map(activityOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'))
+    const roles = [...new Set((_issuedHistory ?? []).map(roleOf).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'th'))
+    const currentActivity = activitySelect.value
+    const currentRole = roleSelect.value
+    activitySelect.innerHTML = `<option value="">กิจกรรม / รายการทั้งหมด</option>${activities.map(value => `<option value="${_esc(value)}">${_esc(optionLabel(value))}</option>`).join('')}`
+    roleSelect.innerHTML = `<option value="">ฝ่าย / ตำแหน่งทั้งหมด</option>${roles.map(value => `<option value="${_esc(value)}">${_esc(optionLabel(value))}</option>`).join('')}`
+    if (activities.includes(currentActivity)) activitySelect.value = currentActivity
+    if (roles.includes(currentRole)) roleSelect.value = currentRole
+  }
+
+  const renderFiltered = () => {
+    const activity = activitySelect.value
+    const gender = genderSelect.value
+    const role = roleSelect.value
+    visibleHistory = (_issuedHistory ?? []).filter(c => (!activity || activityOf(c) === activity) && (!gender || genderOf(c) === gender) && (!role || roleOf(c) === role))
+    summaryEl.textContent = `แสดง ${visibleHistory.length} จาก ${(_issuedHistory ?? []).length} รายการ`
+    printButton.disabled = !visibleHistory.length
     const listEl = panel.querySelector('#cert-history-list')
-    listEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">กำลังโหลด...</p>`
-    try {
-      _issuedHistory = await getIssuedCertificates({ query })
-    } catch (err) {
-      listEl.innerHTML = `<p class="text-xs text-red-400 text-center py-6">โหลดไม่สำเร็จ: ${_esc(getFriendlyErrorMessage(err))}</p>`
-      return
-    }
-    listEl.innerHTML = !_issuedHistory.length ? `
-      <p class="text-xs text-gray-400 text-center py-6">ยังไม่มีประวัติการออกเกียรติบัตร</p>
-    ` : `<div class="divide-y divide-gray-100">${_issuedHistory.map(c => `
+    listEl.innerHTML = !visibleHistory.length ? `
+      <p class="text-xs text-gray-400 text-center py-6">ไม่พบรายการตามตัวกรอง</p>
+    ` : `<div class="divide-y divide-gray-100">${visibleHistory.map(c => `
       <div class="flex items-center justify-between gap-3 py-2.5 text-xs flex-wrap">
         <div class="min-w-0">
           <p class="font-bold text-gray-700 truncate">${c.recipient_type === 'teacher' ? '👨‍🏫' : '🎓'} ${_esc(c.recipient_name)} <span class="font-normal text-gray-400">· ${_esc(c.certificate_templates?.name ?? '-')}</span></p>
-          <p class="text-gray-400 mt-0.5">${_esc(c.certificate_no)}${c.title ? ' · ' + _esc(c.title) : ''} · ${new Date(c.issued_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</p>
+          <p class="text-gray-400 mt-0.5">${_esc(c.certificate_no)}${c.title ? ' · ' + _esc(c.title) : ''}${roleOf(c) ? ' · ' + _esc(roleOf(c)) : ''} · ${new Date(c.issued_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' })}</p>
         </div>
         <div class="flex gap-1.5 shrink-0">
           <button type="button" class="cert-hist-view px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px]" data-id="${c.id}">📄 ดู</button>
@@ -460,7 +508,7 @@ async function _renderHistoryTab() {
       </div>`).join('')}</div>`
 
     listEl.querySelectorAll('.cert-hist-view').forEach(btn => btn.addEventListener('click', () => {
-      const c = _issuedHistory.find(x => x.id === Number(btn.dataset.id))
+      const c = visibleHistory.find(x => x.id === Number(btn.dataset.id))
       if (!c) return
       openCertificatePrint({
         layout: c.layout_snapshot,
@@ -471,15 +519,39 @@ async function _renderHistoryTab() {
     listEl.querySelectorAll('.cert-hist-delete').forEach(btn => btn.addEventListener('click', async () => {
       const confirmed = await showDangerConfirm({ title: 'ลบเกียรติบัตรนี้?', message: 'ลบแล้วไม่สามารถกู้คืนได้', confirmText: 'ลบเลย' })
       if (!confirmed) return
-      try { await deleteCertificate(Number(btn.dataset.id)); _load(panel.querySelector('#cert-history-search')?.value) }
+      try { await deleteCertificate(Number(btn.dataset.id)); await _load(panel.querySelector('#cert-history-search')?.value) }
       catch (err) { showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error') }
     }))
+  }
+
+  const _load = async (query) => {
+    const listEl = panel.querySelector('#cert-history-list')
+    listEl.innerHTML = `<p class="text-xs text-gray-400 text-center py-6">กำลังโหลด...</p>`
+    try {
+      _issuedHistory = await getIssuedCertificates({ query })
+    } catch (err) {
+      listEl.innerHTML = `<p class="text-xs text-red-400 text-center py-6">โหลดไม่สำเร็จ: ${_esc(getFriendlyErrorMessage(err))}</p>`
+      return
+    }
+    refreshFilterOptions()
+    renderFiltered()
   }
 
   let searchTimer = null
   panel.querySelector('#cert-history-search').addEventListener('input', e => {
     clearTimeout(searchTimer)
     searchTimer = setTimeout(() => _load(e.target.value), 300)
+  })
+  ;[activitySelect, genderSelect, roleSelect].forEach(select => select.addEventListener('change', renderFiltered))
+  printButton.addEventListener('click', () => {
+    if (!visibleHistory.length) return
+    openCertificatesPrint({
+      certificates: visibleHistory.map(c => ({
+        layout: c.layout_snapshot,
+        variables: { name: c.recipient_name, date: new Date(c.issued_at).toLocaleDateString('th-TH', { dateStyle: 'long' }), no: c.certificate_no, ...c.variables },
+        docTitle: c.title || c.certificate_templates?.name || 'เกียรติบัตร',
+      })),
+    })
   })
   _load('')
 }
