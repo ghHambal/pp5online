@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.955'
+import { APP_VERSION } from './version.js?v=10.22.960'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.960': [
+    '📝 แผนหน้าเดียว: เพิ่มปุ่มพิมพ์/บันทึกแผนทั้งภาคเรียน โดยแนบหน้าปกไว้ด้านหน้า',
+  ],
   '10.22.959': [
     '✏️ ระบบเกียรติบัตร: เพิ่มปุ่มแก้ไขชื่อ Template ได้โดยตรง รวมถึง Template ที่คัดลอกมา',
   ],

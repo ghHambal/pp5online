@@ -406,7 +406,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
 
   const body = m.querySelector('#course-workspace-body')
   try {
-    const [{ resolveSmartClassroomAccess, canUseSmartClassroomForClass }, { openLessonPlanAIWorkspace, openLessonPlanDocument }] = await Promise.all([
+    const [{ resolveSmartClassroomAccess, canUseSmartClassroomForClass }, { openLessonPlanAIWorkspace, openLessonPlanDocument, openLessonPlansPrint }] = await Promise.all([
       import('./teacher-views-smart-classroom.js'),
       import('./lesson-plan-ai-workspace.js'),
     ])
@@ -532,7 +532,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     <section data-course-panel="plans" class="hidden rounded-2xl border border-violet-100 bg-violet-50/60 p-4 sm:p-5">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
             <div><h3 class="font-extrabold text-violet-950">📝 แผนการจัดการเรียนรู้หน้าเดียว</h3><p class="text-xs text-violet-700/70 mt-1">แผนรายครั้งที่อ้างอิงหัวข้อจากกำหนดการสอน ส่วนบันทึกหลังสอนและลายเซ็นแยกตามห้องที่มีสิทธิ์</p></div>
-            <button id="cw-ai-plan" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-violet-700 hover:bg-violet-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>✨ สร้างแผนด้วย AI</button>
+            <div class="flex flex-wrap items-center gap-2 justify-end"><button id="cw-plans-print-all" class="min-h-[44px] px-4 rounded-xl ${lessonPlans.length ? 'border border-violet-200 bg-white text-violet-800 hover:bg-violet-50' : 'border border-gray-200 bg-gray-100 text-gray-400'} text-xs font-bold flex-shrink-0" ${lessonPlans.length ? '' : 'disabled'}>🖨️ พิมพ์/บันทึกแผนทั้งภาคเรียน</button><button id="cw-ai-plan" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-violet-700 hover:bg-violet-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>✨ สร้างแผนด้วย AI</button></div>
           </div>
           ${aiAllowed ? '' : '<p class="mt-2 text-[11px] text-amber-700">ต้องมีสิทธิ์ใช้ Smart Classroom อย่างน้อยหนึ่งห้องในรายวิชานี้ก่อน</p>'}
           ${lessonPlans.length ? `<div class="mt-4 space-y-2">${lessonPlans.map(plan => `<div class="flex items-center gap-2 rounded-xl border border-violet-100 bg-white px-3 py-3"><button class="cw-plan-row min-w-0 flex-1 text-left hover:text-violet-800 transition" data-plan-id="${plan.id}"><p class="text-sm font-bold text-gray-800">${_htmlEsc(plan.title)}</p><p class="text-[11px] text-violet-600 mt-0.5">สัปดาห์ ${plan.week_start}${plan.week_end !== plan.week_start ? `–${plan.week_end}` : ''} · กดเพื่อเปิดเอกสาร/บันทึกหลังสอน</p></button><button type="button" class="cw-plan-delete shrink-0 rounded-lg border border-red-200 bg-white px-3 py-2 text-[10px] font-bold text-red-600" data-plan-id="${plan.id}">ลบ</button></div>`).join('')}</div>` : `<div class="mt-4 rounded-xl border border-dashed border-violet-200 py-8 text-center text-xs text-violet-400">ยังไม่มีแผนการสอน</div>`}
@@ -624,6 +624,15 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     })
     body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: courseScheduledDays, onSaved: reopen }))
     body.querySelector('#cw-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'plan', semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: courseScheduledDays, onSaved: reopen }))
+    body.querySelector('#cw-plans-print-all')?.addEventListener('click', () => openLessonPlansPrint({
+      plans: lessonPlans,
+      subject,
+      teacher,
+      roomNames: courseRoomNames,
+      semester: termConfig.semester ?? subject.semester,
+      academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year,
+      departmentHead: courseDepartment,
+    }))
     body.querySelector('#cw-schedule-preview')?.addEventListener('click', () => {
       const notesCheckbox = body.querySelector('#cw-schedule-show-notes')
       showScheduleNotes = notesCheckbox?.checked === true
