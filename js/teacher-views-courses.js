@@ -440,11 +440,13 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       head_name: courseHeadName || (matchedDept.head_name === 'ทีมบริหาร' ? '' : matchedDept.head_name),
       head_sign_url: courseHeadProfile?.signature_url || (courseHeadName && matchedDept.head_name !== courseHeadName ? null : matchedDept.head_sign_url),
     } : courseHeadName ? { head_name: courseHeadName, head_sign_url: courseHeadProfile?.signature_url ?? null } : null
-    const courseRoomNames = [...new Set(courseClasses.map(cls => {
+    const courseRoomGroups = courseClasses.map(cls => {
       const room = String(cls.class_name ?? `ห้อง ${cls.id}`).trim()
       const grade = String(cls.master_subjects?.grade_level ?? subject.grade_level ?? '').trim()
-      return grade && !_courseToken(room).startsWith(_courseToken(grade)) ? `${grade} ${room}` : room
-    }).filter(Boolean))]
+      const label = grade && !_courseToken(room).startsWith(_courseToken(grade)) ? `${grade} ${room}` : room
+      return { id: cls.id, classId: cls.id, label, roomNames: [label] }
+    }).filter(group => group.label)
+    const courseRoomNames = [...new Set(courseRoomGroups.map(group => group.label))]
     const semesterStart = /^\d{4}-\d{2}-\d{2}$/.test(String(termConfig.semester_start ?? '')) ? termConfig.semester_start : null
     const scheduleAcademicYear = Number(subject.academic_year ?? termConfig.academicYear ?? termConfig.academic_year)
     const scheduleSemester = Number(subject.semester ?? termConfig.semester)
@@ -635,7 +637,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       departmentHead: courseDepartment,
     })
     body.querySelector('#cw-plans-print-all')?.addEventListener('click', () => {
-      const roomGroups = courseRoomNames.map((name, index) => ({ id: index, label: name, roomNames: [name] }))
+      const roomGroups = courseRoomGroups
       if (roomGroups.length <= 1) {
         printCoursePlans(roomGroups)
         return

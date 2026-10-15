@@ -5638,14 +5638,22 @@ export async function deleteSyllabusItem(id) {
 }
 
 // ─── แผนการจัดการเรียนรู้ (Lesson Plans — ผูกกับรายวิชา) ───────────────────────
-export async function getLessonPlans(courseId) {
+export async function getLessonPlans(courseId, classId = null) {
   const { data, error } = await supabase
     .from('lesson_plans')
     .select('*')
     .eq('course_id', courseId)
     .order('week_start', { ascending: true })
   if (error) throw error
-  return data ?? []
+  const rows = data ?? []
+  if (!classId) return rows
+  const targetClassId = Number(classId)
+  return rows.filter(plan => {
+    const rawClassId = plan.source_json?.class_id
+    const planClassId = Number(rawClassId)
+    const isScoped = rawClassId !== null && rawClassId !== undefined && rawClassId !== '' && Number.isInteger(planClassId) && planClassId > 0
+    return !isScoped || planClassId === targetClassId
+  })
 }
 
 export async function createLessonPlan(payload) {

@@ -411,7 +411,7 @@ export async function renderSmartClassroom(teacher, classId) {
 
     ;[syllabusItems, lessonPlans] = await Promise.all([
       courseId ? getCourseSyllabus(courseId).catch(() => []) : Promise.resolve([]),
-      courseId ? getLessonPlans(courseId).catch(() => []) : Promise.resolve([]),
+      courseId ? getLessonPlans(courseId, classId).catch(() => []) : Promise.resolve([]),
     ])
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
@@ -2404,7 +2404,7 @@ export async function renderSmartClassroom(teacher, classId) {
         session_number: parseInt(m.querySelector('#lp-session-number').value, 10) || 1,
         lesson_date: m.querySelector('#lp-lesson-date').value || lessonDateForWeek(weekStart) || null,
         duration_minutes: durationMinutes,
-        source_json: { ...(p.source_json ?? {}), period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: durationMinutes },
+        source_json: { ...(p.source_json ?? {}), class_id: Number(classId) || null, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: durationMinutes },
         unit_title: m.querySelector('#lp-unit-title').value.trim() || null,
         standards: m.querySelector('#lp-standards').value.trim() || null,
         objectives: m.querySelector('#lp-objectives').value.trim() || null,

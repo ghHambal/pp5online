@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.964': [
+    '📝 แผนหน้าเดียว: แยกจำนวนแผนตามห้อง และเพิ่มปุ่มแก้ไขข้อมูลหน้าปกก่อนพิมพ์ PDF',
+  ],
   '10.22.963': [
     '📝 แก้หน้าปกแผนหน้าเดียวไม่ให้ระดับชั้นซ้ำกับชื่อห้อง เช่น ม.6 ม.6/2 Delima',
   ],
