@@ -725,9 +725,11 @@ export async function renderMyClasses(teacher) {
                     class="p-1.5 text-red-300 hover:text-red-500 hover:bg-white/70 rounded-lg transition text-sm" title="ลบ">🗑️</button>
                 </div>
               </div>
-              <div class="mt-3 pt-2.5 border-t border-white/60 flex items-center justify-between">
+              <div class="mt-3 pt-2.5 border-t border-white/60 flex items-center justify-between gap-2">
                 ${countdown}
-                <span class="text-[11px] text-gray-400 group-hover:text-indigo-500 transition">เปิดห้องเรียน →</span>
+                <button type="button" onclick="event.stopPropagation();window._openSmartClassroom(${c.id})"
+                  class="flex-shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white shadow-sm hover:brightness-105 transition"
+                  style="background:linear-gradient(135deg,#a9781a,#e6c988);">👑 Smart Classroom</button>
               </div>
               ${regradeCardAction}
             </div>
@@ -748,6 +750,9 @@ export async function renderMyClasses(teacher) {
     window._openPP5Doc     = (classId) => openPP5Doc(classId)
     window._openExamDocsForClass = (classId) => _openExamDocsForClass(classId)
     window._openClassDetail = (classId) => renderClassDetail(teacher, classId, { classes, scheduleMap, linksByClass, periodMap, classrooms, copyCfg })
+    window._openSmartClassroom = (classId) => {
+      import('./teacher-views-smart-classroom.js').then(m => m.renderSmartClassroom(teacher, classId))
+    }
     window._openClassDashboard = async (classId) => {
       const cls = window._classCache?.[classId]
       if (!cls) return

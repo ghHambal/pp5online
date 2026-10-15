@@ -7,6 +7,7 @@ import {
   getActiveLeavePermissionsForClass, getLeaveMaxActiveForClass, getLeaveMaxPerStudentWeekForClass,
   closeLeavePermission, getMyDonationRequests, createAnnouncement, getClassAnnouncements,
   getScoreColumns, getStudentScores, saveStudentScore, getClassAttendanceAllFull, getClassLeaveHistory,
+  saveAttendanceCell,
   getClassAssignmentsWithSubmissions, createAssignment, updateAssignment, deleteAssignment, saveAssignmentGrade,
   saveAssignmentFeedback, markAssignmentSubmissionReviewed, rejectAssignmentSubmission,
   getTeacherExamRequests, getMySchedule, getClassScheduleLinks, getPeriods,
@@ -542,6 +543,36 @@ export async function renderSmartClassroom(teacher, classId) {
     })
   }
 
+  // ผังที่นั่งเป็นการตั้งค่าเฉพาะห้อง/อุปกรณ์ เพื่อให้ครูทดลองจัดห้องได้ทันที
+  // โดยไม่เปลี่ยนลำดับเลขที่หรือข้อมูลการลงทะเบียนนักเรียนในฐานข้อมูล
+  const _layoutStorageKey = `pp5-smart-classroom-layout-${classId}`
+  let _rosterLayout = (() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(_layoutStorageKey) ?? 'null')
+      return saved && typeof saved === 'object' ? saved : { template: 'rows', splitGender: false, order: [] }
+    } catch { return { template: 'rows', splitGender: false, order: [] } }
+  })()
+  const _displayStudents = () => {
+    const sorted = _sortedStudents()
+    const savedOrder = new Map((_rosterLayout.order ?? []).map((id, index) => [Number(id), index]))
+    if (!savedOrder.size || _rosterSort.key !== 'seatno') return sorted
+    return [...sorted].sort((a, b) => {
+      const ai = savedOrder.get(Number(a.id))
+      const bi = savedOrder.get(Number(b.id))
+      return (ai ?? Number.MAX_SAFE_INTEGER) - (bi ?? Number.MAX_SAFE_INTEGER)
+        || (seatNoByStudent.get(a.id) ?? 0) - (seatNoByStudent.get(b.id) ?? 0)
+    })
+  }
+  const _rosterGridClass = () => {
+    if (_rosterLayout.template === 'pairs') return 'grid-cols-2 sm:grid-cols-4'
+    if (_rosterLayout.template === 'groups') return 'grid-cols-2 sm:grid-cols-4 lg:grid-cols-5'
+    if (_rosterLayout.template === 'circle') return 'grid-cols-3 sm:grid-cols-5 lg:grid-cols-6'
+    return 'grid-cols-4 sm:grid-cols-6'
+  }
+  const _saveRosterLayout = () => {
+    try { localStorage.setItem(_layoutStorageKey, JSON.stringify(_rosterLayout)) } catch { /* storage อาจถูกปิด */ }
+  }
+
   // ── คำร้องขอสอบปรับ/สอบย้อนหลัง ของห้องนี้ — คิวเรียงใกล้→ไกล ────────────────
   const examQueue = examRequestsAll
     .filter(r => r.classes?.id === classId && r.status !== 'rejected' && (r.status !== 'approved' || r.exam_attended == null))
@@ -593,7 +624,7 @@ export async function renderSmartClassroom(teacher, classId) {
   }
 
   // ── Roster grid ──────────────────────────────────────────────────────────
-  const _rosterHTML = () => _sortedStudents().map(s => {
+  const _rosterHTML = () => _displayStudents().map(s => {
     const out = activeLeaveMap[s.id]
     const qa = quizAttemptByStudent[s.id]
     const qBadge = liveQuiz ? (QUIZ_STATUS_BADGE[qa?.status] ?? { icon: '⚪', cls: 'bg-gray-300' }) : null
@@ -601,8 +632,16 @@ export async function renderSmartClassroom(teacher, classId) {
     const assignmentStatus = _rosterSort.key.startsWith('assignment:')
       ? _studentAssignmentStatus(parseInt(_rosterSort.key.slice('assignment:'.length), 10), s.id)
       : null
-    return `<button type="button" data-sid="${s.id}"
-        class="sc-stu relative border rounded-xl px-2 py-2.5 text-center hover:border-indigo-300 hover:-translate-y-0.5 transition ${out ? 'border-amber-300 bg-amber-50' : 'border-gray-100 bg-gray-50'}">
+    const wheelActions = [
+      ['info', '👤', 'ข้อมูล', 'bg-indigo-600'],
+      ['attendance', '✅', 'สถานะ', 'bg-emerald-600'],
+      ['leave', '🚪', out ? 'กลับเข้า' : 'ออกห้อง', 'bg-orange-600'],
+      ['score', '⭐', 'ให้คะแนน', 'bg-violet-600'],
+      ['star', '🎯', 'เพิ่มดาว', 'bg-pink-600'],
+    ]
+    return `<div class="sc-stu-wrap relative" data-student-wrap data-sid="${s.id}">
+      <div role="button" tabindex="0" data-sid="${s.id}"
+        class="sc-stu relative border rounded-xl px-2 py-2.5 text-center hover:border-indigo-300 hover:-translate-y-0.5 transition cursor-pointer ${out ? 'border-amber-300 bg-amber-50' : 'border-gray-100 bg-gray-50'}">
       <span class="absolute top-1 left-1 text-[9px] font-bold text-gray-500 bg-white/80 border border-gray-200 rounded-full w-4 h-4 flex items-center justify-center" title="เลขที่ ${seatNoByStudent.get(s.id) ?? '—'}">${seatNoByStudent.get(s.id) ?? '—'}</span>
       ${out ? `<span class="absolute top-1 right-1 text-[9px] font-bold bg-amber-500 text-white px-1 py-0.5 rounded">🚪</span>` : ''}
       <div class="relative w-9 h-9 mx-auto mb-1.5 mt-2 rounded-lg overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs">
@@ -614,7 +653,11 @@ export async function renderSmartClassroom(teacher, classId) {
       ${assignmentStatus
         ? `<div class="mt-1 px-1.5 py-0.5 rounded-lg border text-[9px] font-bold truncate ${assignmentStatus.cls}">${assignmentStatus.icon} ${assignmentStatus.label}</div>`
         : sortVal ? `<div class="text-[10px] font-bold text-amber-600 mt-0.5">${_htmlEsc(sortVal)}</div>` : ''}
-    </button>`
+      </div>
+      <div class="sc-stu-wheel" aria-label="เมนูด่วน ${_htmlEsc(s.full_name ?? '')}">
+        ${wheelActions.map(([action, icon, label, color], i) => `<button type="button" data-student-action="${action}" data-sid="${s.id}" class="sc-wheel-item ${color}" style="--wheel-i:${i}" title="${label}"><span>${icon}</span><small>${label}</small></button>`).join('')}
+      </div>
+    </div>`
   }).join('')
 
   // ── Hall pass live list ─────────────────────────────────────────────────
@@ -1116,6 +1159,33 @@ export async function renderSmartClassroom(teacher, classId) {
   }
 
   setContent(`<div class="animate-fade max-w-6xl mx-auto">
+    <style>
+      #sc-roster { overflow: visible; }
+      .sc-stu-wrap { min-width: 0; z-index: 1; }
+      .sc-stu-wrap:hover, .sc-stu-wrap:focus-within, .sc-stu-wrap.is-focus { z-index: 30; }
+      .sc-stu { transform-origin: center; }
+      .sc-stu-wrap:hover .sc-stu, .sc-stu-wrap:focus-within .sc-stu, .sc-stu-wrap.is-focus .sc-stu {
+        transform: scale(1.08); border-color: #818cf8; background: #eef2ff; box-shadow: 0 12px 28px rgba(79,70,229,.18);
+      }
+      .sc-stu-wheel { position: absolute; z-index: 40; inset: 50% auto auto 50%; width: 0; height: 0; opacity: 0; pointer-events: none; transition: opacity .16s ease; }
+      .sc-stu-wrap:hover .sc-stu-wheel, .sc-stu-wrap:focus-within .sc-stu-wheel, .sc-stu-wrap.is-focus .sc-stu-wheel { opacity: 1; pointer-events: auto; }
+      .sc-wheel-item { position: absolute; left: -23px; top: -23px; width: 46px; height: 46px; border-radius: 999px; color: white; border: 3px solid white; box-shadow: 0 4px 12px rgba(15,23,42,.24); display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translate(calc(cos(var(--wheel-angle)) * 57px), calc(sin(var(--wheel-angle)) * 57px)); transition: transform .18s ease, filter .15s ease; }
+      .sc-wheel-item:hover { filter: brightness(1.12); transform: translate(calc(cos(var(--wheel-angle)) * 64px), calc(sin(var(--wheel-angle)) * 64px)) scale(1.08); }
+      .sc-wheel-item span { font-size: 15px; line-height: 15px; }
+      .sc-wheel-item small { font-size: 8px; font-weight: 800; line-height: 10px; white-space: nowrap; }
+      .sc-wheel-item:nth-child(1) { --wheel-angle: -145deg; }
+      .sc-wheel-item:nth-child(2) { --wheel-angle: -72deg; }
+      .sc-wheel-item:nth-child(3) { --wheel-angle: 0deg; }
+      .sc-wheel-item:nth-child(4) { --wheel-angle: 72deg; }
+      .sc-wheel-item:nth-child(5) { --wheel-angle: 145deg; }
+      @supports not (transform: translate(calc(cos(0deg) * 1px), calc(sin(0deg) * 1px))) {
+        .sc-wheel-item { transform: translateY(-58px); }
+        .sc-wheel-item:nth-child(2) { transform: translate(42px,-42px); }
+        .sc-wheel-item:nth-child(3) { transform: translateX(58px); }
+        .sc-wheel-item:nth-child(4) { transform: translate(42px,42px); }
+        .sc-wheel-item:nth-child(5) { transform: translateY(58px); }
+      }
+    </style>
 
     <div class="relative overflow-hidden bg-white border border-amber-200 rounded-2xl shadow-sm px-5 py-4 mb-4 flex items-center gap-4 flex-wrap">
       <div class="absolute inset-x-0 top-0 h-1" style="background:linear-gradient(90deg,#e6c988,#a9781a,#e6c988)"></div>
@@ -1144,6 +1214,7 @@ export async function renderSmartClassroom(teacher, classId) {
           <div class="flex items-center justify-between gap-2 flex-wrap mb-1">
             <h2 class="text-sm font-bold text-gray-700">👥 นักเรียน — แตะเพื่อดูข้อมูล/สั่งการ</h2>
             <div class="flex items-center gap-1.5 flex-shrink-0">
+              <button id="sc-organize-class" class="text-xs font-bold px-3 py-1.5 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100">🪑 จัดห้องเรียน</button>
               <button id="sc-sort-trigger" class="text-xs font-bold px-3 py-1.5 rounded-lg border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100">🔀 เรียงตาม: <span id="sc-sort-label">เลขที่</span></button>
               <button id="sc-open-attendance" class="sc-btn-dark text-xs font-bold px-3 py-1.5 rounded-lg">✅ เช็คชื่อ</button>
             </div>
@@ -1156,7 +1227,7 @@ export async function renderSmartClassroom(teacher, classId) {
             <span class="flex items-center gap-1"><span class="w-3.5 h-3.5 rounded-full bg-red-500 inline-flex items-center justify-center text-[8px]">🔒</span>ถูกล็อก</span>
             <span class="flex items-center gap-1"><span class="w-3.5 h-3.5 rounded-full bg-gray-300 inline-flex items-center justify-center text-[8px]">⚪</span>ยังไม่เข้าสอบ</span>
           </div>` : ''}
-          <div class="grid grid-cols-4 sm:grid-cols-6 gap-2" id="sc-roster">${_rosterHTML()}</div>
+          <div class="grid ${_rosterGridClass()} gap-2" id="sc-roster" data-layout="${_htmlEsc(_rosterLayout.template ?? 'rows')}">${_rosterHTML()}</div>
         </div>
 
         <div class="bg-white rounded-2xl border border-amber-100 shadow-sm p-4">
@@ -1177,6 +1248,22 @@ export async function renderSmartClassroom(teacher, classId) {
             <button id="sc-quiz-add" class="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800">+ ควิซ</button>
           </div>
           <div id="sc-quiz-list">${_quizHTML()}</div>
+        </div>
+
+        <div id="sc-reference-panel" class="sc-reference-panel bg-white rounded-2xl border border-gray-100 shadow-sm p-4 lg:p-5 mb-4">
+          <div class="sc-mobile-ref-head">
+            <div>
+              <p id="sc-mobile-ref-title" class="text-sm font-bold text-gray-800">${REF_TABS.find(t => t.key === _refTab)?.icon} ${REF_TABS.find(t => t.key === _refTab)?.label}</p>
+              <p class="text-[11px] text-gray-400">แตะเมนูด้านล่างเพื่อเปลี่ยนหัวข้อ</p>
+            </div>
+            <button id="sc-mobile-ref-close" type="button" class="min-w-[44px] min-h-[44px] rounded-xl border border-gray-200 bg-white text-gray-500 text-lg">✕</button>
+          </div>
+          <div id="sc-mobile-ref-subtabs" class="sc-mobile-ref-subtabs"></div>
+          <div class="hidden lg:flex items-center justify-between gap-3 mb-4"><div><h2 class="text-base font-extrabold text-gray-800">พื้นที่จัดการรายวิชา</h2><p class="text-xs text-gray-400 mt-0.5">เลือกงานที่ต้องการ ระบบจะแยกข้อมูลและปุ่มสร้างให้ชัดเจน</p></div><span class="px-3 py-1.5 rounded-full bg-amber-50 border border-amber-100 text-[10px] font-bold text-amber-700">${_htmlEsc(ms.subject_name ?? '')}</span></div>
+          <div id="sc-reftabs-bar" class="sc-desktop-ref-tabs mb-5">
+            ${REF_TABS.map(t => `<button data-reftab="${t.key}" class="sc-reftab-btn ${t.key === _refTab ? 'active' : ''}"><span class="sc-ref-tab-icon">${t.icon}</span><span class="min-w-0 text-left"><b>${t.label}${t.key === 'assignments' && urgentAssignments.length ? ` (${urgentAssignments.length})` : ''}</b><small>${t.desc}</small></span></button>`).join('')}
+          </div>
+          <div id="sc-reftab-body">${_refTabBodyHTML(_refTab)}</div>
         </div>
 
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
@@ -1200,22 +1287,6 @@ export async function renderSmartClassroom(teacher, classId) {
         </div>
       </div>
 
-    </div>
-
-    <div id="sc-reference-panel" class="sc-reference-panel bg-white rounded-2xl border border-gray-100 shadow-sm p-4 lg:p-5 mt-4">
-      <div class="sc-mobile-ref-head">
-        <div>
-          <p id="sc-mobile-ref-title" class="text-sm font-bold text-gray-800">${REF_TABS.find(t => t.key === _refTab)?.icon} ${REF_TABS.find(t => t.key === _refTab)?.label}</p>
-          <p class="text-[11px] text-gray-400">แตะเมนูด้านล่างเพื่อเปลี่ยนหัวข้อ</p>
-        </div>
-        <button id="sc-mobile-ref-close" type="button" class="min-w-[44px] min-h-[44px] rounded-xl border border-gray-200 bg-white text-gray-500 text-lg">✕</button>
-      </div>
-      <div id="sc-mobile-ref-subtabs" class="sc-mobile-ref-subtabs"></div>
-      <div class="hidden lg:flex items-center justify-between gap-3 mb-4"><div><h2 class="text-base font-extrabold text-gray-800">พื้นที่จัดการรายวิชา</h2><p class="text-xs text-gray-400 mt-0.5">เลือกงานที่ต้องการ ระบบจะแยกข้อมูลและปุ่มสร้างให้ชัดเจน</p></div><span class="px-3 py-1.5 rounded-full bg-amber-50 border border-amber-100 text-[10px] font-bold text-amber-700">${_htmlEsc(ms.subject_name ?? '')}</span></div>
-      <div id="sc-reftabs-bar" class="sc-desktop-ref-tabs mb-5">
-        ${REF_TABS.map(t => `<button data-reftab="${t.key}" class="sc-reftab-btn ${t.key === _refTab ? 'active' : ''}"><span class="sc-ref-tab-icon">${t.icon}</span><span class="min-w-0 text-left"><b>${t.label}${t.key === 'assignments' && urgentAssignments.length ? ` (${urgentAssignments.length})` : ''}</b><small>${t.desc}</small></span></button>`).join('')}
-      </div>
-      <div id="sc-reftab-body">${_refTabBodyHTML(_refTab)}</div>
     </div>
 
     <nav id="sc-mobile-ref-nav" class="sc-mobile-ref-nav" aria-label="เมนู Smart Classroom">
@@ -1280,7 +1351,7 @@ export async function renderSmartClassroom(teacher, classId) {
       const attempts = await getQuizAttemptsForMonitor(liveQuiz.id).catch(() => null)
       if (!attempts) return
       quizAttemptByStudent = Object.fromEntries(attempts.map(a => [a.student_id, a]))
-      rosterEl.innerHTML = _rosterHTML()
+      _paintRoster()
     }, 4000)
   }
 
@@ -1395,19 +1466,168 @@ export async function renderSmartClassroom(teacher, classId) {
     focusEl?.scrollIntoView({ block: 'center' })
   }
 
-  // ── Wiring: roster click → student detail panel ─────────────────────────
+  const _paintRoster = () => {
+    const roster = document.getElementById('sc-roster')
+    if (!roster) return
+    roster.className = `grid ${_rosterGridClass()} gap-2`
+    roster.dataset.layout = _rosterLayout.template ?? 'rows'
+    roster.innerHTML = _rosterHTML()
+  }
+
+  function _studentGenderRank(student) {
+    const value = String(student.gender ?? student.sex ?? '').trim().toLowerCase()
+    if (['ชาย', 'male', 'm', 'ช'].includes(value)) return 0
+    if (['หญิง', 'female', 'f', 'ญ'].includes(value)) return 1
+    return 2
+  }
+
+  function _openClassOrganizer() {
+    document.getElementById('sc-class-organizer')?.remove()
+    const modal = document.createElement('div')
+    modal.id = 'sc-class-organizer'
+    modal.className = 'fixed inset-0 z-[96] flex items-center justify-center bg-black/50 p-4 overflow-y-auto'
+    const ordered = _displayStudents()
+    const render = () => {
+      const template = modal.querySelector('#sc-organizer-template')?.value ?? _rosterLayout.template ?? 'rows'
+      const splitGender = modal.querySelector('#sc-organizer-gender')?.checked ?? !!_rosterLayout.splitGender
+      const preview = [...ordered].sort((a, b) => splitGender
+        ? _studentGenderRank(a) - _studentGenderRank(b) || (seatNoByStudent.get(a.id) ?? 0) - (seatNoByStudent.get(b.id) ?? 0)
+        : (seatNoByStudent.get(a.id) ?? 0) - (seatNoByStudent.get(b.id) ?? 0))
+      modal.querySelector('#sc-organizer-preview').innerHTML = preview.map((s, index) => `
+        <div draggable="true" data-organizer-student="${s.id}" class="flex items-center gap-2 rounded-xl border border-gray-100 bg-white px-2.5 py-2 cursor-grab active:cursor-grabbing hover:border-violet-300">
+          <span class="text-[10px] font-bold text-gray-400 w-5">${index + 1}</span>
+          <div class="w-7 h-7 rounded-lg overflow-hidden bg-indigo-100 flex items-center justify-center text-indigo-700 text-[10px] font-bold flex-shrink-0">${s.image_url ? `<img src="${_htmlEsc(s.image_url)}" class="w-full h-full object-cover"/>` : _htmlEsc((s.full_name ?? '?').charAt(0))}</div>
+          <span class="text-xs font-semibold text-gray-700 truncate">${_htmlEsc(s.full_name ?? '')}</span>
+          <span class="ml-auto text-[10px] text-gray-400">${_htmlEsc(s.gender ?? '')}</span>
+        </div>`).join('')
+      modal.querySelectorAll('[data-organizer-student]').forEach(item => {
+        item.addEventListener('dragstart', () => item.classList.add('opacity-40'))
+        item.addEventListener('dragend', () => item.classList.remove('opacity-40'))
+        item.addEventListener('dragover', event => event.preventDefault())
+        item.addEventListener('drop', event => {
+          event.preventDefault()
+          const dragged = modal.querySelector('.opacity-40[data-organizer-student]')
+          if (!dragged || dragged === item) return
+          const all = [...modal.querySelectorAll('[data-organizer-student]')]
+          const from = all.indexOf(dragged), to = all.indexOf(item)
+          if (from < to) item.after(dragged)
+          else item.before(dragged)
+          modal.querySelectorAll('[data-organizer-student]').forEach((el, i) => { el.querySelector('span').textContent = i + 1 })
+        })
+      })
+    }
+    modal.innerHTML = `
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-xl my-8 overflow-hidden">
+        <div class="p-5 border-b border-gray-100 flex items-start justify-between gap-3">
+          <div><h3 class="text-lg font-extrabold text-gray-800">🪑 จัดห้องเรียน</h3><p class="text-xs text-gray-400 mt-1">เลือกแม่แบบ แล้วลากการ์ดเพื่อปรับตำแหน่งได้</p></div>
+          <button id="sc-organizer-close" class="text-gray-400 hover:text-gray-700 text-xl">✕</button>
+        </div>
+        <div class="p-5 space-y-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <label class="text-xs font-bold text-gray-600">รูปแบบการ์ด
+              <select id="sc-organizer-template" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm font-semibold text-gray-700">
+                <option value="rows">แถวปกติ</option><option value="pairs">คู่/กลุ่มย่อย</option><option value="groups">กลุ่ม 4–5 คน</option><option value="circle">วงกลม/กิจกรรม</option>
+              </select>
+            </label>
+            <label class="flex items-center gap-2 rounded-xl border border-gray-200 px-3 py-3 text-xs font-bold text-gray-600 self-end"><input id="sc-organizer-gender" type="checkbox" class="accent-violet-600"/> แยกชาย/หญิงเป็นโซน</label>
+          </div>
+          <div class="rounded-2xl bg-violet-50 border border-violet-100 p-3"><p class="text-[11px] text-violet-700 mb-2">ลากการ์ดเพื่อจัดลำดับเอง · ระบบจะคงเลขที่จริงของนักเรียนไว้</p><div id="sc-organizer-preview" class="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-80 overflow-y-auto"></div></div>
+          <div class="flex justify-end gap-2"><button id="sc-organizer-cancel" class="px-4 py-2 rounded-xl border border-gray-200 text-xs font-bold text-gray-600">ยกเลิก</button><button id="sc-organizer-save" class="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold">บันทึกผังห้อง</button></div>
+        </div>
+      </div>`
+    document.body.appendChild(modal)
+    modal.querySelector('#sc-organizer-template').value = _rosterLayout.template ?? 'rows'
+    modal.querySelector('#sc-organizer-gender').checked = !!_rosterLayout.splitGender
+    modal.querySelector('#sc-organizer-template').addEventListener('change', render)
+    modal.querySelector('#sc-organizer-gender').addEventListener('change', render)
+    modal.querySelector('#sc-organizer-close').addEventListener('click', () => modal.remove())
+    modal.querySelector('#sc-organizer-cancel').addEventListener('click', () => modal.remove())
+    modal.addEventListener('click', event => { if (event.target === modal) modal.remove() })
+    modal.querySelector('#sc-organizer-save').addEventListener('click', () => {
+      _rosterLayout = {
+        template: modal.querySelector('#sc-organizer-template').value,
+        splitGender: modal.querySelector('#sc-organizer-gender').checked,
+        order: [...modal.querySelectorAll('[data-organizer-student]')].map(el => Number(el.dataset.organizerStudent)),
+      }
+      _saveRosterLayout()
+      _paintRoster()
+      modal.remove()
+      showToast('บันทึกผังห้องเรียนแล้ว ✅', 'success')
+    })
+    render()
+  }
+
+  function _openStudentAttendancePicker(student, anchor) {
+    document.getElementById('sc-student-att-picker')?.remove()
+    const picker = document.createElement('div')
+    picker.id = 'sc-student-att-picker'
+    picker.className = 'fixed z-[98] w-44 rounded-2xl border border-gray-200 bg-white p-2 shadow-2xl'
+    picker.innerHTML = `<p class="px-2 py-1 text-[10px] font-bold text-gray-400">สถานะของ ${_htmlEsc(student.full_name ?? '')}</p>${Object.entries(ATT_STATUS).map(([key, meta]) => `<button type="button" data-att-status="${key}" class="w-full rounded-xl px-2.5 py-2 text-left text-xs font-bold hover:bg-gray-50 ${meta.color}">${meta.label} · ${key === 'present' ? 'มาเรียน' : key === 'absent' ? 'ขาด' : key === 'late' ? 'มาสาย' : key === 'excused' ? 'ลากิจ' : 'ลาป่วย'}</button>`).join('')}`
+    document.body.appendChild(picker)
+    const rect = anchor.getBoundingClientRect()
+    picker.style.left = `${Math.min(window.innerWidth - 190, Math.max(8, rect.left - 60))}px`
+    picker.style.top = `${Math.min(window.innerHeight - 260, rect.bottom + 8)}px`
+    picker.querySelectorAll('[data-att-status]').forEach(btn => btn.addEventListener('click', async () => {
+      picker.remove()
+      const status = btn.dataset.attStatus
+      try {
+        const credit = cls.master_subjects?.credit ?? 1
+        const isACDMVOC = cls.master_subjects?.subject_group === 'ACDMVOC'
+        const dowPattern = isACDMVOC ? await getClassSessionDOWs(classId).catch(() => []) : []
+        const sessions = _generateSessions(cls, credit, dowPattern.length ? dowPattern : null, isACDMVOC)
+        const today = _dateInputValue(new Date())
+        const todays = sessions.filter(session => session.ds === today)
+        if (todays.length !== 1) {
+          showToast('วันนี้มีหลายคาบหรือไม่ตรงตาราง ระบบจะเปิดหน้าเช็คชื่อให้เลือกคาบ', 'warning')
+          _openTodayAttendance()
+          return
+        }
+        await saveAttendanceCell(classId, student.id, todays[0].n, today, status)
+        const rows = attendanceByStudent[student.id] ?? (attendanceByStudent[student.id] = [])
+        const row = rows.find(item => item.session_number === todays[0].n)
+        if (row) row.status = status
+        else rows.push({ student_id: student.id, session_number: todays[0].n, check_date: today, status })
+        _paintRoster()
+        showToast(`บันทึก ${ATT_STATUS[status].label} ${student.full_name} แล้ว`, 'success')
+      } catch (err) { showToast('บันทึกเช็คชื่อไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
+    }))
+  }
+
+  // ── Wiring: roster click / wheel menu → student detail and quick actions ──
   document.getElementById('sc-roster').addEventListener('click', e => {
-    const btn = e.target.closest('.sc-stu')
-    if (!btn) return
-    const s = studentsById[parseInt(btn.dataset.sid, 10)]
-    if (s) _openStudentPanel(s)
+    const action = e.target.closest('[data-student-action]')
+    if (action) {
+      e.stopPropagation()
+      const student = studentsById[parseInt(action.dataset.sid, 10)]
+      if (!student) return
+      if (action.dataset.studentAction === 'info') _openStudentPanel(student)
+      else if (action.dataset.studentAction === 'attendance') _openStudentAttendancePicker(student, action)
+      else if (action.dataset.studentAction === 'score' || action.dataset.studentAction === 'star') _openStudentPanel(student, 'score')
+      else if (action.dataset.studentAction === 'leave') {
+        const leave = activeLeaveMap[student.id]
+        if (leave) closeLeavePermission(leave.id, 'returned').then(() => { showToast('บันทึกกลับเข้าห้องแล้ว', 'success'); _reload() }).catch(err => showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'))
+        else _openLeaveRequestModal(teacher, cls, student.id, student.full_name, student.image_url, activeLeaveMap, leaveMaxActive, _reload)
+      }
+      return
+    }
+    const card = e.target.closest('.sc-stu')
+    if (!card) return
+    const student = studentsById[parseInt(card.dataset.sid, 10)]
+    const wrap = card.closest('[data-student-wrap]')
+    if (student && window.matchMedia('(hover: none)').matches && !wrap?.classList.contains('is-focus')) {
+      document.querySelectorAll('[data-student-wrap].is-focus').forEach(item => item.classList.remove('is-focus'))
+      wrap?.classList.add('is-focus')
+      return
+    }
+    if (student) _openStudentPanel(student)
   })
+  document.getElementById('sc-organize-class').addEventListener('click', _openClassOrganizer)
 
   // ── Wiring: เรียงลำดับการ์ดนักเรียน (เลขที่/ชื่อ/คะแนนรวม/มาเรียน/รายคอลัมน์คะแนน) ──
   function _applyRosterSort(key, label) {
     _rosterSort = { key, label }
     document.getElementById('sc-sort-label').textContent = label
-    document.getElementById('sc-roster').innerHTML = _rosterHTML()
+    _paintRoster()
   }
   document.getElementById('sc-sort-trigger').addEventListener('click', () => _openSortPanel())
 
@@ -1639,9 +1859,9 @@ export async function renderSmartClassroom(teacher, classId) {
     }).join('')}</div>`
   }
 
-  function _openStudentPanel(initialStudent) {
+  function _openStudentPanel(initialStudent, initialTab = 'info') {
     document.getElementById('sc-student-modal')?.remove()
-    let activeTab = 'info'
+    let activeTab = initialTab
     let s = initialStudent
     const m = document.createElement('div')
     m.id = 'sc-student-modal'
@@ -2987,7 +3207,7 @@ export async function renderSmartClassroom(teacher, classId) {
           })
           publishGradebookUpdate(saved)
           const roster = document.getElementById('sc-roster')
-          if (roster) roster.innerHTML = _rosterHTML()
+          if (roster) _paintRoster()
           showToast('บันทึกคะแนนแล้ว ✅', 'success')
           _render()
         } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error'); btn.disabled = false }
