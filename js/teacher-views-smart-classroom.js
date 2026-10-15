@@ -1098,7 +1098,8 @@ export async function renderSmartClassroom(teacher, classId) {
     { key: 'plan', icon: '📝', label: 'แผน' },
     { key: 'more', icon: '•••', label: 'เพิ่ม' },
   ]
-  let _refTab = 'schedule'
+  // ไม่เปิดเนื้อหายาวค้างไว้ใต้ห้องเรียนตั้งแต่แรก — ให้ครูเลือกเมนูก่อนแล้วค่อยเปิดเต็ม
+  let _refTab = null
   let _mobileGroup = 'room'
 
   const _refTabBodyHTML = (tab) => {
@@ -1157,13 +1158,16 @@ export async function renderSmartClassroom(teacher, classId) {
       .sc-stu-wrap.is-focus .sc-stu {
         transform: scale(1.08); border-color: #818cf8; background: #eef2ff; box-shadow: 0 12px 28px rgba(79,70,229,.18);
       }
-      .sc-student-dock { position: fixed; z-index: 120; transform: translate(-50%, -100%); transition: left .16s ease, top .16s ease, opacity .16s ease; }
-      .sc-student-dock.below { transform: translate(-50%, 0); }
-      .sc-dock-shell { display: flex; align-items: center; gap: 6px; max-width: min(96vw, 620px); padding: 7px; border: 1px solid rgba(255,255,255,.75); border-radius: 999px; background: rgba(15,23,42,.72); box-shadow: 0 16px 38px rgba(15,23,42,.28), 0 0 0 5px rgba(255,255,255,.3); backdrop-filter: blur(18px) saturate(145%); }
-      .sc-dock-student { max-width: 150px; padding: 0 8px; color: white; font-size: 10px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .sc-dock-close { width: 28px; height: 28px; border-radius: 999px; color: rgba(255,255,255,.7); font-size: 16px; flex: 0 0 auto; }
-      .sc-dock-close:hover { background: rgba(255,255,255,.15); color: white; }
-      .sc-dock-group { position: relative; }
+      .sc-student-dock { position: fixed; z-index: 120; width: min(290px, 96vw); height: 174px; transform: translate(-50%, 0); transition: left .16s ease, top .16s ease, opacity .16s ease; pointer-events: none; }
+      .sc-dock-shell { position: relative; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; pointer-events: none; }
+      .sc-dock-shell::before { content: ''; position: absolute; left: 50%; top: 9px; width: 116px; height: 116px; transform: translateX(-50%); border: 2px solid rgba(129,140,248,.35); border-bottom-color: rgba(129,140,248,.08); border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.12), rgba(99,102,241,.05) 62%, transparent 70%); box-shadow: 0 8px 26px rgba(79,70,229,.16); pointer-events: none; }
+      .sc-dock-close { position: absolute; right: 8px; bottom: 19px; width: 28px; height: 28px; border-radius: 999px; color: rgba(255,255,255,.8); background: rgba(15,23,42,.78); box-shadow: 0 4px 12px rgba(15,23,42,.22); font-size: 16px; pointer-events: auto; }
+      .sc-dock-close:hover { background: rgba(15,23,42,.94); color: white; }
+      .sc-dock-group { position: absolute; z-index: 1; pointer-events: auto; }
+      .sc-dock-group[data-dock-group="attendance"] { left: 50%; top: 0; transform: translateX(-50%); }
+      .sc-dock-group[data-dock-group="leave"] { left: 18%; top: 31px; transform: translateX(-50%); }
+      .sc-dock-group[data-dock-group="score"] { left: 82%; top: 31px; transform: translateX(-50%); }
+      .sc-dock-group[data-dock-group="star"] { left: 50%; top: 86px; transform: translateX(-50%); }
       .sc-dock-main, .sc-dock-subitem { border: 0; color: white; font-weight: 800; cursor: pointer; }
       .sc-dock-main { min-width: 62px; min-height: 46px; padding: 4px 8px; border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; transition: transform .15s ease, filter .15s ease, background .15s ease; }
       .sc-dock-main:hover, .sc-dock-group.is-open .sc-dock-main { transform: translateY(3px); filter: brightness(1.13); background: rgba(255,255,255,.18); }
@@ -1175,19 +1179,19 @@ export async function renderSmartClassroom(teacher, classId) {
       .sc-dock-subitem:hover { background: rgba(255,255,255,.17); transform: translateY(-1px); }
       .sc-dock-subitem span { font-size: 18px; line-height: 18px; }
       .sc-dock-subitem small { font-size: 8px; white-space: nowrap; }
-      .sc-dock-below .sc-dock-submenu { top: auto; bottom: calc(100% + 9px); transform: translate(-50%, 5px); }
-      .sc-dock-below .sc-dock-group:hover .sc-dock-submenu, .sc-dock-below .sc-dock-group.is-open .sc-dock-submenu { transform: translate(-50%, 0); }
+      .sc-student-dock.below { transform: translate(-50%, 0); }
+      .sc-student-dock.below .sc-dock-shell { transform: rotate(180deg); }
+      .sc-student-dock.below .sc-dock-group, .sc-student-dock.below .sc-dock-close { transform: rotate(180deg); }
+      .sc-student-dock.below .sc-dock-group[data-dock-group="attendance"], .sc-student-dock.below .sc-dock-group[data-dock-group="leave"], .sc-student-dock.below .sc-dock-group[data-dock-group="score"], .sc-student-dock.below .sc-dock-group[data-dock-group="star"] { transform: rotate(180deg) translateX(50%); }
       @media (max-width: 640px) {
-        .sc-student-dock { left: 50% !important; right: 0; width: 100vw; transform: translate(-50%, -100%); }
+        .sc-student-dock { left: 50% !important; right: auto; width: min(290px, 96vw); }
         .sc-student-dock.below { transform: translate(-50%, 0); }
-        .sc-dock-shell { width: max-content; max-width: 96vw; margin: 0 auto; overflow-x: auto; justify-content: flex-start; border-radius: 22px; }
-        .sc-dock-student { max-width: 92px; }
+        .sc-dock-submenu { max-width: 94vw; flex-wrap: wrap; justify-content: center; }
       }
     </style>
 
     <div id="sc-student-action-dock" class="sc-student-dock hidden" aria-label="เมนูด่วนของนักเรียน">
       <div class="sc-dock-shell">
-        <span id="sc-dock-student" class="sc-dock-student"></span>
         <div class="sc-dock-group" data-dock-group="attendance">
           <button type="button" class="sc-dock-main bg-emerald-600" data-dock-main-action="attendance"><span>✅</span><small>เช็คชื่อ</small></button>
           <div class="sc-dock-submenu" data-dock-submenu="attendance">
@@ -1281,7 +1285,7 @@ export async function renderSmartClassroom(teacher, classId) {
         <div id="sc-reference-panel" class="sc-reference-panel bg-white rounded-2xl border border-gray-100 shadow-sm p-4 lg:p-5 mb-4">
           <div class="sc-mobile-ref-head">
             <div>
-              <p id="sc-mobile-ref-title" class="text-sm font-bold text-gray-800">${REF_TABS.find(t => t.key === _refTab)?.icon} ${REF_TABS.find(t => t.key === _refTab)?.label}</p>
+              <p id="sc-mobile-ref-title" class="text-sm font-bold text-gray-800">📚 เลือกเครื่องมือรายวิชา</p>
               <p class="text-[11px] text-gray-400">แตะเมนูด้านล่างเพื่อเปลี่ยนหัวข้อ</p>
             </div>
             <button id="sc-mobile-ref-close" type="button" class="min-w-[44px] min-h-[44px] rounded-xl border border-gray-200 bg-white text-gray-500 text-lg">✕</button>
@@ -1291,7 +1295,7 @@ export async function renderSmartClassroom(teacher, classId) {
           <div id="sc-reftabs-bar" class="sc-desktop-ref-tabs mb-5">
             ${REF_TABS.map(t => `<button data-reftab="${t.key}" class="sc-reftab-btn ${t.key === _refTab ? 'active' : ''}"><span class="sc-ref-tab-icon">${t.icon}</span><span class="min-w-0 text-left"><b>${t.label}${t.key === 'assignments' && urgentAssignments.length ? ` (${urgentAssignments.length})` : ''}</b><small>${t.desc}</small></span></button>`).join('')}
           </div>
-          <div id="sc-reftab-body">${_refTabBodyHTML(_refTab)}</div>
+          <div id="sc-reftab-body" class="rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-8 text-center text-xs text-gray-400">เลือก “กำหนดการสอน” หรือ “แผนการสอน” เพื่อเปิดรายละเอียดเต็ม</div>
         </div>
 
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
@@ -1610,18 +1614,16 @@ export async function renderSmartClassroom(teacher, classId) {
   // เมนูจะไม่หายเมื่อเลื่อนจากการ์ดไปกดเมนูย่อย และจะย้ายตำแหน่งตามการ scroll
   const roster = document.getElementById('sc-roster')
   const studentDock = document.getElementById('sc-student-action-dock')
-  const dockStudent = document.getElementById('sc-dock-student')
   let activeDockStudentId = null
   let activeDockWrap = null
 
   const _positionStudentDock = () => {
     if (!activeDockWrap || studentDock.classList.contains('hidden')) return
     const rect = activeDockWrap.getBoundingClientRect()
-    const placeAbove = rect.top > 150
+    const placeAbove = rect.top > 220
     studentDock.classList.toggle('below', !placeAbove)
-    studentDock.querySelector('.sc-dock-shell')?.classList.toggle('sc-dock-below', !placeAbove)
     studentDock.style.left = `${rect.left + rect.width / 2}px`
-    studentDock.style.top = `${placeAbove ? rect.top - 10 : rect.bottom + 10}px`
+    studentDock.style.top = `${placeAbove ? rect.top - 8 : rect.bottom + 8}px`
   }
 
   const _hideStudentDock = () => {
@@ -1638,7 +1640,6 @@ export async function renderSmartClassroom(teacher, classId) {
     activeDockStudentId = student.id
     activeDockWrap = wrap
     activeDockWrap.classList.add('is-focus')
-    dockStudent.textContent = student.full_name ?? 'นักเรียน'
     studentDock.classList.remove('hidden')
     _positionStudentDock()
   }

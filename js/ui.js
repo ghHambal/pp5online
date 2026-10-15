@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.968': [
+    '🎯 Smart Classroom: ปรับเมนูนักเรียนเป็นวงแหวนโค้งรอบการ์ด และซ่อนชื่อจากเมนูลอย',
+  ],
   '10.22.967': [
     '🧭 Smart Classroom: เปลี่ยนเป็นปุ่มเช็คชื่อ เมนูลอยล็อกกับนักเรียน และจัดเมนูรายวิชาให้อ่านง่ายเต็มพื้นที่',
   ],
