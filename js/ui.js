@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.914'
+import { APP_VERSION } from './version.js?v=10.22.955'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.955': [
+    '🖨️ ระบบเกียรติบัตร: หลังออกเกียรติบัตรหลายคนสำเร็จ สามารถพิมพ์หรือบันทึกเป็นไฟล์ PDF รวมหลายหน้าได้ในครั้งเดียว เช่น 50 คนเป็น PDF ไฟล์เดียว 50 หน้า',
+  ],
   '10.22.954': [
     '🏫 กรองรายการสลับห้อง Smart Classroom ให้ตรงกับภาคเรียนปัจจุบัน ไม่แสดงห้องจากภาคเรียนเก่าปะปน',
   ],
