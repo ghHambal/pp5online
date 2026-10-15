@@ -5,6 +5,7 @@ import {
   issueCertificatesBatch, updateCertificateTemplateLayout,
 } from './certificates-api.js'
 import { openCertificateLayoutEditor } from './certificate-editor.js'
+import { openCertificatesPrint } from './certificate-engine.js'
 import { showToast, showDangerConfirm } from './ui.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -125,6 +126,12 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
           <p class="text-[10px] text-indigo-500">จะได้ตัวแปรเช่น <code>{{award}}</code></p>
         </div>
         <div id="crt-grid" class="overflow-x-auto"></div>
+        <div id="crt-batch-actions" class="hidden p-3 border-t bg-emerald-50 border-emerald-100">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <p id="crt-batch-summary" class="text-xs font-bold text-emerald-800"></p>
+            <button id="crt-batch-print" type="button" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">🖨️ พิมพ์ / บันทึก PDF รวม</button>
+          </div>
+        </div>
         <div class="p-3 border-t flex justify-end"><button id="crt-issue" type="button" class="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold"></button></div>
       </div>
     </div>`
@@ -136,6 +143,29 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
   const grid = panel.querySelector('#crt-grid')
   const saveButton = panel.querySelector('#crt-save')
   const issueButton = panel.querySelector('#crt-issue')
+  const batchActions = panel.querySelector('#crt-batch-actions')
+  const batchSummary = panel.querySelector('#crt-batch-summary')
+  const batchPrintButton = panel.querySelector('#crt-batch-print')
+  let lastIssuedBatch = []
+
+  function certificatePrintRows(certificates) {
+    return certificates.map(c => ({
+      layout: c.layout_snapshot,
+      variables: {
+        ...(c.variables ?? {}),
+        name: c.recipient_name,
+        date: new Date(c.issued_at).toLocaleDateString('th-TH', { dateStyle: 'long' }),
+        no: c.certificate_no,
+      },
+      docTitle: c.title || current.title || 'เกียรติบัตร',
+    }))
+  }
+
+  function renderBatchActions() {
+    const count = lastIssuedBatch.length
+    batchActions.classList.toggle('hidden', !count)
+    if (count) batchSummary.textContent = `ออกเกียรติบัตรชุดล่าสุดสำเร็จ ${count} ใบ — พิมพ์เป็น PDF ไฟล์เดียวได้เลย`
+  }
 
   function renderOptions() {
     select.innerHTML = `<option value="">— ตารางใหม่ / ยังไม่บันทึก —</option>${savedTables.map(table => `<option value="${table.id}">${esc(table.name)}</option>`).join('')}`
@@ -262,8 +292,8 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
   }
 
   renderOptions(); renderMeta(); renderGrid()
-  select.addEventListener('change', () => { const found = savedTables.find(t => t.id === Number(select.value)); current = found ? hydrateTable(found) : makeDraft(); renderMeta(); renderGrid() })
-  panel.querySelector('#crt-new').addEventListener('click', () => { current = makeDraft(); renderOptions(); renderMeta(); renderGrid() })
+  select.addEventListener('change', () => { const found = savedTables.find(t => t.id === Number(select.value)); current = found ? hydrateTable(found) : makeDraft(); lastIssuedBatch = []; renderBatchActions(); renderMeta(); renderGrid() })
+  panel.querySelector('#crt-new').addEventListener('click', () => { current = makeDraft(); lastIssuedBatch = []; renderOptions(); renderBatchActions(); renderMeta(); renderGrid() })
   panel.querySelectorAll('.crt-recipient-type').forEach(button => button.addEventListener('click', () => {
     const nextType = button.dataset.type
     if (nextType === current.recipient_type) return
@@ -271,6 +301,8 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
     current.recipient_type = nextType
     current.columns = [...defaultColumnsFor(nextType), ...customColumns]
     current.rows = current.rows.map(row => ({ ...newRow(nextType), id: row.id, selected: row.selected, values: { ...Object.fromEntries(customColumns.map(column => [column.key, row.values?.[column.key] ?? ''])), [(recipientConfig[nextType]).codeKey]: '', name: '' } }))
+    lastIssuedBatch = []
+    renderBatchActions()
     renderMeta(); renderGrid()
     showToast(`เปลี่ยนเป็นตาราง${recipientConfig[nextType].label}แล้ว กรุณากรอกรหัสใหม่`, 'info')
   }))
@@ -311,8 +343,14 @@ export async function renderCertificateRecipientTable({ panel, teacher, template
         variables: { ...r.values, name: fullThaiPrefix(r.values.name) },
       }))
       const result = await issueCertificatesBatch({ templateId: current.template_id, recipientType: current.recipient_type, recipients, title: current.title, issuedByTeacherId: teacher.id })
+      lastIssuedBatch = result
+      renderBatchActions()
       showToast(`ออกเกียรติบัตรสำเร็จ ${result.length} ใบ ✅`, 'success')
     } catch (error) { showToast('ออกเกียรติบัตรไม่สำเร็จ: ' + error.message, 'error') }
     finally { issueButton.disabled = false; updateIssueLabel() }
+  })
+  batchPrintButton.addEventListener('click', () => {
+    if (!lastIssuedBatch.length) return
+    openCertificatesPrint({ certificates: certificatePrintRows(lastIssuedBatch) })
   })
 }
