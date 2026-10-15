@@ -370,13 +370,21 @@ function validatePayload(raw, mode, scheduleConfig = null, planConfig = null) {
   return data
 }
 
-export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek, initialMode = 'plan', semesterStart = null, semesterEnd = null, scheduledDays = [], onSaved }) {
+export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek, initialMode = 'plan', semesterStart = null, semesterEnd = null, scheduledDays = [], targetClassIds = null, targetClassLabels = [], onSaved }) {
   document.getElementById('lp-ai-workspace')?.remove()
   const m = document.createElement('div')
   m.id = 'lp-ai-workspace'
   m.className = 'fixed inset-0 z-[97] bg-black/60 flex items-stretch justify-stretch'
   const mode = initialMode === 'schedule' ? 'schedule' : 'plan'
   const isSchedule = mode === 'schedule'
+  const scopedClassIds = [...new Set(
+    (targetClassIds ?? (Number(cls?.id) ? [Number(cls.id)] : []))
+      .map(id => Number(id))
+      .filter(id => Number.isInteger(id) && id > 0)
+  )]
+  const scopeLabel = targetClassLabels.length
+    ? targetClassLabels.join(' , ')
+    : scopedClassIds.length > 1 ? 'ทุกห้อง' : scopedClassIds.length === 1 ? 'ห้องที่เลือก' : 'ทุกห้องในคอร์ส'
   const actualScheduleDays = normalizeScheduleDays(scheduledDays)
   const configuredWeekCount = semesterStart && semesterEnd
     ? Math.max(1, Math.min(30, schoolWeekCount(semesterStart, semesterEnd) ?? 20))
@@ -387,7 +395,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
   let weeklySessionValues = [{ periodCount: 2, minutesPerPeriod: DEFAULT_MINUTES_PER_PERIOD }]
   m.innerHTML = `<div class="bg-white w-full h-full overflow-y-auto p-4 sm:p-6">
     <div class="flex items-start justify-between gap-3 mb-4">
-      <div><span class="inline-flex px-2.5 py-1 rounded-full ${isSchedule ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'} text-[10px] font-extrabold mb-2">${isSchedule ? '📘 กำหนดการสอน' : '📝 แผนหน้าเดียว'}</span><h3 class="font-extrabold text-gray-800 text-lg">${isSchedule ? 'สร้างกำหนดการสอนด้วย AI' : 'สร้างแผนการสอนหน้าเดียวด้วย AI'}</h3><p class="text-xs text-gray-400 mt-1">สร้าง Prompt → ใช้กับ AI ที่ครูเลือก → นำ JSON กลับมาวาง → ระบบสร้าง${isSchedule ? 'กำหนดการสอน' : 'แผนการสอน'}</p></div>
+      <div><span class="inline-flex px-2.5 py-1 rounded-full ${isSchedule ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'} text-[10px] font-extrabold mb-2">${isSchedule ? '📘 กำหนดการสอน' : '📝 แผนหน้าเดียว'}</span><h3 class="font-extrabold text-gray-800 text-lg">${isSchedule ? 'สร้างกำหนดการสอนด้วย AI' : 'สร้างแผนการสอนหน้าเดียวด้วย AI'}</h3><p class="text-xs text-gray-400 mt-1">${!isSchedule ? `ห้องเป้าหมาย: ${esc(scopeLabel)} · ` : ''}สร้าง Prompt → ใช้กับ AI ที่ครูเลือก → นำ JSON กลับมาวาง → ระบบสร้าง${isSchedule ? 'กำหนดการสอน' : 'แผนการสอน'}</p></div>
       <button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button>
     </div>
     ${isSchedule ? `<div class="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 mb-4"><p class="text-sm font-bold text-blue-800">สร้างโครงสร้างทั้งภาคเรียนในครั้งเดียว</p><p class="text-[11px] text-blue-600 mt-1">AI จะจัดช่วงสัปดาห์ หัวข้อ วิธีสอน และหมายเหตุตามหน่วยการเรียนรู้กับเอกสารที่แนบ</p></div>
@@ -629,7 +637,9 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     let data
     try { data = validatePayload(m.querySelector('#lp-ai-json').value, mode, getScheduleConfig(), getPlanConfig()) } catch (err) { showResult(err.message, false); return }
     const count = mode === 'schedule' ? data.weeks.length : data.plans.length
-    if (!confirm(`ยืนยันสร้าง${mode === 'schedule' ? 'กำหนดการสอน' : 'แผนการสอน'} ${count} รายการในระบบ?`)) return
+    const recipientCount = mode === 'plan' && scopedClassIds.length ? scopedClassIds.length : 1
+    const savedCount = count * recipientCount
+    if (!confirm(`ยืนยันสร้าง${mode === 'schedule' ? 'กำหนดการสอน' : 'แผนการสอน'} ${savedCount} รายการในระบบ${mode === 'plan' && recipientCount > 1 ? ` (${count} แผน × ${recipientCount} ห้อง)` : ''}?`)) return
     const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'กำลังสร้าง...'
     try {
       if (mode === 'schedule') {
@@ -646,27 +656,29 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
           if (existing) await updateSyllabusItem(existing.id, payload); else await createSyllabusItem(payload)
         }
       } else {
+        const recipients = scopedClassIds.length ? scopedClassIds : [null]
         for (const p of data.plans) {
           const activities = p.activities ?? {}
           const periodCount = Math.max(1, asInt(p.period_count, 1))
           const minutesPerPeriod = Math.max(1, asInt(p.minutes_per_period, asInt(p.duration_minutes, DEFAULT_MINUTES_PER_PERIOD)))
           const durationMinutes = asInt(p.duration_minutes, periodCount * minutesPerPeriod)
-          const payload = {
-            course_id: courseId, teacher_id: teacher.id, title: String(p.title).trim().replace(/(ครั้งที่\s*)\d+/g, `$1${asInt(p.session_number, 1)}`),
-            week_start: asInt(p.week_start), week_end: asInt(p.week_end, asInt(p.week_start)), session_number: asInt(p.session_number, 1),
-            lesson_date: isoDate(p.lesson_date) ?? dateForWeek(asInt(p.week_start)).dates[0] ?? null, duration_minutes: durationMinutes, unit_title: asText(p.unit_title) || null,
-            standards: asText(p.standards) || null, objectives: asText(p.objectives) || null, key_concept: asText(p.key_concept || p.topic) || null,
-            activities_intro: asText(activities.intro ?? p.activities_intro) || null,
-            activities_main: asText(activities.main ?? p.activities_main) || null,
-            activities_wrap: asText(activities.wrap ?? p.activities_wrap) || null,
-            media: asText(p.media) || null, assessment: asText(p.assessment) || null, homework: asText(p.homework) || null,
-            teacher_notes: asText(p.teacher_notes) || null, schedule_alignment: p.schedule_alignment || null,
-            deviation_reason: asText(p.deviation_reason) || null,
-            source_json: { ...p, ...(Number(cls?.id) ? { class_id: Number(cls.id) } : {}), lesson_date: isoDate(p.lesson_date) ?? dateForWeek(asInt(p.week_start)).dates[0] ?? null, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: durationMinutes },
+          for (const targetClassId of recipients) {
+            const payload = {
+              course_id: courseId, teacher_id: teacher.id, title: String(p.title).trim().replace(/(ครั้งที่\s*)\d+/g, `$1${asInt(p.session_number, 1)}`),
+              week_start: asInt(p.week_start), week_end: asInt(p.week_end, asInt(p.week_start)), session_number: asInt(p.session_number, 1),
+              lesson_date: isoDate(p.lesson_date) ?? dateForWeek(asInt(p.week_start)).dates[0] ?? null, duration_minutes: durationMinutes, unit_title: asText(p.unit_title) || null,
+              standards: asText(p.standards) || null, objectives: asText(p.objectives) || null, key_concept: asText(p.key_concept || p.topic) || null,
+              activities_intro: asText(activities.intro ?? p.activities_intro) || null,
+              activities_main: asText(activities.main ?? p.activities_main) || null,
+              activities_wrap: asText(activities.wrap ?? p.activities_wrap) || null,
+              media: asText(p.media) || null, assessment: asText(p.assessment) || null, homework: asText(p.homework) || null,
+              teacher_notes: asText(p.teacher_notes) || null, schedule_alignment: p.schedule_alignment || null,
+              deviation_reason: asText(p.deviation_reason) || null,
+              source_json: { ...p, ...(targetClassId ? { class_id: targetClassId } : {}), lesson_date: isoDate(p.lesson_date) ?? dateForWeek(asInt(p.week_start)).dates[0] ?? null, period_count: periodCount, minutes_per_period: minutesPerPeriod, duration_minutes: durationMinutes },
+            }
+            const existing = (lessonPlans ?? []).find(x => x.week_start === payload.week_start && (x.session_number ?? 1) === payload.session_number && (targetClassId ? Number(x.source_json?.class_id) === targetClassId : !x.source_json?.class_id))
+            if (existing) await updateLessonPlan(existing.id, payload); else await createLessonPlan(payload)
           }
-          const targetClassId = Number(cls?.id) || null
-          const existing = (lessonPlans ?? []).find(x => x.week_start === payload.week_start && (x.session_number ?? 1) === payload.session_number && (targetClassId ? Number(x.source_json?.class_id) === targetClassId : !x.source_json?.class_id))
-          if (existing) await updateLessonPlan(existing.id, payload); else await createLessonPlan(payload)
         }
       }
       showToast('สร้างข้อมูลในระบบแล้ว ✅', 'success'); m.remove(); onSaved?.()
@@ -883,15 +895,15 @@ export function openLessonPlansPrint({ plans = [], subject = {}, teacher = {}, r
     const lessonHeading = [rawUnitTitle ? `หน่วยการเรียนรู้ที่ ${rawUnitTitle}` : '', plan.key_concept ? `เรื่อง ${String(plan.key_concept).replace(/^เรื่อง\s*/, '')}` : ''].filter(Boolean).join(' ')
     const lessonDateValue = plan.lesson_date ?? plan.source_json?.lesson_date
     const lessonDate = lessonDateValue ? thaiShortDate(lessonDateValue) : '........................'
-    const signature = (name, role) => `<div class="sig"><div class="sig-line"></div><div>${role}</div><div>( ${esc(name || '................................')} )</div></div>`
-    return `<section class="page plan-page"><div class="head"><img class="logo" src="${esc(logoUrl)}" alt="ตราโรงเรียน"><h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1><h2>กลุ่มสาระการเรียนรู้${esc(learningArea)}</h2><p>วิชา ${esc(subject.subject_name || '................................')} รหัสวิชา ${esc(subject.subject_code || '.............')} ชั้น ${esc(subject.grade_level || '....................')}</p><p>${esc(lessonHeading || 'เรื่อง ................................')}</p></div><div class="meta"><span>แผนที่ ${index + 1} · ครั้งที่ ${esc(plan.session_number || 1)} · ${planPeriodCount(plan)} คาบ</span><span>เวลา ${esc(planDuration(plan))}</span><span>วันที่ ${esc(lessonDate)}</span></div><div class="cols"><div><section class="box"><h3>1.${standardsTitle}</h3><div class="content">${nl(plan.standards)}</div></section><section class="box"><h3>2.จุดประสงค์การเรียนรู้</h3><div class="content">${nl(plan.objectives)}</div></section><section class="box"><h3>3.กิจกรรมการเรียนรู้</h3><div class="content activities"><b>ขั้นนำเข้าสู่บทเรียน</b><br>${nl(plan.activities_intro)}<br><br><b>ขั้นสอน</b><br>${nl(plan.activities_main)}<br><br><b>ขั้นสรุป</b><br>${nl(plan.activities_wrap)}</div></section></div><div><section class="box"><h3>4.การวัดและประเมินผล</h3><div class="content">${nl(plan.assessment)}</div></section><section class="box"><h3>5.สื่อการเรียนรู้</h3><div class="content">${nl(plan.media)}</div></section><section class="box"><h3>บันทึกหลังการสอน / ข้อเสนอแนะ</h3><div class="content blank-notes"><div>ผลการจัดการเรียนรู้: ........................................................................</div><div>ปัญหา/อุปสรรค: ..............................................................................</div><div>ข้อเสนอแนะ: ...................................................................................</div></div></section></div></div><div class="sign-pair">${signature(teacher.full_name, 'ครูผู้สอน')}${signature(departmentHead?.head_name, 'หัวหน้ากลุ่มสาระการเรียนรู้')}</div><div class="director-sign">ลงชื่อ........................................................................ผู้อำนวยการโรงเรียน</div></section>`
+    const signature = (name, role) => `<div class="sig"><div class="sig-line"></div><div>${role}</div>${name ? `<div>( ${esc(name)} )</div>` : ''}</div>`
+    return `<section class="page plan-page"><div class="head"><img class="logo" src="${esc(logoUrl)}" alt="ตราโรงเรียน"><h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1><h2>กลุ่มสาระการเรียนรู้${esc(learningArea)}</h2><p>วิชา ${esc(subject.subject_name || '................................')} รหัสวิชา ${esc(subject.subject_code || '.............')} ชั้น ${esc(subject.grade_level || '....................')}</p><p>${esc(lessonHeading || 'เรื่อง ................................')}</p></div><div class="meta"><span>แผนที่ ${index + 1} · ครั้งที่ ${esc(plan.session_number || 1)} · ${planPeriodCount(plan)} คาบ</span><span>เวลา ${esc(planDuration(plan))}</span><span>วันที่ ${esc(lessonDate)}</span></div><div class="cols"><div><section class="box"><h3>1.${standardsTitle}</h3><div class="content">${nl(plan.standards)}</div></section><section class="box"><h3>2.จุดประสงค์การเรียนรู้</h3><div class="content">${nl(plan.objectives)}</div></section><section class="box"><h3>3.กิจกรรมการเรียนรู้</h3><div class="content activities"><b>ขั้นนำเข้าสู่บทเรียน</b><br>${nl(plan.activities_intro)}<br><br><b>ขั้นสอน</b><br>${nl(plan.activities_main)}<br><br><b>ขั้นสรุป</b><br>${nl(plan.activities_wrap)}</div></section></div><div><section class="box"><h3>4.การวัดและประเมินผล</h3><div class="content">${nl(plan.assessment)}</div></section><section class="box"><h3>5.สื่อการเรียนรู้</h3><div class="content">${nl(plan.media)}</div></section><section class="box"><h3>บันทึกหลังการสอน / ข้อเสนอแนะ</h3><div class="content blank-notes"><div>ผลการจัดการเรียนรู้: ........................................................................</div><div>ปัญหา/อุปสรรค: ..............................................................................</div><div>ข้อเสนอแนะ: ...................................................................................</div></div></section></div></div><div class="sign-pair">${signature('', 'ครูผู้สอน')}${signature('', 'หัวหน้ากลุ่มสาระการเรียนรู้')}</div><div class="director-sign">ลงชื่อ........................................................................ผู้อำนวยการโรงเรียน</div></section>`
   }
   const renderRoomBundle = (group, index) => {
     const roomLabel = group.label
     const roomPlans = plansForGroup(group)
     const totals = totalsForPlans(roomPlans)
     const coverField = (field, value, fallback) => `<span data-cover-field="${field}" data-cover-value="${esc(value ?? '')}">${esc(value || fallback)}</span>`
-    return `<section class="room-bundle ${index === 0 ? 'active' : ''}" data-room-index="${index}"><section class="page cover" data-cover-room-index="${index}"><img class="cover-logo" src="${esc(logoUrl)}" alt="ตราโรงเรียน"><h1 data-cover-field="title" data-cover-value="${esc('แผนการจัดการเรียนรู้ (หน้าเดียว)')}">${coverField('title', 'แผนการจัดการเรียนรู้ (หน้าเดียว)', 'แผนการจัดการเรียนรู้ (หน้าเดียว)')}</h1><div class="cover-info"><p class="course">รายวิชา ${coverField('subjectName', subject.subject_name, '................................')} (${coverField('subjectCode', subject.subject_code, '.............')})</p><p>ครูผู้สอน ${coverField('teacherName', teacher.full_name, '................................')}</p><p>ชั้น ${coverField('classLabel', formatCoverClass(subject.grade_level || '....................', roomLabel), '....................')}</p><p>จำนวน ${coverField('planCount', String(roomPlans.length), '0')} แผน · รวม ${coverField('totalPeriods', String(totals.totalPeriods), '0')} คาบ (${coverField('totalHours', totals.totalHours, '........................')})</p><p>ภาคเรียนที่ ${coverField('semester', semester, '....')} ปีการศึกษา ${coverField('academicYear', academicYear, '........')}</p></div><div class="signatures"><p>ลงชื่อ........................................................................ครูผู้สอน (${coverField('teacherSigner', teacher.full_name, '................................')})</p><p>ลงชื่อ........................................................................หัวหน้ากลุ่มสาระการเรียนรู้ (${coverField('departmentHead', departmentHead?.head_name, '................................')})</p><p>ลงชื่อ........................................................................ผู้อำนวยการโรงเรียน</p></div></section>${roomPlans.map(planPage).join('')}</section>`
+    return `<section class="room-bundle ${index === 0 ? 'active' : ''}" data-room-index="${index}"><section class="page cover" data-cover-room-index="${index}"><img class="cover-logo" src="${esc(logoUrl)}" alt="ตราโรงเรียน"><h1 data-cover-field="title" data-cover-value="${esc('แผนการจัดการเรียนรู้ (หน้าเดียว)')}">${coverField('title', 'แผนการจัดการเรียนรู้ (หน้าเดียว)', 'แผนการจัดการเรียนรู้ (หน้าเดียว)')}</h1><div class="cover-info"><p class="course">รายวิชา ${coverField('subjectName', subject.subject_name, '................................')} (${coverField('subjectCode', subject.subject_code, '.............')})</p><p>ครูผู้สอน ${coverField('teacherName', teacher.full_name, '................................')}</p><p>ชั้น ${coverField('classLabel', formatCoverClass(subject.grade_level || '....................', roomLabel), '....................')}</p><p>จำนวน ${coverField('planCount', String(roomPlans.length), '0')} แผน · รวม ${coverField('totalPeriods', String(totals.totalPeriods), '0')} คาบ (${coverField('totalHours', totals.totalHours, '........................')})</p><p>ภาคเรียนที่ ${coverField('semester', semester, '....')} ปีการศึกษา ${coverField('academicYear', academicYear, '........')}</p></div><div class="signatures"><p>ลงชื่อ........................................................................ครูผู้สอน</p><p>ลงชื่อ........................................................................หัวหน้ากลุ่มสาระการเรียนรู้</p><p>ลงชื่อ........................................................................ผู้อำนวยการโรงเรียน</p></div></section>${roomPlans.map(planPage).join('')}</section>`
   }
   const roomTabs = normalizedRoomGroups.length > 1
     ? `<div class="room-tabs" role="tablist">${normalizedRoomGroups.map((group, index) => `<button type="button" class="room-tab ${index === 0 ? 'active' : ''}" data-room-tab="${index}">${esc(group.label)} · ${plansForGroup(group).length} แผน</button>`).join('')}</div>`

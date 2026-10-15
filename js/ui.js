@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.960'
+import { APP_VERSION } from './version.js?v=10.22.965'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.965': [
+    '📝 แผนหน้าเดียว: บังคับเลือกห้องก่อนสร้างแผน สร้างเหมือนกันทุกห้อง และตัดชื่อผู้ลงนามด้านหลังตำแหน่งบนหน้าปก',
+  ],
   '10.22.964': [
     '📝 แผนหน้าเดียว: แยกจำนวนแผนตามห้อง และเพิ่มปุ่มแก้ไขข้อมูลหน้าปกก่อนพิมพ์ PDF',
   ],
