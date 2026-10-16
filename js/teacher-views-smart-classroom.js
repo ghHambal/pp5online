@@ -2446,7 +2446,7 @@ export async function renderSmartClassroom(teacher, classId) {
     const wrap = document.getElementById('sc-mobile-ref-subtabs')
     if (!wrap) return
     const tabs = _mobileGroup === 'plan'
-      ? REF_TABS.filter(t => ['schedule', 'syllabus', 'plans'].includes(t.key))
+      ? REF_TABS.filter(t => ['syllabus', 'plans'].includes(t.key))
       : []
     wrap.innerHTML = tabs.map(t => `<button type="button" data-mobile-ref-tab="${t.key}" class="${t.key === _refTab ? 'active' : ''}">${t.icon} ${t.label}</button>`).join('')
     wrap.querySelectorAll('[data-mobile-ref-tab]').forEach(btn => btn.addEventListener('click', () => _openRefTab(btn.dataset.mobileRefTab)))
@@ -2536,7 +2536,7 @@ export async function renderSmartClassroom(teacher, classId) {
     if (window.matchMedia('(max-width: 1023px)').matches) {
       document.getElementById('sc-reference-panel')?.classList.add('mobile-open')
     }
-    if (tabKey === 'syllabus' || tabKey === 'plans') {
+    if (tabKey === 'schedule' || tabKey === 'syllabus' || tabKey === 'plans') {
       _openReferenceFullScreen(tabKey)
       return
     }
@@ -2556,8 +2556,11 @@ export async function renderSmartClassroom(teacher, classId) {
     _paintMobileGroupNav()
     const room = document.getElementById('sc-mobile-room-section')
     const live = document.getElementById('sc-mobile-live-section')
+    // งาน/แผน/เพิ่มเติมใช้แผงอ้างอิงซึ่งอยู่ภายในโซนสอนสดด้วย
+    // ถ้าเปิดเฉพาะแผงแต่ยังซ่อน parent อยู่ ปุ่มจะเปลี่ยนสีแต่ผู้ใช้จะไม่เห็นอะไรเกิดขึ้น
+    const referenceGroup = ['work', 'plan', 'more'].includes(groupKey)
     room?.classList.toggle('mobile-active', groupKey === 'room')
-    live?.classList.toggle('mobile-active', groupKey === 'live')
+    live?.classList.toggle('mobile-active', groupKey === 'live' || referenceGroup)
     const panel = document.getElementById('sc-reference-panel')
     if (groupKey === 'room' || groupKey === 'live') {
       panel?.classList.remove('mobile-open')
@@ -2565,7 +2568,20 @@ export async function renderSmartClassroom(teacher, classId) {
       return
     }
     if (groupKey === 'work') _openRefTab('assignments')
-    else if (groupKey === 'plan') _openRefTab(['schedule', 'syllabus', 'plans'].includes(_refTab) ? _refTab : 'syllabus')
+    else if (groupKey === 'plan') {
+      // ให้เลือกก่อนว่าจะเปิดตารางเรียน กำหนดการสอน หรือแผนการสอน
+      // ไม่เปิดกำหนดการสอนอัตโนมัติ เพราะทำให้ผู้ใช้เข้าใจว่าเมนูแผนไม่มีแผนการสอน
+      _refTab = null
+      _paintRefTabs()
+      _paintMobileRefSubtabs()
+      const title = document.getElementById('sc-mobile-ref-title')
+      if (title) title.textContent = '📝 เลือกเมนูแผนการสอน'
+      const box = document.getElementById('sc-reftab-body')
+      if (box) {
+        box.innerHTML = '<div class="rounded-2xl border border-dashed border-violet-200 bg-violet-50/60 px-4 py-10 text-center text-sm font-semibold text-violet-700">เลือกเมนูด้านบนเพื่อเปิดรายละเอียดเต็มหน้าจอ</div>'
+      }
+      panel?.classList.add('mobile-open')
+    }
     else {
       const title = document.getElementById('sc-mobile-ref-title')
       if (title) title.textContent = '••• เพิ่มเติม'
