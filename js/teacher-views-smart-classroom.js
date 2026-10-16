@@ -612,7 +612,10 @@ export async function renderSmartClassroom(teacher, classId) {
     return best ? { mode: 'upcoming', remainingSec: best.totalSecUntil, slot: best.slot } : { mode: 'none' }
   }
 
-  const _reload = () => renderSmartClassroom(teacher, classId)
+  const _reload = () => {
+    _closeReferenceFullScreen?.()
+    return renderSmartClassroom(teacher, classId)
+  }
 
   // ── Push notification ไปหานักเรียนทั้งห้อง (ประกาศ/งานใหม่) — ของเสริม ยิงไม่สำเร็จไม่บล็อกการบันทึกหลัก ──
   const _sendClassPush = async (title, body, tag) => {
@@ -1327,7 +1330,7 @@ export async function renderSmartClassroom(teacher, classId) {
           <div id="sc-reftabs-bar" class="sc-desktop-ref-tabs mb-5">
             ${REF_TABS.map(t => `<button data-reftab="${t.key}" class="sc-reftab-btn ${t.key === _refTab ? 'active' : ''}"><span class="sc-ref-tab-icon">${t.icon}</span><span class="min-w-0 text-left"><b>${t.label}${t.key === 'assignments' && urgentAssignments.length ? ` (${urgentAssignments.length})` : ''}</b><small>${t.desc}</small></span></button>`).join('')}
           </div>
-          <div id="sc-reftab-body" class="rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-8 text-center text-xs text-gray-400">เลือก “กำหนดการสอน” หรือ “แผนการสอน” เพื่อเปิดรายละเอียดเต็ม</div>
+          <div id="sc-reftab-body-host"><div id="sc-reftab-body" class="rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-8 text-center text-xs text-gray-400">เลือก “กำหนดการสอน” หรือ “แผนการสอน” เพื่อเปิดรายละเอียดเต็ม</div></div>
         </div>
 
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
@@ -2468,6 +2471,63 @@ export async function renderSmartClassroom(teacher, classId) {
     setTitle('Smart Classroom')
   }
 
+  function _closeReferenceFullScreen() {
+    const modal = document.getElementById('sc-reference-fullscreen')
+    if (!modal) return
+    const box = modal.querySelector('#sc-reftab-body')
+    const host = document.getElementById('sc-reftab-body-host')
+    if (box && host) {
+      host.innerHTML = ''
+      host.appendChild(box)
+      box.className = 'rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-4 py-8 text-center text-xs text-gray-400'
+      box.innerHTML = 'เลือก “กำหนดการสอน” หรือ “แผนการสอน” เพื่อเปิดรายละเอียดเต็ม'
+    }
+    modal._onKeyDown && document.removeEventListener('keydown', modal._onKeyDown)
+    document.body.style.overflow = modal.dataset.previousOverflow ?? ''
+    modal.remove()
+  }
+
+  function _openReferenceFullScreen(tabKey) {
+    _closeReferenceFullScreen()
+    const selected = REF_TABS.find(t => t.key === tabKey)
+    const host = document.getElementById('sc-reftab-body-host')
+    const box = document.getElementById('sc-reftab-body')
+    if (!selected || !host || !box) return
+    const modal = document.createElement('div')
+    modal.id = 'sc-reference-fullscreen'
+    modal.className = 'fixed inset-0 z-[110] flex flex-col bg-slate-50'
+    modal.dataset.previousOverflow = document.body.style.overflow
+    modal.innerHTML = `
+      <div class="flex-shrink-0 border-b border-gray-200 bg-white shadow-sm">
+        <div class="mx-auto flex w-full max-w-[1600px] items-center gap-3 px-4 py-3 sm:px-6">
+          <div class="flex h-10 w-10 items-center justify-center rounded-xl ${tabKey === 'plans' ? 'bg-violet-100' : 'bg-blue-100'} text-xl">${selected.icon}</div>
+          <div class="min-w-0 flex-1">
+            <h2 class="truncate text-base font-extrabold text-gray-800 sm:text-lg">${selected.label}</h2>
+            <p class="truncate text-[11px] text-gray-400">${_htmlEsc(ms.subject_name ?? '')} · ${_htmlEsc(cls.class_name ?? '')}</p>
+          </div>
+          <button id="sc-reference-fullscreen-close" type="button" class="min-h-[42px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-bold text-gray-600 hover:border-red-200 hover:bg-red-50 hover:text-red-600">✕ ปิด</button>
+        </div>
+      </div>
+      <div id="sc-reference-fullscreen-scroll" class="sc-reference-fullscreen-body min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6 sm:py-6">
+        <div class="mx-auto w-full max-w-[1500px]"> </div>
+      </div>
+      <style>
+        #sc-reference-fullscreen .sc-reference-fullscreen-body #sc-syllabus-list > div,
+        #sc-reference-fullscreen .sc-reference-fullscreen-body #sc-plan-list > div { max-height: none; overflow: visible; }
+      </style>`
+    document.body.appendChild(modal)
+    modal.querySelector('#sc-reference-fullscreen-close').addEventListener('click', _closeReferenceFullScreen)
+    modal.addEventListener('click', event => { if (event.target === modal) _closeReferenceFullScreen() })
+    modal._onKeyDown = event => { if (event.key === 'Escape') _closeReferenceFullScreen() }
+    document.addEventListener('keydown', modal._onKeyDown)
+    document.body.style.overflow = 'hidden'
+    const target = modal.querySelector('#sc-reference-fullscreen-scroll > div')
+    target.appendChild(box)
+    box.className = 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm sm:p-6'
+    box.innerHTML = _refTabBodyHTML(tabKey)
+    _wireRefTabBody()
+  }
+
   async function _openRefTab(tabKey) {
     if (!REF_TABS.some(t => t.key === tabKey)) return
     _refTab = tabKey
@@ -2475,6 +2535,10 @@ export async function renderSmartClassroom(teacher, classId) {
     _paintMobileRefSubtabs()
     if (window.matchMedia('(max-width: 1023px)').matches) {
       document.getElementById('sc-reference-panel')?.classList.add('mobile-open')
+    }
+    if (tabKey === 'syllabus' || tabKey === 'plans') {
+      _openReferenceFullScreen(tabKey)
+      return
     }
     const box = document.getElementById('sc-reftab-body')
     if (!box) return

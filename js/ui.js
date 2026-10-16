@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.973': [
+    '🖥️ Smart Classroom: เปิดกำหนดการสอนและแผนการสอนในหน้าต่างเต็มหน้าจอแทนการแสดงยาวในคอลัมน์',
+  ],
   '10.22.972': [
     '⭕ Smart Classroom: จัดวงแหวนเมนูให้มีศูนย์กลางตรงกับการ์ดนักเรียนที่เลือก และแยกทิศทางเฉพาะเมนูย่อย',
   ],
