@@ -18,6 +18,7 @@ import { _openLessonPlanApproval } from './teacher-views.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, formatPhone,
   SELECT_CLS, INPUT_CLS, GRADE_OPTS, CREDIT_OPTS,
+  getSubjectEmoji,
 } from './teacher-views-utils.js'
 
 const _catalogDeptCode = item => {
@@ -176,7 +177,7 @@ export async function renderMyCourses(teacher) {
               <h3 class="mt-2 text-base sm:text-lg font-extrabold text-gray-900 leading-snug">${_htmlEsc(subject.subject_name)}</h3>
               <p class="mt-1 text-xs text-gray-400">ระดับชั้น ${_htmlEsc(subject.grade_level ?? 'ไม่ระบุ')}</p>
             </div>
-            <div class="flex-shrink-0 w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-50 to-blue-50 flex items-center justify-center text-xl">📚</div>
+            <div class="flex-shrink-0 w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-blue-50 flex items-center justify-center text-5xl drop-shadow-sm" aria-label="อิโมจิประจำวิชา">${getSubjectEmoji(subject)}</div>
           </div>
 
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">

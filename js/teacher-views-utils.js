@@ -170,6 +170,33 @@ export const _htmlEsc = value => String(value ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;')
 
+// อิโมจิประจำรายวิชา — ใช้กติกาเดียวกันในหน้าคอร์สและหน้าห้องเรียน
+// รองรับ subject_emoji จากข้อมูลรายวิชาไว้ล่วงหน้า: เมื่อเพิ่มช่องตั้งค่าในอนาคต
+// อิโมจิที่แอดมินกำหนดจะมีสิทธิ์เหนือค่าเริ่มต้นจากชื่อ/กลุ่มสาระทันที
+export function getSubjectEmoji(subject = {}) {
+  const override = String(subject.subject_emoji ?? '').trim()
+  if (override && override.length <= 8 && !/[<>&"'`]/u.test(override)) return override
+
+  const name = String(subject.subject_name ?? '')
+  const code = String(subject.subject_code ?? '')
+  const dept = String(subject.dept ?? subject.learning_area ?? subject.dept_label ?? '')
+  const group = String(subject.subject_group ?? '')
+  const haystack = `${name} ${code} ${dept}`.toLocaleLowerCase('th-TH')
+
+  if (/^agm/i.test(group) || /อิสลาม|ศาสนา|อัลกุรอาน|อัล-กุรอาน|อัดดีนียะห์|อาหรับอิสลาม/u.test(haystack)) return '🕌'
+  if (/คณิตศาสตร์|คณิต|math/u.test(haystack)) return '➗'
+  if (/ภาษาไทย|ไทย/u.test(haystack)) return '📖'
+  if (/ภาษาอังกฤษ|อังกฤษ|english|ภาษาต่างประเทศ/u.test(haystack)) return '🌐'
+  if (/ภาษาอาหรับ|อาหรับ|arabic|العربية/u.test(haystack)) return '🔤'
+  if (/ภาษามลายู|มลายู|malay|الملايو/u.test(haystack)) return '🗣️'
+  if (/วิทยาศาสตร์|วิทย์|ฟิสิกส์|เคมี|ชีววิทยา|science|physics|chemistry|biology/u.test(haystack)) return '🔬'
+  if (/สังคม|ประวัติศาสตร์|ภูมิศาสตร์|หน้าที่พลเมือง|social|history|geography/u.test(haystack)) return '🌍'
+  if (/ศิลปะ|ดนตรี|นาฏศิลป์|art|music/u.test(haystack)) return '🎨'
+  if (/สุขศึกษา|พลศึกษา|กีฬา|health|physical|sport/u.test(haystack)) return '⚽'
+  if (/การงาน|อาชีพ|เทคโนโลยี|คอมพิวเตอร์|วิทยาการคำนวณ|งานช่าง|อุตสาหกรรม|computer|technology/u.test(haystack)) return '💻'
+  return '📘'
+}
+
 export function formatPhone(digits) {
   const d = digits.replace(/\D/g,'').slice(0,10)
   if (d.length <= 3) return d

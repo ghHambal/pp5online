@@ -16,6 +16,7 @@ import {
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
   _dutyCountdownInfo,
   _currentWeek, _teacherPositionList, _teacherPositionLabel, renderIconTile,
+  getSubjectEmoji,
 } from './teacher-views-utils.js'
 import { getTodayDuty, getTodayDutyGrade } from './wen-duty.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
@@ -860,9 +861,9 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
             style="background:linear-gradient(135deg,${c.from} 0%,${c.to} 100%);--card-ink:${c.ink};--tw-ring-color:${c.ink};">
             <span aria-hidden="true" class="pointer-events-none absolute -right-8 -bottom-12 h-36 w-36 rounded-full opacity-35 transition-transform duration-300 group-hover:scale-125"
               style="background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.9),rgba(255,255,255,.08) 56%,transparent 57%);box-shadow:0 0 0 22px rgba(255,255,255,.12),0 0 0 44px rgba(255,255,255,.08);"></span>
-            <span aria-hidden="true" class="pointer-events-none absolute right-3 top-2 text-5xl leading-none opacity-70 drop-shadow-sm transition-transform duration-300 group-hover:rotate-6 group-hover:scale-110">${c.icon}</span>
+            <span aria-hidden="true" class="pointer-events-none absolute right-3 top-1 text-7xl sm:text-8xl leading-none opacity-75 drop-shadow-md transition-transform duration-300 group-hover:rotate-6 group-hover:scale-110">${c.icon}</span>
             <span aria-hidden="true" class="pointer-events-none absolute inset-x-0 top-0 h-1 bg-white/40"></span>
-            <span class="relative z-10 block pr-12">
+            <span class="relative z-10 block pr-20">
               <span class="block text-xs font-extrabold tracking-wide" style="color:var(--card-ink)">${c.label}</span>
               <span class="mt-1 block ${typeof c.value === 'number' ? 'text-3xl' : 'text-xl'} font-black leading-none tracking-tight" style="color:var(--card-ink)">${c.value}</span>
               <span class="mt-2 block truncate text-[11px] font-semibold opacity-75" style="color:var(--card-ink)">${c.hint}</span>

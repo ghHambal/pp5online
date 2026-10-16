@@ -55,6 +55,7 @@ import {
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
   _resolveGeminiKey, _transparentEdgeDarkLogo, _currentWeek,
   getMainContentRef, setMainContentRef, _generateSessions,
+  getSubjectEmoji,
 } from './teacher-views-utils.js'
 
 const EXAM_DOC_PENDING_CLASS_KEY = 'pp5_exam_docs_pending_class_id'
@@ -626,6 +627,7 @@ export async function renderMyClasses(teacher) {
                 </div>
                 <p class="text-xs text-gray-400 mt-1">${group.classes.length} ห้องเรียนในคอร์สนี้</p>
               </div>
+              <div class="flex-shrink-0 w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-blue-50 flex items-center justify-center text-5xl drop-shadow-sm" aria-label="อิโมจิประจำวิชา">${getSubjectEmoji(groupMs)}</div>
             </div>
             <div class="grid gap-3 p-4 md:grid-cols-2">
         ${group.classes.map(c => {
@@ -712,7 +714,8 @@ export async function renderMyClasses(teacher) {
                         : ''}
                   </div>
                 </div>
-                <div class="flex gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
+                <div class="flex items-start gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
+                  <span class="text-3xl leading-none drop-shadow-sm" title="อิโมจิประจำวิชา">${getSubjectEmoji(ms)}</span>
                   <button onclick="event.stopPropagation();window._openClassDashboard(${c.id})"
                     class="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-white/70 rounded-lg transition text-sm" title="Dashboard ห้องเรียน">📈</button>
                   <button onclick="event.stopPropagation();window._openExamDocsForClass(${c.id})"
