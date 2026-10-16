@@ -1160,7 +1160,7 @@ export async function renderSmartClassroom(teacher, classId) {
       }
       @keyframes sc-pie-item-in { from { opacity: 0; scale: .45; filter: blur(4px); } to { opacity: 1; scale: 1; filter: blur(0); } }
       @keyframes sc-pie-ring-in { from { opacity: 0; scale: .72; } to { opacity: 1; scale: 1; } }
-      .sc-student-dock { position: fixed; z-index: 120; width: min(290px, 96vw); height: 174px; transform: translate(-50%, 0); transition: left .16s ease, top .16s ease, opacity .16s ease; pointer-events: none; }
+      .sc-student-dock { position: fixed; z-index: 120; width: min(290px, calc(100vw - 16px)); height: 174px; transform: translate(-50%, 0); transition: left .16s ease, top .16s ease, opacity .16s ease; pointer-events: none; }
       .sc-student-dock:not(.hidden) { pointer-events: auto; }
       .sc-dock-shell { position: relative; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; pointer-events: auto; }
       .sc-dock-shell::before { content: ''; position: absolute; left: 50%; top: 9px; width: 116px; height: 116px; transform: translateX(-50%); border: 2px solid rgba(129,140,248,.35); border-bottom-color: rgba(129,140,248,.08); border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.12), rgba(99,102,241,.05) 62%, transparent 70%); box-shadow: 0 8px 26px rgba(79,70,229,.16); pointer-events: none; }
@@ -1189,6 +1189,12 @@ export async function renderSmartClassroom(teacher, classId) {
       .sc-dock-subitem:hover { filter: brightness(1.14); scale: 1.1; }
       .sc-dock-subitem span { font-size: 18px; line-height: 18px; }
       .sc-dock-subitem small { font-size: 8px; white-space: nowrap; }
+      .sc-dock-att-status { color: #fff !important; border: 2px solid rgba(255,255,255,.95); text-shadow: 0 1px 2px rgba(15,23,42,.55); }
+      .sc-dock-att-status[data-dock-att-status="present"] { background: #059669 !important; }
+      .sc-dock-att-status[data-dock-att-status="absent"] { background: #dc2626 !important; }
+      .sc-dock-att-status[data-dock-att-status="late"] { background: #d97706 !important; }
+      .sc-dock-att-status[data-dock-att-status="excused"] { background: #2563eb !important; }
+      .sc-dock-att-status[data-dock-att-status="sick"] { background: #ea580c !important; }
       [data-dock-submenu="attendance"] .sc-dock-subitem:nth-child(1) { left: 0; top: 34px; }
       [data-dock-submenu="attendance"] .sc-dock-subitem:nth-child(2) { left: 53px; top: 55px; }
       [data-dock-submenu="attendance"] .sc-dock-subitem:nth-child(3) { left: 106px; top: 63px; }
@@ -1203,8 +1209,14 @@ export async function renderSmartClassroom(teacher, classId) {
       .sc-student-dock.below { transform: translate(-50%, 0); }
       .sc-student-dock.below .sc-dock-group[data-dock-group="star"] .sc-dock-submenu { top: calc(100% + 2px); bottom: auto; transform: translate(-50%, 5px); }
       .sc-student-dock.below .sc-dock-group:hover .sc-dock-submenu, .sc-student-dock.below .sc-dock-group.is-open .sc-dock-submenu { transform: translate(-50%, 0); }
+      .sc-student-dock.above .sc-dock-group[data-dock-group="attendance"] { top: 96px; }
+      .sc-student-dock.above .sc-dock-group[data-dock-group="star"] { top: 0; }
+      .sc-student-dock.above .sc-dock-group[data-dock-group="attendance"] .sc-dock-submenu,
+      .sc-student-dock.above .sc-dock-group[data-dock-group="leave"] .sc-dock-submenu { top: auto; bottom: calc(100% + 4px); transform: translate(-50%, 5px); }
+      .sc-student-dock.above .sc-dock-group[data-dock-group="star"] .sc-dock-submenu { top: calc(100% + 2px); bottom: auto; transform: translate(-50%, 5px); }
+      .sc-student-dock.above .sc-dock-group:hover .sc-dock-submenu, .sc-student-dock.above .sc-dock-group.is-open .sc-dock-submenu { transform: translate(-50%, 0); }
       @media (max-width: 640px) {
-        .sc-student-dock { left: 50% !important; right: auto; width: min(290px, 96vw); }
+        .sc-student-dock { left: 50% !important; right: auto; width: min(290px, calc(100vw - 16px)); }
         .sc-student-dock.below { transform: translate(-50%, 0); }
         .sc-dock-submenu[data-dock-submenu="attendance"] { width: min(260px, 94vw); }
       }
@@ -1215,7 +1227,7 @@ export async function renderSmartClassroom(teacher, classId) {
         <div class="sc-dock-group" data-dock-group="attendance">
           <button type="button" class="sc-dock-main bg-emerald-600" data-dock-main-action="attendance"><span>✅</span><small>เช็คชื่อ</small></button>
           <div class="sc-dock-submenu" data-dock-submenu="attendance">
-            ${Object.entries(ATT_STATUS).map(([key, meta]) => `<button type="button" data-dock-att-status="${key}" class="sc-dock-subitem ${meta.bg} ${meta.color}"><span>${meta.label}</span><small>${key === 'present' ? 'มาเรียน' : key === 'absent' ? 'ขาด' : key === 'late' ? 'มาสาย' : key === 'excused' ? 'ลากิจ' : 'ลาป่วย'}</small></button>`).join('')}
+            ${Object.entries(ATT_STATUS).map(([key, meta]) => `<button type="button" data-dock-att-status="${key}" class="sc-dock-subitem sc-dock-att-status ${meta.bg} ${meta.color}"><span>${meta.label}</span><small>${key === 'present' ? 'มาเรียน' : key === 'absent' ? 'ขาด' : key === 'late' ? 'มาสาย' : key === 'excused' ? 'ลากิจ' : 'ลาป่วย'}</small></button>`).join('')}
           </div>
         </div>
         <div class="sc-dock-group" data-dock-group="leave">
@@ -1640,10 +1652,21 @@ export async function renderSmartClassroom(teacher, classId) {
   const _positionStudentDock = () => {
     if (!activeDockWrap || studentDock.classList.contains('hidden')) return
     const rect = activeDockWrap.getBoundingClientRect()
-    const placeAbove = rect.top > 220
+    const dockWidth = studentDock.offsetWidth || 290
+    const dockHeight = studentDock.offsetHeight || 174
+    const gap = 8
+    const spaceAbove = rect.top
+    const spaceBelow = window.innerHeight - rect.bottom
+    const placeAbove = spaceAbove >= dockHeight + gap || spaceAbove > spaceBelow
+    const rawTop = placeAbove ? rect.top - dockHeight - gap : rect.bottom + gap
+    const maxTop = Math.max(8, window.innerHeight - dockHeight - 8)
+    const top = Math.min(Math.max(8, rawTop), maxTop)
+    const rawLeft = rect.left + rect.width / 2
+    const left = Math.min(Math.max(dockWidth / 2 + 8, rawLeft), window.innerWidth - dockWidth / 2 - 8)
+    studentDock.classList.toggle('above', placeAbove)
     studentDock.classList.toggle('below', !placeAbove)
-    studentDock.style.left = `${rect.left + rect.width / 2}px`
-    studentDock.style.top = `${placeAbove ? rect.top - 8 : rect.bottom + 8}px`
+    studentDock.style.left = `${left}px`
+    studentDock.style.top = `${top}px`
   }
 
   const _hideStudentDock = () => {
