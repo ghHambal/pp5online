@@ -1163,7 +1163,7 @@ export async function renderSmartClassroom(teacher, classId) {
       .sc-student-dock { position: fixed; z-index: 120; width: min(290px, calc(100vw - 16px)); height: 174px; transform: translate(-50%, 0); transition: left .16s ease, top .16s ease, opacity .16s ease; pointer-events: none; }
       .sc-student-dock:not(.hidden) { pointer-events: auto; }
       .sc-dock-shell { position: relative; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; pointer-events: auto; }
-      .sc-dock-shell::before { content: ''; position: absolute; left: 50%; top: 9px; width: 116px; height: 116px; transform: translateX(-50%); border: 2px solid rgba(129,140,248,.35); border-bottom-color: rgba(129,140,248,.08); border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.12), rgba(99,102,241,.05) 62%, transparent 70%); box-shadow: 0 8px 26px rgba(79,70,229,.16); pointer-events: none; }
+      .sc-dock-shell::before { content: ''; position: absolute; left: 50%; top: 29px; width: 116px; height: 116px; transform: translateX(-50%); border: 2px solid rgba(129,140,248,.35); border-bottom-color: rgba(129,140,248,.08); border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.12), rgba(99,102,241,.05) 62%, transparent 70%); box-shadow: 0 8px 26px rgba(79,70,229,.16); pointer-events: none; }
       .sc-student-dock:not(.hidden) .sc-dock-shell::before { animation: sc-pie-ring-in .35s ease-out both; }
       .sc-dock-close { position: absolute; right: 8px; bottom: 19px; width: 28px; height: 28px; border-radius: 999px; color: rgba(255,255,255,.8); background: rgba(15,23,42,.78); box-shadow: 0 4px 12px rgba(15,23,42,.22); font-size: 16px; pointer-events: auto; }
       .sc-dock-close:hover { background: rgba(15,23,42,.94); color: white; }
@@ -1209,14 +1209,14 @@ export async function renderSmartClassroom(teacher, classId) {
       .sc-student-dock.below { transform: translate(-50%, 0); }
       .sc-student-dock.below .sc-dock-group[data-dock-group="star"] .sc-dock-submenu { top: calc(100% + 2px); bottom: auto; transform: translate(-50%, 5px); }
       .sc-student-dock.below .sc-dock-group:hover .sc-dock-submenu, .sc-student-dock.below .sc-dock-group.is-open .sc-dock-submenu { transform: translate(-50%, 0); }
-      .sc-student-dock.above .sc-dock-group[data-dock-group="attendance"] { top: 96px; }
-      .sc-student-dock.above .sc-dock-group[data-dock-group="star"] { top: 0; }
-      .sc-student-dock.above .sc-dock-group[data-dock-group="attendance"] .sc-dock-submenu,
-      .sc-student-dock.above .sc-dock-group[data-dock-group="leave"] .sc-dock-submenu { top: auto; bottom: calc(100% + 4px); transform: translate(-50%, 5px); }
-      .sc-student-dock.above .sc-dock-group[data-dock-group="star"] .sc-dock-submenu { top: calc(100% + 2px); bottom: auto; transform: translate(-50%, 5px); }
-      .sc-student-dock.above .sc-dock-group:hover .sc-dock-submenu, .sc-student-dock.above .sc-dock-group.is-open .sc-dock-submenu { transform: translate(-50%, 0); }
+      .sc-student-dock.submenu-above .sc-dock-group[data-dock-group="attendance"] .sc-dock-submenu,
+      .sc-student-dock.submenu-above .sc-dock-group[data-dock-group="leave"] .sc-dock-submenu { top: auto; bottom: calc(100% + 4px); transform: translate(-50%, 5px); }
+      .sc-student-dock.submenu-above .sc-dock-group[data-dock-group="attendance"]:hover .sc-dock-submenu,
+      .sc-student-dock.submenu-above .sc-dock-group[data-dock-group="attendance"].is-open .sc-dock-submenu,
+      .sc-student-dock.submenu-above .sc-dock-group[data-dock-group="leave"]:hover .sc-dock-submenu,
+      .sc-student-dock.submenu-above .sc-dock-group[data-dock-group="leave"].is-open .sc-dock-submenu { transform: translate(-50%, 0); }
       @media (max-width: 640px) {
-        .sc-student-dock { left: 50% !important; right: auto; width: min(290px, calc(100vw - 16px)); }
+        .sc-student-dock { right: auto; width: min(290px, calc(100vw - 16px)); }
         .sc-student-dock.below { transform: translate(-50%, 0); }
         .sc-dock-submenu[data-dock-submenu="attendance"] { width: min(260px, 94vw); }
       }
@@ -1652,21 +1652,15 @@ export async function renderSmartClassroom(teacher, classId) {
   const _positionStudentDock = () => {
     if (!activeDockWrap || studentDock.classList.contains('hidden')) return
     const rect = activeDockWrap.getBoundingClientRect()
-    const dockWidth = studentDock.offsetWidth || 290
     const dockHeight = studentDock.offsetHeight || 174
-    const gap = 8
     const spaceAbove = rect.top
-    const spaceBelow = window.innerHeight - rect.bottom
-    const placeAbove = spaceAbove >= dockHeight + gap || spaceAbove > spaceBelow
-    const rawTop = placeAbove ? rect.top - dockHeight - gap : rect.bottom + gap
-    const maxTop = Math.max(8, window.innerHeight - dockHeight - 8)
-    const top = Math.min(Math.max(8, rawTop), maxTop)
-    const rawLeft = rect.left + rect.width / 2
-    const left = Math.min(Math.max(dockWidth / 2 + 8, rawLeft), window.innerWidth - dockWidth / 2 - 8)
-    studentDock.classList.toggle('above', placeAbove)
-    studentDock.classList.toggle('below', !placeAbove)
-    studentDock.style.left = `${left}px`
-    studentDock.style.top = `${top}px`
+    const centerX = rect.left + rect.width / 2
+    const centerY = rect.top + rect.height / 2
+    const submenuAbove = spaceAbove >= 126
+    studentDock.classList.toggle('submenu-above', submenuAbove)
+    studentDock.classList.remove('above', 'below')
+    studentDock.style.left = `${centerX}px`
+    studentDock.style.top = `${centerY - dockHeight / 2}px`
   }
 
   const _hideStudentDock = () => {
