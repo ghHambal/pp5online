@@ -1158,9 +1158,13 @@ export async function renderSmartClassroom(teacher, classId) {
       .sc-stu-wrap.is-focus .sc-stu {
         transform: scale(1.08); border-color: #818cf8; background: #eef2ff; box-shadow: 0 12px 28px rgba(79,70,229,.18);
       }
+      @keyframes sc-pie-item-in { from { opacity: 0; scale: .45; filter: blur(4px); } to { opacity: 1; scale: 1; filter: blur(0); } }
+      @keyframes sc-pie-ring-in { from { opacity: 0; scale: .72; } to { opacity: 1; scale: 1; } }
+      .sc-student-dock-backdrop { position: fixed; z-index: 110; inset: 0; background: rgba(15,23,42,.035); backdrop-filter: blur(1.5px); pointer-events: none; }
       .sc-student-dock { position: fixed; z-index: 120; width: min(290px, 96vw); height: 174px; transform: translate(-50%, 0); transition: left .16s ease, top .16s ease, opacity .16s ease; pointer-events: none; }
       .sc-dock-shell { position: relative; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; pointer-events: none; }
       .sc-dock-shell::before { content: ''; position: absolute; left: 50%; top: 9px; width: 116px; height: 116px; transform: translateX(-50%); border: 2px solid rgba(129,140,248,.35); border-bottom-color: rgba(129,140,248,.08); border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.12), rgba(99,102,241,.05) 62%, transparent 70%); box-shadow: 0 8px 26px rgba(79,70,229,.16); pointer-events: none; }
+      .sc-student-dock:not(.hidden) .sc-dock-shell::before { animation: sc-pie-ring-in .35s ease-out both; }
       .sc-dock-close { position: absolute; right: 8px; bottom: 19px; width: 28px; height: 28px; border-radius: 999px; color: rgba(255,255,255,.8); background: rgba(15,23,42,.78); box-shadow: 0 4px 12px rgba(15,23,42,.22); font-size: 16px; pointer-events: auto; }
       .sc-dock-close:hover { background: rgba(15,23,42,.94); color: white; }
       .sc-dock-group { position: absolute; z-index: 1; pointer-events: auto; }
@@ -1168,6 +1172,11 @@ export async function renderSmartClassroom(teacher, classId) {
       .sc-dock-group[data-dock-group="leave"] { left: 18%; top: 31px; transform: translateX(-50%); }
       .sc-dock-group[data-dock-group="score"] { left: 82%; top: 31px; transform: translateX(-50%); }
       .sc-dock-group[data-dock-group="star"] { left: 50%; top: 86px; transform: translateX(-50%); }
+      .sc-dock-group[data-dock-group="attendance"] { --pie-i: 0; }
+      .sc-dock-group[data-dock-group="leave"] { --pie-i: 1; }
+      .sc-dock-group[data-dock-group="score"] { --pie-i: 2; }
+      .sc-dock-group[data-dock-group="star"] { --pie-i: 3; }
+      .sc-student-dock:not(.hidden) .sc-dock-main { animation: sc-pie-item-in .38s cubic-bezier(.2,.9,.2,1.18) both; animation-delay: calc(var(--pie-i) * 55ms); }
       .sc-dock-main, .sc-dock-subitem { border: 0; color: white; font-weight: 800; cursor: pointer; }
       .sc-dock-main { min-width: 62px; min-height: 46px; padding: 4px 8px; border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; transition: transform .15s ease, filter .15s ease, background .15s ease; }
       .sc-dock-main:hover, .sc-dock-group.is-open .sc-dock-main { transform: translateY(3px); filter: brightness(1.13); background: rgba(255,255,255,.18); }
@@ -1190,6 +1199,7 @@ export async function renderSmartClassroom(teacher, classId) {
       }
     </style>
 
+    <div id="sc-student-action-backdrop" class="sc-student-dock-backdrop hidden" aria-hidden="true"></div>
     <div id="sc-student-action-dock" class="sc-student-dock hidden" aria-label="เมนูด่วนของนักเรียน">
       <div class="sc-dock-shell">
         <div class="sc-dock-group" data-dock-group="attendance">
@@ -1614,6 +1624,7 @@ export async function renderSmartClassroom(teacher, classId) {
   // เมนูจะไม่หายเมื่อเลื่อนจากการ์ดไปกดเมนูย่อย และจะย้ายตำแหน่งตามการ scroll
   const roster = document.getElementById('sc-roster')
   const studentDock = document.getElementById('sc-student-action-dock')
+  const studentDockBackdrop = document.getElementById('sc-student-action-backdrop')
   let activeDockStudentId = null
   let activeDockWrap = null
 
@@ -1631,6 +1642,7 @@ export async function renderSmartClassroom(teacher, classId) {
     activeDockWrap = null
     activeDockStudentId = null
     studentDock.classList.add('hidden')
+    studentDockBackdrop.classList.add('hidden')
     studentDock.querySelectorAll('.sc-dock-group.is-open').forEach(group => group.classList.remove('is-open'))
   }
 
@@ -1641,6 +1653,7 @@ export async function renderSmartClassroom(teacher, classId) {
     activeDockWrap = wrap
     activeDockWrap.classList.add('is-focus')
     studentDock.classList.remove('hidden')
+    studentDockBackdrop.classList.remove('hidden')
     _positionStudentDock()
   }
 
