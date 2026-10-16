@@ -782,9 +782,10 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     ${weekTickerHtml}
 
     <!-- การ์ดโปรไฟล์ครู -->
-    <div class="bg-white rounded-2xl ${cardBorderCls} px-5 pt-5 pb-5 mb-5 flex items-center gap-5 overflow-hidden" style="${cardGlowStyle}">
+    <div class="group relative overflow-hidden rounded-[24px] ${cardBorderCls} bg-gradient-to-r from-white via-emerald-50/20 to-white px-5 pt-5 pb-5 mb-5 flex items-center gap-5 transition-all duration-200 hover:shadow-lg" style="${cardGlowStyle}">
+      <div aria-hidden="true" class="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-emerald-100/30 blur-2xl transition-transform duration-300 group-hover:scale-125"></div>
       <!-- รูปโปรไฟล์ + ปุ่มแก้ไข -->
-      <div class="flex flex-col items-center gap-2 flex-shrink-0">
+      <div class="relative z-10 flex flex-col items-center gap-2 flex-shrink-0">
         <div class="w-24 h-28 rounded-xl overflow-hidden border-2 border-emerald-100 shadow-md
                     bg-gradient-to-tr from-emerald-400 to-teal-400 flex items-center justify-center
                     text-white text-3xl font-bold">
@@ -799,7 +800,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         </button>
       </div>
       <!-- ข้อมูลครู -->
-      <div class="flex-1 min-w-0">
+      <div class="relative z-10 flex-1 min-w-0">
         <h3 class="font-bold text-gray-800 text-lg truncate">${teacher?.full_name ?? '—'}</h3>
         <p class="text-xs text-gray-400 mt-0.5">รหัสครู ${teacher?.teacher_code ?? '—'} · ${teacher?.category ?? '—'}</p>
         <div class="flex flex-wrap gap-1.5 mt-2">
@@ -815,27 +816,61 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         </div>
       </div>
       <!-- สติกเกอร์ -->
-      ${donorStickerHtml}
+      <div class="relative z-10">${donorStickerHtml}</div>
     </div>
 
-    <!-- สรุปของฉัน -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-      ${[
-        { label:'คอร์สวิชาของฉัน', value: subjects.length, icon:'📖', color:'text-emerald-700', bg:'bg-emerald-50', nav:'my-courses' },
-        { label:'ห้องเรียน', value: currentTermClasses.length, icon:'🏫', color:'text-blue-700', bg:'bg-blue-50', nav:'my-classes' },
-        { label:'คำร้องรออนุมัติ', value: pendingRequests, icon:'🔔', color: pendingRequests > 0 ? 'text-red-700' : 'text-gray-400', bg:'bg-red-50', nav:'requests' },
-        { label:'Smart Classroom', value:'เปิดห้องสอนสด', icon:'👑', color:'text-amber-700', bg:'bg-amber-50', onclick:'window._openSmartClassroomLanding()' },
-      ].map(c=>`
-        <div onclick="${c.onclick || `window._navTo('${c.nav}')`}"
-          class="relative overflow-hidden rounded-2xl border border-gray-200 shadow-md p-5 flex items-center gap-4 cursor-pointer hover:shadow-lg active:scale-[0.98] transition-all duration-150 bg-white">
-          <div class="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-white/60 to-transparent opacity-80"></div>
-          <div class="w-11 h-11 rounded-xl ${c.bg} flex items-center justify-center text-xl shadow-sm">${c.icon}</div>
-          <div>
-            <p class="text-xs text-gray-500">${c.label}</p>
-            <p class="${typeof c.value === 'number' ? 'text-2xl' : 'text-sm mt-1'} font-bold ${c.color}">${c.value}</p>
-          </div>
-        </div>`).join('')}
-    </div>
+    <!-- สรุปของฉัน — การ์ดแนวนอนแบบ responsive (เลื่อนซ้าย-ขวาได้บนมือถือ) -->
+    <section class="mb-5" aria-labelledby="teacher-overview-summary-title">
+      <div class="flex items-center justify-between gap-3 mb-2 px-1">
+        <h3 id="teacher-overview-summary-title" class="text-sm font-bold text-gray-700">📊 สรุปของฉัน</h3>
+        <span class="text-[10px] text-gray-400 sm:hidden">เลื่อนซ้าย-ขวาเพื่อดูทั้งหมด</span>
+      </div>
+      <div class="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 px-1 -mx-1 lg:grid lg:grid-cols-4 xl:grid-cols-5 lg:overflow-visible lg:pb-0">
+        ${[
+          {
+            label:'คอร์สวิชาของฉัน', value:subjects.length, hint:'รายวิชาที่เปิดสอน', icon:'📖',
+            from:'#D1FAE5', to:'#6EE7B7', ink:'#065F46',
+            onclick:`window._navTo('my-courses')`,
+          },
+          {
+            label:'ห้องเรียน', value:currentTermClasses.length, hint:`ภาคเรียนที่ ${semester}/${academicYear}`, icon:'🏫',
+            from:'#DBEAFE', to:'#93C5FD', ink:'#1E40AF',
+            onclick:`window._navTo('my-classes')`,
+          },
+          {
+            label:'ห้องที่ปรึกษา', value:homeroomRooms.length, hint:'ห้องที่ดูแลอยู่', icon:'🏠',
+            from:'#FEF3C7', to:'#FCD34D', ink:'#92400E',
+            onclick:`window._openHomeroomPopup()`,
+          },
+          {
+            label:'คำร้องรออนุมัติ', value:pendingRequests, hint:pendingRequests > 0 ? 'มีรายการที่ต้องตรวจสอบ' : 'ไม่มีรายการค้าง', icon:'🔔',
+            from:pendingRequests > 0 ? '#FEE2E2' : '#F3F4F6', to:pendingRequests > 0 ? '#FDA4AF' : '#D1D5DB',
+            ink:pendingRequests > 0 ? '#991B1B' : '#4B5563',
+            onclick:`window._navTo('requests')`,
+          },
+          {
+            label:'Smart Classroom', value:'เปิดห้องสอนสด', hint:'เครื่องมือช่วยจัดการชั้นเรียน', icon:'👑',
+            from:'#EDE9FE', to:'#C4B5FD', ink:'#5B21B6',
+            onclick:`window._openSmartClassroomLanding()`,
+          },
+        ].map(c=>`
+          <button type="button" onclick="${c.onclick}"
+            aria-label="${c.label} ${c.value}"
+            class="group relative isolate min-h-[132px] min-w-[245px] sm:min-w-[280px] lg:min-w-0 snap-start overflow-hidden rounded-[22px] border-0 p-4 text-left shadow-md cursor-pointer transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-xl active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+            style="background:linear-gradient(135deg,${c.from} 0%,${c.to} 100%);--card-ink:${c.ink};--tw-ring-color:${c.ink};">
+            <span aria-hidden="true" class="pointer-events-none absolute -right-8 -bottom-12 h-36 w-36 rounded-full opacity-35 transition-transform duration-300 group-hover:scale-125"
+              style="background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.9),rgba(255,255,255,.08) 56%,transparent 57%);box-shadow:0 0 0 22px rgba(255,255,255,.12),0 0 0 44px rgba(255,255,255,.08);"></span>
+            <span aria-hidden="true" class="pointer-events-none absolute right-3 top-2 text-5xl leading-none opacity-70 drop-shadow-sm transition-transform duration-300 group-hover:rotate-6 group-hover:scale-110">${c.icon}</span>
+            <span aria-hidden="true" class="pointer-events-none absolute inset-x-0 top-0 h-1 bg-white/40"></span>
+            <span class="relative z-10 block pr-12">
+              <span class="block text-xs font-extrabold tracking-wide" style="color:var(--card-ink)">${c.label}</span>
+              <span class="mt-1 block ${typeof c.value === 'number' ? 'text-3xl' : 'text-xl'} font-black leading-none tracking-tight" style="color:var(--card-ink)">${c.value}</span>
+              <span class="mt-2 block truncate text-[11px] font-semibold opacity-75" style="color:var(--card-ink)">${c.hint}</span>
+            </span>
+            <span class="relative z-10 mt-2 inline-flex rounded-full bg-white/45 px-2 py-0.5 text-[10px] font-bold opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100" style="color:var(--card-ink)">เปิดดู →</span>
+          </button>`).join('')}
+      </div>
+    </section>
 
     <!-- ระบบอื่น ๆ — ซ่อนบนจอใหญ่ (md ขึ้นไป) เพราะมีเมนูซ้ายแบบเปิดค้างอยู่แล้ว ไม่ต้องมีปุ่มซ้ำ -->
     <div class="mb-4 md:hidden">
