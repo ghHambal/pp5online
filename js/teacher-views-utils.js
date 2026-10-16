@@ -171,8 +171,112 @@ export const _htmlEsc = value => String(value ?? '')
   .replace(/'/g, '&#39;')
 
 // อิโมจิประจำรายวิชา — ใช้กติกาเดียวกันในหน้าคอร์สและหน้าห้องเรียน
-// รองรับ subject_emoji จากข้อมูลรายวิชาไว้ล่วงหน้า: เมื่อเพิ่มช่องตั้งค่าในอนาคต
-// อิโมจิที่แอดมินกำหนดจะมีสิทธิ์เหนือค่าเริ่มต้นจากชื่อ/กลุ่มสาระทันที
+// ค่าเริ่มต้นเป็นอิโมจิที่อ่านง่าย และเปิดช่องให้แอดมินกำหนดทับผ่าน system_config
+// ได้ทั้งอิโมจิและ URL ภาพ PNG จาก Supabase Storage
+export const SUBJECT_VISUAL_PRESETS = [
+  { key: 'overview:courses', label: 'ภาพรวม · คอร์สวิชาของฉัน', defaultValue: '📖' },
+  { key: 'overview:classes', label: 'ภาพรวม · ห้องเรียน', defaultValue: '🏫' },
+  { key: 'overview:homeroom', label: 'ภาพรวม · ห้องที่ปรึกษา', defaultValue: '🏠' },
+  { key: 'overview:requests', label: 'ภาพรวม · คำร้องรออนุมัติ', defaultValue: '🔔' },
+  { key: 'overview:smartClassroom', label: 'ภาพรวม · Smart Classroom', defaultValue: '👑' },
+  { key: 'language:thai', label: 'ภาษาไทย', defaultValue: '🇹🇭' },
+  { key: 'language:english', label: 'ภาษาอังกฤษ', defaultValue: '🇬🇧' },
+  { key: 'language:arabic', label: 'ภาษาอาหรับ', defaultValue: '🇸🇦' },
+  { key: 'language:malay', label: 'ภาษามลายู', defaultValue: '🇲🇾' },
+  { key: 'subjectGroup:AGM', label: 'กลุ่มศาสนา (AGM)', defaultValue: '🕌' },
+  { key: 'subjectGroup:AGMVOC', label: 'กลุ่มศาสนา ปวช. (AGMVOC)', defaultValue: '🕌' },
+  { key: 'dept:MATH', label: 'คณิตศาสตร์', defaultValue: '➗' },
+  { key: 'dept:SC', label: 'วิทยาศาสตร์', defaultValue: '🔬' },
+  { key: 'dept:SOC', label: 'สังคมศึกษา', defaultValue: '🌍' },
+  { key: 'dept:ART', label: 'ศิลปะ/ดนตรี', defaultValue: '🎨' },
+  { key: 'dept:HEALTH', label: 'สุขศึกษา/พลศึกษา', defaultValue: '⚽' },
+  { key: 'dept:OCC', label: 'การงาน/เทคโนโลยี', defaultValue: '💻' },
+]
+
+const _normalizeSubjectVisual = value => {
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if (text && text.length <= 8 && !/[<>&"'`]/u.test(text)) return { type: 'emoji', value: text }
+    return null
+  }
+  if (!value || typeof value !== 'object') return null
+  const type = value.type === 'image' ? 'image' : 'emoji'
+  const text = String(value.value ?? '').trim()
+  if (!text || text.length > 500 || /[<>&"'`]/u.test(text)) return null
+  if (type === 'image' && !/^https:\/\//i.test(text)) return null
+  if (type === 'emoji' && text.length > 8) return null
+  return { type, value: text }
+}
+
+export function parseSubjectVisuals(config = {}) {
+  const raw = config?.subjectVisuals ?? config
+  if (!raw) return {}
+  let parsed = raw
+  if (typeof raw === 'string') {
+    try { parsed = JSON.parse(raw) } catch { return {} }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+  return Object.fromEntries(Object.entries(parsed)
+    .map(([key, value]) => [_normalizeSubjectVisualKey(key), _normalizeSubjectVisual(value)])
+    .filter(([key, value]) => key && value))
+}
+
+const _normalizeSubjectVisualKey = key => String(key ?? '').trim().replace(/\s+/g, '')
+
+const _subjectLanguageKey = subject => {
+  const name = String(subject?.subject_name ?? '')
+  const code = String(subject?.subject_code ?? '')
+  const dept = String(subject?.dept ?? subject?.learning_area ?? subject?.dept_label ?? '')
+  const text = `${name} ${code} ${dept}`.toLocaleLowerCase('th-TH')
+  if (/ภาษาไทย|ไทย/u.test(text)) return 'thai'
+  if (/ภาษาอังกฤษ|อังกฤษ|english|ภาษาต่างประเทศ/u.test(text)) return 'english'
+  if (/ภาษาอาหรับ|อาหรับ|arabic|العربية/u.test(text)) return 'arabic'
+  if (/ภาษามลายู|มลายู|malay|الملايو/u.test(text)) return 'malay'
+  return ''
+}
+
+export function getSubjectVisual(subject = {}, config = {}) {
+  const map = parseSubjectVisuals(config)
+  const code = String(subject.subject_code ?? '').trim()
+  const group = String(subject.subject_group ?? '').trim().toUpperCase()
+  const dept = String(subject.dept ?? subject.learning_area ?? subject.dept_label ?? '').trim().toUpperCase()
+  const language = _subjectLanguageKey(subject)
+  const candidates = [
+    code && `code:${code}`,
+    language && `language:${language}`,
+    group && `subjectGroup:${group}`,
+    dept && `dept:${dept}`,
+  ].filter(Boolean)
+  for (const key of candidates) {
+    if (map[key]) return map[key]
+  }
+  const emoji = getSubjectEmoji(subject)
+  return { type: 'emoji', value: emoji }
+}
+
+export function getConfiguredVisual(config = {}, key, fallback = '✨') {
+  const visual = parseSubjectVisuals(config)[_normalizeSubjectVisualKey(key)]
+  return visual ?? { type: 'emoji', value: fallback }
+}
+
+export function renderConfiguredVisual(config = {}, key, fallback = '✨', className = '') {
+  const visual = getConfiguredVisual(config, key, fallback)
+  const classes = className ? ` class="${_htmlEsc(className)}"` : ''
+  if (visual.type === 'image') {
+    return `<img src="${_htmlEsc(visual.value)}"${classes} alt="" aria-hidden="true" draggable="false" />`
+  }
+  return `<span${classes} aria-hidden="true">${_htmlEsc(visual.value)}</span>`
+}
+
+export function renderSubjectVisual(subject = {}, config = {}, className = '') {
+  const visual = getSubjectVisual(subject, config)
+  const classes = className ? ` class="${_htmlEsc(className)}"` : ''
+  if (visual.type === 'image') {
+    return `<img src="${_htmlEsc(visual.value)}"${classes} alt="" aria-hidden="true" draggable="false" />`
+  }
+  return `<span${classes} aria-hidden="true">${_htmlEsc(visual.value)}</span>`
+}
+
 export function getSubjectEmoji(subject = {}) {
   const override = String(subject.subject_emoji ?? '').trim()
   if (override && override.length <= 8 && !/[<>&"'`]/u.test(override)) return override
@@ -185,10 +289,10 @@ export function getSubjectEmoji(subject = {}) {
 
   if (/^agm/i.test(group) || /อิสลาม|ศาสนา|อัลกุรอาน|อัล-กุรอาน|อัดดีนียะห์|อาหรับอิสลาม/u.test(haystack)) return '🕌'
   if (/คณิตศาสตร์|คณิต|math/u.test(haystack)) return '➗'
-  if (/ภาษาไทย|ไทย/u.test(haystack)) return '📖'
-  if (/ภาษาอังกฤษ|อังกฤษ|english|ภาษาต่างประเทศ/u.test(haystack)) return '🌐'
-  if (/ภาษาอาหรับ|อาหรับ|arabic|العربية/u.test(haystack)) return '🔤'
-  if (/ภาษามลายู|มลายู|malay|الملايو/u.test(haystack)) return '🗣️'
+  if (/ภาษาไทย|ไทย/u.test(haystack)) return '🇹🇭'
+  if (/ภาษาอังกฤษ|อังกฤษ|english|ภาษาต่างประเทศ/u.test(haystack)) return '🇬🇧'
+  if (/ภาษาอาหรับ|อาหรับ|arabic|العربية/u.test(haystack)) return '🇸🇦'
+  if (/ภาษามลายู|มลายู|malay|الملايو/u.test(haystack)) return '🇲🇾'
   if (/วิทยาศาสตร์|วิทย์|ฟิสิกส์|เคมี|ชีววิทยา|science|physics|chemistry|biology/u.test(haystack)) return '🔬'
   if (/สังคม|ประวัติศาสตร์|ภูมิศาสตร์|หน้าที่พลเมือง|social|history|geography/u.test(haystack)) return '🌍'
   if (/ศิลปะ|ดนตรี|นาฏศิลป์|art|music/u.test(haystack)) return '🎨'

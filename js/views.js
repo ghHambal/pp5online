@@ -60,7 +60,7 @@ import {
   syncSubjectCatalog,
   syncStudentsFromSheetNow,
 } from './sync.js'
-import { READING_GRADES, _readingGrade, applyReadingGradesFromConfig, _htmlEsc, _dateInputValue } from './teacher-views-utils.js'
+import { READING_GRADES, _readingGrade, applyReadingGradesFromConfig, _htmlEsc, _dateInputValue, SUBJECT_VISUAL_PRESETS, parseSubjectVisuals } from './teacher-views-utils.js'
 import { academicTermKey, collectAcademicTerms, currentAcademicTerm, renderAcademicTermOptions } from './academic-term-switcher.js'
 
 // ─── Filter helpers ───────────────────────────────────────────────────────────
@@ -2427,6 +2427,7 @@ export async function renderSettings() {
     cfg.freeTimerLimit = cfg.freeTimerLimit || '1'
     cfg.freeDashboardLimit = cfg.freeDashboardLimit || '0'
     cfg.freePromptAiLimit = cfg.freePromptAiLimit || '1'
+    let subjectVisualsDraft = parseSubjectVisuals(cfg)
     window._latestFullBackupId = null
     // รวม dept codes จาก departments table + teachers.dept + ที่รู้จักแน่นอน
     const KNOWN_DEPT_CODES = ['MATH','SC','ENG','THAI','SOC','ART','HEALTH','OCC','VOC',
@@ -2589,6 +2590,7 @@ export async function renderSettings() {
       { id:'general',  icon:'⚙️',  label:'ทั่วไป' },
       { id:'term-data', icon:'🗃️', label:'ข้อมูลทั้งหมด' },
       { id:'theme',    icon:'🎨',  label:'ธีมสี' },
+      { id:'subject-icons', icon:'📚', label:'ไอคอนรายวิชา' },
       { id:'school',   icon:'🏫',  label:'สถานศึกษา' },
       { id:'prayer',   icon:'🕌',  label:'ระบบละหมาด' },
       { id:'contact',  icon:'📞',  label:'ติดต่อ' },
@@ -2609,6 +2611,54 @@ export async function renderSettings() {
           ${title ? `<p class="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-4 pb-2 border-b border-gray-100">${title}</p>` : ''}
           ${fields.map(fld).join('')}
         </div>`
+
+      if (tabId === 'subject-icons') {
+        const presetKeys = new Set(SUBJECT_VISUAL_PRESETS.map(item => item.key))
+        const renderVisualRow = (item, custom = false) => {
+          const visual = subjectVisualsDraft[item.key]
+          const fallback = item.defaultValue ?? ''
+          const emoji = visual?.type === 'emoji' ? visual.value : (custom ? '' : fallback)
+          const imageUrl = visual?.type === 'image' ? visual.value : ''
+          return `<div data-subject-visual-row="true" data-subject-visual-original="${_esc(item.key)}" class="rounded-2xl border border-gray-200 bg-gray-50/70 p-3" data-image-url="${_esc(imageUrl)}">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div class="subject-visual-preview flex-shrink-0 w-14 h-14 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-4xl overflow-hidden shadow-sm">
+                ${imageUrl ? `<img src="${_esc(imageUrl)}" alt="" class="w-full h-full object-contain" />` : _esc(emoji || '✨')}
+              </div>
+              <div class="min-w-0 flex-1 space-y-1.5">
+                ${custom
+                  ? `<input type="text" class="subject-visual-key ${INPUT}" value="${_esc(item.key)}" placeholder="เช่น code:ค33102 หรือ dept:MATH" />`
+                  : `<p class="text-sm font-bold text-gray-700">${_esc(item.label)}</p><p class="text-[11px] text-gray-400 font-mono">${_esc(item.key)}</p>`}
+                <input type="text" class="subject-visual-value ${INPUT}" value="${_esc(emoji)}" maxlength="8" placeholder="ใส่อิโมจิ เช่น 🇹🇭 หรือ 📘" />
+              </div>
+              <label class="cursor-pointer inline-flex flex-shrink-0 items-center justify-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 bg-white text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition">
+                📁 PNG
+                <input type="file" accept="image/png" class="hidden subject-visual-upload" />
+              </label>
+              ${custom ? '<button type="button" class="subject-visual-remove flex-shrink-0 px-2 py-2 rounded-xl text-xs text-red-500 hover:bg-red-50" title="ลบกติกานี้">ลบ</button>' : ''}
+            </div>
+          </div>`
+        }
+        const presetRows = SUBJECT_VISUAL_PRESETS.map(item => renderVisualRow(item)).join('')
+        const customRows = Object.keys(subjectVisualsDraft)
+          .filter(key => !presetKeys.has(key))
+          .map(key => renderVisualRow({ key, label: key }, true)).join('')
+        return `<div class="space-y-5">
+          <div class="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4">
+            <p class="text-sm font-bold text-indigo-900">📚 ไอคอน/อิโมจิประจำรายวิชา</p>
+            <p class="mt-1 text-xs leading-relaxed text-indigo-700">กำหนดภาพที่แสดงบนการ์ดคอร์สและห้องเรียนได้ตามกลุ่มวิชา ภาษา หรือรหัสวิชา ระบบจะเลือกกติกาเฉพาะรหัสวิชาก่อน แล้วจึงเลือกภาษา/กลุ่มสาระ/ค่าเริ่มต้นตามลำดับ</p>
+            <p class="mt-2 text-[11px] text-indigo-600">PNG จะรักษาพื้นหลังโปร่งใส เหมาะสำหรับภาพตกแต่งขนาดใหญ่ที่วางซ้อนมุมขวาล่างของการ์ด</p>
+          </div>
+          <div class="space-y-2.5">${presetRows}</div>
+          <div class="border-t border-gray-100 pt-5">
+            <div class="flex items-center justify-between gap-3 mb-3">
+              <div><p class="text-sm font-bold text-gray-700">กำหนดเฉพาะรายวิชา</p><p class="text-[11px] text-gray-400 mt-1">ใช้คีย์รูปแบบ <span class="font-mono">code:รหัสวิชา</span> เพื่อให้มีผลเฉพาะคอร์สนั้น</p></div>
+              <button type="button" data-subject-visual-add class="flex-shrink-0 px-3 py-2 rounded-xl border border-indigo-200 bg-white text-xs font-bold text-indigo-700 hover:bg-indigo-50">＋ เพิ่มกติกา</button>
+            </div>
+            <div data-subject-visual-custom-list class="space-y-2.5">${customRows}</div>
+          </div>
+          <input type="hidden" id="cfg-subjectVisuals" data-key="subjectVisuals" value="${_esc(JSON.stringify(subjectVisualsDraft))}" />
+        </div>`
+      }
 
       if (tabId === 'term-data') return `
         <section class="mb-5 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-5">
@@ -3582,6 +3632,90 @@ export async function renderSettings() {
         })
       })
 
+      // ── subject visual editor ────────────────────────────────────────────────
+      const subjectVisualHidden = document.getElementById('cfg-subjectVisuals')
+      const syncSubjectVisualDraft = () => {
+        document.querySelectorAll('#cfg-panel-inner [data-subject-visual-row="true"]').forEach(row => {
+          const originalKey = row.dataset.subjectVisualOriginal?.trim()
+          const key = row.querySelector('.subject-visual-key')?.value.trim() || row.dataset.subjectVisualOriginal?.trim()
+          const emoji = row.querySelector('.subject-visual-value')?.value.trim()
+          const imageUrl = row.dataset.imageUrl?.trim()
+          if (originalKey && originalKey !== key) delete subjectVisualsDraft[originalKey]
+          if (!key) return
+          if (emoji) subjectVisualsDraft[key] = { type: 'emoji', value: emoji.slice(0, 8) }
+          else if (imageUrl) subjectVisualsDraft[key] = { type: 'image', value: imageUrl }
+          else delete subjectVisualsDraft[key]
+        })
+        if (subjectVisualHidden) subjectVisualHidden.value = JSON.stringify(subjectVisualsDraft)
+      }
+      const bindSubjectVisualRow = row => {
+        row.querySelectorAll('.subject-visual-key, .subject-visual-value').forEach(input => {
+          input.addEventListener('input', () => {
+            syncSubjectVisualDraft()
+            const preview = row.querySelector('.subject-visual-preview')
+            if (preview && input.classList.contains('subject-visual-value') && input.value.trim()) preview.textContent = input.value.trim()
+          })
+        })
+        row.querySelector('.subject-visual-remove')?.addEventListener('click', () => {
+          const key = row.querySelector('.subject-visual-key')?.value.trim()
+          if (key) delete subjectVisualsDraft[key]
+          row.remove()
+          syncSubjectVisualDraft()
+        })
+        row.querySelector('.subject-visual-upload')?.addEventListener('change', async event => {
+          const file = event.target.files?.[0]
+          if (!file) return
+          if (file.type !== 'image/png') {
+            showToast('กรุณาเลือกไฟล์ PNG เท่านั้น', 'error')
+            event.target.value = ''
+            return
+          }
+          const key = row.querySelector('.subject-visual-key')?.value.trim() || row.dataset.subjectVisualOriginal?.trim()
+          if (!key) {
+            showToast('กรุณาระบุคีย์ก่อนอัปโหลด เช่น code:ค33102', 'warning')
+            event.target.value = ''
+            return
+          }
+          const safeKey = key.replace(/[^a-zA-Z0-9_-]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || `icon-${Date.now()}`
+          event.target.disabled = true
+          try {
+            const url = await uploadStickerPng(`subject-visuals/${safeKey}`, file)
+            row.dataset.imageUrl = url
+            const valueInput = row.querySelector('.subject-visual-value')
+            if (valueInput) valueInput.value = ''
+            const preview = row.querySelector('.subject-visual-preview')
+            if (preview) preview.innerHTML = `<img src="${_esc(url)}" alt="" class="w-full h-full object-contain" />`
+            syncSubjectVisualDraft()
+            showToast('อัปโหลดไอคอนรายวิชาสำเร็จ · กดบันทึกเพื่อใช้งาน', 'success')
+          } catch (error) {
+            showToast('อัปโหลดไอคอนไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+          } finally {
+            event.target.disabled = false
+            event.target.value = ''
+          }
+        })
+      }
+      document.querySelectorAll('#cfg-panel-inner [data-subject-visual-row="true"]').forEach(bindSubjectVisualRow)
+      document.querySelector('[data-subject-visual-add]')?.addEventListener('click', () => {
+        const list = document.querySelector('[data-subject-visual-custom-list]')
+        if (!list) return
+        const row = document.createElement('div')
+        row.setAttribute('data-subject-visual-row', 'true')
+        row.className = 'rounded-2xl border border-gray-200 bg-gray-50/70 p-3'
+        row.innerHTML = `<div class="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div class="subject-visual-preview flex-shrink-0 w-14 h-14 rounded-xl border border-gray-200 bg-white flex items-center justify-center text-4xl overflow-hidden shadow-sm">✨</div>
+          <div class="min-w-0 flex-1 space-y-1.5">
+            <input type="text" class="subject-visual-key ${'input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200'}" placeholder="เช่น code:ค33102 หรือ dept:MATH" />
+            <input type="text" class="subject-visual-value ${'input-field w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200'}" maxlength="8" placeholder="ใส่อิโมจิ เช่น 🇹🇭 หรือ 📘" />
+          </div>
+          <label class="cursor-pointer inline-flex flex-shrink-0 items-center justify-center gap-2 px-3 py-2 rounded-xl border border-indigo-200 bg-white text-xs font-bold text-indigo-700 hover:bg-indigo-50 transition">📁 PNG<input type="file" accept="image/png" class="hidden subject-visual-upload" /></label>
+          <button type="button" class="subject-visual-remove flex-shrink-0 px-2 py-2 rounded-xl text-xs text-red-500 hover:bg-red-50">ลบ</button>
+        </div>`
+        list.appendChild(row)
+        bindSubjectVisualRow(row)
+        row.querySelector('.subject-visual-key')?.focus()
+      })
+
       // ── feature editor ────────────────────────────────────────────────────────
       const _syncFeatHidden = () => {
         const rows = [...document.querySelectorAll('#feat-editor .feat-row')]
@@ -4086,6 +4220,9 @@ export async function renderSettings() {
     // ─── Save button ─────────────────────────────────────────────────────────────
     document.getElementById('cfg-save-btn').addEventListener('click', async () => {
       const btn = document.getElementById('cfg-save-btn')
+      if (document.getElementById('cfg-subjectVisuals')) {
+        document.querySelectorAll('#cfg-panel-inner [data-subject-visual-row="true"] .subject-visual-key, #cfg-panel-inner [data-subject-visual-row="true"] .subject-visual-value').forEach(input => input.dispatchEvent(new Event('input')))
+      }
       // ช่องเลือกไฟล์และปุ่มล้างโลโก้มี data-key เพื่อใช้กับ handler ของตัวเอง
       // แต่ไม่ใช่ค่าตั้งค่าที่ต้องบันทึก หากรวมเข้าไปจะเขียนทับ URL ด้วย
       // C:\\fakepath\\... หรือ false หลังจากอัปโหลดสำเร็จ

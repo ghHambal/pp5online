@@ -18,7 +18,7 @@ import { _openLessonPlanApproval } from './teacher-views.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, formatPhone,
   SELECT_CLS, INPUT_CLS, GRADE_OPTS, CREDIT_OPTS,
-  getSubjectEmoji,
+  renderSubjectVisual,
 } from './teacher-views-utils.js'
 
 const _catalogDeptCode = item => {
@@ -136,9 +136,10 @@ export async function renderMyCourses(teacher) {
     </svg> กำลังโหลด...
   </div>`)
   try {
-    const [subjects, allClasses] = await Promise.all([
+    const [subjects, allClasses, visualCfg] = await Promise.all([
       teacher ? getMySubjects(teacher.id) : getMasterSubjects().catch(()=>[]),
       teacher ? getMyClasses(teacher.id).catch(()=>[]) : Promise.resolve([]),
+      getSystemConfig().catch(() => ({})),
     ])
     const subjects_orig = subjects // keep for compat
     const courseClasses = subjectId => allClasses.filter(c => Number(c.course_id ?? c.master_subjects?.id) === Number(subjectId))
@@ -166,10 +167,10 @@ export async function renderMyCourses(teacher) {
     </div>`
     const renderCourseCard = subject => {
       const stats = courseStats(subject)
-      return `<article class="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-emerald-200 transition overflow-hidden">
-        <div class="p-4 sm:p-5">
+      return `<article class="relative bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-emerald-200 transition overflow-hidden">
+        <div class="relative p-4 sm:p-5">
           <div class="flex items-start justify-between gap-3">
-            <div class="min-w-0">
+            <div class="min-w-0 pr-16 sm:pr-20">
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="font-mono text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg">${_htmlEsc(subject.subject_code ?? '—')}</span>
                 ${subject.dept ? `<span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg">${_htmlEsc(subject.dept)}</span>` : ''}
@@ -177,8 +178,8 @@ export async function renderMyCourses(teacher) {
               <h3 class="mt-2 text-base sm:text-lg font-extrabold text-gray-900 leading-snug">${_htmlEsc(subject.subject_name)}</h3>
               <p class="mt-1 text-xs text-gray-400">ระดับชั้น ${_htmlEsc(subject.grade_level ?? 'ไม่ระบุ')}</p>
             </div>
-            <div class="flex-shrink-0 w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-blue-50 flex items-center justify-center text-5xl drop-shadow-sm" aria-label="อิโมจิประจำวิชา">${getSubjectEmoji(subject)}</div>
           </div>
+          <div class="pointer-events-none absolute right-3 bottom-4 w-20 h-20 flex items-end justify-end text-6xl opacity-80 drop-shadow-md" aria-label="ไอคอนประจำวิชา">${renderSubjectVisual(subject, visualCfg, 'max-w-full max-h-full object-contain')}</div>
 
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
             ${statTile('🏫', stats.roomCount, 'ห้องที่เปิดแล้ว', 'border-emerald-100 bg-emerald-50/50')}

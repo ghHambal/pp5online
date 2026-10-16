@@ -15,8 +15,7 @@ import {
   _DAYS_TH_SHORT, _DAYS_TH_FULL,
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
   _dutyCountdownInfo,
-  _currentWeek, _teacherPositionList, _teacherPositionLabel, renderIconTile,
-  getSubjectEmoji,
+  _currentWeek, _teacherPositionList, _teacherPositionLabel, renderIconTile, renderConfiguredVisual,
 } from './teacher-views-utils.js'
 import { getTodayDuty, getTodayDutyGrade } from './wen-duty.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
@@ -829,28 +828,28 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
       <div class="flex gap-3 overflow-x-auto snap-x snap-mandatory pb-2 px-1 -mx-1 lg:grid lg:grid-cols-4 xl:grid-cols-5 lg:overflow-visible lg:pb-0">
         ${[
           {
-            label:'คอร์สวิชาของฉัน', value:subjects.length, hint:'รายวิชาที่เปิดสอน', icon:'📖',
+            key:'courses', label:'คอร์สวิชาของฉัน', value:subjects.length, hint:'รายวิชาที่เปิดสอน', icon:'📖',
             from:'#D1FAE5', to:'#6EE7B7', ink:'#065F46',
             onclick:`window._navTo('my-courses')`,
           },
           {
-            label:'ห้องเรียน', value:currentTermClasses.length, hint:`ภาคเรียนที่ ${semester}/${academicYear}`, icon:'🏫',
+            key:'classes', label:'ห้องเรียน', value:currentTermClasses.length, hint:`ภาคเรียนที่ ${semester}/${academicYear}`, icon:'🏫',
             from:'#DBEAFE', to:'#93C5FD', ink:'#1E40AF',
             onclick:`window._navTo('my-classes')`,
           },
           {
-            label:'ห้องที่ปรึกษา', value:homeroomRooms.length, hint:'ห้องที่ดูแลอยู่', icon:'🏠',
+            key:'homeroom', label:'ห้องที่ปรึกษา', value:homeroomRooms.length, hint:'ห้องที่ดูแลอยู่', icon:'🏠',
             from:'#FEF3C7', to:'#FCD34D', ink:'#92400E',
             onclick:`window._openHomeroomPopup()`,
           },
           {
-            label:'คำร้องรออนุมัติ', value:pendingRequests, hint:pendingRequests > 0 ? 'มีรายการที่ต้องตรวจสอบ' : 'ไม่มีรายการค้าง', icon:'🔔',
+            key:'requests', label:'คำร้องรออนุมัติ', value:pendingRequests, hint:pendingRequests > 0 ? 'มีรายการที่ต้องตรวจสอบ' : 'ไม่มีรายการค้าง', icon:'🔔',
             from:pendingRequests > 0 ? '#FEE2E2' : '#F3F4F6', to:pendingRequests > 0 ? '#FDA4AF' : '#D1D5DB',
             ink:pendingRequests > 0 ? '#991B1B' : '#4B5563',
             onclick:`window._navTo('requests')`,
           },
           {
-            label:'Smart Classroom', value:'เปิดห้องสอนสด', hint:'เครื่องมือช่วยจัดการชั้นเรียน', icon:'👑',
+            key:'smartClassroom', label:'Smart Classroom', value:'เปิดห้องสอนสด', hint:'เครื่องมือช่วยจัดการชั้นเรียน', icon:'👑',
             from:'#EDE9FE', to:'#C4B5FD', ink:'#5B21B6',
             onclick:`window._openSmartClassroomLanding()`,
           },
@@ -861,7 +860,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
             style="background:linear-gradient(135deg,${c.from} 0%,${c.to} 100%);--card-ink:${c.ink};--tw-ring-color:${c.ink};">
             <span aria-hidden="true" class="pointer-events-none absolute -right-8 -bottom-12 h-36 w-36 rounded-full opacity-35 transition-transform duration-300 group-hover:scale-125"
               style="background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.9),rgba(255,255,255,.08) 56%,transparent 57%);box-shadow:0 0 0 22px rgba(255,255,255,.12),0 0 0 44px rgba(255,255,255,.08);"></span>
-            <span aria-hidden="true" class="pointer-events-none absolute right-3 top-1 text-7xl sm:text-8xl leading-none opacity-75 drop-shadow-md transition-transform duration-300 group-hover:rotate-6 group-hover:scale-110">${c.icon}</span>
+            <span aria-hidden="true" class="pointer-events-none absolute right-2 -bottom-3 text-7xl sm:text-8xl leading-none opacity-80 drop-shadow-md transition-transform duration-300 group-hover:rotate-6 group-hover:scale-110">${renderConfiguredVisual(cfg, `overview:${c.key}`, c.icon, 'max-w-[7rem] max-h-[7rem] object-contain')}</span>
             <span aria-hidden="true" class="pointer-events-none absolute inset-x-0 top-0 h-1 bg-white/40"></span>
             <span class="relative z-10 block pr-20">
               <span class="block text-xs font-extrabold tracking-wide" style="color:var(--card-ink)">${c.label}</span>

@@ -55,7 +55,7 @@ import {
   _nextPeriodMins, _scheduleChips, _countdownInfo, _activeRemainingDisplay,
   _resolveGeminiKey, _transparentEdgeDarkLogo, _currentWeek,
   getMainContentRef, setMainContentRef, _generateSessions,
-  getSubjectEmoji,
+  renderSubjectVisual,
 } from './teacher-views-utils.js'
 
 const EXAM_DOC_PENDING_CLASS_KEY = 'pp5_exam_docs_pending_class_id'
@@ -627,7 +627,7 @@ export async function renderMyClasses(teacher) {
                 </div>
                 <p class="text-xs text-gray-400 mt-1">${group.classes.length} ห้องเรียนในคอร์สนี้</p>
               </div>
-              <div class="flex-shrink-0 w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-blue-50 flex items-center justify-center text-5xl drop-shadow-sm" aria-label="อิโมจิประจำวิชา">${getSubjectEmoji(groupMs)}</div>
+              <div class="flex-shrink-0 w-20 h-20 -mr-1 -mb-2 rounded-2xl bg-gradient-to-br from-emerald-50 to-blue-50 flex items-end justify-end p-1 text-6xl drop-shadow-sm overflow-visible" aria-label="ไอคอนประจำวิชา">${renderSubjectVisual(groupMs, copyCfg, 'max-w-full max-h-full object-contain')}</div>
             </div>
             <div class="grid gap-3 p-4 md:grid-cols-2">
         ${group.classes.map(c => {
@@ -687,12 +687,13 @@ export async function renderMyClasses(teacher) {
             : ''
 
           return `
-          <div class="rounded-2xl border shadow-sm hover:shadow-md transition cursor-pointer group"
+          <div class="relative overflow-hidden rounded-2xl border shadow-sm hover:shadow-md transition cursor-pointer group"
                style="background:${classColor.soft}; border-color:${classColor.border}"
                onclick="window._openClassDetail(${c.id})">
-            <div class="p-4">
+            <div class="relative p-4">
+              <div class="pointer-events-none absolute right-3 bottom-3 w-20 h-20 flex items-end justify-end text-6xl opacity-75 drop-shadow-md" aria-label="ไอคอนประจำวิชา">${renderSubjectVisual(ms, copyCfg, 'max-w-full max-h-full object-contain')}</div>
               <div class="flex items-start justify-between gap-2">
-                <div class="flex-1 min-w-0">
+                <div class="flex-1 min-w-0 pr-16 sm:pr-20">
                   <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
                     <span class="px-2 py-0.5 bg-white/80 text-emerald-700 text-xs font-mono rounded-full">${ms?.subject_code??'—'}</span>
                     ${ms?.credit != null ? `<span class="px-2 py-0.5 bg-white/80 text-gray-500 text-xs rounded-full">${ms.credit} หน่วยกิต</span>` : ''}
@@ -714,8 +715,7 @@ export async function renderMyClasses(teacher) {
                         : ''}
                   </div>
                 </div>
-                <div class="flex items-start gap-1 flex-shrink-0 opacity-50 group-hover:opacity-100 transition-opacity">
-                  <span class="text-3xl leading-none drop-shadow-sm" title="อิโมจิประจำวิชา">${getSubjectEmoji(ms)}</span>
+                <div class="flex items-start gap-1 flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
                   <button onclick="event.stopPropagation();window._openClassDashboard(${c.id})"
                     class="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-white/70 rounded-lg transition text-sm" title="Dashboard ห้องเรียน">📈</button>
                   <button onclick="event.stopPropagation();window._openExamDocsForClass(${c.id})"
