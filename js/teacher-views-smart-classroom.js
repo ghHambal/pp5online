@@ -1160,9 +1160,9 @@ export async function renderSmartClassroom(teacher, classId) {
       }
       @keyframes sc-pie-item-in { from { opacity: 0; scale: .45; filter: blur(4px); } to { opacity: 1; scale: 1; filter: blur(0); } }
       @keyframes sc-pie-ring-in { from { opacity: 0; scale: .72; } to { opacity: 1; scale: 1; } }
-      .sc-student-dock-backdrop { position: fixed; z-index: 110; inset: 0; background: rgba(15,23,42,.035); backdrop-filter: blur(1.5px); pointer-events: none; }
       .sc-student-dock { position: fixed; z-index: 120; width: min(290px, 96vw); height: 174px; transform: translate(-50%, 0); transition: left .16s ease, top .16s ease, opacity .16s ease; pointer-events: none; }
-      .sc-dock-shell { position: relative; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; pointer-events: none; }
+      .sc-student-dock:not(.hidden) { pointer-events: auto; }
+      .sc-dock-shell { position: relative; width: 100%; height: 100%; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; pointer-events: auto; }
       .sc-dock-shell::before { content: ''; position: absolute; left: 50%; top: 9px; width: 116px; height: 116px; transform: translateX(-50%); border: 2px solid rgba(129,140,248,.35); border-bottom-color: rgba(129,140,248,.08); border-radius: 50%; background: radial-gradient(circle, rgba(255,255,255,.12), rgba(99,102,241,.05) 62%, transparent 70%); box-shadow: 0 8px 26px rgba(79,70,229,.16); pointer-events: none; }
       .sc-student-dock:not(.hidden) .sc-dock-shell::before { animation: sc-pie-ring-in .35s ease-out both; }
       .sc-dock-close { position: absolute; right: 8px; bottom: 19px; width: 28px; height: 28px; border-radius: 999px; color: rgba(255,255,255,.8); background: rgba(15,23,42,.78); box-shadow: 0 4px 12px rgba(15,23,42,.22); font-size: 16px; pointer-events: auto; }
@@ -1182,24 +1182,34 @@ export async function renderSmartClassroom(teacher, classId) {
       .sc-dock-main:hover, .sc-dock-group.is-open .sc-dock-main { transform: translateY(3px); filter: brightness(1.13); background: rgba(255,255,255,.18); }
       .sc-dock-main span { font-size: 20px; line-height: 20px; }
       .sc-dock-main small { font-size: 9px; white-space: nowrap; }
-      .sc-dock-submenu { position: absolute; left: 50%; top: calc(100% + 9px); display: flex; gap: 6px; padding: 7px; border: 1px solid rgba(255,255,255,.8); border-radius: 18px; background: rgba(15,23,42,.78); box-shadow: 0 12px 26px rgba(15,23,42,.26); backdrop-filter: blur(18px); opacity: 0; pointer-events: none; transform: translate(-50%, -5px); transition: opacity .14s ease, transform .14s ease; }
-      .sc-dock-group:hover .sc-dock-submenu, .sc-dock-group.is-open .sc-dock-submenu { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
-      .sc-dock-subitem { min-width: 56px; min-height: 42px; padding: 4px 7px; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; }
-      .sc-dock-subitem:hover { background: rgba(255,255,255,.17); transform: translateY(-1px); }
+      .sc-dock-submenu { position: absolute; left: 50%; top: calc(100% + 2px); width: 260px; height: 110px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none; display: block; opacity: 0; visibility: hidden; pointer-events: none; transform: translate(-50%, -5px); transition: opacity .14s ease, transform .14s ease, visibility 0s linear .14s; }
+      .sc-dock-group:hover .sc-dock-submenu, .sc-dock-group.is-open .sc-dock-submenu { opacity: 1; visibility: visible; pointer-events: auto; transform: translate(-50%, 0); transition-delay: 0s; }
+      .sc-dock-subitem { position: absolute; width: 48px; min-width: 48px; height: 44px; min-height: 44px; padding: 4px 3px; border-radius: 999px; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.05; box-shadow: 0 5px 14px rgba(15,23,42,.22), 0 0 0 2px rgba(255,255,255,.85); opacity: 0; scale: .55; transition: filter .15s ease, scale .15s ease; }
+      .sc-dock-group:hover .sc-dock-subitem, .sc-dock-group.is-open .sc-dock-subitem { opacity: 1; scale: 1; }
+      .sc-dock-subitem:hover { filter: brightness(1.14); scale: 1.1; }
       .sc-dock-subitem span { font-size: 18px; line-height: 18px; }
       .sc-dock-subitem small { font-size: 8px; white-space: nowrap; }
+      [data-dock-submenu="attendance"] .sc-dock-subitem:nth-child(1) { left: 0; top: 34px; }
+      [data-dock-submenu="attendance"] .sc-dock-subitem:nth-child(2) { left: 53px; top: 55px; }
+      [data-dock-submenu="attendance"] .sc-dock-subitem:nth-child(3) { left: 106px; top: 63px; }
+      [data-dock-submenu="attendance"] .sc-dock-subitem:nth-child(4) { left: 159px; top: 55px; }
+      [data-dock-submenu="attendance"] .sc-dock-subitem:nth-child(5) { left: 212px; top: 34px; }
+      [data-dock-submenu="leave"] { width: 126px; height: 92px; }
+      [data-dock-submenu="leave"] .sc-dock-subitem:nth-child(1) { left: 5px; top: 20px; }
+      [data-dock-submenu="leave"] .sc-dock-subitem:nth-child(2) { left: 66px; top: 43px; }
+      [data-dock-submenu="star"] { top: auto; bottom: calc(100% + 2px); width: 132px; height: 74px; }
+      [data-dock-submenu="star"] .sc-dock-subitem:nth-child(1) { left: 6px; top: 25px; }
+      [data-dock-submenu="star"] .sc-dock-subitem:nth-child(2) { left: 76px; top: 8px; }
       .sc-student-dock.below { transform: translate(-50%, 0); }
-      .sc-student-dock.below .sc-dock-shell { transform: rotate(180deg); }
-      .sc-student-dock.below .sc-dock-group, .sc-student-dock.below .sc-dock-close { transform: rotate(180deg); }
-      .sc-student-dock.below .sc-dock-group[data-dock-group="attendance"], .sc-student-dock.below .sc-dock-group[data-dock-group="leave"], .sc-student-dock.below .sc-dock-group[data-dock-group="score"], .sc-student-dock.below .sc-dock-group[data-dock-group="star"] { transform: rotate(180deg) translateX(50%); }
+      .sc-student-dock.below .sc-dock-group[data-dock-group="star"] .sc-dock-submenu { top: calc(100% + 2px); bottom: auto; transform: translate(-50%, 5px); }
+      .sc-student-dock.below .sc-dock-group:hover .sc-dock-submenu, .sc-student-dock.below .sc-dock-group.is-open .sc-dock-submenu { transform: translate(-50%, 0); }
       @media (max-width: 640px) {
         .sc-student-dock { left: 50% !important; right: auto; width: min(290px, 96vw); }
         .sc-student-dock.below { transform: translate(-50%, 0); }
-        .sc-dock-submenu { max-width: 94vw; flex-wrap: wrap; justify-content: center; }
+        .sc-dock-submenu[data-dock-submenu="attendance"] { width: min(260px, 94vw); }
       }
     </style>
 
-    <div id="sc-student-action-backdrop" class="sc-student-dock-backdrop hidden" aria-hidden="true"></div>
     <div id="sc-student-action-dock" class="sc-student-dock hidden" aria-label="เมนูด่วนของนักเรียน">
       <div class="sc-dock-shell">
         <div class="sc-dock-group" data-dock-group="attendance">
@@ -1624,7 +1634,6 @@ export async function renderSmartClassroom(teacher, classId) {
   // เมนูจะไม่หายเมื่อเลื่อนจากการ์ดไปกดเมนูย่อย และจะย้ายตำแหน่งตามการ scroll
   const roster = document.getElementById('sc-roster')
   const studentDock = document.getElementById('sc-student-action-dock')
-  const studentDockBackdrop = document.getElementById('sc-student-action-backdrop')
   let activeDockStudentId = null
   let activeDockWrap = null
 
@@ -1642,7 +1651,6 @@ export async function renderSmartClassroom(teacher, classId) {
     activeDockWrap = null
     activeDockStudentId = null
     studentDock.classList.add('hidden')
-    studentDockBackdrop.classList.add('hidden')
     studentDock.querySelectorAll('.sc-dock-group.is-open').forEach(group => group.classList.remove('is-open'))
   }
 
@@ -1653,7 +1661,6 @@ export async function renderSmartClassroom(teacher, classId) {
     activeDockWrap = wrap
     activeDockWrap.classList.add('is-focus')
     studentDock.classList.remove('hidden')
-    studentDockBackdrop.classList.remove('hidden')
     _positionStudentDock()
   }
 
