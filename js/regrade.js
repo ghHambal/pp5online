@@ -1,3 +1,4 @@
+import { testIntentSubjectIds, canDeclareTestSubject } from './regrade-intent.js'
 import { supabase } from './supabase.js'
 import { showToast } from './ui.js'
 import { parseCSV } from './import.js'
@@ -369,7 +370,9 @@ async function loadStudentSubjects() {
   student.subjects = await getMyRegradeSubjects(ctx.studentRow.id)
 }
 
-function studentFabVisible() { return !!ctx.cfg.intent_open }
+function studentFabVisible() {
+  return !!ctx.cfg.intent_open || testIntentSubjectIds(ctx.cfg, ctx.studentRow?.id).length > 0
+}
 
 // ระดับชั้นที่เปิดรับแจ้งความจำนง — ถ้าไม่ได้ตั้งค่าไว้ (ว่าง/ไม่มี) = เปิดทุกระดับชั้น (ค่าเริ่มต้น)
 // เช็คตามระดับชั้น "ปัจจุบัน" ของนักเรียนจากห้องเรียนตอนนี้ (ไม่ใช่ระดับชั้นตอนติดวิชาในอดีต
@@ -474,7 +477,8 @@ function statCard(value, label, color) {
 
 function studentSubjectCard(x) {
   const teacherName = x.teachers?.full_name || '-'
-  const canDeclare = studentFabVisible() && isLevelOpen(x.category)
+  const canDeclare = (!!ctx.cfg.intent_open && isLevelOpen(x.category))
+    || canDeclareTestSubject(ctx.cfg, ctx.studentRow?.id, x.id)
   return `
   <div class="rg-card p-4 shadow-sm">
     <div class="flex justify-between gap-2 items-start">
