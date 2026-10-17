@@ -379,7 +379,7 @@ function openCourseSchedulePreview({ subject, teacher, syllabusItems, roomNames 
   if (coverInfoRows[2]) coverInfoRows[2].textContent = `ชั้น ${coverClassLabel}`
   coverInfoRows[3]?.remove()
 
-  const scheduleMeta = w.document.querySelector('.schedule .doc-meta')
+  const scheduleMeta = w.document.querySelector('.schedule .doc-meta th')
   if (scheduleMeta) scheduleMeta.textContent = `รายวิชา ${meta.subject_name || '—'} รหัส ${meta.subject_code || '—'} ${coverClassLabel} · คุณครู ${teacher?.full_name || '—'}`
 
   const signatureLabels = ['ครูผู้สอน', 'หัวหน้ากลุ่มสาระการเรียนรู้', 'ผู้อำนวยการโรงเรียน']
