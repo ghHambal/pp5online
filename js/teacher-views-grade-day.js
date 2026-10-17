@@ -26,7 +26,7 @@ const _thaiDate = value => {
   if (!value) return '—'
   const d = new Date(`${value}T00:00:00`)
   if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })
+  return `${d.toLocaleDateString('th-TH', { day: 'numeric', month: 'long' })} พ.ศ.${d.getFullYear() + 543}`
 }
 
 const _roomsForCategory = category => {
@@ -64,7 +64,7 @@ const _tableHtml = students => `
       <th>ชื่อ - สกุล<br>(นักเรียน)</th>
       <th>ชื่อ - สกุล<br>(ผู้รับเกรด)</th>
       <th>เกี่ยวข้องกับ<br>นักเรียน</th>
-      <th>นักเรียนไม่ได้อาศัยอยู่กับบิดา / มารดา<br>โปรดระบุ........</th>
+      <th>นักเรียนไม่ได้อาศัย<br>อยู่กับบิดา / มารดา<br>โปรดระบุ........</th>
       <th>เบอร์โทรศัพท์</th>
       <th>หมายเหตุ</th>
     </tr></thead>
@@ -78,12 +78,15 @@ const _printHtml = ({ category, room, advisor, date, students }) => `<!doctype h
   * { box-sizing: border-box; }
   body { margin: 0; color: #111; font-family: "Sarabun", "TH Sarabun New", Arial, sans-serif; }
   .paper { width: 100%; }
-  .heading { text-align: center; margin-bottom: 8px; }
-  .heading img { width: 62px; height: 62px; object-fit: contain; margin-bottom: 3px; }
-  .heading h1 { margin: 0; font-size: 20px; }
-  .heading p { margin: 2px 0; font-size: 13px; }
-  .meta { display: grid; grid-template-columns: 1fr 1fr 1.6fr; gap: 12px; margin: 8px 0 10px; font-size: 13px; }
-  .meta span { border-bottom: 1px dotted #555; padding: 4px 2px; }
+  .heading { text-align: center; margin-bottom: 4px; }
+  .heading img { width: 66px; height: 66px; object-fit: contain; margin-bottom: 2px; }
+  .heading h1 { margin: 0; font-size: 21px; font-weight: 700; }
+  .heading p { margin: 3px 0 8px; font-size: 16px; font-weight: 700; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr 1fr; margin: 0 0 3px; font-size: 15px; }
+  .meta span { min-height: 28px; padding: 3px 8px; }
+  .meta .teacher { grid-column: 2; text-align: center; border-bottom: 1px dotted #555; }
+  .meta .room { grid-column: 3; text-align: center; border-bottom: 1px dotted #555; }
+  .instruction { margin: 2px 0 8px; font-size: 15px; font-weight: 700; text-decoration: underline; }
   .grade-day-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 11px; }
   .grade-day-table th, .grade-day-table td { border: 1px solid #222; padding: 5px 4px; text-align: center; vertical-align: middle; }
   .grade-day-table th { height: 47px; line-height: 1.25; }
@@ -95,11 +98,11 @@ const _printHtml = ({ category, room, advisor, date, students }) => `<!doctype h
   .grade-day-table .student-name { text-align: left; padding-left: 8px; }
   .empty-row { height: 42px; color: #777; }
 </style></head><body><main class="paper">
-  <div class="heading"><img src="${LOGO_URL}" alt=""><h1>เอกสารตารางวันรับเกรด</h1>
-    <p>ตารางข้อมูลนักเรียนสำหรับครูที่ปรึกษาในวันรายงานเกรดผู้ปกครอง</p>
-    <p>ภาคเรียนที่ ${SEMESTER}/${ACADEMIC_YEAR} · วันที่ ${_htmlEsc(_thaiDate(date))}</p>
+  <div class="heading"><img src="${LOGO_URL}" alt=""><h1>ตารางข้อมูลนักเรียนสำหรับครูที่ปรึกษาในวันรายงานเกรดผู้ปกครองเทอม ${SEMESTER}/${ACADEMIC_YEAR}</h1>
+    <p>วันที่ ${_htmlEsc(_thaiDate(date))}</p>
   </div>
-  <div class="meta"><span>สายการเรียน: <b>${_htmlEsc(category)}</b></span><span>ชั้น/ห้อง: <b>${_htmlEsc(room)}</b></span><span>ชื่อ-สกุล (ครูที่ปรึกษา): <b>${_htmlEsc(advisor)}</b></span></div>
+  <div class="meta"><span class="teacher">ชื่อ-สกุล(ครูปรึกษา): <b>${_htmlEsc(advisor)}</b></span><span class="room">ชั้น ${_htmlEsc(room)}</span></div>
+  <div class="instruction">ขอให้ครูเขียนชื่อนักเรียนตามลำดับในรายชื่อให้เรียบร้อย</div>
   ${_tableHtml(students)}
 </main></body></html>`
 
@@ -225,10 +228,11 @@ export async function renderGradeDayDocuments(teacher) {
   setTitle('เอกสารตารางวันรับเกรด', 'grade-day')
   setContent('<div class="flex justify-center py-12 text-gray-400">กำลังโหลดข้อมูลนักเรียนและครูที่ปรึกษา...</div>')
   try {
-    const [assignments, students] = await Promise.all([
+    const [termOneAssignments, students] = await Promise.all([
       getHomeroomTeachers(ACADEMIC_YEAR, SEMESTER),
       getStudents(),
     ])
+    const assignments = termOneAssignments.filter(row => Number(row.academic_year) === ACADEMIC_YEAR && Number(row.semester) === SEMESTER)
     _state = { teacher, assignments, students, category: 'สามัญ' }
     const samaiRooms = _roomsForCategory('สามัญ').length
     const religionRooms = _roomsForCategory('ศาสนา').length
