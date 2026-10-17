@@ -629,7 +629,7 @@ export async function renderMyClasses(teacher) {
               </div>
               <div class="flex-shrink-0 w-20 h-20 -mr-1 -mb-2 rounded-2xl bg-gradient-to-br from-emerald-50 to-blue-50 flex items-end justify-end p-1 text-6xl drop-shadow-sm overflow-visible" aria-label="ไอคอนประจำวิชา">${renderSubjectVisual(groupMs, copyCfg, 'max-w-full max-h-full object-contain')}</div>
             </div>
-            <div class="grid gap-3 p-4 md:grid-cols-2">
+            <div class="grid gap-3 p-4" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));">
         ${group.classes.map(c => {
           const ms = c.master_subjects
           const copyTemplate = getCopyTemplateForClass(copyCfg, c)
