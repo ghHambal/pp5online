@@ -5611,14 +5611,23 @@ export async function markAssignmentSubmissionReviewed(assignmentId, studentId) 
 }
 
 // ─── กำหนดการสอน (Syllabus — ผูกกับรายวิชา) ────────────────────────────────────
-export async function getCourseSyllabus(courseId) {
+export async function getCourseSyllabus(courseId, classId = null) {
   const { data, error } = await supabase
     .from('course_syllabus_items')
     .select('*')
     .eq('course_id', courseId)
     .order('week_start', { ascending: true })
   if (error) throw error
-  return data ?? []
+  const rows = data ?? []
+  if (!classId) return rows
+  const targetClassId = Number(classId)
+  return rows.filter(item => {
+    const rawClassId = item.source_json?.class_id
+    const itemClassId = Number(rawClassId)
+    const isScoped = rawClassId !== null && rawClassId !== undefined && rawClassId !== ''
+      && Number.isInteger(itemClassId) && itemClassId > 0
+    return !isScoped || itemClassId === targetClassId
+  })
 }
 
 export async function createSyllabusItem(payload) {

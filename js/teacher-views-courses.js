@@ -652,7 +652,30 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       showScheduleNotes = event.currentTarget.checked
       try { localStorage.setItem(`pp5-schedule-show-notes-${courseId}`, String(showScheduleNotes)) } catch {}
     })
-    body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => openLessonPlanAIWorkspace({ teacher, cls: virtualClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: courseScheduledDays, onSaved: reopen }))
+    body.querySelector('#cw-ai-schedule')?.addEventListener('click', () => {
+      if (!courseRoomGroups.length) {
+        showToast('รายวิชานี้ยังไม่มีห้องเรียนสำหรับสร้างกำหนดการสอน', 'warning')
+        return
+      }
+      const chooser = document.createElement('div')
+      chooser.className = 'fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4'
+      chooser.innerHTML = `<div class="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h3 class="text-base font-extrabold text-gray-900">เลือกห้องสำหรับสร้างกำหนดการสอน</h3><p class="mt-1 text-xs text-gray-500">กำหนดการจะถูกบันทึกแยกตามห้องที่เลือก เพื่อไม่ให้หัวข้อของแต่ละชั้นปะปนกัน</p><select data-schedule-ai-room-select class="mt-4 w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm"><option value="all">ทุกห้องเหมือนกัน</option>${courseRoomGroups.map((group, index) => `<option value="${index}">${_htmlEsc(group.label)}</option>`).join('')}</select><div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3"><button type="button" data-schedule-ai-room-cancel class="min-h-[42px] rounded-xl border border-gray-200 text-xs font-bold text-gray-600">ยกเลิก</button><button type="button" data-schedule-ai-room-open class="min-h-[42px] rounded-xl bg-blue-700 text-xs font-bold text-white sm:col-span-2">เริ่มสร้างกำหนดการ</button></div></div>`
+      document.body.appendChild(chooser)
+      const closeChooser = () => chooser.remove()
+      chooser.querySelector('[data-schedule-ai-room-cancel]').addEventListener('click', closeChooser)
+      chooser.addEventListener('click', event => { if (event.target === chooser) closeChooser() })
+      chooser.querySelector('[data-schedule-ai-room-open]').addEventListener('click', () => {
+        const selected = chooser.querySelector('[data-schedule-ai-room-select]')?.value
+        const groups = selected === 'all' ? courseRoomGroups : [courseRoomGroups[Number(selected)]].filter(Boolean)
+        const classIds = groups.map(group => Number(group.classId)).filter(id => Number.isInteger(id) && id > 0)
+        const labels = groups.map(group => group.label)
+        const selectedClass = selected === 'all'
+          ? virtualClass
+          : courseClasses.find(item => Number(item.id) === classIds[0]) ?? virtualClass
+        closeChooser()
+        openLessonPlanAIWorkspace({ teacher, cls: selectedClass, courseId, syllabusItems, lessonPlans, currentWeek: 1, initialMode: 'schedule', semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: courseScheduledDays, targetClassIds: classIds, targetClassLabels: labels, onSaved: reopen })
+      })
+    })
     body.querySelector('#cw-ai-plan')?.addEventListener('click', () => {
       if (!courseRoomGroups.length) {
         showToast('รายวิชานี้ยังไม่มีห้องเรียนสำหรับสร้างแผน', 'warning')

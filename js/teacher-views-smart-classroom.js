@@ -411,7 +411,7 @@ export async function renderSmartClassroom(teacher, classId) {
     courseId = cls.course_id ?? cls.master_subjects?.id ?? null
 
     ;[syllabusItems, lessonPlans] = await Promise.all([
-      courseId ? getCourseSyllabus(courseId).catch(() => []) : Promise.resolve([]),
+      courseId ? getCourseSyllabus(courseId, classId).catch(() => []) : Promise.resolve([]),
       courseId ? getLessonPlans(courseId, classId).catch(() => []) : Promise.resolve([]),
     ])
   } catch (err) {
@@ -1121,7 +1121,7 @@ export async function renderSmartClassroom(teacher, classId) {
     if (tab === 'syllabus') return `
       <div class="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-4 lg:p-5 mb-4">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div><p class="text-base font-extrabold text-blue-950">📘 กำหนดการสอนรายภาคเรียน</p><p class="text-xs text-blue-700/70 mt-1">กำหนดหัวข้อแต่ละช่วงสัปดาห์ ผูกกับรายวิชา และใช้ร่วมกันทุกห้อง</p><div class="flex gap-2 mt-2"><span class="px-2 py-1 rounded-lg bg-white border border-blue-100 text-[10px] font-bold text-blue-700">${syllabusItems.length} ช่วงการสอน</span><span class="px-2 py-1 rounded-lg bg-white border border-blue-100 text-[10px] font-bold text-blue-700">สัปดาห์ปัจจุบัน ${curWeek || '—'}</span></div></div>
+          <div><p class="text-base font-extrabold text-blue-950">📘 กำหนดการสอนรายภาคเรียน</p><p class="text-xs text-blue-700/70 mt-1">กำหนดหัวข้อของห้องนี้แยกจากห้องอื่นได้ และยังรองรับกำหนดการร่วมของรายวิชา</p><div class="flex gap-2 mt-2"><span class="px-2 py-1 rounded-lg bg-white border border-blue-100 text-[10px] font-bold text-blue-700">${syllabusItems.length} ช่วงการสอน</span><span class="px-2 py-1 rounded-lg bg-white border border-blue-100 text-[10px] font-bold text-blue-700">สัปดาห์ปัจจุบัน ${curWeek || '—'}</span></div></div>
           <div class="grid grid-cols-2 gap-2 sm:min-w-[310px]">
             <button id="sc-ai-syllabus" class="min-h-[48px] rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold shadow-sm">🤖 สร้างกำหนดการด้วย AI</button>
             <button id="sc-add-syllabus" class="min-h-[48px] rounded-xl bg-white border border-blue-200 text-blue-800 text-xs font-bold hover:bg-blue-50">＋ เพิ่มหัวข้อเอง</button>
@@ -2650,7 +2650,11 @@ export async function renderSmartClassroom(teacher, classId) {
       if (!topic) { showToast('กรอกหัวข้อก่อนนะ', 'warning'); return }
       const btn = m.querySelector('#sy-save')
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
-      const payload = { course_id: courseId, week_start: weekStart, week_end: weekEnd, topic, description: m.querySelector('#sy-desc').value.trim() || null }
+      const payload = {
+        course_id: courseId, week_start: weekStart, week_end: weekEnd, topic,
+        description: m.querySelector('#sy-desc').value.trim() || null,
+        source_json: { ...(it.source_json ?? {}), ...(isEdit ? {} : { class_id: classId }) },
+      }
       try {
         if (isEdit) await updateSyllabusItem(it.id, payload)
         else await createSyllabusItem(payload)

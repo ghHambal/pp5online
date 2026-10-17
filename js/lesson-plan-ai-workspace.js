@@ -395,7 +395,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
   let weeklySessionValues = [{ periodCount: 2, minutesPerPeriod: DEFAULT_MINUTES_PER_PERIOD }]
   m.innerHTML = `<div class="bg-white w-full h-full overflow-y-auto p-4 sm:p-6">
     <div class="flex items-start justify-between gap-3 mb-4">
-      <div><span class="inline-flex px-2.5 py-1 rounded-full ${isSchedule ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'} text-[10px] font-extrabold mb-2">${isSchedule ? '📘 กำหนดการสอน' : '📝 แผนหน้าเดียว'}</span><h3 class="font-extrabold text-gray-800 text-lg">${isSchedule ? 'สร้างกำหนดการสอนด้วย AI' : 'สร้างแผนการสอนหน้าเดียวด้วย AI'}</h3><p class="text-xs text-gray-400 mt-1">${!isSchedule ? `ห้องเป้าหมาย: ${esc(scopeLabel)} · ` : ''}สร้าง Prompt → ใช้กับ AI ที่ครูเลือก → นำ JSON กลับมาวาง → ระบบสร้าง${isSchedule ? 'กำหนดการสอน' : 'แผนการสอน'}</p></div>
+      <div><span class="inline-flex px-2.5 py-1 rounded-full ${isSchedule ? 'bg-blue-50 text-blue-700' : 'bg-violet-50 text-violet-700'} text-[10px] font-extrabold mb-2">${isSchedule ? '📘 กำหนดการสอน' : '📝 แผนหน้าเดียว'}</span><h3 class="font-extrabold text-gray-800 text-lg">${isSchedule ? 'สร้างกำหนดการสอนด้วย AI' : 'สร้างแผนการสอนหน้าเดียวด้วย AI'}</h3><p class="text-xs text-gray-400 mt-1">${scopedClassIds.length ? `ห้องเป้าหมาย: ${esc(scopeLabel)} · ` : ''}สร้าง Prompt → ใช้กับ AI ที่ครูเลือก → นำ JSON กลับมาวาง → ระบบสร้าง${isSchedule ? 'กำหนดการสอน' : 'แผนการสอน'}</p></div>
       <button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button>
     </div>
     ${isSchedule ? `<div class="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 mb-4"><p class="text-sm font-bold text-blue-800">สร้างโครงสร้างทั้งภาคเรียนในครั้งเดียว</p><p class="text-[11px] text-blue-600 mt-1">AI จะจัดช่วงสัปดาห์ หัวข้อ วิธีสอน และหมายเหตุตามหน่วยการเรียนรู้กับเอกสารที่แนบ</p></div>
@@ -637,23 +637,33 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
     let data
     try { data = validatePayload(m.querySelector('#lp-ai-json').value, mode, getScheduleConfig(), getPlanConfig()) } catch (err) { showResult(err.message, false); return }
     const count = mode === 'schedule' ? data.weeks.length : data.plans.length
-    const recipientCount = mode === 'plan' && scopedClassIds.length ? scopedClassIds.length : 1
+    const recipientCount = scopedClassIds.length || 1
     const savedCount = count * recipientCount
-    if (!confirm(`ยืนยันสร้าง${mode === 'schedule' ? 'กำหนดการสอน' : 'แผนการสอน'} ${savedCount} รายการในระบบ${mode === 'plan' && recipientCount > 1 ? ` (${count} แผน × ${recipientCount} ห้อง)` : ''}?`)) return
+    if (!confirm(`ยืนยันสร้าง${mode === 'schedule' ? 'กำหนดการสอน' : 'แผนการสอน'} ${savedCount} รายการในระบบ${recipientCount > 1 ? ` (${count} ${mode === 'schedule' ? 'แถว' : 'แผน'} × ${recipientCount} ห้อง)` : ''}?`)) return
     const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'กำลังสร้าง...'
     try {
       if (mode === 'schedule') {
+        const recipients = scopedClassIds.length ? scopedClassIds : [null]
         for (const w of data.weeks) {
-          const payload = {
-            course_id: courseId, week_start: asInt(w.week_start), week_end: asInt(w.week_end, asInt(w.week_start)),
-            date_start: dateForWeek(asInt(w.week_start)).start ?? isoDate(w.date_start),
-            date_end: dateForWeek(asInt(w.week_end, asInt(w.week_start))).end ?? isoDate(w.date_end),
-            topic: String(w.topic).trim(), description: null, teaching_methods: asText(w.teaching_methods) || null,
-            notes: asText(w.notes) || null,
-            source_json: { ...w, date_start: dateForWeek(asInt(w.week_start)).start ?? isoDate(w.date_start), date_end: dateForWeek(asInt(w.week_end, asInt(w.week_start))).end ?? isoDate(w.date_end) },
+          for (const targetClassId of recipients) {
+            const payload = {
+              course_id: courseId, week_start: asInt(w.week_start), week_end: asInt(w.week_end, asInt(w.week_start)),
+              date_start: dateForWeek(asInt(w.week_start)).start ?? isoDate(w.date_start),
+              date_end: dateForWeek(asInt(w.week_end, asInt(w.week_start))).end ?? isoDate(w.date_end),
+              topic: String(w.topic).trim(), description: null, teaching_methods: asText(w.teaching_methods) || null,
+              notes: asText(w.notes) || null,
+              source_json: {
+                ...w,
+                ...(targetClassId ? { class_id: targetClassId } : {}),
+                date_start: dateForWeek(asInt(w.week_start)).start ?? isoDate(w.date_start),
+                date_end: dateForWeek(asInt(w.week_end, asInt(w.week_start))).end ?? isoDate(w.date_end),
+              },
+            }
+            const existing = (syllabusItems ?? []).find(x => x.week_start === payload.week_start
+              && x.week_end === payload.week_end
+              && (targetClassId ? Number(x.source_json?.class_id) === targetClassId : !x.source_json?.class_id))
+            if (existing) await updateSyllabusItem(existing.id, payload); else await createSyllabusItem(payload)
           }
-          const existing = (syllabusItems ?? []).find(x => x.week_start === payload.week_start && x.week_end === payload.week_end)
-          if (existing) await updateSyllabusItem(existing.id, payload); else await createSyllabusItem(payload)
         }
       } else {
         const recipients = scopedClassIds.length ? scopedClassIds : [null]
