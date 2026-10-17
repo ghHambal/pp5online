@@ -117,12 +117,17 @@ function _openModal() {
       <button id="grade-day-close" class="rounded-xl border border-gray-200 px-3 py-1.5 text-xl text-gray-500 hover:bg-gray-50" aria-label="ปิดหน้าต่าง">×</button>
     </div>
     <div class="space-y-4 p-5 sm:p-7">
-      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <label class="block text-xs font-bold text-gray-600">สายการเรียน
-          <select id="grade-day-category" class="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400">
-            <option value="สามัญ" ${_state.category === 'สามัญ' ? 'selected' : ''}>สามัญ</option><option value="ศาสนา" ${_state.category === 'ศาสนา' ? 'selected' : ''}>ศาสนา</option>
-          </select>
-        </label>
+      <div>
+        <div class="flex flex-wrap items-end justify-between gap-2">
+          <div><p class="text-xs font-bold text-gray-700">เลือกกลุ่มครูที่ปรึกษา</p><p class="mt-1 text-xs text-gray-500">สลับเพื่อโหลดห้องเรียนและครูที่ปรึกษาของแต่ละสายโดยตรง</p></div>
+          <span class="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">ข้อมูลภาคเรียนที่ 1/2569</span>
+        </div>
+        <div class="mt-2 grid grid-cols-2 gap-2" role="group" aria-label="เลือกสายการเรียน">
+          <button type="button" data-grade-day-category="สามัญ" aria-pressed="${_state.category === 'สามัญ' ? 'true' : 'false'}" class="grade-day-category-btn rounded-xl border px-4 py-3 text-left transition ${_state.category === 'สามัญ' ? 'border-indigo-600 bg-indigo-600 text-white shadow-md' : 'border-gray-200 bg-white text-gray-700 hover:border-indigo-300 hover:bg-indigo-50'}"><span class="block text-sm font-extrabold">🏫 สามัญ</span><span data-grade-day-category-subtitle class="mt-1 block text-[11px] ${_state.category === 'สามัญ' ? 'text-indigo-100' : 'text-gray-500'}">ครูที่ปรึกษาภาคสามัญ</span></button>
+          <button type="button" data-grade-day-category="ศาสนา" aria-pressed="${_state.category === 'ศาสนา' ? 'true' : 'false'}" class="grade-day-category-btn rounded-xl border px-4 py-3 text-left transition ${_state.category === 'ศาสนา' ? 'border-amber-600 bg-amber-500 text-white shadow-md' : 'border-gray-200 bg-white text-gray-700 hover:border-amber-300 hover:bg-amber-50'}"><span class="block text-sm font-extrabold">🕌 ศาสนา</span><span data-grade-day-category-subtitle class="mt-1 block text-[11px] ${_state.category === 'ศาสนา' ? 'text-amber-100' : 'text-gray-500'}">ครูที่ปรึกษาภาคศาสนา</span></button>
+        </div>
+      </div>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <label class="block text-xs font-bold text-gray-600">ห้องเรียน <span class="font-normal text-gray-400">เลือกจากฐานข้อมูล</span>
           <select id="grade-day-room" class="mt-1.5 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm outline-none focus:border-indigo-400">${rooms.map(room => `<option value="${_htmlEsc(room)}">${_htmlEsc(room)}</option>`).join('') || '<option value="">ไม่พบห้อง</option>'}</select>
         </label>
@@ -143,7 +148,8 @@ function _openModal() {
   </div>`
   document.body.appendChild(modal)
 
-  const categoryEl = modal.querySelector('#grade-day-category')
+  const categoryButtons = [...modal.querySelectorAll('[data-grade-day-category]')]
+  let selectedCategory = _state.category
   const roomEl = modal.querySelector('#grade-day-room')
   const roomEditEl = modal.querySelector('#grade-day-room-edit')
   const advisorEl = modal.querySelector('#grade-day-advisor')
@@ -151,8 +157,29 @@ function _openModal() {
   const previewEl = modal.querySelector('#grade-day-preview')
   const statusEl = modal.querySelector('#grade-day-status')
 
+  const setCategoryButtonState = () => {
+    categoryButtons.forEach(button => {
+      const active = button.dataset.gradeDayCategory === selectedCategory
+      button.setAttribute('aria-pressed', String(active))
+      button.classList.toggle('shadow-md', active)
+      button.classList.toggle('border-indigo-600', active && selectedCategory === 'สามัญ')
+      button.classList.toggle('bg-indigo-600', active && selectedCategory === 'สามัญ')
+      button.classList.toggle('border-amber-600', active && selectedCategory === 'ศาสนา')
+      button.classList.toggle('bg-amber-500', active && selectedCategory === 'ศาสนา')
+      button.classList.toggle('text-white', active)
+      button.classList.toggle('border-gray-200', !active)
+      button.classList.toggle('bg-white', !active)
+      button.classList.toggle('text-gray-700', !active)
+      const subtitle = button.querySelector('[data-grade-day-category-subtitle]')
+      if (subtitle) {
+        ;['text-indigo-100', 'text-amber-100', 'text-gray-500'].forEach(className => subtitle.classList.remove(className))
+        subtitle.classList.add(active ? (selectedCategory === 'สามัญ' ? 'text-indigo-100' : 'text-amber-100') : 'text-gray-500')
+      }
+    })
+  }
+
   const render = () => {
-    const category = categoryEl.value
+    const category = selectedCategory
     const room = roomEl.value
     const students = _studentsFor(category, room)
     previewEl.innerHTML = _tableHtml(students)
@@ -160,7 +187,7 @@ function _openModal() {
   }
 
   const refreshRooms = () => {
-    const category = categoryEl.value
+    const category = selectedCategory
     const nextRooms = _roomsForCategory(category)
     roomEl.innerHTML = nextRooms.map(room => `<option value="${_htmlEsc(room)}">${_htmlEsc(room)}</option>`).join('') || '<option value="">ไม่พบห้อง</option>'
     const room = nextRooms[0] || ''
@@ -169,22 +196,27 @@ function _openModal() {
     render()
   }
 
-  categoryEl.addEventListener('change', refreshRooms)
+  categoryButtons.forEach(button => button.addEventListener('click', () => {
+    selectedCategory = button.dataset.gradeDayCategory
+    setCategoryButtonState()
+    refreshRooms()
+  }))
   roomEl.addEventListener('change', () => {
     roomEditEl.value = roomEl.value
-    advisorEl.value = _assignmentFor(categoryEl.value, roomEl.value)?.teachers?.full_name || ''
+    advisorEl.value = _assignmentFor(selectedCategory, roomEl.value)?.teachers?.full_name || ''
     render()
   })
   modal.querySelector('#grade-day-close').addEventListener('click', () => modal.remove())
   modal.querySelector('#grade-day-cancel').addEventListener('click', () => modal.remove())
   modal.querySelector('#grade-day-print').addEventListener('click', () => {
-    const category = categoryEl.value
+    const category = selectedCategory
     const room = roomEditEl.value.trim()
     const advisor = advisorEl.value.trim()
     const students = _studentsFor(category, roomEl.value)
     if (!room || !advisor) { showToast('กรุณาตรวจสอบห้องเรียนและชื่อครูที่ปรึกษา', 'error'); return }
     openHtmlPrintOverlay(_printHtml({ category, room, advisor, date: dateEl.value, students }), { autoprint: false })
   })
+  setCategoryButtonState()
   render()
 }
 
