@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.985'
+import { APP_VERSION } from './version.js?v=10.22.986'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.986': [
+    '👁️ ตัวอย่างเอกสารกำหนดการสอน: ให้เลือกห้องเรียนก่อนเปิดเอกสาร เพื่อแสดงหัวเอกสารและข้อมูลของห้องที่เลือก',
+  ],
   '10.22.985': [
     '🏫 กำหนดการสอน: เลือกห้องเรียนก่อนบันทึกได้เหมือนแผนหน้าเดียว และแยกข้อมูลตามห้องไม่ให้ปะปนกัน',
   ],

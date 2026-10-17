@@ -544,6 +544,21 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       </tr>`
     }).join('') : ''
     const documentClassOptions = allowedClasses.map(c => `<option value="${c.id}">${_htmlEsc(c.class_name ?? `ห้อง ${c.id}`)}</option>`).join('')
+    const scheduleItemsForRoom = classId => {
+      const targetClassId = Number(classId)
+      const selected = new Map()
+      syllabusItems.forEach(item => {
+        const rawClassId = item.source_json?.class_id
+        const itemClassId = Number(rawClassId)
+        const isScoped = rawClassId !== null && rawClassId !== undefined && rawClassId !== ''
+          && Number.isInteger(itemClassId) && itemClassId > 0
+        if (isScoped && itemClassId !== targetClassId) return
+        const key = `${item.week_start}-${item.week_end ?? item.week_start}`
+        const previous = selected.get(key)
+        if (!previous || (isScoped && !previous.isScoped)) selected.set(key, { item, isScoped })
+      })
+      return [...selected.values()].map(entry => entry.item)
+    }
 
     body.innerHTML = `<nav class="flex flex-wrap gap-2 border-b border-gray-200 pb-4 mb-4" aria-label="ส่วนออกแบบการสอน">
       <button type="button" data-course-tab="schedule" class="course-tab rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-bold text-white">📘 กำหนดการสอน</button>
@@ -733,7 +748,24 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       const notesCheckbox = body.querySelector('#cw-schedule-show-notes')
       showScheduleNotes = notesCheckbox?.checked === true
       try { localStorage.setItem(`pp5-schedule-show-notes-${courseId}`, String(showScheduleNotes)) } catch {}
-      openCourseSchedulePreview({ subject, teacher, syllabusItems, roomNames: courseRoomNames, semester: termConfig.semester ?? subject.semester, academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year, semesterStart, semesterEnd: termConfig.semester_end, showNotesContent: showScheduleNotes, departmentHead: courseDepartment, signatureTeachers })
+      if (!courseRoomGroups.length) {
+        showToast('รายวิชานี้ยังไม่มีห้องเรียนสำหรับเปิดตัวอย่างเอกสาร', 'warning')
+        return
+      }
+      const chooser = document.createElement('div')
+      chooser.className = 'fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4'
+      chooser.innerHTML = `<div class="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl"><h3 class="text-base font-extrabold text-gray-900">เลือกห้องสำหรับดูตัวอย่างเอกสาร</h3><p class="mt-1 text-xs text-gray-500">กรุณาเลือกห้องก่อนเปิดตัวอย่าง เพื่อให้หัวเอกสารและกำหนดการสอนตรงกับห้องนั้น</p><select data-schedule-preview-room-select class="mt-4 w-full rounded-xl border border-gray-200 bg-white px-3 py-3 text-sm">${courseRoomGroups.map((group, index) => `<option value="${index}">${_htmlEsc(group.label)}</option>`).join('')}</select><div class="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3"><button type="button" data-schedule-preview-room-cancel class="min-h-[42px] rounded-xl border border-gray-200 text-xs font-bold text-gray-600">ยกเลิก</button><button type="button" data-schedule-preview-room-open class="min-h-[42px] rounded-xl bg-blue-700 text-xs font-bold text-white sm:col-span-2">เปิดตัวอย่างเอกสาร</button></div></div>`
+      document.body.appendChild(chooser)
+      const closeChooser = () => chooser.remove()
+      chooser.querySelector('[data-schedule-preview-room-cancel]').addEventListener('click', closeChooser)
+      chooser.addEventListener('click', event => { if (event.target === chooser) closeChooser() })
+      chooser.querySelector('[data-schedule-preview-room-open]').addEventListener('click', () => {
+        const selectedIndex = Number(chooser.querySelector('[data-schedule-preview-room-select]')?.value)
+        const selectedGroup = courseRoomGroups[selectedIndex]
+        if (!selectedGroup) return
+        closeChooser()
+        openCourseSchedulePreview({ subject, teacher, syllabusItems: scheduleItemsForRoom(selectedGroup.classId), roomNames: selectedGroup.roomNames, semester: termConfig.semester ?? subject.semester, academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year, semesterStart, semesterEnd: termConfig.semester_end, showNotesContent: showScheduleNotes, departmentHead: courseDepartment, signatureTeachers })
+      })
     })
     let selectedPlan = null
     const picker = body.querySelector('#cw-document-picker')
