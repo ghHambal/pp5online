@@ -1,3 +1,5 @@
+import { openRegradeSlip } from './regrade-slip.js'
+import { openRegradeNotification, pollRegradeEvents } from './regrade-notifications.js'
 import { testIntentSubjectIds, canDeclareTestSubject } from './regrade-intent.js'
 import { supabase } from './supabase.js'
 import { showToast } from './ui.js'
@@ -67,25 +69,8 @@ const SLIP_TEMPLATE_CATEGORIES = [
   { key: 'ศาสนา', suffix: 'religion', emoji: '🕌', label: 'ศาสนา' },
 ]
 
-async function printRegradeSlip(row, teacherNameOverride) {
-  const category = row.category === 'ศาสนา' ? 'ศาสนา' : 'สามัญ'
-  const templateId = Number(ctx.cfg?.regrade_slip_template_ids?.[category])
-  if (!templateId) { showToast(`ยังไม่ได้ตั้งค่าเทมเพลตใบสั้นสำหรับหมวด "${category}" — ไปตั้งค่าที่แท็บ "เอกสาร" ก่อนครับ`, 'warning'); return }
-  const template = await getCertificateTemplate(templateId).catch(() => null)
-  if (!template) { showToast('ไม่พบเทมเพลตที่ตั้งค่าไว้ อาจถูกลบไปแล้ว', 'error'); return }
-  const room = row.students?.main_room || row.students?.religion_room || ''
-  openCertificatePrint({
-    layout: template.layout,
-    variables: {
-      student_name: row.students?.full_name ?? '', student_code: row.students?.student_code ?? '', room,
-      class_level: row.class_level ?? '', category: row.category ?? '',
-      subject_name: row.subject_name ?? '', subject_code: row.subject_code ?? '', semester: row.semester ?? '',
-      grade_failed_at: row.grade_failed_at ?? '',
-      teacher_name: teacherNameOverride ?? row.teachers?.full_name ?? row.teacher_name_raw ?? '',
-      response_method: row.method ?? '', due_date: formatRegradeDue(row.due_text), file_url: row.file_url ?? '',
-    },
-    docTitle: `ใบแก้ค้างเก่า ${row.students?.full_name ?? ''}`,
-  }, showToast)
+function printRegradeSlip(row, teacherNameOverride) {
+  return openRegradeSlip(row, teacherNameOverride, ctx.cfg)
 }
 
 // ตัวหน้ารหัสวิชา -> กลุ่มสาระ (เฉพาะฝั่งสามัญ) — ตรวจสอบแล้วว่าตรง 1:1 กับข้อมูลค้างเก่าจริง
@@ -2371,7 +2356,10 @@ function renderNoAccess() {
 
 async function init() {
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session) { window.location.replace('index.html'); return }
+  if (!session) {
+    sessionStorage.setItem('regrade-pending-subject', new URLSearchParams(location.search).get('subject') || '')
+    window.location.replace('index.html?next=regrade.html'); return
+  }
 
   const { data: profile } = await supabase.from('profiles').select('role, is_also_admin').eq('id', session.user.id).single()
   ctx.role = profile?.role
@@ -2421,6 +2409,34 @@ async function init() {
   // (ไม่ใช่หน้าครูของตัวเอง) แล้วสลับไปดูงานสอนของตัวเองเพิ่มได้ผ่านแถบสลับบทบาท
   const defaultSection = (ctx.isAdmin || ctx.isExecutive) ? 'dashboard' : ctx.isRegistrar ? 'registrar' : sections[0].key
   await goSection(defaultSection)
+  const params = new URLSearchParams(location.search)
+  const pendingId = params.get('subject') || sessionStorage.getItem('regrade-pending-subject')
+  sessionStorage.removeItem('regrade-pending-subject')
+  if (pendingId) {
+    if (params.get('action') === 'respond' && ctx.teacherRow) {
+      await loadTeacherSubjects()
+      const row = teacher.subjects.find(x => Number(x.id) === Number(pendingId))
+      if (row && row.status === 'จำนงแล้ว') {
+        teacher.subView = 'respond'
+        openTeacherResponseForm(row, 'ให้งานแก้')
+        await goSection('teacher')
+      } else await openRegradeNotification(pendingId)
+    } else await openRegradeNotification(pendingId, { onRespond: async row => {
+      if (!ctx.teacherRow) return
+      teacher.subView = 'respond'
+      openTeacherResponseForm(row, 'ให้งานแก้')
+      await goSection('teacher')
+    } })
+  }
+  const notificationRole = ctx.role === 'student' ? 'student' : ctx.teacherRow ? 'teacher' : null
+  if (notificationRole) {
+    const ownerId = notificationRole === 'student' ? ctx.studentRow.id : ctx.teacherRow.id
+    const poll = () => { if (document.visibilityState === 'visible') pollRegradeEvents(notificationRole, ownerId).catch(() => {}) }
+    poll()
+    const timer = setInterval(poll, 30000)
+    document.addEventListener('visibilitychange', poll)
+    window.addEventListener('pagehide', () => { clearInterval(timer); document.removeEventListener('visibilitychange', poll) }, { once: true })
+  }
 }
 
 init()

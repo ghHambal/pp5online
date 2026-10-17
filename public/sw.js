@@ -20,14 +20,19 @@ self.addEventListener('push', event => {
 
 self.addEventListener('notificationclick', e => {
   e.notification.close()
-  const targetPath = e.notification.data?.url || 'teacher.html'
+  const scope = new URL(self.registration.scope)
+  let target
+  try { target = new URL(e.notification.data?.url || 'teacher.html', scope) } catch { target = new URL('teacher.html', scope) }
+  if (target.origin !== scope.origin) target = new URL('teacher.html', scope)
   e.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-      const focused = list.find(c => c.focused)
-      if (focused) return focused.focus()
-      const existing = list.find(c => c.url.includes(targetPath))
-      if (existing) return existing.focus()
-      return self.clients.openWindow(targetPath)
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async list => {
+      // Open the requested record, even when an unrelated tab is currently focused.
+      const existing = list.find(c => { try { return new URL(c.url).pathname === target.pathname } catch { return false } })
+      if (existing) {
+        const client = existing.url === target.href ? existing : await existing.navigate(target.href)
+        if (client) return client.focus()
+      }
+      return self.clients.openWindow(target.href)
     })
   )
 })

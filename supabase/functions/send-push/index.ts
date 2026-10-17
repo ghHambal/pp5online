@@ -108,7 +108,7 @@ Deno.serve(async (req: Request) => {
         }
         tag = `regrade-student-${row.id}`
       }
-      url = 'regrade.html'
+      url = `regrade.html?subject=${row.id}`
     }
 
     // แจ้งแอดมินเมื่อครูส่งคำขอรับผิดชอบรายการแข่งขัน — ห้ามรับ profileIds จาก client

@@ -1,3 +1,4 @@
+import { pollRegradeEvents } from './regrade-notifications.js'
 import { supabase }            from './supabase.js'
 import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog, showAnnouncementPopups, showTerangganuUrgentModal, initHeavyLoadBanner, getFriendlyErrorMessage } from './ui.js'
 import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
@@ -1065,21 +1066,15 @@ function _renderLiveRegradeBadge(count) {
 async function _updateRegradeBadge() {
   if (!_teacher) return
   try {
-    const { count, error } = await supabase.from('regrade_subjects')
-      .select('id', { count: 'exact', head: true })
-      .eq('teacher_id', _teacher.id).eq('status', 'จำนงแล้ว')
-    if (error) throw error
-    const current = Number(count) || 0
+    const current = await pollRegradeEvents('teacher', _teacher.id)
     _renderLiveRegradeBadge(current)
-    if (_lastRegradePendingCount !== null && current > _lastRegradePendingCount) {
-      showToast(`🔔 มีคำร้องแก้ค้างเก่าใหม่ ${current - _lastRegradePendingCount} รายการ`, 'info')
-    }
     _lastRegradePendingCount = current
   } catch { /* ไม่ block หน้าหลัก */ }
 }
 
 function _startPolling() {
   if (_teacherPollingTimer) return
+  _updateRegradeBadge()
   const INTERVAL = 30000 // 30 วินาที
   _teacherPollingTimer = setInterval(() => {
     if (document.visibilityState === 'visible') { _updateRequestsBadge(); _updateRegradeBadge() }
