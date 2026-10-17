@@ -692,8 +692,8 @@ export async function renderMyClasses(teacher) {
                onclick="window._openClassDetail(${c.id})">
             <div class="relative p-4">
               <div class="pointer-events-none absolute right-3 bottom-3 w-20 h-20 flex items-end justify-end text-6xl opacity-75 drop-shadow-md" aria-label="ไอคอนประจำวิชา">${renderSubjectVisual(ms, copyCfg, 'max-w-full max-h-full object-contain')}</div>
-              <div class="flex items-start justify-between gap-2">
-                <div class="flex-1 min-w-0 pr-16 sm:pr-20">
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div class="w-full min-w-0 sm:flex-1 sm:pr-20">
                   <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
                     <span class="px-2 py-0.5 bg-white/80 text-emerald-700 text-xs font-mono rounded-full">${ms?.subject_code??'—'}</span>
                     ${ms?.credit != null ? `<span class="px-2 py-0.5 bg-white/80 text-gray-500 text-xs rounded-full">${ms.credit} หน่วยกิต</span>` : ''}
@@ -702,8 +702,8 @@ export async function renderMyClasses(teacher) {
                       ? `<span class="px-2 py-0.5 bg-white/80 text-green-700 text-xs rounded-full">✓ Sheet</span>`
                       : ''}
                   </div>
-                  <h3 class="font-bold text-gray-800 text-base">${ms?.subject_name??'—'}</h3>
-                  <p class="text-sm text-gray-500 mt-0.5">ห้อง: <span class="font-semibold" style="color:${classColor.text}">${c.class_name}</span>
+                  <h3 class="break-words font-bold text-gray-800 text-base" style="overflow-wrap:anywhere">${ms?.subject_name??'—'}</h3>
+                  <p class="break-words text-sm text-gray-500 mt-0.5">ห้อง: <span class="font-semibold" style="color:${classColor.text};overflow-wrap:anywhere">${c.class_name}</span>
                     ${cr ? `<span class="ml-2 text-[11px] text-gray-400">📍 ${cr.building} ${cr.room_number}</span>` : ''}
                   </p>
                   <div class="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-500">
@@ -715,7 +715,7 @@ export async function renderMyClasses(teacher) {
                         : ''}
                   </div>
                 </div>
-                <div class="flex items-start gap-1 flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity">
+                <div class="flex flex-wrap items-start justify-end gap-1 self-end flex-shrink-0 opacity-70 group-hover:opacity-100 transition-opacity sm:self-start">
                   <button onclick="event.stopPropagation();window._openClassDashboard(${c.id})"
                     class="p-1.5 text-gray-400 hover:text-emerald-600 hover:bg-white/70 rounded-lg transition text-sm" title="Dashboard ห้องเรียน">📈</button>
                   <button onclick="event.stopPropagation();window._openExamDocsForClass(${c.id})"
