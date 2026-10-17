@@ -1196,7 +1196,12 @@ function _openOverviewCustomizerModal(teacher, allTiles, homeroomRooms) {
 // ─── Lesson Plan Approval Document ───────────────────────────────────────────
 
 export function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg, depts) {
-  const rawLogoUrl = cfg.samaiLogoBwUrl ?? cfg.samaiLogoUrl ?? ''
+  const configuredLogoUrl = [cfg?.samaiLogoBwUrl, cfg?.samaiLogoUrl]
+    .map(value => String(value ?? '').trim())
+    .find(Boolean) || ''
+  const rawLogoUrl = configuredLogoUrl
+    ? `${configuredLogoUrl}${configuredLogoUrl.includes('?') ? '&' : '?'}docLogo=${Date.now()}`
+    : ''
 
   const credit      = Number(subject.credit ?? 1)
   const hrsPerWeek  = credit * 2
@@ -1246,7 +1251,8 @@ export function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg
   .b  { font-weight:700; }
   .title { position:absolute; top:102px; left:0; width:794px; text-align:center; font-size:26px; font-weight:700; }
   .logo { position:absolute; left:58px; top:83px; width:66px; height:66px;
-    border-radius:50%; font-size:13px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    border:1px solid #111; border-radius:50%; padding:2px; background:#fff;
+    font-size:13px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
   .line { position:absolute; border-bottom:1.2px dotted #111; height:23px; }
   .fill { position:absolute; border-bottom:1.2px dotted #111; height:23px; color:#064ec7;
     text-align:center; outline:none; overflow:hidden; white-space:nowrap; padding:0 4px; }
@@ -1259,7 +1265,7 @@ export function _openLessonPlanApproval(subject, classesForSubject, teacher, cfg
 
   <div class="logo">
     ${rawLogoUrl
-      ? `<img src="${rawLogoUrl}" style="width:72px;height:72px;object-fit:contain;" onerror="this.style.display='none'"/>`
+      ? `<img src="${rawLogoUrl}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'"/>`
       : '<span style="font-size:12px;color:#999;">โลโก้</span>'}
   </div>
 
