@@ -301,6 +301,7 @@ const ROUTES = {
   'certificates': () => import('./teacher-views-certificates.js').then(m => m.renderCertificateManager(_teacher)),
   'quiz-system': () => import('./teacher-views-quiz-banks.js').then(m => m.renderQuizBanks(_teacher)),
   'exam-docs':   () => import('./teacher-views-exam-docs.js?v=10.22.682').then(m => m.renderExamDocuments(_teacher)),
+  'grade-day':   () => import('./teacher-views-grade-day.js?v=grade-day-1').then(m => m.renderGradeDayDocuments(_teacher)),
   'sports':      () => {
     // ครูตำแหน่ง house_color_admin (หรือได้รับสิทธิ์ menu_sports_admin/เป็นแอดมิน) ที่กด
     // ทางลัด "ระบบกีฬาสี" จากเมนูปกตินี้ ต้องเข้าเป็นแอดมิน AZIZGAMES ทันทีเหมือนกับที่เข้าทาง
@@ -367,6 +368,7 @@ const MOBILE_NAV_GROUPS = {
       { selector: '[data-nav="flashcards"]', icon: '🃏', label: 'บัตรคำศัพท์' },
       { selector: '[data-nav="quiz-system"]', icon: '📝', label: 'แบบทดสอบออนไลน์' },
       { selector: '[data-nav="exam-docs"]', icon: '📄', label: 'เอกสารช่วงสอบ' },
+      { selector: '[data-nav="grade-day"]', icon: '📋', label: 'เอกสารตารางวันรับเกรด' },
       { selector: '[data-nav="certificates"]', icon: '🏅', label: 'ระบบเกียรติบัตร' },
       { selector: '[data-nav="tutorial"]', icon: '📖', label: 'คู่มือการใช้งาน' },
     ],
@@ -409,6 +411,7 @@ const MOBILE_NAV_VIEW_GROUPS = {
   flashcards: 'tools',
   'quiz-system': 'tools',
   'exam-docs': 'tools',
+  'grade-day': 'tools',
   certificates: 'tools',
   tutorial: 'tools',
   'announcements-view': 'more',
