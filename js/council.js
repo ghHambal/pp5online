@@ -1986,6 +1986,37 @@ function renderExecDashboardView() {
     ${renderAdminAppDetailModal()}${renderCouncilDeleteModal()}`
 }
 
+function filteredCouncilApplications() {
+  return (adminApps ?? []).filter(a => {
+    if (a.council_positions?.gender !== appsGenderTab) return false
+    if (appsFilter !== 'all' && appPipelineStage(a) !== appsFilter) return false
+    if (appsGradeFilter && studentGradeLevel(a.students) !== appsGradeFilter) return false
+    if (appsPositionFilter && String(a.position_id) !== String(appsPositionFilter)) return false
+    if (appsAdvisorEndorseFilter === 'yes' && !a.endorsed_at) return false
+    if (appsAdvisorEndorseFilter === 'no' && a.endorsed_at) return false
+    if (appsPeerEndorseFilter === 'yes' && !peerEndorsementSatisfied(a)) return false
+    if (appsPeerEndorseFilter === 'no' && peerEndorsementSatisfied(a)) return false
+    return true
+  })
+}
+
+function printCouncilApplications() {
+  if (!ctx.isAdmin && !ctx.isCouncilAdvisor) return
+  const list = filteredCouncilApplications().sort((a, b) =>
+    String(a.students?.main_room ?? '').localeCompare(String(b.students?.main_room ?? ''), 'th', { numeric: true }) ||
+    String(a.students?.student_code ?? '').localeCompare(String(b.students?.student_code ?? ''), 'th', { numeric: true }))
+  if (!list.length) { showToast('ไม่มีรายชื่อสำหรับพิมพ์', 'warning'); return }
+  const peerRequired = peerEndorsementRequired()
+  const filters = [APPS_FILTERS.find(f => f.id === appsFilter)?.label,
+    appsGradeFilter,
+    appsPositionFilter ? ctx.positions.find(p => String(p.id) === String(appsPositionFilter))?.position_name : '',
+    appsAdvisorEndorseFilter ? 'ครูที่ปรึกษา: ' + (appsAdvisorEndorseFilter === 'yes' ? 'รับรองแล้ว' : 'ยังไม่รับรอง') : '',
+    peerRequired && appsPeerEndorseFilter ? 'พี่สภา: ' + (appsPeerEndorseFilter === 'yes' ? 'ผ่านเงื่อนไข' : 'ยังไม่ผ่านเงื่อนไข') : '',
+  ].filter(Boolean).join(' · ')
+  const rows = list.map((a, index) => `<tr><td>${index + 1}</td><td>${esc(a.students?.student_code ?? '—')}</td><td>${esc(a.students?.full_name ?? '—')}</td><td>${esc(a.students?.main_room ?? '—')}</td><td>${esc(a.council_positions?.position_name ?? '—')}</td><td>${esc(PIPELINE_STATUS_BADGE[a.status]?.[0] ?? '—')}</td><td>${a.endorsed_at ? 'รับรองแล้ว' : 'ยังไม่รับรอง'}</td>${peerRequired ? `<td>${peerEndorsementSatisfied(a) ? 'ผ่านเงื่อนไข' : 'ยังไม่ผ่านเงื่อนไข'}</td>` : ''}<td></td></tr>`).join('')
+  openHtmlPrintOverlay(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายชื่อผู้สมัครสภานักเรียน${esc(GENDER_LABEL[appsGenderTab])}</title><style>@page{size:A4 landscape;margin:12mm}body{font-family:Tahoma,Arial,sans-serif;color:#111;font-size:12px}h1{text-align:center;font-size:20px;margin:0 0 8px}.meta{text-align:center;margin:6px 0}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #555;padding:6px;vertical-align:top}th{background:#eee}thead{display:table-header-group}tr{break-inside:avoid}td:first-child{text-align:center}th:last-child{width:8%}</style></head><body><h1>รายชื่อผู้สมัครสภานักเรียน${esc(GENDER_LABEL[appsGenderTab])}</h1><p class="meta">ปีการศึกษา ${esc(String(electionYear))} · ${list.length} ใบสมัคร / ${new Set(list.map(a => a.students?.id ?? a.students?.student_code ?? a.id)).size} คน</p><p class="meta">${esc(filters)}</p><p class="meta">วันที่พิมพ์ ${esc(new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'long', timeStyle: 'short' }))}</p><table><thead><tr><th>ลำดับ</th><th>รหัสนักเรียน</th><th>ชื่อ–สกุล</th><th>ห้อง</th><th>ฝ่ายที่สมัคร</th><th>สถานะใบสมัคร</th><th>ครูที่ปรึกษา</th>${peerRequired ? '<th>การรับรองพี่สภา</th>' : ''}<th>หมายเหตุ</th></tr></thead><tbody>${rows}</tbody></table></body></html>`)
+}
+
 function renderApplicationsAdminView() {
   if (!ctx.isAdmin && !ctx.isCouncilAdvisor) return ''
   if (adminApps === null) { loadAdminApps(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
@@ -2051,17 +2082,7 @@ function renderApplicationsAdminView() {
 
   if (!genderApps.length) return `${genderTabs}${filterBar}${extraFilterBar}${datalist}<p class="text-sm text-[var(--muted-2)] text-center py-16">ยังไม่มีใบสมัครสภา${GENDER_LABEL[appsGenderTab]}</p>`
 
-  const matchesExtraFilters = a => {
-    if (appsGradeFilter && studentGradeLevel(a.students) !== appsGradeFilter) return false
-    if (appsPositionFilter && String(a.position_id) !== String(appsPositionFilter)) return false
-    if (appsAdvisorEndorseFilter === 'yes' && !a.endorsed_at) return false
-    if (appsAdvisorEndorseFilter === 'no' && a.endorsed_at) return false
-    if (appsPeerEndorseFilter === 'yes' && !peerEndorsementSatisfied(a)) return false
-    if (appsPeerEndorseFilter === 'no' && peerEndorsementSatisfied(a)) return false
-    return true
-  }
-
-  const list = genderApps.filter(a => (appsFilter === 'all' || appPipelineStage(a) === appsFilter) && matchesExtraFilters(a))
+  const list = filteredCouncilApplications()
   if (!list.length) return `${genderTabs}${filterBar}${extraFilterBar}${datalist}<p class="text-sm text-[var(--muted-2)] text-center py-10">ไม่มีใบสมัครในหมวดนี้</p>`
 
   const card = a => {
@@ -2145,7 +2166,7 @@ function renderApplicationsAdminView() {
       }).join('')
     : `<div class="space-y-3">${list.map(card).join('')}</div>`
 
-  return `${genderTabs}${filterBar}${extraFilterBar}${datalist}${body}${renderAdminAppDetailModal()}${renderCouncilDeleteModal()}`
+  return `${genderTabs}${filterBar}${extraFilterBar}<div class="flex justify-end mb-4"><button type="button" id="apps-print-roster" class="px-4 py-2 rounded-xl bg-[var(--primary)] text-white text-sm font-bold">🖨️ พิมพ์รายชื่อผู้สมัคร${esc(GENDER_LABEL[appsGenderTab])}</button></div>${datalist}${body}${renderAdminAppDetailModal()}${renderCouncilDeleteModal()}`
 }
 
 function workflowSearchMatch(application, query) {
@@ -5774,6 +5795,7 @@ function wireNewsEvents() {
 
 // ─── จัดการใบสมัคร (แอดมิน) — นัดสัมภาษณ์ / ให้คะแนน / ตั้งผู้สมัคร / แต่งตั้ง ───────────
 function wireApplicationsAdminEvents() {
+  document.getElementById('apps-print-roster')?.addEventListener('click', printCouncilApplications)
   document.querySelectorAll('.apps-filter-btn').forEach(btn => {
     btn.addEventListener('click', () => { appsFilter = btn.dataset.filter; render() })
   })

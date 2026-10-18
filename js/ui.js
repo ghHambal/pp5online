@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.988'
+import { APP_VERSION } from './version.js?v=10.22.989'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.989': [
+    '🖨️ พิมพ์รายชื่อผู้สมัครสภานักเรียนแยกชาย–หญิงตามตัวกรอง พร้อมสถานะใบสมัคร การรับรอง และช่องหมายเหตุ ในรูปแบบ A4 แนวนอน',
+  ],
   '10.22.988': [
     '🔔 แก้ค้างเก่า: กดแจ้งเตือนเพื่อเปิดการ์ดรายละเอียดพร้อมรูป งานแก้ และใบสั้นได้ทั้งครูและนักเรียน',
   ],
