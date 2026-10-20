@@ -3182,6 +3182,7 @@ export async function renderSettings() {
             🔄 ซิงก์นักเรียนตอนนี้
           </button>
         </div>
+        <p id="student-sync-status" role="status" aria-live="polite" class="mt-3 text-sm break-words"></p>
         <div id="student-sync-log-section" class="mt-3 rounded-2xl border border-gray-100 bg-white p-4 hidden">
           <p class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3">ประวัติการซิงก์ล่าสุด</p>
           <div id="student-sync-log-content" class="text-sm text-gray-700 space-y-2"></div>
@@ -4126,6 +4127,8 @@ export async function renderSettings() {
           const sheetId = document.getElementById('cfg-studentSyncSheetId')?.value?.trim() || ''
           const tabName = document.getElementById('cfg-studentSyncTabName')?.value?.trim() || ''
           const headerRow = document.getElementById('cfg-studentSyncHeaderRow')?.value?.trim() || '1'
+          const syncStatus = document.getElementById('student-sync-status')
+          if (syncStatus) syncStatus.textContent = 'กำลังตรวจสอบแหล่งข้อมูล ยังไม่บันทึกรายชื่อนักเรียน'
           syncStudentsBtn.disabled = true
           syncStudentsBtn.textContent = 'กำลังตรวจสอบแหล่งข้อมูล...'
           try {
@@ -4133,7 +4136,11 @@ export async function renderSettings() {
             if (!Number.isInteger(Number(headerRow)) || Number(headerRow) < 1) throw new Error('แถวหัวตารางต้องเป็นจำนวนเต็มตั้งแต่ 1')
             const options = { sourceSheetId: sheetId, tabName, headerRow }
             const preview = await previewStudentsFromSheet(options)
-            if (!await confirmStudentSyncPreview(preview)) return
+            if (syncStatus) syncStatus.textContent = `ตรวจสอบสำเร็จ: ใช้ได้ ${preview.valid} คน / รหัสซ้ำ ${preview.duplicateCount} แถว`
+            if (!await confirmStudentSyncPreview(preview)) {
+              if (syncStatus) syncStatus.textContent = 'ยกเลิกแล้ว ยังไม่บันทึกรายชื่อนักเรียน'
+              return
+            }
             await Promise.all([
               updateSystemConfig('studentSyncSheetId', sheetId),
               updateSystemConfig('studentSyncTabName', tabName),
@@ -4142,10 +4149,13 @@ export async function renderSettings() {
             syncStudentsBtn.textContent = 'กำลังบันทึกข้อมูลนักเรียน...'
             const res = await syncStudentsFromSheetNow({ ...options, expectedFingerprint: preview.fingerprint })
             const summary = `ซิงก์สำเร็จ: อ่าน ${res.read ?? 0} แถว / บันทึก ${res.written ?? 0} คน / ใหม่ ${res.newCount ?? 0} คน ✅`
+            if (syncStatus) syncStatus.textContent = summary + (res.warnings?.length ? ' — ' + res.warnings.join(' / ') : '')
             showToast(res.warnings?.length ? summary + ' — ' + res.warnings.join(' / ') : summary, res.warnings?.length ? 'warning' : 'success')
             _loadLatestSyncLog()
           } catch (err) {
-            showToast('ซิงก์นักเรียนไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)) + ' หากเริ่มบันทึกแล้ว กรุณาตรวจประวัติการซิงก์ก่อนลองใหม่', 'error')
+            const message = 'ซิงก์นักเรียนไม่สำเร็จ: ' + getFriendlyErrorMessage(err) + (err.mayHaveWritten ? ' — งานอาจบันทึกบางส่วนแล้ว กรุณาตรวจประวัติการซิงก์ก่อนลองใหม่' : '')
+            if (syncStatus) syncStatus.textContent = message
+            showToast(message, 'error')
           } finally {
             syncStudentsBtn.disabled = false
             syncStudentsBtn.textContent = '🔄 ซิงก์นักเรียนตอนนี้'

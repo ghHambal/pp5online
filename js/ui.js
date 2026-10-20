@@ -1,4 +1,4 @@
-import { APP_VERSION } from './version.js?v=10.22.990'
+import { APP_VERSION } from './version.js?v=10.22.991'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1014,6 +1014,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.991': [
+    '🔄 แก้ปุ่มซิงก์นักเรียนถูก Chrome บล็อก CORB โดยเรียก Central GAS ผ่านเซิร์ฟเวอร์และตรวจสิทธิ์แอดมินก่อนทุกครั้ง',
+    '📋 แสดงสถานะและข้อผิดพลาดค้างใต้ปุ่ม เพื่อแยกปัญหาการเชื่อมต่อกับปัญหา Sheet ID หรือชื่อแท็บได้ชัดเจน',
+  ],
   '10.22.990': [
     '🔄 ซิงก์นักเรียนจากหน้าตั้งค่าได้ทันทีหลังอัปเดต Central GAS: อ่านค่าล่าสุด ใช้กระบวนการเดียวกับรอบรายสัปดาห์',
     '👁️ ตรวจรายชื่อก่อนยืนยัน: คนใหม่ ข้อมูลที่เปลี่ยน ห้องเดิม–ห้องใหม่ คนกลับมาเรียน และคนที่ไม่พบในแหล่งข้อมูล',

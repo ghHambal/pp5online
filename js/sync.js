@@ -343,21 +343,24 @@ export async function syncSubjectCatalog(rows, options = {}) {
 }
 
 async function _studentSyncRequest(options, preview) {
-  const gasUrl = await _getGasUrl(true)
-  const capability = await _jsonp(gasUrl, { action: 'student_sync_capabilities' })
-    .catch(err => { throw new Error('ตรวจการเชื่อมต่อ Central GAS ไม่สำเร็จ: ' + err.message + ' — ตรวจ URL /exec และสิทธิ์ Web App ใน Sync Engine') })
-  if (capability?.studentSyncVersion !== 2) {
-    throw new Error('Central GAS ยังเป็นรุ่นเก่า กรุณาอัปเดต gas/pp5-sync.gs แล้ว Deploy เวอร์ชันใหม่ก่อนซิงก์จากหน้าเว็บ')
-  }
-  const result = await _jsonp(gasUrl, {
-    action: preview ? 'preview_students_sync' : 'sync_students_now',
-    sourceSheetId: extractSheetId(options.sourceSheetId),
-    tabName: options.tabName || '',
-    headerRow: options.headerRow || '',
-    expectedFingerprint: options.expectedFingerprint || '',
+  const { supabase } = await import('./supabase.js')
+  const { data: result, error } = await supabase.functions.invoke('student-sync', {
+    body: {
+      operation: preview ? 'preview' : 'sync',
+      sourceSheetId: extractSheetId(options.sourceSheetId),
+      tabName: options.tabName || '',
+      headerRow: options.headerRow || '1',
+      expectedFingerprint: options.expectedFingerprint || '',
+    },
   })
-  if (result?.ok !== true || (preview ? !result.fingerprint : !Number.isInteger(result.written))) {
-    throw new Error('GAS ตอบกลับไม่ครบ กรุณาตรวจ deployment และประวัติการซิงก์ก่อนลองใหม่')
+  if (error) {
+    const details = await error.context?.json?.().catch(() => null)
+    throw new Error(details?.error || 'ติดต่อระบบซิงก์ไม่สำเร็จ กรุณาตรวจการเข้าสู่ระบบและการเชื่อมต่อ')
+  }
+  if (result?.ok !== true) {
+    const failure = new Error(result?.error || 'GAS ตอบกลับไม่ครบ')
+    failure.mayHaveWritten = result?.mayHaveWritten === true
+    throw failure
   }
   return result
 }
