@@ -59,7 +59,9 @@ import {
   SUBJECT_SYNC_COLUMNS,
   syncSubjectCatalog,
   syncStudentsFromSheetNow,
+  previewStudentsFromSheet,
 } from './sync.js'
+import { confirmStudentSyncPreview } from './student-sync-preview.js'
 import { READING_GRADES, _readingGrade, applyReadingGradesFromConfig, _htmlEsc, _dateInputValue, SUBJECT_VISUAL_PRESETS, parseSubjectVisuals } from './teacher-views-utils.js'
 import { academicTermKey, collectAcademicTerms, currentAcademicTerm, renderAcademicTermOptions } from './academic-term-switcher.js'
 
@@ -3164,7 +3166,7 @@ export async function renderSettings() {
             <div>
               <p class="text-sm font-semibold text-emerald-900">ซิงก์รายสัปดาห์</p>
               <p class="text-xs text-emerald-700 mt-1 leading-relaxed">
-                ปุ่มนี้ใช้ทดสอบซิงก์ทันที ส่วนรันอัตโนมัติรายสัปดาห์ให้ตั้ง trigger ใน Apps Script ที่ฟังก์ชัน <span class="font-mono">runWeeklyStudentSync</span>
+                ปุ่มนี้ตรวจสอบรายชื่อก่อนยืนยันอัปเดตทันที ใช้แหล่งข้อมูลเดียวกับรอบรายสัปดาห์ ซึ่งตั้ง trigger ใน Apps Script ที่ฟังก์ชัน <span class="font-mono">runWeeklyStudentSync</span>
               </p>
             </div>
             <button id="btn-download-student-sync-template" type="button"
@@ -4125,19 +4127,25 @@ export async function renderSettings() {
           const tabName = document.getElementById('cfg-studentSyncTabName')?.value?.trim() || ''
           const headerRow = document.getElementById('cfg-studentSyncHeaderRow')?.value?.trim() || '1'
           syncStudentsBtn.disabled = true
-          syncStudentsBtn.textContent = 'กำลังซิงก์...'
+          syncStudentsBtn.textContent = 'กำลังตรวจสอบแหล่งข้อมูล...'
           try {
+            if (!/^[a-zA-Z0-9_-]{20,}$/.test(sheetId) && !/^https:\/\/docs\.google\.com\/spreadsheets\/d\/[a-zA-Z0-9_-]{20,}/.test(sheetId)) throw new Error('กรุณาระบุ Google Sheet ID หรือ URL ที่ถูกต้อง')
+            if (!Number.isInteger(Number(headerRow)) || Number(headerRow) < 1) throw new Error('แถวหัวตารางต้องเป็นจำนวนเต็มตั้งแต่ 1')
+            const options = { sourceSheetId: sheetId, tabName, headerRow }
+            const preview = await previewStudentsFromSheet(options)
+            if (!await confirmStudentSyncPreview(preview)) return
             await Promise.all([
               updateSystemConfig('studentSyncSheetId', sheetId),
               updateSystemConfig('studentSyncTabName', tabName),
               updateSystemConfig('studentSyncHeaderRow', headerRow),
             ])
-            const res = await syncStudentsFromSheetNow({ sourceSheetId: sheetId, tabName, headerRow })
-            const summary = `ซิงก์สำเร็จ: อ่าน ${res.read ?? 0} แถว / บันทึก ${res.written ?? 0} คน / ใหม่ ${res.newCount ?? 0} / ซ่อน ${res.deactivatedCount ?? 0} ✅`
-            showToast(summary, 'success')
+            syncStudentsBtn.textContent = 'กำลังบันทึกข้อมูลนักเรียน...'
+            const res = await syncStudentsFromSheetNow({ ...options, expectedFingerprint: preview.fingerprint })
+            const summary = `ซิงก์สำเร็จ: อ่าน ${res.read ?? 0} แถว / บันทึก ${res.written ?? 0} คน / ใหม่ ${res.newCount ?? 0} คน ✅`
+            showToast(res.warnings?.length ? summary + ' — ' + res.warnings.join(' / ') : summary, res.warnings?.length ? 'warning' : 'success')
             _loadLatestSyncLog()
           } catch (err) {
-            showToast('ซิงก์นักเรียนไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
+            showToast('ซิงก์นักเรียนไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)) + ' หากเริ่มบันทึกแล้ว กรุณาตรวจประวัติการซิงก์ก่อนลองใหม่', 'error')
           } finally {
             syncStudentsBtn.disabled = false
             syncStudentsBtn.textContent = '🔄 ซิงก์นักเรียนตอนนี้'

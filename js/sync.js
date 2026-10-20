@@ -71,8 +71,8 @@ const ATT_MAP = {
 // cache config ไม่ต้องดึงซ้ำในรอบเดียวกัน
 let _cfgCache = null
 
-async function _getGasUrl() {
-  if (!_cfgCache) {
+async function _getGasUrl(refresh = false) {
+  if (refresh || !_cfgCache) {
     const { getSystemConfig } = await import('./api.js')
     _cfgCache = await getSystemConfig()
   }
@@ -342,13 +342,33 @@ export async function syncSubjectCatalog(rows, options = {}) {
   return rows?.length ?? 0
 }
 
-export async function syncStudentsFromSheetNow(options = {}) {
-  const gasUrl = await _getGasUrl()
-  return _jsonp(gasUrl, {
-    action: 'sync_students_now',
+async function _studentSyncRequest(options, preview) {
+  const gasUrl = await _getGasUrl(true)
+  const capability = await _jsonp(gasUrl, { action: 'student_sync_capabilities' })
+    .catch(err => { throw new Error('ตรวจการเชื่อมต่อ Central GAS ไม่สำเร็จ: ' + err.message + ' — ตรวจ URL /exec และสิทธิ์ Web App ใน Sync Engine') })
+  if (capability?.studentSyncVersion !== 2) {
+    throw new Error('Central GAS ยังเป็นรุ่นเก่า กรุณาอัปเดต gas/pp5-sync.gs แล้ว Deploy เวอร์ชันใหม่ก่อนซิงก์จากหน้าเว็บ')
+  }
+  const result = await _jsonp(gasUrl, {
+    action: preview ? 'preview_students_sync' : 'sync_students_now',
+    sourceSheetId: extractSheetId(options.sourceSheetId),
     tabName: options.tabName || '',
     headerRow: options.headerRow || '',
+    expectedFingerprint: options.expectedFingerprint || '',
   })
+  if (result?.ok !== true || (preview ? !result.fingerprint : !Number.isInteger(result.written))) {
+    throw new Error('GAS ตอบกลับไม่ครบ กรุณาตรวจ deployment และประวัติการซิงก์ก่อนลองใหม่')
+  }
+  return result
+}
+
+export async function previewStudentsFromSheet(options = {}) {
+  return _studentSyncRequest(options, true)
+}
+
+export async function syncStudentsFromSheetNow(options = {}) {
+  if (!options.expectedFingerprint) throw new Error('กรุณาตรวจสอบรายชื่อก่อนยืนยันซิงก์')
+  return _studentSyncRequest(options, false)
 }
 
 export async function shareSheetForView(sheetId) {

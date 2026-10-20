@@ -37,7 +37,12 @@ function doGet(e) {
     var payload = e.parameter || {}
     var action = payload.action
     if (action === 'copy_sheet_template') return _jsonp(e, _copySheetTemplate(payload))
-    if (action === 'sync_students_now') return _jsonp(e, _syncStudentsFromSheet(payload))
+    if (action === 'student_sync_capabilities') return _jsonp(e, { ok: true, studentSyncVersion: 2 })
+    if (action === 'preview_students_sync') return _jsonp(e, _syncStudentsFromSheet(Object.assign({}, payload, { dryRun: true })))
+    if (action === 'sync_students_now') {
+      if (!payload.expectedFingerprint) throw new Error('กรุณาตรวจสอบรายชื่อก่อนยืนยันซิงก์')
+      return _jsonp(e, _syncStudentsFromSheet(payload))
+    }
     return _jsonp(e, { ok: false, error: 'Unknown action: ' + action })
   } catch (err) {
     return _jsonp(e, { ok: false, error: err.message })
@@ -76,6 +81,7 @@ function doPost(e) {
 // (หลีกเลี่ยงปัญหา CORS ของ GAS Web App)
 function _jsonp(e, obj) {
   var callback = (e.parameter && e.parameter.callback) || 'callback'
+  if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(callback)) throw new Error('Invalid callback')
   var body = callback + '(' + JSON.stringify(obj) + ');'
   return ContentService.createTextOutput(body).setMimeType(ContentService.MimeType.JAVASCRIPT)
 }
@@ -265,7 +271,7 @@ function syncStudentsFromSheetNow() {
 
 // ฟังก์ชันที่ trigger รายสัปดาห์จะเรียกโดยอัตโนมัติ (ทุกวันจันทร์ 03:00)
 function runWeeklyStudentSync() {
-  return _syncStudentsFromSheet({})
+  return _syncStudentsFromSheet({ triggeredBy: 'auto' })
 }
 
 // ติดตั้ง trigger รายสัปดาห์ — รันครั้งเดียวใน GAS editor
@@ -291,6 +297,13 @@ function installWeeklyStudentSyncTrigger() {
 //          → บันทึก log → auto-enroll
 // ใช้แนวทาง conservative: ห้ามปิดนักเรียนทั้งหมดก่อน upsert
 function _syncStudentsFromSheet(payload) {
+  var lock = LockService.getScriptLock()
+  if (!lock.tryLock(1000)) throw new Error('มีงานซิงก์กำลังทำงานอยู่ กรุณารอแล้วตรวจประวัติการซิงก์')
+  try { return _syncStudentsFromSheetUnlocked(payload || {}) }
+  finally { lock.releaseLock() }
+}
+
+function _syncStudentsFromSheetUnlocked(payload) {
   var cfg = _getStudentSyncConfig(payload || {})
   var sheetId = cfg.sheetId
   var tabName = cfg.tabName
@@ -306,7 +319,7 @@ function _syncStudentsFromSheet(payload) {
   var lastRow = sheet.getLastRow()
   var lastCol = sheet.getLastColumn()
   if (lastRow <= headerRow || !lastCol) {
-    return { ok: true, read: 0, written: 0, skipped: 0, message: 'ไม่พบข้อมูลหลังหัวตาราง' }
+    throw new Error('ไม่พบข้อมูลหลังหัวตาราง ยกเลิกก่อนบันทึก')
   }
 
   // อ่าน header และข้อมูลทั้งหมด (รวม formula สำหรับดึง URL รูปภาพ)
@@ -353,20 +366,57 @@ function _syncStudentsFromSheet(payload) {
     )
   }
 
-  // รหัสนักเรียนทั้งหมดที่อยู่ใน sheet นี้
-  var sheetCodes = {}
-  records.forEach(function(r) { sheetCodes[r.student_code] = true })
-
-  // ดึงนักเรียนที่ active อยู่ในระบบก่อน sync เพื่อเปรียบเทียบ (สำหรับ log เท่านั้น)
-  var beforeActive = _fetchActiveStudents()
-  var beforeCodes = {}
-  beforeActive.forEach(function(s) { beforeCodes[s.student_code] = true })
+  // ต้องอ่านครบทุกหน้า รวม inactive เพื่อแยกคนใหม่จากคนที่กลับมาเรียน
+  var beforeAll = _fetchStudentsForSync()
+  var beforeActive = beforeAll.filter(function(s) { return s.is_active })
+  var beforeByCode = Object.create(null)
+  beforeAll.forEach(function(s) { beforeByCode[s.student_code] = s })
+  var sheetCodes = Object.create(null)
+  var duplicates = []
+  records.forEach(function(r) {
+    if (sheetCodes[r.student_code]) duplicates.push(r.student_code)
+    sheetCodes[r.student_code] = true
+  })
+  var added = [], changed = [], reactivated = []
+  records.forEach(function(r) {
+    var old = beforeByCode[r.student_code]
+    var fields = Object.keys(r).filter(function(k) { return k !== 'student_code' })
+    var changes = old ? fields.filter(function(k) { return String(old[k] == null ? '' : old[k]) !== String(r[k]) }) : []
+    var item = { student_code: r.student_code, full_name: r.full_name, changes: changes.map(function(k) { return { field: k, before: old[k], after: r[k] } }) }
+    if (!old) added.push(item)
+    else {
+      if (!old.is_active) reactivated.push(item)
+      if (changes.length) changed.push(item)
+      // ค่าว่าง/คอลัมน์ที่ไม่มีในแหล่งข้อมูลไม่ล้างข้อมูลเดิม
+      Object.keys(old).forEach(function(k) {
+        if (k !== 'student_code' && !r.hasOwnProperty(k) && old[k] != null) r[k] = old[k]
+      })
+    }
+  })
+  var missing = beforeActive.filter(function(s) { return !sheetCodes[s.student_code] })
+  var fingerprint = Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    JSON.stringify([sheetId, sheet.getName(), headerRow, cfg.academicYear, cfg.semester, records]), Utilities.Charset.UTF_8
+  ))
+  if (payload.dryRun) return {
+    ok: true, academicYear: cfg.academicYear, semester: cfg.semester, fingerprint: fingerprint, sheetId: sheetId, tabName: sheet.getName(),
+    read: values.length, valid: records.length, skipped: skipped,
+    newCount: added.length, changedCount: changed.length, reactivatedCount: reactivated.length,
+    missingCount: missing.length, duplicateCount: duplicates.length,
+    canSync: duplicates.length === 0,
+    newStudents: added.slice(0, 30), changedStudents: changed.slice(0, 30),
+    missingStudents: missing.slice(0, 30), duplicateCodes: duplicates.slice(0, 30)
+  }
+  if (duplicates.length) throw new Error('พบรหัสนักเรียนซ้ำ ' + duplicates.length + ' แถว กรุณาแก้ข้อมูลต้นทางก่อนซิงก์')
+  if (payload.expectedFingerprint && payload.expectedFingerprint !== fingerprint) {
+    throw new Error('ข้อมูลเปลี่ยนหลังตรวจสอบ กรุณาตรวจสอบรายชื่ออีกครั้งก่อนยืนยัน')
+  }
 
   // เปิด/อัปเดตเฉพาะคนที่พบในชีท ไม่ทำ mass-deactivate คนที่ไม่พบ
   var written = _upsertStudentsToSupabase(records)
 
-  // คำนวณ log: ใหม่ = อยู่ใน sheet แต่ไม่มีใน beforeActive
-  var newStudents = records.filter(function(r) { return !beforeCodes[r.student_code] })
+  // คนใหม่จริง: ไม่มีรหัสนี้ในระบบ รวมทั้งรายชื่อ inactive
+  var newStudents = records.filter(function(r) { return !beforeByCode[r.student_code] })
     .map(function(r) { return { student_code: r.student_code, full_name: r.full_name } })
 
   // รายการที่ไม่พบในชีทมีไว้ตรวจสอบเท่านั้น ไม่เปลี่ยนสถานะอัตโนมัติ
@@ -374,8 +424,9 @@ function _syncStudentsFromSheet(payload) {
     .filter(function(s) { return !sheetCodes[s.student_code] })
     .map(function(s) { return { student_code: s.student_code, full_name: s.full_name } })
 
-  // บันทึก sync log
-  _insertSyncLog({
+  // ข้อมูลนักเรียนบันทึกแล้ว หากงานต่อเนื่องล้มเหลวให้รายงานแยก
+  var warnings = []
+  try { _insertSyncLog({
     triggered_by: triggeredBy,
     read_count: values.length,
     written_count: written,
@@ -385,16 +436,18 @@ function _syncStudentsFromSheet(payload) {
     deactivated_students: deactivatedStudents,
     sheet_id: sheetId,
     tab_name: sheet.getName(),
-  })
+  }) } catch (err) { warnings.push('บันทึกประวัติไม่สำเร็จ: ' + err.message) }
 
-  _autoEnrollStudentsByMainRoom()
+  try { _autoEnrollStudentsByMainRoom() } catch (err) { warnings.push('ผูกห้องเรียนไม่สำเร็จ: ' + err.message) }
 
   return {
     ok: true,
     read: values.length,
     written: written,
+    warnings: warnings,
     skipped: skipped,
     newCount: newStudents.length,
+    reactivatedCount: reactivated.length,
     deactivatedCount: 0,
     newStudents: newStudents,
     deactivatedStudents: deactivatedStudents,
@@ -403,26 +456,28 @@ function _syncStudentsFromSheet(payload) {
   }
 }
 
-// ─── ดึงรายชื่อนักเรียนที่ active ทั้งหมดจาก Supabase ───────────────────────
-function _fetchActiveStudents() {
+// ─── ดึงรายชื่อนักเรียนทุกสถานะจาก Supabase ───────────────────────
+function _fetchStudentsForSync() {
   var endpoint = _supabaseEndpoint()
-  var url = endpoint.url + '/rest/v1/students?is_active=eq.true&select=student_code,full_name&limit=10000'
-  var resp = UrlFetchApp.fetch(url, {
-    method: 'get',
-    muteHttpExceptions: true,
-    headers: {
-      apikey: endpoint.key,
-      Authorization: 'Bearer ' + endpoint.key,
-    },
-  })
-  if (resp.getResponseCode() !== 200) return []
-  try { return JSON.parse(resp.getContentText()) || [] } catch(e) { return [] }
+  var all = []
+  for (var offset = 0; ; offset += 1000) {
+    var url = endpoint.url + '/rest/v1/students?select=student_code,full_name,main_room,religion_room,gender,image_url,house_color,sports_shirt_size,is_active&order=student_code&limit=1000&offset=' + offset
+    var resp = UrlFetchApp.fetch(url, {
+      method: 'get', muteHttpExceptions: true,
+      headers: { apikey: endpoint.key, Authorization: 'Bearer ' + endpoint.key }
+    })
+    if (resp.getResponseCode() !== 200) throw new Error('อ่านรายชื่อนักเรียนเดิมไม่สำเร็จ ยกเลิกก่อนบันทึก')
+    var rows = JSON.parse(resp.getContentText())
+    if (!Array.isArray(rows)) throw new Error('รูปแบบรายชื่อนักเรียนเดิมไม่ถูกต้อง')
+    all = all.concat(rows)
+    if (rows.length < 1000) return all
+  }
 }
 
 // ─── บันทึก sync log เข้า student_sync_logs ──────────────────────────────────
 function _insertSyncLog(data) {
   var endpoint = _supabaseEndpoint()
-  UrlFetchApp.fetch(endpoint.url + '/rest/v1/student_sync_logs', {
+  var resp = UrlFetchApp.fetch(endpoint.url + '/rest/v1/student_sync_logs', {
     method: 'post',
     muteHttpExceptions: true,
     contentType: 'application/json',
@@ -433,6 +488,7 @@ function _insertSyncLog(data) {
     },
     payload: JSON.stringify(data),
   })
+  if (resp.getResponseCode() < 200 || resp.getResponseCode() >= 300) throw new Error('HTTP ' + resp.getResponseCode())
 }
 
 // ─── ลงทะเบียนนักเรียนเข้าห้องเรียนอัตโนมัติ ────────────────────────────────
@@ -441,7 +497,7 @@ function _insertSyncLog(data) {
 // ทำให้นักเรียนปรากฏในหน้าห้องเรียนของครูทันทีหลังซิงก์
 function _autoEnrollStudentsByMainRoom() {
   var endpoint = _supabaseEndpoint()
-  UrlFetchApp.fetch(endpoint.url + '/rest/v1/rpc/auto_enroll_students_by_room', {
+  var resp = UrlFetchApp.fetch(endpoint.url + '/rest/v1/rpc/auto_enroll_students_by_room', {
     method: 'post',
     muteHttpExceptions: true,
     contentType: 'application/json',
@@ -451,26 +507,25 @@ function _autoEnrollStudentsByMainRoom() {
     },
     payload: '{}',
   })
+  if (resp.getResponseCode() < 200 || resp.getResponseCode() >= 300) throw new Error('HTTP ' + resp.getResponseCode())
+  var result = JSON.parse(resp.getContentText() || '{}')
+  if (result.ok !== true) throw new Error('ผลการผูกห้องเรียนไม่สมบูรณ์')
 }
 
 // ─── อ่านการตั้งค่าซิงก์นักเรียน ─────────────────────────────────────────────
-// ลำดับความสำคัญ: payload → Script Properties → Supabase system_config
+// ลำดับความสำคัญ: payload → Supabase system_config → Script Properties
 // ทำให้ตั้งค่าได้ทั้งใน GAS และในหน้า Admin ของระบบ
 function _getStudentSyncConfig(payload) {
   var props = PropertiesService.getScriptProperties()
+  // ใช้ค่าล่าสุดในระบบร่วมกันทั้งปุ่มบนเว็บและ trigger; Properties เป็น fallback
+  var sys = _getSystemConfigValues(['studentSyncSheetId', 'studentSyncTabName', 'studentSyncHeaderRow', 'academicYear', 'semester'])
   var cfg = {
-    sheetId: _extractSpreadsheetId(props.getProperty('STUDENT_SYNC_SHEET_ID') || ''),
-    tabName: payload.tabName || props.getProperty('STUDENT_SYNC_TAB_NAME') || '',
-    headerRow: parseInt(payload.headerRow || props.getProperty('STUDENT_SYNC_HEADER_ROW') || '1', 10) || 1,
+    academicYear: sys.academicYear || '', semester: sys.semester || '',
+    sheetId: _extractSpreadsheetId(payload.sourceSheetId || sys.studentSyncSheetId || props.getProperty('STUDENT_SYNC_SHEET_ID') || ''),
+    tabName: payload.tabName || sys.studentSyncTabName || props.getProperty('STUDENT_SYNC_TAB_NAME') || '',
+    headerRow: Number(payload.headerRow || sys.studentSyncHeaderRow || props.getProperty('STUDENT_SYNC_HEADER_ROW') || 1)
   }
-
-  // ถ้ามี Script Properties แล้วไม่ต้องดึงจาก Supabase
-  if (cfg.sheetId) return cfg
-
-  var sys = _getSystemConfigValues(['studentSyncSheetId', 'studentSyncTabName', 'studentSyncHeaderRow'])
-  cfg.sheetId = _extractSpreadsheetId(sys.studentSyncSheetId || '')
-  cfg.tabName = cfg.tabName || sys.studentSyncTabName || ''
-  cfg.headerRow = parseInt(sys.studentSyncHeaderRow || cfg.headerRow || '1', 10) || 1
+  if (!Number.isInteger(cfg.headerRow) || cfg.headerRow < 1) throw new Error('แถวหัวตารางต้องเป็นจำนวนเต็มตั้งแต่ 1')
   return cfg
 }
 
