@@ -58,6 +58,38 @@
     body.sc-fullscreen #mobile-profile-sheet { display: none !important; }
     body.mobile-sidebar-open #mobile-teacher-nav { display: none !important; }
 
+    #app-main-col > header { flex-wrap: wrap; height: auto; min-height: 4rem; row-gap: .375rem; padding-top: .5rem; padding-bottom: .5rem; }
+    #app-main-col > header > div:last-child { margin-left: auto; }
+    /* Secondary tools belong to the header, outside the working table. */
+    #teacher-header-tools { display: flex; align-items: center; gap: .375rem; flex-shrink: 0; }
+    #teacher-header-tools > button {
+      position: static !important;
+      inset: auto !important;
+      width: 2.5rem !important;
+      height: 2.5rem !important;
+      flex-shrink: 0;
+      border-radius: .75rem;
+      font-size: 1.15rem !important;
+      box-shadow: none;
+    }
+    @media (max-width: 767px) {
+      #teacher-header-tools { gap: .25rem; }
+      #teacher-header-tools > button { width: 2rem !important; height: 2rem !important; font-size: 1rem !important; }
+    }
+    @media (max-width: 479px) {
+      #app-main-col > header {
+        height: auto !important;
+        min-height: 3.75rem;
+        flex-wrap: wrap;
+        gap: .375rem;
+        padding-top: .5rem;
+        padding-bottom: .5rem;
+      }
+      #app-main-col > header > div:first-child { flex-basis: 100%; }
+      #app-main-col > header > div:last-child { width: 100%; justify-content: flex-end; }
+      #app-main-col > header h1 { max-width: 65vw !important; }
+    }
+
     /* เมนูหลักสำหรับมือถือ — desktop ยังคงใช้ sidebar เดิม */
     #mobile-teacher-nav,
     #mobile-nav-backdrop,
@@ -824,6 +856,7 @@
         <h1 id="page-title" class="text-lg font-bold text-gray-800">ภาพรวม</h1>
       </div>
       <div class="flex items-center gap-3">
+        <div id="teacher-header-tools" role="group" aria-label="แชทและสนับสนุนระบบ"></div>
         <button id="btn-quick-leave-scanner"
           title="เปิดเมนูสแกน"
           aria-label="เปิดเมนูสแกน"
@@ -943,7 +976,7 @@
   </section>
 
   <!-- Scripts -->
-  <script type="module" src="js/teacher.js?v=10.22.993"></script>
+  <script type="module" src="js/teacher.js?v=10.22.994"></script>
 
 </body>
 </html>

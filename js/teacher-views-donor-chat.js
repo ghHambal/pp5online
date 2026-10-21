@@ -1,3 +1,4 @@
+import { mountTeacherHeaderTool } from './teacher-header-tools.js'
 // js/teacher-views-donor-chat.js
 // Phase 5 — ประกาศปักหมุด (เฉพาะกลุ่มใหญ่ แอดมินสร้าง) + บันทึกโน้ต (ทุกคน ทุกห้อง)
 // ฝั่งครู: ปุ่มลอย (FAB) แบบเดียวกับ feedback widget เปิดเป็นป๊อปอัพ — ไม่ใช่เปลี่ยนหน้าเต็ม
@@ -54,7 +55,7 @@ export function injectDonorChatWidget(teacher) {
   // ซ้อนเหนือปุ่ม feedback (💬) อีกชั้น กันทับกัน
   fab.style.cssText = 'position:fixed;right:max(0.75rem, env(safe-area-inset-right));left:auto;top:auto;bottom:calc(max(0.75rem, env(safe-area-inset-bottom)) + 68px + 64px);background:linear-gradient(135deg,#f59e0b,#b45309);font-size:1.3rem;'
   fab.textContent = '👑'
-  document.body.appendChild(fab)
+  if (!mountTeacherHeaderTool(fab)) document.body.appendChild(fab)
   fab.addEventListener('click', () => openDonorChatWidget(teacher))
 }
 

@@ -1,4 +1,5 @@
-import { APP_VERSION } from './version.js?v=10.22.991'
+import { mountTeacherHeaderTool } from './teacher-header-tools.js'
+import { APP_VERSION } from './version.js?v=10.22.994'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -317,7 +318,7 @@ export function injectFeedbackWidget({ profileId, role, name }) {
     : 'calc(max(0.75rem, env(safe-area-inset-bottom)) + 68px)'
   fab.style.cssText = `position:fixed;right:max(0.75rem, env(safe-area-inset-right));left:auto;top:auto;bottom:${bottomOffset};background:linear-gradient(135deg,#db2777,#9d174d);font-size:1.3rem;`
   fab.textContent = '💬'
-  document.body.appendChild(fab)
+  if (role !== 'teacher' || !mountTeacherHeaderTool(fab)) document.body.appendChild(fab)
 
   // นักเรียน: ปุ่มลอยขยายเป็นเมนู 2 ตัวเลือก (ติดต่อแอดมิน / แชทห้องเรียน) แทนเปิดฟอร์มตรงๆ — บทบาทอื่น
   // (ครู/แอดมิน) ยังคงกดแล้วเปิดฟอร์มความคิดเห็นทันทีเหมือนเดิม เพราะยังไม่มีฟีเจอร์แชทฝั่งนั้นให้เลือก
@@ -1014,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.994': [
+    '📱 ย้ายปุ่มแชทผู้สนับสนุน ส่งความคิดเห็น และสนับสนุนระบบ จากมุมล่างไปไว้ข้างกล้องบนแถบหัวหน้าครู ไม่บังตารางเช็คชื่อ พร้อมจัดแถวปุ่มสำหรับมือถือจอแคบ',
+  ],
   '10.22.993': [
     '🔧 แก้ปุ่มเปิดคอร์สแจ้งไม่พบข้อมูลครูทั้งที่ล็อกอินอยู่ โดยแยกฟังก์ชันช่วยออกจากตัวควบคุมหน้าครู ป้องกันโหลดซ้ำและเขียนทับสถานะ',
   ],

@@ -1,3 +1,4 @@
+import { mountTeacherHeaderTool } from './teacher-header-tools.js'
 import { _toPositiveInt, _getDonorTierIndex, _parseDonationStickers } from './donation-utils.js'
 import { pollRegradeEvents } from './regrade-notifications.js'
 import { supabase }            from './supabase.js'
@@ -21,7 +22,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.993'
+import { APP_VERSION } from './version.js?v=10.22.994'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -2114,7 +2115,7 @@ function _initDonateFloatingBtn(hasPendingDonation = false) {
     const cfg = await getSystemConfig().catch(() => ({}))
     _showDonateModal(null, cfg)
   })
-  document.body.appendChild(btn)
+  if (!mountTeacherHeaderTool(btn)) document.body.appendChild(btn)
   _toggleFloatingFabsForView(_currentView)
 }
 
