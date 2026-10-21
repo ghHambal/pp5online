@@ -1,3 +1,4 @@
+import { renderStudentImageReviews } from './assignment-review-view.js'
 import { getClassScoreRounding } from './api.js'
 import { isBonus, isFinal, isGradeColumn, roundKey, displayScore, scoreForGrade, effectiveScore } from './score-display.js'
 import {
@@ -24,7 +25,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.995'
+import { APP_VERSION } from './version.js?v=10.22.996'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -1922,6 +1923,7 @@ export async function renderStudentAllAssignments(student, group = 'samai') {
       </div>
       <p class="font-semibold text-gray-800 text-sm">${_esc(a.title)}</p>
       <p class="text-xs text-gray-400 mt-1">📅 กำหนดส่ง: ${_fmtDue(a.due_at)}</p>
+      ${renderStudentImageReviews(sub)}
       ${sub?.teacher_feedback ? `<p class="text-[11px] text-indigo-600 mt-1.5">💬 ${_esc(sub.teacher_feedback)}</p>` : ''}
     </div>`
   }
@@ -2403,6 +2405,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo',
       ${a.attachment_urls?.length ? `<div class="flex flex-wrap gap-1.5 mb-2">${a.attachment_urls.map(f => `<a href="${_esc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600">📎 ${_esc(f.name)}</a>`).join('')}</div>` : ''}
       ${sub?.file_urls?.length ? `<div class="border-t border-gray-50 pt-2 mt-1"><p class="text-[10px] text-gray-400 mb-1">ไฟล์ที่ส่ง (${new Date(sub.submitted_at).toLocaleString('th-TH',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})})</p>
         <div class="flex flex-wrap gap-1.5">${sub.file_urls.map(f => `<a href="${_esc(f.url)}" target="_blank" rel="noopener" class="text-[11px] px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700">📎 ${_esc(f.name)}</a>`).join('')}</div></div>` : ''}
+      ${renderStudentImageReviews(sub)}
       ${sub?.teacher_feedback ? (rejected
         ? `<div class="bg-red-50 border border-red-100 rounded-xl p-2.5 mt-2"><p class="text-[10px] font-bold text-red-500 mb-0.5">❌ เหตุผลที่ถูกตีกลับ</p><p class="text-xs text-red-800">${_esc(sub.teacher_feedback)}</p></div>`
         : `<div class="bg-indigo-50 border border-indigo-100 rounded-xl p-2.5 mt-2"><p class="text-[10px] font-bold text-indigo-500 mb-0.5">💬 คอมเมนต์จากครู</p><p class="text-xs text-indigo-800">${_esc(sub.teacher_feedback)}</p></div>`

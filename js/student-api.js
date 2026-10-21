@@ -1,3 +1,4 @@
+import { getAssignmentImageReviews, getReviewImageUrl } from './assignment-annotations-api.js'
 import { supabase } from './supabase.js'
 import { isMissingFunction } from './supabase-errors.js'
 import { _generateSessions, _dateInputValue } from './teacher-views-utils.js'
@@ -853,7 +854,19 @@ export async function getMyClassAssignments(classId, studentId) {
   ])
   if (aErr) throw aErr
   if (sErr) throw sErr
-  const subByAssignment = Object.fromEntries((mySubs ?? []).map(s => [s.assignment_id, s]))
+  const assignmentIds = new Set((assignments ?? []).map(a => a.id))
+  const submissions = (mySubs ?? []).filter(sub => assignmentIds.has(sub.assignment_id))
+  try {
+    const reviews = await getAssignmentImageReviews(submissions.map(sub => sub.id))
+    const visibleReviews = await Promise.all(reviews.filter(review => review.published_path).map(async review => ({
+      ...review,
+      image_url: await getReviewImageUrl(review.published_path),
+    })))
+    for (const sub of submissions) sub.image_reviews = visibleReviews.filter(review => review.submission_id === sub.id)
+  } catch {
+    for (const sub of submissions) sub.image_review_error = true
+  }
+  const subByAssignment = Object.fromEntries(submissions.map(s => [s.assignment_id, s]))
   return (assignments ?? []).map(a => ({ ...a, mySubmission: subByAssignment[a.id] ?? null }))
 }
 

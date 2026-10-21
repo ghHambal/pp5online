@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.995'
+import { APP_VERSION } from './version.js?v=10.22.996'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.996': [
+    '✍️ Smart Classroom: เพิ่มเขียนตรวจบนรูปงานนักเรียนแบบเต็มจอ ปากกา ยางลบ ข้อความ ย้อนกลับ และซูม พร้อมบันทึกฉบับร่างหรือส่งผลตรวจให้นักเรียนดู',
+    '🔒 เก็บต้นฉบับและผลตรวจแยกกัน ซ่อนร่างจากนักเรียน และผูกผลตรวจกับรอบส่งงานเพื่อป้องกันรอยตรวจทับงานที่ส่งใหม่',
+  ],
   '10.22.995': [
     '📱 ย้ายปุ่มแชทและสนับสนุนขึ้นแถบหัวหน้าเฉพาะมือถือ จอใหญ่กลับไปเป็นปุ่มลอยตามเดิม พร้อมเพิ่มช่องไฟและทำปุ่มเครื่องมือมือถือให้มีขนาดเท่ากัน',
   ],

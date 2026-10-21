@@ -3306,9 +3306,9 @@ export async function renderSmartClassroom(teacher, classId) {
         markAssignmentSubmissionReviewed(a.id, s.id).catch(() => {})
       }
 
-      const previewHTML = !sub ? '' : !sub.file_urls?.length ? '' : sub.file_urls.map(f => {
+      const previewHTML = !sub ? '' : !sub.file_urls?.length ? '' : sub.file_urls.map((f, fileIndex) => {
         const kind = _FILE_EXT_KIND(f)
-        if (kind === 'image') return `<a href="${_htmlEsc(f.url)}" target="_blank" rel="noopener" class="block rounded-xl overflow-hidden border border-gray-200 mb-2"><img src="${_htmlEsc(f.url)}" class="w-full max-h-72 object-contain bg-gray-50" loading="lazy" /></a>`
+        if (kind === 'image') return `<a href="${_htmlEsc(f.url)}" target="_blank" rel="noopener" class="block rounded-xl overflow-hidden border border-gray-200 mb-2"><img src="${_htmlEsc(f.url)}" class="w-full max-h-72 object-contain bg-gray-50" loading="lazy" /></a><button type="button" data-write-review="${fileIndex}" class="mb-3 px-4 py-2 rounded-xl bg-indigo-50 text-indigo-700 font-bold text-sm">✍️ เขียนตรวจงาน</button>`
         if (kind === 'pdf') return `<iframe src="${_htmlEsc(f.url)}" class="w-full h-72 rounded-xl border border-gray-200 mb-2"></iframe>`
         return `<a href="${_htmlEsc(f.url)}" target="_blank" rel="noopener" class="flex items-center gap-2 text-xs px-3 py-2 rounded-xl bg-gray-50 border border-gray-200 text-indigo-600 hover:bg-indigo-50 mb-2">📎 ${_htmlEsc(f.name)} <span class="text-gray-400">(เปิดแท็บใหม่ — ไม่รองรับพรีวิว)</span></a>`
       }).join('')
@@ -3388,6 +3388,14 @@ export async function renderSmartClassroom(teacher, classId) {
         if (newIdx === idx) return
         idx = newIdx; _render()
       }
+      m.querySelectorAll('[data-write-review]').forEach(button => button.addEventListener('click', async () => {
+        button.disabled = true
+        try {
+          const { openAssignmentImageEditor } = await import('./assignment-image-editor.js')
+          await openAssignmentImageEditor({ submission: sub, file: sub.file_urls[Number(button.dataset.writeReview)], studentName: s.full_name })
+        } catch (error) { showToast('เปิดหน้าตรวจไม่ได้: ' + getFriendlyErrorMessage(error), 'error') }
+        finally { button.disabled = false }
+      }))
       m.querySelector('#sgc-jump')?.addEventListener('change', _jump)
       m.querySelector('#sgc-jump')?.addEventListener('keydown', e => { if (e.key === 'Enter') _jump() })
       const _saveGrade = async () => {
