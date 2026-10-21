@@ -4,7 +4,7 @@
 // (resolveSmartClassroomAccess/canUseSmartClassroomForClass/_openFreeClassPickModal ใน
 // teacher-views-smart-classroom.js) แยกไฟล์ใหม่เพราะ teacher-views-classes.js ใหญ่มากแล้ว
 import { getMyDonationRequests, getSystemConfig, setAttendanceDelegateFreeClass, updateClass, getMyClasses } from './api.js'
-import { _toPositiveInt, _parseDonationStickers, _getDonorTierIndex } from './teacher.js'
+import { _toPositiveInt, _parseDonationStickers, _getDonorTierIndex } from './donation-utils.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { _htmlEsc } from './teacher-views-utils.js'
 

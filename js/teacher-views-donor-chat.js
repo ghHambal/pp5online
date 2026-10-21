@@ -14,7 +14,7 @@ import { supabase } from './supabase.js'
 import { showToast, showDangerConfirm } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
 import { uploadChatImage } from './storage.js'
-import { _parseDonationStickers } from './teacher.js'
+import { _parseDonationStickers } from './donation-utils.js'
 
 let _channel = null
 let _pollInterval = null

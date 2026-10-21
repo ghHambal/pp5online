@@ -16,7 +16,7 @@ import {
   getLessonPlanReflection, upsertLessonPlanReflection, getAnnouncementTypeSuggestions,
   setSmartClassroomFreeClass,
 } from './api.js'
-import { _toPositiveInt, _parseDonationStickers, _getDonorTierIndex } from './teacher.js'
+import { _toPositiveInt, _parseDonationStickers, _getDonorTierIndex } from './donation-utils.js'
 import {
   getQuizzesForClass, startQuizLive, closeQuiz, getQuizAttemptsForMonitor, rpcUnlockAttempt,
   getQuizBanks, getQuizQuestions, createQuizBank, createQuiz,

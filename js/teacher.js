@@ -1,3 +1,4 @@
+import { _toPositiveInt, _getDonorTierIndex, _parseDonationStickers } from './donation-utils.js'
 import { pollRegradeEvents } from './regrade-notifications.js'
 import { supabase }            from './supabase.js'
 import { showToast, showPageLoader, injectFeedbackWidget, checkAndShowChangelog, showAnnouncementPopups, showTerangganuUrgentModal, initHeavyLoadBanner, getFriendlyErrorMessage } from './ui.js'
@@ -20,7 +21,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.992'
+import { APP_VERSION } from './version.js?v=10.22.993'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -776,11 +777,6 @@ const _esc = value => String(value ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#39;')
 
-export const _toPositiveInt = (value, fallback) => {
-  const n = parseInt(value, 10)
-  return Number.isFinite(n) && n > 0 ? n : fallback
-}
-
 // ─── Donation AI — Gemini with key fallback ───────────────────────────────────
 // ดึง API keys สำรอง 1-4 จาก cfg (กรอง empty ออก)
 export function getDonationGeminiKeys(cfg) {
@@ -830,41 +826,6 @@ const _parseDonationFeatures = cfg => {
     return { icon, text, minTier }
   }) : defaults.map(([icon, text, minTier]) => ({ icon, text, minTier }))
   return rows.filter(f => f.text)
-}
-
-// คืน tier index (1-4) ของ approved donation — 0 = ไม่มี
-export const _getDonorTierIndex = (cfg, tiers, amount) => {
-  if (!amount) return 0
-  const idx = [...tiers].map((t,i) => ({t,i})).reverse().find(({t}) => amount >= t.amount)?.i
-  return idx !== undefined ? idx + 1 : 0
-}
-
-export const _parseDonationStickers = (cfg, minAmount, stepAmount) => {
-  const raw = String(cfg.donationStickerTiers ?? '').trim()
-  const defaults = [
-    [49,  '🌱', 'ครูผู้จุดประกาย',     'คุณครูจุดประกายให้ผมมีแรงเดินต่ออีกก้าว 🤝',    '#22C55E'],
-    [99,  '☕', 'ครูผู้ร่วมฝัน',       'คุณครูเดินร่วมทางกับผมในความฝันนี้ 💭',          '#A855F7'],
-    [149, '🏅', 'ครูผู้ร่วมสร้าง',     'คุณครูเป็นส่วนหนึ่งที่ทำให้ระบบนี้เกิดขึ้นได้จริง 🌱','#F59E0B'],
-    [199, '🐘', 'ครูผู้ร่วมขับเคลื่อน','คุณครูช่วยผลักดันให้ระบบนี้เดินหน้าต่อได้ 🌊',   '#3B82F6'],
-    [249, '👑', 'ครูผู้ก่อตั้งร่วม',   'คุณครูคือเสาหลักที่ทำให้ระบบนี้ยืนหยัดได้ 🏛️',  '#D4A017'],
-  ]
-  const rows = raw ? raw.split('\n').map(line => line.trim()).filter(Boolean).map(line => {
-    const [amount, sticker, title, note, color] = line.split('|').map(s => s.trim())
-    return {
-      amount: _toPositiveInt(amount, 0),
-      sticker: sticker || '🏅',
-      title: title || `ผู้สนับสนุน ${amount || ''} บาท`,
-      note: note || 'ขอบคุณที่ช่วยสนับสนุนการพัฒนาระบบครับ',
-      color: color || '',
-    }
-  }) : defaults.map(([amount, sticker, title, note, color]) => ({ amount, sticker, title, note, color }))
-  const sorted = rows.filter(t => t.amount > 0).sort((a, b) => a.amount - b.amount)
-  // auto-link donationStickerImgN → tier N (override emoji ถ้ามีรูป upload)
-  return sorted.map((t, i) => {
-    const imgUrl = cfg[`donationStickerImg${i+1}`] ?? ''
-    if (imgUrl && /^https?:\/\//.test(imgUrl)) return { ...t, sticker: imgUrl }
-    return t
-  })
 }
 
 const _donationStickerHtml = tier => {
