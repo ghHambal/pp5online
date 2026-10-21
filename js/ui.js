@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.994'
+import { APP_VERSION } from './version.js?v=10.22.995'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.995': [
+    '📱 ย้ายปุ่มแชทและสนับสนุนขึ้นแถบหัวหน้าเฉพาะมือถือ จอใหญ่กลับไปเป็นปุ่มลอยตามเดิม พร้อมเพิ่มช่องไฟและทำปุ่มเครื่องมือมือถือให้มีขนาดเท่ากัน',
+  ],
   '10.22.994': [
     '📱 ย้ายปุ่มแชทผู้สนับสนุน ส่งความคิดเห็น และสนับสนุนระบบ จากมุมล่างไปไว้ข้างกล้องบนแถบหัวหน้าครู ไม่บังตารางเช็คชื่อ พร้อมจัดแถวปุ่มสำหรับมือถือจอแคบ',
   ],
