@@ -1,5 +1,6 @@
+import { courseDepartmentCategory, courseDepartments, findCourseDepartment, isReligionCourse, religionHeadNames } from './course-departments.js'
 import {
-  getMySubjects, getMyClasses, getDepartments, getTeachers, getTeachersWithSignatures, getMasterSubjects,
+  getMySubjects, getMyClasses, getDepartments, getTeachers, getReligionGroups, getTeachersWithSignatures, getMasterSubjects,
   updateMyProfile, updateSubject, deleteSubject,
   getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
   getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
@@ -32,7 +33,7 @@ const _catalogDeptCode = item => {
   if (/ภาษาต่างประเทศ/u.test(raw)) return 'ENG'
   if (/คณิตศาสตร์/u.test(raw)) return 'MATH'
   if (/วิทยาศาสตร์/u.test(raw)) return 'SC'
-  if (/สังคม/u.test(raw)) return 'SOC'
+  if (/สังคม|อิญติมาอียะห์|อิจญ์ติมาอียะห์/u.test(raw)) return 'SOC'
   if (/ศิลปะ/u.test(raw)) return 'ART'
   if (/สุขศึกษา|พลศึกษา/u.test(raw)) return 'HEALTH'
   if (/การงานอาชีพ|เทคโนโลยี/u.test(raw)) return item.subject_group === 'ACDMVOC' ? 'VOC' : 'OCC'
@@ -55,7 +56,7 @@ const _scheduleGrade = className => {
 const _catalogMatchesDept = (row, deptCode, depts) => {
   if (!deptCode) return false
   if (_catalogDeptCode(row) === deptCode) return true
-  const dept = depts.find(item => item.dept_code === deptCode)
+  const dept = findCourseDepartment(depts, row.subject_group, deptCode)
   return Boolean(dept?.dept_name && _courseToken(row.dept_label) === _courseToken(dept.dept_name))
 }
 
@@ -1002,7 +1003,7 @@ export async function openCourseDocPage2Modal(teacher, course) {
     getDepartments().catch(() => []),
   ])
   // แปลง dept_code (THAI/MATH/...) → dept_name ภาษาไทย สำหรับค้นหลักสูตรแกนกลาง
-  const deptRec   = depts.find(d => d.dept_code === course.dept)
+  const deptRec   = findCourseDepartment(depts, course.subject_group, course.dept)
   const deptThai  = deptRec?.dept_name ?? course.dept ?? ''
 
   document.getElementById('course-doc-page2-modal')?.remove()
@@ -2049,7 +2050,7 @@ export async function openScheduleCourseReview(teacher) {
       let candidate = candidatesByKey.get(key)
       if (!candidate) {
         const deptCode = item ? _catalogDeptCode(item) : ''
-        const dept = depts.find(entry => entry.dept_code === deptCode)
+        const dept = findCourseDepartment(depts, item?.subject_group, deptCode)
         candidate = {
           id: candidatesByKey.size + 1,
           item,
@@ -2085,7 +2086,7 @@ export async function openScheduleCourseReview(teacher) {
         credit: candidate.item.credit ?? null,
         grade_level: grade,
         teacher_id: teacher.id,
-        learning_area: depts.find(entry => entry.dept_code === candidate.deptCode)?.head_name || null,
+        learning_area: findCourseDepartment(depts, candidate.subjectGroup, candidate.deptCode)?.head_name || null,
       } : null
       return candidate
     })
@@ -2190,7 +2191,7 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
   setActiveNav('my-courses')
   setTitle(isClone ? 'ทำสำเนาคอร์สวิชา' : editData ? 'แก้ไขคอร์สวิชา' : 'ลงทะเบียนเปิดคอร์ส')
 
-  const [depts, teachers, coTeachers, subjectCatalog, termCfg] = await Promise.all([
+  const [depts, teachers, coTeachers, subjectCatalog, termCfg, religionGroups] = await Promise.all([
     getDepartments().catch(()=>[]),
     getTeachers().catch(()=>[]),
     (editData && !isClone) ? getSubjectCoTeachers(editData.id).catch(err => {
@@ -2199,6 +2200,10 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     }) : Promise.resolve([]),
     getSubjectCatalog().catch(() => []),
     getSystemConfig().catch(() => ({})),
+    getReligionGroups().catch(() => {
+      showToast('โหลดรายชื่อหัวหน้ากลุ่มย่อยไม่สำเร็จ ยังพิมพ์ค้นหาครูศาสนาได้', 'warning')
+      return []
+    }),
   ])
   if (coTeachers === null) {
     setContent(`<div class="p-6 text-center text-gray-600">โหลดข้อมูลคอร์สไม่ครบ กรุณาเปิดคอร์สใหม่อีกครั้ง
@@ -2226,27 +2231,17 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     .filter(row => ![1, 2].includes(currentSemester) || row.semester == null || Number(row.semester) === currentSemester)
     .filter(row => visibleSubgroups.some(group => group.value === row.subject_group))
 
-  // map subject_group → dept category
-  const _sgToCategory = sg =>
-    sg === 'ACDM'    ? 'สามัญ' :
-    sg === 'ACDMVOC' ? 'สามัญปวช' :
-    (sg === 'AGM' || sg === 'AGMVOC') ? 'ศาสนา' : null
-
   const _isVoc     = sg => sg === 'ACDMVOC'
   const _deptLabel = sg => _isVoc(sg) ? 'สาขาวิชา' : 'กลุ่มสาระการเรียนรู้'
-  const _headLabel = sg => _isVoc(sg) ? 'หัวหน้าสาขาวิชา' : 'หัวหน้ากลุ่มสาระ'
+  const _headLabel = sg => isReligionCourse(sg) ? 'หัวหน้ากลุ่มย่อย (Penyelia)' : _isVoc(sg) ? 'หัวหน้าสาขาวิชา' : 'หัวหน้ากลุ่มสาระ'
   const _deptPH    = sg => _isVoc(sg) ? '— เลือกสาขาวิชา —' : '— เลือกกลุ่มสาระ —'
-  const _headHint  = sg => _isVoc(sg) ? 'เติมอัตโนมัติตามสาขาวิชา — แก้ไขได้' : 'เติมอัตโนมัติตามกลุ่มสาระ — แก้ไขได้'
+  const _headHint  = sg => isReligionCourse(sg) ? 'เลือกหัวหน้ากลุ่มย่อย หรือพิมพ์ค้นหาจากรายชื่อครูศาสนา' : _isVoc(sg) ? 'เติมอัตโนมัติตามสาขาวิชา — แก้ไขได้' : 'เติมอัตโนมัติตามกลุ่มสาระ — แก้ไขได้'
 
+  const _sgToSafeCategory = sg => isReligionCourse(sg) ? 'ศาสนา' : sg
   const _initSg = editData?.subject_group ?? ''
+  let _lastDeptCategory = _sgToSafeCategory(_initSg)
 
-  // filter depts by subject_group (graceful: if no category set, show all)
-  const _filterDepts = sg => {
-    const cat = _sgToCategory(sg)
-    if (!cat) return uniqueDepts
-    const filtered = uniqueDepts.filter(d => d.category === cat)
-    return filtered.length ? filtered : uniqueDepts
-  }
+  const _filterDepts = sg => courseDepartments(uniqueDepts, sg)
 
   // สร้าง <option> จาก dept list
   const _deptOptions = (list, selectedCode='') =>
@@ -2254,7 +2249,12 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     list.map(d=>`<option value="${d.dept_code}" ${d.dept_code===selectedCode?'selected':''}>${d.dept_name}</option>`).join('')
 
   // all unique dept heads (for typeahead)
-  const allHeads = [...new Set(depts.map(d=>d.head_name).filter(Boolean))]
+  const headNames = (query = '') => {
+    const sg = document.getElementById('cf-subg').value
+    if (isReligionCourse(sg)) return religionHeadNames(teachers, religionGroups, query)
+    return [...new Set(_filterDepts(sg).map(d => d.head_name).filter(Boolean))]
+      .filter(name => name.toLowerCase().includes(query.toLowerCase()))
+  }
   const catalogById = new Map(catalogRows.map(row => [String(row.id), row]))
   const initialCatalog = catalogById.get(String(editData?.catalog_id ?? ''))
   const initialDeptCode = editData?.dept || _catalogDeptCode(initialCatalog) || ''
@@ -2306,7 +2306,7 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
             ${_deptLabel(_initSg)} <span class="text-red-400">*</span>
           </label>
           <select id="cf-dept" class="${SELECT_CLS}">
-            ${_deptOptions(editData?.subject_group ? _filterDepts(editData.subject_group) : (teacherCat ? uniqueDepts.filter(d=>d.category===teacherCat) : uniqueDepts), initialDeptCode)}
+            ${_deptOptions(_filterDepts(_initSg), initialDeptCode)}
           </select>
         </div>
         <!-- รายวิชาภายใต้กลุ่มสาระ -->
@@ -2616,7 +2616,7 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
       deptEl.value = wantedDept
       deptEl.dispatchEvent(new Event('change'))
     }
-    if (headEl && item.learning_area) headEl.value = item.learning_area
+    if (headEl && item.learning_area && !isReligionCourse(sg)) headEl.value = item.learning_area
     if (catalogEl) {
       document.getElementById('cf-catalog-id').value = item.id
       _renderCatalogOptions(subgEl.value, deptEl?.value || '', item.id)
@@ -2648,7 +2648,10 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     const prevVal = deptEl.value
     deptEl.innerHTML = _deptOptions(_filterDepts(sg))
     deptEl.options[0].textContent = _deptPH(sg)
-    if (prevVal) deptEl.value = prevVal
+    if (prevVal && _sgToSafeCategory(sg) === _lastDeptCategory) deptEl.value = prevVal
+    _lastDeptCategory = _sgToSafeCategory(sg)
+    document.getElementById('cf-dept-head').value = ''
+    document.getElementById('cf-head-dropdown').classList.add('hidden')
     _renderCatalogOptions(sg, deptEl.value, '')
     // อัปเดต grade
     const gradeEl = document.getElementById('cf-grade')
@@ -2669,7 +2672,8 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     const subjectGroup = document.getElementById('cf-subg').value
     const selectedCatalogId = document.getElementById('cf-catalog-id')?.value || ''
     _renderCatalogOptions(subjectGroup, code, selectedCatalogId)
-    const heads = depts.filter(x => x.dept_code === code && x.head_name).map(x => x.head_name)
+    const heads = isReligionCourse(subjectGroup) ? religionHeadNames(teachers, religionGroups)
+      : [...new Set(depts.filter(x => x.category === courseDepartmentCategory(subjectGroup) && x.dept_code === code && x.head_name).map(x => x.head_name))]
     const headEl = document.getElementById('cf-dept-head')
     if (heads.length === 1) {
       headEl.value = heads[0]
@@ -2688,7 +2692,7 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
   function _renderHeadDrop(list) {
     headDrop.innerHTML = list.map(h=>
       `<div class="px-4 py-2.5 text-sm cursor-pointer hover:bg-emerald-50 border-b border-gray-50 last:border-0 head-opt"
-        data-val="${h}">${h}</div>`
+        data-val="${_htmlEsc(h)}">${_htmlEsc(h)}</div>`
     ).join('')
     headDrop.querySelectorAll('.head-opt').forEach(el =>
       el.addEventListener('mousedown', ev => {
@@ -2702,12 +2706,11 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
 
   headEl.addEventListener('input', () => {
     const q = headEl.value.toLowerCase()
-    const filtered = allHeads.filter(h => h.toLowerCase().includes(q))
-    _renderHeadDrop(q ? filtered : allHeads)
+    _renderHeadDrop(headNames(q))
   })
   headEl.addEventListener('focus', () => {
-    const q = headEl.value.toLowerCase()
-    _renderHeadDrop(q ? allHeads.filter(h=>h.toLowerCase().includes(q)) : allHeads)
+    const q = isReligionCourse(document.getElementById('cf-subg').value) ? '' : headEl.value.toLowerCase()
+    _renderHeadDrop(headNames(q))
   })
   headEl.addEventListener('blur', () => setTimeout(()=>headDrop.classList.add('hidden'),150))
 
@@ -2918,7 +2921,7 @@ export async function renderCourseForm(teacher, onSave, editData = null, opts = 
     if (editData.learning_area) {
       headEl.value = editData.learning_area
     } else if (editData.dept) {
-      const d = depts.find(x => x.dept_code === editData.dept && x.head_name)
+      const d = isReligionCourse(editData.subject_group) ? null : findCourseDepartment(depts, editData.subject_group, editData.dept)
       headEl.value = d?.head_name ?? ''
     }
 
@@ -3021,7 +3024,7 @@ export async function renderProfileSetup(teacher, homeroomRooms = [], onComplete
   ])
   const curYear = parseInt(cfg.academicYear ?? 2568)
   const curSem  = parseInt(cfg.semester ?? 1)
-  const uniqueDepts = [...new Map(depts.map(d=>[d.dept_code,d])).values()]
+  const uniqueDepts = [...new Map(depts.map(d=>[`${d.category}:${d.dept_code}`,d])).values()]
 
   // helper: กรอง dept ตาม category ครู
   const _deptOptsForCat = (cat, selectedCode='') => {

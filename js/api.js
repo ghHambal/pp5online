@@ -660,7 +660,7 @@ export async function getTeachers() {
     .from('teachers')
     .select(`
       id, teacher_code, username, login_email, full_name, category, phone, image_url, profile_id,
-      dept, skill_group, subject_group, staff_type,
+      dept, skill_group, subject_group, staff_type, position, positions,
       teachers_quota ( total_classes_created, is_paid, package_type, paid_at )
     `)
     .order('full_name')

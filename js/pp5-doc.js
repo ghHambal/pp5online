@@ -1,3 +1,4 @@
+import { findCourseDepartment } from './course-departments.js'
 import { getClassScoreRounding } from './api.js'
 import { isBonus, roundKey, displayScore, scoreForGrade, effectiveScore, sortScoreColumns } from './score-display.js'
 import {
@@ -398,14 +399,7 @@ async function _loadDocData(classId) {
     ? await getTeacherById(ms.teacher_id).catch(() => null)
     : null
 
-  // ms.dept เก็บ dept_code → ค้นหาให้ตรง category ก่อน (กัน SOC ซ้ำระหว่างสามัญ/ศาสนา)
-  const _subjectCategory = ['AGM','AGMVOC'].includes(ms.subject_group) ? 'ศาสนา'
-                         : ['ACDMVOC'].includes(ms.subject_group) ? 'สามัญปวช'
-                         : 'สามัญ'
-  const dept = depts.find(d => d.dept_code === ms.dept && d.category === _subjectCategory)
-            ?? depts.find(d => d.dept_code === ms.dept)
-            ?? depts.find(d => d.dept_name === ms.dept)
-            ?? null
+  const dept = findCourseDepartment(depts, ms.subject_group, ms.dept)
 
   const [courseDoc, langSettingsRows, sessionDOWs, holidayDates] = await Promise.all([
     ms.id ? getCourseDocPage2(ms.id).catch(() => null) : Promise.resolve(null),
