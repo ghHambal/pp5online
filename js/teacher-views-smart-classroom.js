@@ -2495,6 +2495,8 @@ export async function renderSmartClassroom(teacher, classId) {
     if (!selected || !host || !box) return
     const modal = document.createElement('div')
     modal.id = 'sc-reference-fullscreen'
+    // Base layer for the full-screen reference page. Dialogs opened from this
+    // page must use a higher layer so they are not hidden behind it.
     modal.className = 'fixed inset-0 z-[110] flex flex-col bg-slate-50'
     modal.dataset.previousOverflow = document.body.style.overflow
     modal.innerHTML = `
@@ -2604,7 +2606,7 @@ export async function renderSmartClassroom(teacher, classId) {
     const it = item ?? {}
     const m = document.createElement('div')
     m.id = 'sc-syllabus-modal'
-    m.className = 'fixed inset-0 z-[95] flex items-center justify-center bg-black/50 p-4'
+    m.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-4'
     m.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5 space-y-3 animate-fade">
         <div class="flex items-center justify-between">
@@ -2713,7 +2715,7 @@ export async function renderSmartClassroom(teacher, classId) {
     }
     const m = document.createElement('div')
     m.id = 'sc-plan-modal'
-    m.className = 'fixed inset-0 z-[95] bg-slate-100 flex flex-col'
+    m.className = 'fixed inset-0 z-[120] bg-slate-100 flex flex-col'
     m.innerHTML = `
       <style>
         #sc-plan-modal .lp-toolbar{height:64px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;gap:10px;padding:9px 14px;flex:none;position:relative;z-index:3}

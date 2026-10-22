@@ -374,7 +374,7 @@ export function openLessonPlanAIWorkspace({ teacher, cls, courseId, syllabusItem
   document.getElementById('lp-ai-workspace')?.remove()
   const m = document.createElement('div')
   m.id = 'lp-ai-workspace'
-  m.className = 'fixed inset-0 z-[97] bg-black/60 flex items-stretch justify-stretch'
+  m.className = 'fixed inset-0 z-[120] bg-black/60 flex items-stretch justify-stretch'
   const mode = initialMode === 'schedule' ? 'schedule' : 'plan'
   const isSchedule = mode === 'schedule'
   const scopedClassIds = [...new Set(
@@ -964,7 +964,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
   const classHeadDefault = (Array.isArray(headRel) ? headRel[0]?.full_name : headRel?.full_name) ?? ''
   const signaturePreferences = () => plan.source_json?.signature_preferences ?? {}
   let weekNo = currentWeek >= plan.week_start && currentWeek <= plan.week_end ? currentWeek : plan.week_start
-  const m = document.createElement('div'); m.id='lp-document-modal'; m.className='fixed inset-0 z-[98] bg-black/60 flex items-center justify-center p-3'; document.body.appendChild(m)
+  const m = document.createElement('div'); m.id='lp-document-modal'; m.className='fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-3'; document.body.appendChild(m)
 
   const render = async () => {
     const reflection = await getLessonPlanReflection(plan.id, classId, weekNo).catch(() => null)
