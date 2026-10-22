@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.996'
+import { APP_VERSION } from './version.js?v=10.22.997'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.997': [
+    '🌱 คะแนนทักษะชีวิต: เพิ่มส่วนกำหนดคะแนนเต็มของแต่ละหัวข้อในหน้าตั้งค่า พร้อมแสดงคะแนนรวมและอัปเดตคอลัมน์กลางให้ทุกรายวิชาในภาคเรียนเดียวกัน',
+    '🔄 หากภาคเรียนใหม่ยังไม่มีโครงสร้างคะแนน สามารถคัดลอกจากภาคก่อนและเติมคอลัมน์กลางให้รายวิชาทักษะชีวิตได้ทันที',
+  ],
   '10.22.996': [
     '✍️ Smart Classroom: เพิ่มเขียนตรวจบนรูปงานนักเรียนแบบเต็มจอ ปากกา ยางลบ ข้อความ ย้อนกลับ และซูม พร้อมบันทึกฉบับร่างหรือส่งผลตรวจให้นักเรียนดู',
     '🔒 เก็บต้นฉบับและผลตรวจแยกกัน ซ่อนร่างจากนักเรียน และผูกผลตรวจกับรอบส่งงานเพื่อป้องกันรอยตรวจทับงานที่ส่งใหม่',

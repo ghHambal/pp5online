@@ -6609,12 +6609,12 @@ export async function renderLifeSkillAdmin() {
   const year = parseInt(cfg.academicYear ?? 2568)
   const sem  = parseInt(cfg.semester ?? 1)
 
-  const _reload = async () => {
+  const _reload = async (activeTab = 'scores') => {
     const samaiCols = await getLifeSkillColumns(year, sem, 'สามัญ').catch(()=>[])
-    _render(samaiCols)
+    _render(samaiCols, activeTab)
   }
 
-  const _render = (samaiCols) => {
+  const _render = (samaiCols, activeTab = 'scores') => {
     const colRow = (c) => `
       <tr class="hover:bg-gray-50 transition lsk-row" data-id="${c.id}">
         <td class="px-4 py-3 text-sm font-medium text-gray-800">${c.name}</td>
@@ -6859,8 +6859,39 @@ export async function renderLifeSkillAdmin() {
 
     const _showConfig = () => {
       document.getElementById('lsk-tab-actions').innerHTML = `
+        ${!samaiCols.length ? `<button id="lsk-copy-prev-btn" class="px-4 py-2.5 border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-medium rounded-xl hover:bg-indigo-100">คัดลอกจากภาคก่อน</button>` : ''}
         <button id="lsk-add-btn" class="btn-primary px-5 py-2.5 text-white text-sm font-medium rounded-xl">＋ เพิ่มหัวข้อ</button>`
+      const totalMaxScore = samaiCols.reduce((sum, col) => sum + (Number(col.max_score) || 0), 0)
+      const scoreSettingsHTML = samaiCols.length ? `
+        <form id="lsk-score-settings" class="bg-emerald-50/60 rounded-2xl border border-emerald-100 p-5">
+          <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <h3 class="text-sm font-semibold text-emerald-900">กำหนดคะแนนเต็มแต่ละส่วน</h3>
+              <p class="text-xs text-emerald-700 mt-1">ค่าที่บันทึกจะอัปเดตคอลัมน์กลางในรายวิชาทักษะชีวิตของภาค ${sem}/${year}</p>
+            </div>
+            <span class="px-3 py-1.5 rounded-full bg-white text-xs font-semibold text-emerald-700 border border-emerald-100">รวม <span id="lsk-score-total">${totalMaxScore}</span> คะแนน</span>
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            ${samaiCols.map(col => `
+              <label class="block rounded-xl bg-white border border-emerald-100 p-3">
+                <span class="block text-xs font-semibold text-gray-700 mb-2">${_esc(col.name)}</span>
+                <span class="flex items-center gap-2">
+                  <input type="number" min="1" max="100" step="1" required
+                    data-lsk-max-id="${col.id}" value="${Number(col.max_score) || 0}"
+                    class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-300" />
+                  <span class="text-xs text-gray-400">คะแนน</span>
+                </span>
+              </label>`).join('')}
+          </div>
+          <div class="flex justify-end mt-4">
+            <button id="lsk-save-score-settings" type="submit" class="px-5 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">บันทึกคะแนนเต็ม</button>
+          </div>
+        </form>` : `
+        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+          ภาค ${sem}/${year} ยังไม่มีโครงสร้างคะแนนกลาง กรุณากด “คัดลอกจากภาคก่อน” หรือเพิ่มหัวข้อใหม่
+        </div>`
       document.getElementById('lsk-tab-content').innerHTML = `<div class="space-y-6">
+        ${scoreSettingsHTML}
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div class="px-5 py-3 border-b border-gray-50 flex items-center gap-2">
             <span class="w-2 h-2 rounded-full bg-blue-500"></span>
@@ -6871,17 +6902,76 @@ export async function renderLifeSkillAdmin() {
           ${sheetIdBlock('lifeSkillSheetIdSamai', 'สามัญ')}
         </div>
       </div>`
-      document.getElementById('lsk-add-btn').addEventListener('click', () => _openModal(null, year, sem, _reload))
+      document.getElementById('lsk-add-btn').addEventListener('click', () => _openModal(null, year, sem, () => _reload('config')))
+      document.getElementById('lsk-copy-prev-btn')?.addEventListener('click', async () => {
+        const btn = document.getElementById('lsk-copy-prev-btn')
+        const sourceYear = sem === 1 ? year - 1 : year
+        const sourceSem = sem === 1 ? 2 : sem - 1
+        btn.disabled = true
+        btn.textContent = 'กำลังคัดลอก...'
+        try {
+          const previous = await getLifeSkillColumns(sourceYear, sourceSem, 'สามัญ')
+          if (!previous.length) throw new Error(`ไม่พบโครงสร้างคะแนนภาค ${sourceSem}/${sourceYear}`)
+          await createLifeSkillColumn(previous.map(col => ({
+            name: col.name,
+            max_score: col.max_score,
+            sheet_col: col.sheet_col,
+            sort_order: col.sort_order,
+            category: 'สามัญ',
+            academic_year: year,
+            semester: sem,
+          })))
+          const result = await fillLifeSkillScoresToClassScores(year, sem)
+          showToast(`คัดลอก ${previous.length} ส่วน และเติมให้ ${result.classes} รายวิชาแล้ว`, 'success')
+          await _reload('config')
+        } catch (err) {
+          showToast('คัดลอกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+          btn.disabled = false
+          btn.textContent = 'คัดลอกจากภาคก่อน'
+        }
+      })
+      const scoreSettingsForm = document.getElementById('lsk-score-settings')
+      const updateScoreTotal = () => {
+        const total = [...document.querySelectorAll('[data-lsk-max-id]')]
+          .reduce((sum, input) => sum + (Number(input.value) || 0), 0)
+        const totalEl = document.getElementById('lsk-score-total')
+        if (totalEl) totalEl.textContent = total
+      }
+      scoreSettingsForm?.querySelectorAll('[data-lsk-max-id]').forEach(input => input.addEventListener('input', updateScoreTotal))
+      scoreSettingsForm?.addEventListener('submit', async event => {
+        event.preventDefault()
+        const btn = document.getElementById('lsk-save-score-settings')
+        const values = [...scoreSettingsForm.querySelectorAll('[data-lsk-max-id]')].map(input => ({
+          id: Number(input.dataset.lskMaxId),
+          maxScore: Number(input.value),
+        }))
+        if (values.some(item => !Number.isInteger(item.maxScore) || item.maxScore < 1 || item.maxScore > 100)) {
+          showToast('คะแนนเต็มแต่ละส่วนต้องเป็นจำนวนเต็ม 1–100', 'warning')
+          return
+        }
+        btn.disabled = true
+        btn.textContent = 'กำลังบันทึก...'
+        try {
+          await Promise.all(values.map(item => updateLifeSkillColumn(item.id, { max_score: item.maxScore })))
+          const result = await fillLifeSkillScoresToClassScores(year, sem)
+          showToast(`บันทึกคะแนนเต็ม และอัปเดต ${result.classes} รายวิชาแล้ว`, 'success')
+          await _reload('config')
+        } catch (err) {
+          showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+          btn.disabled = false
+          btn.textContent = 'บันทึกคะแนนเต็ม'
+        }
+      })
       document.querySelectorAll('.lsk-edit').forEach(btn => {
         btn.addEventListener('click', () => {
           const col = allCols.find(c => c.id === +btn.dataset.id)
-          if (col) _openModal(col, year, sem, _reload)
+          if (col) _openModal(col, year, sem, () => _reload('config'))
         })
       })
       document.querySelectorAll('.lsk-del').forEach(btn => {
         btn.addEventListener('click', async () => {
           if (!confirm(`ลบหัวข้อ "${btn.dataset.name}"?`)) return
-          try { await deleteLifeSkillColumn(+btn.dataset.id); showToast('ลบแล้ว','success'); _reload() }
+          try { await deleteLifeSkillColumn(+btn.dataset.id); showToast('ลบแล้ว','success'); _reload('config') }
           catch(err) { showToast('ลบไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error') }
         })
       })
@@ -6920,7 +7010,7 @@ export async function renderLifeSkillAdmin() {
     }
     document.getElementById('lsk-tab-scores').addEventListener('click', () => _switchTab('scores'))
     document.getElementById('lsk-tab-config').addEventListener('click', () => _switchTab('config'))
-    _switchTab('scores')
+    _switchTab(activeTab)
 
   }
 
@@ -6991,7 +7081,8 @@ function _openModal(col, year, sem, onSave) {
       }
       if (isEdit) await updateLifeSkillColumn(col.id, payload)
       else        await createLifeSkillColumn(payload)
-      showToast('บันทึกสำเร็จ', 'success')
+      const result = await fillLifeSkillScoresToClassScores(year, sem)
+      showToast(`บันทึกสำเร็จ และอัปเดต ${result.classes} รายวิชาแล้ว`, 'success')
       m.remove()
       onSave()
     } catch (err) {
