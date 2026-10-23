@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1000'
+import { APP_VERSION } from './version.js?v=10.22.1001'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1001': [
+    'เพิ่มปุ่มจัดเก็บแผนรายสัปดาห์เข้า Drive ในแท็บแผนการสอนของ Smart Classroom เพื่อให้ครูเข้าถึงได้จากหน้าสอนสดโดยตรง',
+  ],
   '10.22.1000': [
     'ปรับการจัดเก็บแผนรายสัปดาห์เป็นโฟลเดอร์ Drive ส่วนตัว แยกตามครูและภาคเรียน ไม่ใช้โฟลเดอร์กลางร่วมกัน',
     'เพิ่มการตั้งค่า Folder ID และรูปแบบการสร้าง/แทนที่ไฟล์ในศูนย์ส่งแผน พร้อมตรวจสิทธิ์ฝั่งเซิร์ฟเวอร์',

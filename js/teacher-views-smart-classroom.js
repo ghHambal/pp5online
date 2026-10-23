@@ -39,6 +39,7 @@ import { supabase } from './supabase.js'
 import { publishGradebookUpdate } from './gradebook-sync.js'
 import { evalFormula, assignBonusVars } from './teacher-score-columns.js'
 import { openLessonPlanAIWorkspace, openLessonPlanDocument } from './lesson-plan-ai-workspace.js'
+import { openLessonPlanArchiveCenter } from './lesson-plan-archive.js'
 
 // ─── Tier gate ──────────────────────────────────────────────────────────────
 // ใช้ pattern เดียวกับ _dashboardMinTier ใน teacher-views-dashboard.js — อ่านจาก
@@ -311,6 +312,8 @@ export async function renderSmartClassroom(teacher, classId) {
   </div>`)
 
   const { cfg, minTier, unlocked, donationRequests: _scDonationRequests } = await resolveSmartClassroomAccess(teacher)
+  const scAcademicYear = parseInt(cfg.academicYear ?? cfg.academic_year ?? 2568)
+  const scSemester = parseInt(cfg.semester ?? 1)
 
   if (!canUseSmartClassroomForClass(unlocked, teacher, classId)) {
     const freeClassId = teacher?.smart_classroom_free_class_id
@@ -374,9 +377,6 @@ export async function renderSmartClassroom(teacher, classId) {
     syllabusItems, lessonPlans, annTypeSuggestions
   let courseId = null
   try {
-    const academicYear = parseInt(cfg.academicYear ?? 2568)
-    const semester = parseInt(cfg.semester ?? 1)
-
     // donationRequests ใช้ค่าที่ _resolveSmartClassroomAccess ยิงไปแล้วก่อนหน้านี้ ไม่ยิงซ้ำ
     donationRequests = _scDonationRequests
     // getMyClasses ไม่ต้องรอให้เสร็จก่อนแล้วค่อยยิง 16 query ที่เหลือทีละสเต็ปแบบเดิม (เดิมเสีย
@@ -400,7 +400,7 @@ export async function renderSmartClassroom(teacher, classId) {
       getClassLeaveHistory(classId).catch(() => []),
       getClassAssignmentsWithSubmissions(classId).catch(() => []),
       getTeacherExamRequests(teacher.id).catch(() => []),
-      getMySchedule(teacher.id, academicYear, semester).catch(() => []),
+      getMySchedule(teacher.id, scAcademicYear, scSemester).catch(() => []),
       getClassScheduleLinks(teacher.id).catch(() => []),
       getPeriods().catch(() => []),
       getClassAnnouncements(classId).catch(() => []),
@@ -1140,6 +1140,7 @@ export async function renderSmartClassroom(teacher, classId) {
           <div class="grid grid-cols-2 gap-2 sm:min-w-[300px]">
             <button id="sc-ai-plan" class="min-h-[48px] rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-xs font-bold shadow-sm">🤖 สร้างแผนด้วย AI</button>
             <button id="sc-add-plan" class="min-h-[48px] rounded-xl bg-white border border-violet-200 text-violet-800 text-xs font-bold hover:bg-violet-50">＋ สร้างแผนเอง</button>
+            <button id="sc-archive-plans" ${lessonPlans.length ? '' : 'disabled'} class="col-span-2 min-h-[44px] rounded-xl ${lessonPlans.length ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-gray-100 text-gray-400'} text-xs font-bold shadow-sm disabled:cursor-not-allowed">📦 จัดเก็บแผนรายสัปดาห์เข้า Drive</button>
           </div>
         </div>
       </div>
@@ -2315,6 +2316,18 @@ export async function renderSmartClassroom(teacher, classId) {
     document.getElementById('sc-ai-plan')?.addEventListener('click', () => openLessonPlanAIWorkspace({
       teacher, cls, courseId, syllabusItems, lessonPlans, currentWeek: curWeek || 1, initialMode: 'plan',
       semesterStart: cfg.semester_start, semesterEnd: cfg.semester_end, scheduledDays: courseScheduledDays, onSaved: () => _reload(),
+    }))
+    document.getElementById('sc-archive-plans')?.addEventListener('click', () => openLessonPlanArchiveCenter({
+      subject: { ...ms, id: courseId },
+      teacher,
+      classes: [cls],
+      plans: lessonPlans,
+      semesterStart: cfg.semester_start,
+      semesterEnd: cfg.semester_end,
+      termSchedule: mySchedule,
+      scheduleLinks,
+      academicYear: scAcademicYear,
+      semester: scSemester,
     }))
     document.getElementById('sc-sync-plan-pattern')?.addEventListener('click', async event => {
       const weeklyPlans = new Map()
