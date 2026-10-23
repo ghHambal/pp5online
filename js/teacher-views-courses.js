@@ -5,7 +5,7 @@ import {
   getCourseDocPage2, saveCourseDocPage2, findCurriculumStandards,
   getCourseDocLangSettings, saveCourseDocLangSettings, saveCourseDocLangEditors,
   getTeacherPackageAccess, getSystemConfig, getRoomsByGrade, getSubjectCatalog,
-  getMySchedule, createSubject,
+  getMySchedule, getClassScheduleLinks, createSubject,
   getUniqueRooms, getUniqueReligionRooms, getHomeroomTeachers, getSubjectCoTeachers,
   getCourseSyllabus, getLessonPlans, updateSyllabusItem, deleteSyllabusItem, deleteLessonPlan,
 } from './api.js'
@@ -435,9 +435,10 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
 
   const body = m.querySelector('#course-workspace-body')
   try {
-    const [{ resolveSmartClassroomAccess, canUseSmartClassroomForClass }, { openLessonPlanAIWorkspace, openLessonPlanDocument, openLessonPlansPrint }] = await Promise.all([
+    const [{ resolveSmartClassroomAccess, canUseSmartClassroomForClass }, { openLessonPlanAIWorkspace, openLessonPlanDocument, openLessonPlansPrint }, { openLessonPlanArchiveCenter }] = await Promise.all([
       import('./teacher-views-smart-classroom.js'),
       import('./lesson-plan-ai-workspace.js'),
+      import('./lesson-plan-archive.js'),
     ])
     const [syllabusItems, lessonPlans, access, termConfig] = await Promise.all([
       getCourseSyllabus(courseId).catch(() => []),
@@ -479,14 +480,17 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     const semesterStart = /^\d{4}-\d{2}-\d{2}$/.test(String(termConfig.semester_start ?? '')) ? termConfig.semester_start : null
     const scheduleAcademicYear = Number(subject.academic_year ?? termConfig.academicYear ?? termConfig.academic_year)
     const scheduleSemester = Number(subject.semester ?? termConfig.semester)
-    const termSchedule = Number.isInteger(scheduleAcademicYear) && [1, 2].includes(scheduleSemester)
-      ? await getMySchedule(teacher.id, scheduleAcademicYear, scheduleSemester).catch(() => [])
-      : []
-    const courseScheduledDays = [...new Set(termSchedule
-      .filter(row => Number(row.subject_id) === courseId)
-      .map(row => Number(row.day_of_week))
-      .map(day => day === 0 ? 7 : day)
-      .filter(day => Number.isInteger(day) && day >= 1 && day <= 7 && day !== 6))]
+    const [termSchedule, scheduleLinks] = Number.isInteger(scheduleAcademicYear) && [1, 2].includes(scheduleSemester)
+      ? await Promise.all([
+        getMySchedule(teacher.id, scheduleAcademicYear, scheduleSemester).catch(() => []),
+        getClassScheduleLinks(teacher.id).catch(() => []),
+      ])
+      : [[], []]
+    const daysForClass = classId => {
+      const scheduleIds = new Set(scheduleLinks.filter(link => Number(link.class_id) === Number(classId)).map(link => Number(link.teacher_schedule_id)))
+      return [...new Set(termSchedule.filter(row => scheduleIds.has(Number(row.id))).map(row => Number(row.day_of_week)).map(day => day === 0 ? 7 : day).filter(day => Number.isInteger(day) && day >= 1 && day <= 7 && day !== 6))]
+    }
+    const courseScheduledDays = [...new Set(courseClasses.flatMap(cls => daysForClass(cls.id)))]
     const weekDateRange = weekNo => {
       if (!semesterStart) return null
       const [year, month, day] = semesterStart.split('-').map(Number)
@@ -578,7 +582,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
     <section data-course-panel="plans" class="hidden rounded-2xl border border-violet-100 bg-violet-50/60 p-4 sm:p-5">
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
             <div><h3 class="font-extrabold text-violet-950">📝 แผนการจัดการเรียนรู้หน้าเดียว</h3><p class="text-xs text-violet-700/70 mt-1">แผนรายครั้งที่อ้างอิงหัวข้อจากกำหนดการสอน ส่วนบันทึกหลังสอนและลายเซ็นแยกตามห้องที่มีสิทธิ์</p></div>
-            <div class="flex flex-wrap items-center gap-2 justify-end"><button id="cw-plans-print-all" class="min-h-[44px] px-4 rounded-xl ${lessonPlans.length ? 'border border-violet-200 bg-white text-violet-800 hover:bg-violet-50' : 'border border-gray-200 bg-gray-100 text-gray-400'} text-xs font-bold flex-shrink-0" ${lessonPlans.length ? '' : 'disabled'}>🖨️ พิมพ์/บันทึกแผนทั้งภาคเรียน</button><button id="cw-ai-plan" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-violet-700 hover:bg-violet-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>✨ สร้างแผนด้วย AI</button></div>
+            <div class="flex flex-wrap items-center gap-2 justify-end"><button id="cw-plan-archive" class="min-h-[44px] px-4 rounded-xl ${lessonPlans.length ? 'border border-emerald-200 bg-white text-emerald-800 hover:bg-emerald-50' : 'border border-gray-200 bg-gray-100 text-gray-400'} text-xs font-bold flex-shrink-0" ${lessonPlans.length ? '' : 'disabled'}>📦 ส่ง/จัดเก็บรายสัปดาห์</button><button id="cw-plans-print-all" class="min-h-[44px] px-4 rounded-xl ${lessonPlans.length ? 'border border-violet-200 bg-white text-violet-800 hover:bg-violet-50' : 'border border-gray-200 bg-gray-100 text-gray-400'} text-xs font-bold flex-shrink-0" ${lessonPlans.length ? '' : 'disabled'}>🖨️ พิมพ์/บันทึกแผนทั้งภาคเรียน</button><button id="cw-ai-plan" class="min-h-[44px] px-4 rounded-xl ${aiAllowed ? 'bg-violet-700 hover:bg-violet-800 text-white' : 'bg-gray-200 text-gray-400'} text-xs font-bold flex-shrink-0" ${aiAllowed ? '' : 'disabled'}>✨ สร้างแผนด้วย AI</button></div>
           </div>
           ${aiAllowed ? '' : '<p class="mt-2 text-[11px] text-amber-700">ต้องมีสิทธิ์ใช้ Smart Classroom อย่างน้อยหนึ่งห้องในรายวิชานี้ก่อน</p>'}
           ${lessonPlans.length ? `<div class="mt-4 space-y-2">${lessonPlans.map(plan => `<div class="flex items-center gap-2 rounded-xl border border-violet-100 bg-white px-3 py-3"><button class="cw-plan-row min-w-0 flex-1 text-left hover:text-violet-800 transition" data-plan-id="${plan.id}"><p class="text-sm font-bold text-gray-800">${_htmlEsc(plan.title)}</p><p class="text-[11px] text-violet-600 mt-0.5">สัปดาห์ ${plan.week_start}${plan.week_end !== plan.week_start ? `–${plan.week_end}` : ''} · กดเพื่อเปิดเอกสาร/บันทึกหลังสอน</p></button><button type="button" class="cw-plan-delete shrink-0 rounded-lg border border-red-200 bg-white px-3 py-2 text-[10px] font-bold text-red-600" data-plan-id="${plan.id}">ลบ</button></div>`).join('')}</div>` : `<div class="mt-4 rounded-xl border border-dashed border-violet-200 py-8 text-center text-xs text-violet-400">ยังไม่มีแผนการสอน</div>`}
@@ -726,6 +730,11 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year,
       departmentHead: courseDepartment,
     })
+    body.querySelector('#cw-plan-archive')?.addEventListener('click', () => openLessonPlanArchiveCenter({
+      subject, teacher, classes: courseClasses, plans: lessonPlans, semesterStart, semesterEnd: termConfig.semester_end,
+      termSchedule, scheduleLinks, academicYear: termConfig.academicYear ?? termConfig.academic_year ?? subject.academic_year,
+      semester: termConfig.semester ?? subject.semester,
+    }))
     body.querySelector('#cw-plans-print-all')?.addEventListener('click', () => {
       const roomGroups = courseRoomGroups
       if (roomGroups.length <= 1) {
@@ -797,7 +806,7 @@ async function _openCourseWorkspace(teacher, subject, allClasses) {
       const cls = allowedClasses.find(c => c.id === classId)
       if (!selectedPlan || !cls) return
       hidePicker()
-      openLessonPlanDocument({ plan: selectedPlan, cls, teacher, classId: cls.id, currentWeek: selectedPlan.week_start, semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: courseScheduledDays })
+      openLessonPlanDocument({ plan: selectedPlan, cls, teacher, classId: cls.id, currentWeek: selectedPlan.week_start, semesterStart, semesterEnd: termConfig.semester_end, scheduledDays: daysForClass(cls.id) })
     })
   } catch (err) {
     body.innerHTML = `<div class="rounded-2xl border border-red-100 bg-red-50 p-6 text-center text-sm text-red-600">โหลดศูนย์จัดการคอร์สไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(err))}</div>`

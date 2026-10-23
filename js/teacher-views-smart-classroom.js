@@ -2273,7 +2273,7 @@ export async function renderSmartClassroom(teacher, classId) {
   }
 
   function _wireRefTabBody() {
-    const courseScheduledDays = [...new Set((mySchedule ?? [])
+    const courseScheduledDays = [...new Set((classScheduleSlots ?? [])
       .filter(row => Number(row.subject_id) === Number(courseId))
       .map(row => Number(row.day_of_week))
       .map(day => day === 0 ? 7 : day)

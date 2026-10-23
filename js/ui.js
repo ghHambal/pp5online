@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.998'
+import { APP_VERSION } from './version.js?v=10.22.999'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,11 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.999': [
+    'เพิ่มศูนย์ส่งและจัดเก็บแผนการสอนรายสัปดาห์ รวมตามห้องและวันที่สอนเป็น PDF เดียว',
+    'บันทึกวันที่สอนแยกตามแผนและห้อง พร้อมเติมวันที่จากตารางสอนอัตโนมัติ',
+    'เชื่อมการจัดเก็บเข้า Google Drive ตามโฟลเดอร์ภาคเรียน/สัปดาห์/ครู และติดตามลิงก์ไฟล์ในระบบ',
+  ],
   '10.22.998': [
     '🪟 Smart Classroom: แก้หน้าต่างที่เปิดจากกำหนดการสอนและแผนการสอนให้แสดงอยู่ด้านหน้าถูกต้อง ครอบคลุมเพิ่มหัวข้อ สร้างหรือแก้ไขแผน สร้างด้วย AI และบันทึกหลังสอน/ลงนาม',
   ],

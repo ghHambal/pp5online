@@ -63,6 +63,8 @@ function doPost(e) {
     var payload = JSON.parse(e.postData.contents)
     var action  = payload.action
 
+    if (action === 'lesson_plan_archive_capabilities') return _json({ ok: true, lessonPlanArchiveVersion: 1 })
+    if (action === 'archive_lesson_plan_pdf') return _json(_archiveLessonPlanPdf(payload))
     if (action === 'sync_attendance') return _syncAttendance(payload)
     if (action === 'sync_scores')     return _syncScores(payload)
     if (action === 'sync_cells')      return _syncCells(payload)
@@ -74,6 +76,58 @@ function doPost(e) {
   } catch (err) {
     return _json({ ok: false, error: err.message })
   }
+}
+
+// ─── เก็บ PDF แผนการสอนรายสัปดาห์เข้าโฟลเดอร์กลุ่มสาระ ─────────────────────
+// สร้าง/ค้นโฟลเดอร์แบบ exact match และตรวจชื่อซ้ำก่อนแตะไฟล์เดิม
+function _archiveLessonPlanPdf(payload) {
+  var rootId = String(payload.rootFolderId || '').trim()
+  var teacherName = _normalizeArchiveTeacherName(payload.teacherName)
+  var weekNo = Number(payload.weekNo)
+  var fileName = String(payload.fileName || '').trim()
+  var base64 = String(payload.pdfBase64 || '').trim()
+  if (!rootId || !teacherName || !Number.isInteger(weekNo) || weekNo < 1 || weekNo > 60 || !/^[^\\/]{1,180}\\.pdf$/i.test(fileName)) throw new Error('ข้อมูลโฟลเดอร์/สัปดาห์/ชื่อไฟล์ไม่ถูกต้อง')
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new Error('ข้อมูล PDF ไม่ถูกต้อง')
+  var bytes = Utilities.base64Decode(base64)
+  if (bytes.length < 4 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== '%PDF') throw new Error('ไฟล์ที่ส่งมาต้องเป็น PDF')
+  if (bytes.length > 12 * 1024 * 1024) throw new Error('ไฟล์ PDF ใหญ่เกิน 12 MB')
+  var root = DriveApp.getFolderById(rootId)
+  var allowCreate = payload.createFolders !== false && String(payload.createFolders) !== 'false'
+  var weekFolder = _findArchiveFolder(root, 'สัปดาห์ที่ ' + weekNo, allowCreate)
+  var teacherFolder = _findArchiveFolder(weekFolder.folder, teacherName, allowCreate)
+  var existing = _findArchiveFiles(teacherFolder.folder, fileName)
+  if (existing.length > 1) throw new Error('พบไฟล์ชื่อซ้ำมากกว่า 1 ไฟล์ในโฟลเดอร์ครู: ' + fileName)
+  var blob = Utilities.newBlob(bytes, 'application/pdf', fileName)
+  var file = teacherFolder.folder.createFile(blob)
+  var replacedFileId = null
+  if (existing.length === 1 && String(payload.replaceMode || 'replace') === 'replace') {
+    replacedFileId = existing[0].getId()
+    existing[0].setTrashed(true)
+  }
+  return { ok: true, driveFileId: file.getId(), driveUrl: file.getUrl(), driveRootFolderId: root.getId(), driveWeekFolderId: weekFolder.folder.getId(), driveTeacherFolderId: teacherFolder.folder.getId(), replacedFileId: replacedFileId }
+}
+
+function _normalizeArchiveTeacherName(value) {
+  return String(value || '').trim().replace(/^(นาย|นางสาว|นาง|ครู)\\s*/u, '').trim()
+    ? 'ครู' + String(value || '').trim().replace(/^(นาย|นางสาว|นาง|ครู)\\s*/u, '').trim()
+    : ''
+}
+
+function _findArchiveFolder(parent, name, allowCreate) {
+  var folders = parent.getFoldersByName(name)
+  var found = []
+  while (folders.hasNext()) found.push(folders.next())
+  if (found.length > 1) throw new Error('พบโฟลเดอร์ชื่อซ้ำ: ' + name)
+  if (found.length === 1) return { folder: found[0], created: false }
+  if (!allowCreate) throw new Error('ไม่พบโฟลเดอร์: ' + name)
+  return { folder: parent.createFolder(name), created: true }
+}
+
+function _findArchiveFiles(parent, name) {
+  var files = parent.getFilesByName(name)
+  var found = []
+  while (files.hasNext()) found.push(files.next())
+  return found
 }
 
 // ─── ส่ง response กลับแบบ JSONP ──────────────────────────────────────────────

@@ -3204,6 +3204,11 @@ export async function renderSettings() {
           ${fld({ key:'centralGasUrl', label:'Central GAS URL', type:'text',
             placeholder:'https://script.google.com/macros/s/...',
             hint:'Deploy ครั้งเดียว ใช้ร่วมกันทุก Sync ในระบบ' })}
+          <p class="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-3 pb-2 border-b border-emerald-100">โฟลเดอร์เก็บแผนการสอนรายสัปดาห์</p>
+          ${fld({ key:'lessonPlanDriveDeptCode', label:'กลุ่มสาระเจ้าของโฟลเดอร์', type:'text', placeholder:'เช่น MATH', hint:'ใช้ตรวจสอบว่าคอร์สอยู่ในกลุ่มสาระเดียวกับโฟลเดอร์ Drive' })}
+          ${fld({ key:'lessonPlanDriveRootId', label:'Google Drive Folder ID โฟลเดอร์ภาคเรียน', type:'text', placeholder:'เช่น 1u9ZGSOBbaIImdOrBuL4crGTJnsCRPaoq', hint:'โฟลเดอร์หลักจะมีโฟลเดอร์ สัปดาห์ที่ 1, สัปดาห์ที่ 2 ... อยู่ภายใน' })}
+          ${fld({ key:'lessonPlanDriveCreateFolders', label:'การสร้างโฟลเดอร์สัปดาห์/ครูอัตโนมัติ', type:'select', options:[{ value:'true', label:'อนุญาตสร้างเมื่อยังไม่มี' }, { value:'false', label:'ไม่สร้างอัตโนมัติ (ต้องมีโฟลเดอร์อยู่แล้ว)' }], hint:'ระบบจะหยุดพร้อมแจ้งชื่อโฟลเดอร์ที่ขาด หากเลือกไม่สร้าง' })}
+          ${fld({ key:'lessonPlanDriveReplaceMode', label:'เมื่อมีไฟล์ชื่อเดิมใน Drive', type:'select', options:[{ value:'replace', label:'แทนที่ไฟล์เดิม (ย้ายไฟล์เดิมไปถังขยะ)' }, { value:'version', label:'เก็บเป็นไฟล์เวอร์ชันใหม่' }], hint:'การแทนที่ทำหลังสร้างไฟล์ใหม่สำเร็จเท่านั้น' })}
           ${fld({ key:'classInfoTab', label:'ชื่อแท็บข้อมูลรายวิชาในชีทครู', type:'text', placeholder:'ข้อมูลรายวิชา' })}
           <p class="text-xs font-bold text-indigo-500 uppercase tracking-widest mb-3 pb-2 border-b border-gray-100">ตำแหน่ง Cell ข้อมูลในชีทครู</p>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">

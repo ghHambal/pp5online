@@ -5704,6 +5704,34 @@ export async function getLessonPlanReflectionsForPlan(lessonPlanId) {
   return data ?? []
 }
 
+export async function getLessonPlanReflectionsForPlans(lessonPlanIds, weekNo = null) {
+  const ids = [...new Set((lessonPlanIds ?? []).map(Number).filter(id => Number.isInteger(id) && id > 0))]
+  if (!ids.length) return []
+  let query = supabase
+    .from('lesson_plan_reflections')
+    .select('*')
+    .in('lesson_plan_id', ids)
+    .order('week_no', { ascending: true })
+    .order('class_id', { ascending: true })
+  if (Number.isInteger(Number(weekNo))) query = query.eq('week_no', Number(weekNo))
+  const { data, error } = await query
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getLessonPlanArchives(courseId, academicYear = null, semester = null) {
+  let query = supabase
+    .from('lesson_plan_archives')
+    .select('*')
+    .eq('course_id', courseId)
+    .order('week_no', { ascending: true })
+  if (Number.isInteger(Number(academicYear))) query = query.eq('academic_year', Number(academicYear))
+  if (Number.isInteger(Number(semester))) query = query.eq('semester', Number(semester))
+  const { data, error } = await query
+  if (error) throw error
+  return data ?? []
+}
+
 export async function upsertLessonPlanReflection(payload) {
   const { data, error } = await supabase
     .from('lesson_plan_reflections')

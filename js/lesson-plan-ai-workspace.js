@@ -788,11 +788,24 @@ function bindPad(box) {
 
 const canvasBlob = canvas => new Promise(resolve => canvas.toBlob(resolve, 'image/png'))
 
-function printLessonPlan({ plan, cls, teacher, reflection, urls, dept, semesterStart, semesterEnd, scheduledDays = [] }) {
+function lessonDateState(plan, reflection, weekNo, semesterStart, semesterEnd, scheduledDays = []) {
+  const selectedWeek = asInt(weekNo, asInt(plan.week_start, 1))
+  const primaryWeek = asInt(plan.week_start, selectedWeek)
+  const savedOnReflection = isoDate(reflection?.lesson_date)
+  const legacySavedOnPlan = selectedWeek === primaryWeek
+    ? isoDate(plan.lesson_date) ?? isoDate(plan.source_json?.lesson_date)
+    : null
+  const availableDates = schoolWeekRange(selectedWeek, semesterStart, semesterEnd, scheduledDays).dates
+  const sessionInWeek = Math.max(1, asInt(plan.source_json?.session_in_week, 1))
+  const suggested = availableDates[sessionInWeek - 1] ?? availableDates[0] ?? null
+  const saved = savedOnReflection ?? legacySavedOnPlan
+  return { selectedWeek, saved, suggested, availableDates, value: saved ?? suggested ?? '' }
+}
+
+function printLessonPlan({ plan, cls, teacher, reflection, urls, dept, semesterStart, semesterEnd, scheduledDays = [], weekNo = null, lessonDate = null }) {
   const meta = courseMeta(cls)
-  const availableDates = schoolWeekRange(asInt(plan.week_start), semesterStart, semesterEnd, scheduledDays).dates
-  const planDate = isoDate(plan.lesson_date) ?? isoDate(plan.source_json?.lesson_date)
-  const initialDate = (planDate && availableDates.includes(planDate) ? planDate : null) ?? availableDates[0] ?? planDate ?? ''
+  const dateState = lessonDateState(plan, reflection, weekNo ?? plan.week_start, semesterStart, semesterEnd, scheduledDays)
+  const initialDate = isoDate(lessonDate) ?? dateState.value
   const date = initialDate ? thaiShortDate(initialDate) : '........................'
   const rawClassName = String(meta.class_name ?? '').trim()
   const gradeText = String(meta.grade_level ?? '').replace(/ม\./g, '').trim()
@@ -968,6 +981,12 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
 
   const render = async () => {
     const reflection = await getLessonPlanReflection(plan.id, classId, weekNo).catch(() => null)
+    const dateState = lessonDateState(plan, reflection, weekNo, semesterStart, semesterEnd, scheduledDays)
+    const dateHint = dateState.saved
+      ? `วันที่ที่บันทึกไว้สำหรับครั้งนี้: ${thaiShortDate(dateState.saved)}`
+      : dateState.suggested
+        ? `เติมอัตโนมัติจากกำหนดการสัปดาห์ที่ ${weekNo} และตารางสอน: ${thaiShortDate(dateState.suggested)}`
+        : 'ยังไม่พบวันสอนจากตาราง กรุณาเลือกวันที่เองก่อนบันทึก'
     const resolve = path => getLessonPlanAssetUrl(path).catch(() => null)
     const persistedDeptName = String(reflection?.dept_head_name ?? '').trim()
     const staleDeptHeadReflection = Boolean(deptHeadName && persistedDeptName && persistedDeptName !== deptHeadName)
@@ -1033,7 +1052,12 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     }))
     m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
       <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-bold text-gray-800">📝 ${esc(plan.title)}</h3><p class="text-xs text-gray-400">บันทึกหลังสอนและลายเซ็นครบ 3 ฝ่าย</p></div><button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button></div>
-      <label class="text-xs font-bold text-gray-500">ครั้งที่<select id="lp-doc-week" class="ml-2 border rounded-lg px-2 py-1 bg-white">${Array.from({length:plan.week_end-plan.week_start+1},(_,i)=>({ week:plan.week_start+i, session:asInt(plan.session_number,1)+i })).map(item=>`<option value="${item.week}" ${item.week===weekNo?'selected':''}>${item.session}</option>`).join('')}</select></label>
+      <div class="flex flex-wrap items-end gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
+        <label class="text-xs font-bold text-gray-600">ครั้งที่<select id="lp-doc-week" class="mt-1 block min-h-[40px] border border-gray-200 rounded-xl px-3 bg-white text-sm">${Array.from({length:plan.week_end-plan.week_start+1},(_,i)=>({ week:plan.week_start+i, session:asInt(plan.session_number,1)+i })).map(item=>`<option value="${item.week}" ${item.week===weekNo?'selected':''}>${item.session}</option>`).join('')}</select></label>
+        <label class="text-xs font-bold text-gray-600">วันที่สอน<input id="lp-doc-date" type="date" value="${esc(dateState.value)}" ${isoDate(semesterStart) ? `min="${esc(semesterStart)}"` : ''} ${isoDate(semesterEnd) ? `max="${esc(semesterEnd)}"` : ''} class="mt-1 block min-h-[40px] rounded-xl border border-gray-200 bg-white px-3 text-sm"></label>
+        ${dateState.suggested ? `<button id="lp-doc-use-suggested-date" type="button" class="min-h-[40px] rounded-xl border border-indigo-200 bg-white px-3 text-[11px] font-bold text-indigo-700">↻ ใช้วันที่ตามตาราง</button>` : ''}
+        <p id="lp-doc-date-hint" class="basis-full text-[11px] ${dateState.saved ? 'text-emerald-700' : dateState.suggested ? 'text-indigo-700' : 'text-amber-700'}">${esc(dateHint)}</p>
+      </div>
       <div class="grid sm:grid-cols-3 gap-3 mt-4">
         ${signaturePadHTML('class-head','หัวหน้าห้อง',reflection?.class_head_name || classHeadDefault,classHeadUrl,makePadOptions('class-head'),sourceFor('class-head'))}
         ${signaturePadHTML('teacher','ครูผู้สอน',reflection?.teacher_name || teacher.full_name,teacherUrl,makePadOptions('teacher'),sourceFor('teacher'),Boolean(profileTeacher?.signature_url))}
@@ -1046,9 +1070,22 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     const notePads = Object.fromEntries([...m.querySelectorAll('[data-reflection-note]')].map(box => [box.dataset.reflectionNote, bindReflectionNote(box)]))
     m.querySelector('[data-close]').addEventListener('click',()=>m.remove())
     m.querySelector('#lp-doc-week').addEventListener('change',e=>{weekNo=asInt(e.target.value,plan.week_start);render()})
+    m.querySelector('#lp-doc-date').addEventListener('change', event => {
+      const hint = m.querySelector('#lp-doc-date-hint')
+      hint.className = 'basis-full text-[11px] text-emerald-700'
+      hint.textContent = event.target.value
+        ? `เลือกวันที่ ${thaiShortDate(event.target.value)} แล้ว กด “บันทึกทั้งหมด” เพื่อบันทึกลงแผนครั้งนี้`
+        : 'ล้างวันที่แล้ว กด “บันทึกทั้งหมด” หากต้องการให้แผนครั้งนี้ไม่ระบุวันที่'
+    })
+    m.querySelector('#lp-doc-use-suggested-date')?.addEventListener('click', () => {
+      const input = m.querySelector('#lp-doc-date')
+      input.value = dateState.suggested ?? ''
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+    })
 
     const save = async () => {
-      const roleMap = { 'class-head':'class_head_signature_path', teacher:'teacher_signature_path', 'dept-head':'dept_head_signature_path' }
+      const selectedWeek = weekNo
+      const selectedLessonDate = isoDate(m.querySelector('#lp-doc-date')?.value)
       const nextPaths = { 'class-head':null, teacher:null, 'dept-head':null }
       for (const [role,pad] of Object.entries(pads)) {
         if (pad.sourceMode() === 'blank') continue
@@ -1068,7 +1105,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
         }
       }
       const saved = await upsertLessonPlanReflection({
-        lesson_plan_id:plan.id,class_id:classId,teacher_id:teacher.id,week_no:weekNo,
+        lesson_plan_id:plan.id,class_id:classId,teacher_id:teacher.id,week_no:selectedWeek,lesson_date:selectedLessonDate,
         reflection_text:notePads.result.value(),issues_solutions:notePads.issues.value(),suggestions:notePads.suggestions.value(),
         class_head_name:pads['class-head'].name()||pads['class-head'].savedName()||null,class_head_signature_path:nextPaths['class-head']||null,class_head_signed_at:nextPaths['class-head']?new Date().toISOString():null,
         teacher_name:pads.teacher.name()||pads.teacher.savedName()||null,teacher_signature_path:nextPaths.teacher||null,teacher_signed_at:nextPaths.teacher?new Date().toISOString():null,
@@ -1083,12 +1120,12 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
           nextDeptPreference.signature_path = nextPaths['dept-head']
           nextDeptPreference.name = saved.dept_head_name
           const overrides = { ...(nextDeptPreference.session_overrides ?? {}) }
-          delete overrides[String(weekNo)]
+          delete overrides[String(selectedWeek)]
           nextDeptPreference.session_overrides = overrides
         } else {
           nextDeptPreference.session_overrides = {
             ...(nextDeptPreference.session_overrides ?? {}),
-            [String(weekNo)]: { mode: pads['dept-head'].sourceMode(), signature_path: nextPaths['dept-head'], name: saved.dept_head_name },
+            [String(selectedWeek)]: { mode: pads['dept-head'].sourceMode(), signature_path: nextPaths['dept-head'], name: saved.dept_head_name },
           }
         }
         const nextPreferences = { ...signaturePreferences(), 'dept-head': nextDeptPreference }
@@ -1096,10 +1133,10 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
         await updateLessonPlan(plan.id, { source_json: nextSource })
         plan.source_json = nextSource
       }
-      return saved
+      return { reflection: saved, lessonDate: selectedLessonDate, weekNo: selectedWeek }
     }
     m.querySelector('#lp-doc-save').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังบันทึก...';try{await save();showToast('บันทึกเอกสารและลายเซ็นแล้ว ✅','success');await render()}catch(err){showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error');b.disabled=false;b.textContent='💾 บันทึกทั้งหมด'}})
-    m.querySelector('#lp-doc-print').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังเตรียมเอกสาร...';try{const saved=await save();const urls={classHead:await resolve(saved.class_head_signature_path),teacher:await resolve(saved.teacher_signature_path||saved.signature_data_url),deptHead:await resolve(saved.dept_head_signature_path)};printLessonPlan({plan,cls,teacher,reflection:saved,urls,dept,semesterStart,semesterEnd,scheduledDays});showToast('เปิดหน้าพิมพ์แล้ว','success')}catch(err){showToast('เตรียมเอกสารไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')}finally{b.disabled=false;b.textContent='🖨️ บันทึกแล้วพิมพ์'}})
+    m.querySelector('#lp-doc-print').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังเตรียมเอกสาร...';try{const result=await save();const saved=result.reflection;const urls={classHead:await resolve(saved.class_head_signature_path),teacher:await resolve(saved.teacher_signature_path||saved.signature_data_url),deptHead:await resolve(saved.dept_head_signature_path)};printLessonPlan({plan,cls,teacher,reflection:saved,urls,dept,semesterStart,semesterEnd,scheduledDays,weekNo:result.weekNo,lessonDate:result.lessonDate});showToast('เปิดหน้าพิมพ์แล้ว','success')}catch(err){showToast('เตรียมเอกสารไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')}finally{b.disabled=false;b.textContent='🖨️ บันทึกแล้วพิมพ์'}})
   }
   m.addEventListener('click',e=>{if(e.target===m)m.remove()}); await render()
 }

@@ -1,7 +1,7 @@
 {
   "name": "pp5-online",
   "private": true,
-  "version": "10.22.998",
+  "version": "10.22.999",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.95.3",
+    "html2pdf.js": "0.14.0",
     "qrcode": "^1.5.4"
   }
 }
