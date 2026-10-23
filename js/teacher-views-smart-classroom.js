@@ -374,7 +374,7 @@ export async function renderSmartClassroom(teacher, classId) {
   let cls, students, activeLeaves, leaveMaxActive, leaveMaxPerWeek, quizzes, donationRequests,
     scoreColumns, studentScores, attendanceFull, leaveHistory, assignments,
     examRequestsAll, mySchedule, scheduleLinks, periods, classAnnouncements,
-    syllabusItems, lessonPlans, annTypeSuggestions
+    syllabusItems, lessonPlans, courseLessonPlans, annTypeSuggestions, allTeacherClasses
   let courseId = null
   try {
     // donationRequests ใช้ค่าที่ _resolveSmartClassroomAccess ยิงไปแล้วก่อนหน้านี้ ไม่ยิงซ้ำ
@@ -406,13 +406,15 @@ export async function renderSmartClassroom(teacher, classId) {
       getClassAnnouncements(classId).catch(() => []),
       getAnnouncementTypeSuggestions().catch(() => []),
     ])
+    allTeacherClasses = classes
     cls = classes.find(c => c.id === classId)
     if (!cls) { renderClassDetail(teacher, classId); return }
     courseId = cls.course_id ?? cls.master_subjects?.id ?? null
 
-    ;[syllabusItems, lessonPlans] = await Promise.all([
+    ;[syllabusItems, lessonPlans, courseLessonPlans] = await Promise.all([
       courseId ? getCourseSyllabus(courseId, classId).catch(() => []) : Promise.resolve([]),
       courseId ? getLessonPlans(courseId, classId).catch(() => []) : Promise.resolve([]),
+      courseId ? getLessonPlans(courseId).catch(() => []) : Promise.resolve([]),
     ])
   } catch (err) {
     showToast('โหลดข้อมูลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
@@ -1140,7 +1142,7 @@ export async function renderSmartClassroom(teacher, classId) {
           <div class="grid grid-cols-2 gap-2 sm:min-w-[300px]">
             <button id="sc-ai-plan" class="min-h-[48px] rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-xs font-bold shadow-sm">🤖 สร้างแผนด้วย AI</button>
             <button id="sc-add-plan" class="min-h-[48px] rounded-xl bg-white border border-violet-200 text-violet-800 text-xs font-bold hover:bg-violet-50">＋ สร้างแผนเอง</button>
-            <button id="sc-archive-plans" ${lessonPlans.length ? '' : 'disabled'} class="col-span-2 min-h-[44px] rounded-xl ${lessonPlans.length ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-gray-100 text-gray-400'} text-xs font-bold shadow-sm disabled:cursor-not-allowed">📦 จัดเก็บแผนรายสัปดาห์เข้า Drive</button>
+            <button id="sc-archive-plans" ${courseLessonPlans?.length ? '' : 'disabled'} class="col-span-2 min-h-[44px] rounded-xl ${courseLessonPlans?.length ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-gray-100 text-gray-400'} text-xs font-bold shadow-sm disabled:cursor-not-allowed">🗂️ จัดการแผนทุกห้องในคอร์ส / ส่งเข้า Drive</button>
           </div>
         </div>
       </div>
@@ -2320,8 +2322,8 @@ export async function renderSmartClassroom(teacher, classId) {
     document.getElementById('sc-archive-plans')?.addEventListener('click', () => openLessonPlanArchiveCenter({
       subject: { ...ms, id: courseId },
       teacher,
-      classes: [cls],
-      plans: lessonPlans,
+      classes: (allTeacherClasses ?? []).filter(item => Number(item.course_id ?? item.master_subjects?.id) === Number(courseId)),
+      plans: courseLessonPlans ?? [],
       semesterStart: cfg.semester_start,
       semesterEnd: cfg.semester_end,
       termSchedule: mySchedule,
