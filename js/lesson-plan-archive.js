@@ -97,6 +97,17 @@ async function makePdf({ subject, teacher, roomRows, weekNo, academicYear, semes
 
 function fileName(subject, weekNo) { return `${String(subject.subject_code || 'course').replace(/[^\p{L}\p{N}_-]+/gu, '_')}_${String(subject.subject_name || 'แผน').replace(/[^\p{L}\p{N}_-]+/gu, '_')}_สัปดาห์ที่_${weekNo}.pdf` }
 function readFileBase64(blob) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = reject; reader.readAsDataURL(blob) }) }
+async function functionErrorMessage(error) {
+  const response = error?.context
+  if (response?.json) {
+    try {
+      const payload = await response.json()
+      if (payload?.error) return String(payload.error)
+      if (payload?.message) return String(payload.message)
+    } catch (_) { /* Supabase may have already consumed the response body. */ }
+  }
+  return getFriendlyErrorMessage(error)
+}
 
 export async function openLessonPlanArchiveCenter({ subject, teacher, classes = [], plans = [], semesterStart, semesterEnd, termSchedule = [], scheduleLinks = [], academicYear, semester }) {
   document.getElementById('lesson-plan-archive-modal')?.remove()
@@ -154,6 +165,6 @@ export async function openLessonPlanArchiveCenter({ subject, teacher, classes = 
   })
   const renderPdf = async () => { if (!current) await build(); return makePdf({ subject, teacher, roomRows: current.rows, weekNo: selectedWeek, academicYear, semester }) }
   modal.querySelector('[data-archive-download]').addEventListener('click', async event => { const button = event.currentTarget; button.disabled = true; try { const blob = await renderPdf(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = fileName(subject, selectedWeek); link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) } catch (error) { showToast(`สร้าง PDF ไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error') } finally { await build() } })
-  modal.querySelector('[data-archive-drive]').addEventListener('click', async event => { const button = event.currentTarget; if (!current || !driveSettings?.root_folder_id) return; const name = fileName(subject, selectedWeek); if (!confirm(`ยืนยันส่งไฟล์ ${name}\nไปที่โฟลเดอร์ส่วนตัวของคุณ: สัปดาห์ที่ ${selectedWeek} หรือไม่?`)) return; button.disabled = true; try { const blob = await renderPdf(); if (blob.size > 12 * 1024 * 1024) throw new Error('ไฟล์ PDF ใหญ่เกิน 12 MB กรุณาลดรูปภาพลายเซ็นหรือแบ่งส่ง') ; const pdfBase64 = await readFileBase64(blob); const { data, error } = await supabase.functions.invoke('lesson-plan-drive', { body: { courseId: subject.id, academicYear, semester, weekNo: selectedWeek, fileName: name, pdfBase64, planCount: current.planCount, roomCount: current.roomCount } }); if (error) throw error; if (!data?.ok) throw new Error(data?.error || 'บันทึกเข้า Drive ไม่สำเร็จ'); showToast('บันทึกไฟล์เข้า Drive ส่วนตัวแล้ว ✅', 'success'); await build() } catch (error) { showToast(`ส่งเข้า Drive ไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error') } finally { button.disabled = false; await build() } })
+  modal.querySelector('[data-archive-drive]').addEventListener('click', async event => { const button = event.currentTarget; if (!current || !driveSettings?.root_folder_id) return; const name = fileName(subject, selectedWeek); if (!confirm(`ยืนยันส่งไฟล์ ${name}\nไปที่โฟลเดอร์ส่วนตัวของคุณ: สัปดาห์ที่ ${selectedWeek} หรือไม่?`)) return; button.disabled = true; try { const blob = await renderPdf(); if (blob.size > 12 * 1024 * 1024) throw new Error('ไฟล์ PDF ใหญ่เกิน 12 MB กรุณาลดรูปภาพลายเซ็นหรือแบ่งส่ง') ; const pdfBase64 = await readFileBase64(blob); const { data, error } = await supabase.functions.invoke('lesson-plan-drive', { body: { courseId: subject.id, academicYear, semester, weekNo: selectedWeek, fileName: name, pdfBase64, planCount: current.planCount, roomCount: current.roomCount } }); if (error) throw error; if (!data?.ok) throw new Error(data?.error || 'บันทึกเข้า Drive ไม่สำเร็จ'); showToast('บันทึกไฟล์เข้า Drive ส่วนตัวแล้ว ✅', 'success'); await build() } catch (error) { showToast(`ส่งเข้า Drive ไม่สำเร็จ: ${await functionErrorMessage(error)}`, 'error') } finally { button.disabled = false; await build() } })
   await build()
 }

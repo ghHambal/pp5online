@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1002'
+import { APP_VERSION } from './version.js?v=10.22.1003'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1003': [
+    'ปรับการแจ้งข้อผิดพลาดการส่งแผนเข้า Drive ให้แสดงสาเหตุจริงจาก Edge Function และ Central GAS เพื่อแก้ปัญหาได้ตรงจุด',
+  ],
   '10.22.1002': [
     'เพิ่มศูนย์จัดการแผนระดับคอร์สใน Smart Classroom แสดงห้องทั้งหมดของคอร์สเดียวกันและรวมเป็น PDF เดียวต่อสัปดาห์',
   ],
