@@ -5732,6 +5732,28 @@ export async function getLessonPlanArchives(courseId, academicYear = null, semes
   return data ?? []
 }
 
+export async function getLessonPlanDriveSettings(teacherId, academicYear, semester) {
+  const { data, error } = await supabase
+    .from('teacher_lesson_plan_drive_settings')
+    .select('*')
+    .eq('teacher_id', teacherId)
+    .eq('academic_year', academicYear)
+    .eq('semester', semester)
+    .maybeSingle()
+  if (error) throw error
+  return data ?? null
+}
+
+export async function upsertLessonPlanDriveSettings(payload) {
+  const { data, error } = await supabase
+    .from('teacher_lesson_plan_drive_settings')
+    .upsert({ ...payload, updated_at: new Date().toISOString() }, { onConflict: 'teacher_id,academic_year,semester' })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function upsertLessonPlanReflection(payload) {
   const { data, error } = await supabase
     .from('lesson_plan_reflections')

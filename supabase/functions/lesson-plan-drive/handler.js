@@ -83,21 +83,33 @@ export function createLessonPlanDriveHandler({ createClient, fetchImpl = fetch, 
       if (courseError || !course) throw new Error('ไม่พบรายวิชา')
       if (!isAdmin && Number(course.teacher_id) !== Number(teacher.id)) return reply({ ok: false, error: 'ไม่มีสิทธิ์จัดเก็บรายวิชานี้' }, 403)
       stage = 'config'
-      const { data: configs, error: configError } = await admin.from('system_config').select('key,value').in('key', ['centralGasUrl','lessonPlanDriveDeptCode','lessonPlanDriveRootId','lessonPlanDriveCreateFolders','lessonPlanDriveReplaceMode'])
+      const [{ data: configs, error: configError }, { data: ownerTeacher, error: ownerError }] = await Promise.all([
+        admin.from('system_config').select('key,value').eq('key', 'centralGasUrl').maybeSingle(),
+        admin.from('teachers').select('id,full_name,dept').eq('id', course.teacher_id).maybeSingle(),
+      ])
       if (configError) throw configError
-      const cfg = Object.fromEntries((configs ?? []).map(row => [row.key, row.value]))
+      if (ownerError) throw ownerError
+      const cfg = configs ? { [configs.key]: configs.value } : {}
       if (!cfg.centralGasUrl) throw new Error('ยังไม่ได้ตั้งค่า Central GAS URL')
-      if (!cfg.lessonPlanDriveRootId) throw new Error('ยังไม่ได้ตั้งค่าโฟลเดอร์หลัก Google Drive')
-      if (cfg.lessonPlanDriveDeptCode && String(course.dept || '').trim().toUpperCase() !== String(cfg.lessonPlanDriveDeptCode).trim().toUpperCase()) throw new Error('คอร์สนี้อยู่กลุ่มสาระ ' + (course.dept || 'ไม่ระบุ') + ' ไม่ตรงกับโฟลเดอร์ที่ตั้งไว้ (' + cfg.lessonPlanDriveDeptCode + ')')
+      const archiveTeacherId = Number(course.teacher_id)
+      const { data: driveSettings, error: settingsError } = await admin
+        .from('teacher_lesson_plan_drive_settings')
+        .select('dept_code,root_folder_id,create_folders,replace_mode,enabled')
+        .eq('teacher_id', archiveTeacherId)
+        .eq('academic_year', academicYear)
+        .eq('semester', semester)
+        .maybeSingle()
+      if (settingsError) throw settingsError
+      if (!driveSettings?.enabled || !driveSettings.root_folder_id) throw new Error('ยังไม่ได้ตั้งค่าโฟลเดอร์ Drive ส่วนตัวของคุณสำหรับภาคเรียนนี้')
+      if (driveSettings.dept_code && String(course.dept || '').trim().toUpperCase() !== String(driveSettings.dept_code).trim().toUpperCase()) throw new Error('คอร์สนี้อยู่กลุ่มสาระ ' + (course.dept || 'ไม่ระบุ') + ' ไม่ตรงกับโฟลเดอร์ส่วนตัวที่ตั้งไว้ (' + driveSettings.dept_code + ')')
       const checksum = await sha256(bytes)
       stage = 'capabilities'
       const capability = await callGas(cfg.centralGasUrl, { action: 'lesson_plan_archive_capabilities' }, fetchImpl)
       if (capability.ok !== true || Number(capability.lessonPlanArchiveVersion) !== 1) throw new Error('Central GAS ยังไม่รองรับการจัดเก็บแผนรายสัปดาห์ กรุณา Deploy เวอร์ชันล่าสุดของ gas/pp5-sync.gs')
       stage = 'archive'
-      const result = await callGas(cfg.centralGasUrl, { action: 'archive_lesson_plan_pdf', rootFolderId: cfg.lessonPlanDriveRootId, teacherName: teacher?.full_name || 'ผู้สอน', weekNo, fileName, pdfBase64: body.pdfBase64, createFolders: cfg.lessonPlanDriveCreateFolders !== 'false', replaceMode: cfg.lessonPlanDriveReplaceMode === 'version' ? 'version' : 'replace' }, fetchImpl)
+      const result = await callGas(cfg.centralGasUrl, { action: 'archive_lesson_plan_pdf', rootFolderId: driveSettings.root_folder_id, teacherName: ownerTeacher?.full_name || teacher?.full_name || 'ผู้สอน', weekNo, fileName, pdfBase64: body.pdfBase64, createFolders: driveSettings.create_folders !== false, replaceMode: driveSettings.replace_mode === 'version' ? 'version' : 'replace' }, fetchImpl)
       if (result.ok !== true || !result.driveFileId) throw new Error(result.error || 'Central GAS บันทึกไฟล์ไม่สำเร็จ')
-      const archiveTeacherId = teacher?.id ?? course.teacher_id
-      const { data: archive, error: archiveError } = await admin.from('lesson_plan_archives').upsert({ course_id: courseId, teacher_id: archiveTeacherId, academic_year: academicYear, semester, week_no: weekNo, status: 'completed', drive_root_folder_id: cfg.lessonPlanDriveRootId, drive_week_folder_id: result.driveWeekFolderId || null, drive_teacher_folder_id: result.driveTeacherFolderId || null, drive_file_id: result.driveFileId, drive_url: result.driveUrl || null, file_name: fileName, checksum_sha256: checksum, plan_count: Number(body.planCount) || 0, room_count: Number(body.roomCount) || 0, file_size_bytes: bytes.byteLength, replaced_file_id: result.replacedFileId || null, error_message: null, created_by: user.id, updated_at: new Date().toISOString() }, { onConflict: 'course_id,academic_year,semester,week_no' }).select().single()
+      const { data: archive, error: archiveError } = await admin.from('lesson_plan_archives').upsert({ course_id: courseId, teacher_id: archiveTeacherId, academic_year: academicYear, semester, week_no: weekNo, status: 'completed', drive_root_folder_id: driveSettings.root_folder_id, drive_week_folder_id: result.driveWeekFolderId || null, drive_teacher_folder_id: result.driveTeacherFolderId || null, drive_file_id: result.driveFileId, drive_url: result.driveUrl || null, file_name: fileName, checksum_sha256: checksum, plan_count: Number(body.planCount) || 0, room_count: Number(body.roomCount) || 0, file_size_bytes: bytes.byteLength, replaced_file_id: result.replacedFileId || null, error_message: null, created_by: user.id, updated_at: new Date().toISOString() }, { onConflict: 'course_id,academic_year,semester,week_no' }).select().single()
       if (archiveError) throw archiveError
       return reply({ ok: true, archive, driveUrl: result.driveUrl, driveFileId: result.driveFileId })
     } catch (error) {

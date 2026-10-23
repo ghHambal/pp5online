@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.999'
+import { APP_VERSION } from './version.js?v=10.22.1000'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1000': [
+    'ปรับการจัดเก็บแผนรายสัปดาห์เป็นโฟลเดอร์ Drive ส่วนตัว แยกตามครูและภาคเรียน ไม่ใช้โฟลเดอร์กลางร่วมกัน',
+    'เพิ่มการตั้งค่า Folder ID และรูปแบบการสร้าง/แทนที่ไฟล์ในศูนย์ส่งแผน พร้อมตรวจสิทธิ์ฝั่งเซิร์ฟเวอร์',
+  ],
   '10.22.999': [
     'เพิ่มศูนย์ส่งและจัดเก็บแผนการสอนรายสัปดาห์ รวมตามห้องและวันที่สอนเป็น PDF เดียว',
     'บันทึกวันที่สอนแยกตามแผนและห้อง พร้อมเติมวันที่จากตารางสอนอัตโนมัติ',
