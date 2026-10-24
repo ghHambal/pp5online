@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1004'
+import { APP_VERSION } from './version.js?v=10.22.1005'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1005': [
+    'ปรับวาระปัจจุบันเป็น 2/68 – 1/69 และเพิ่มวาระใหม่ 2/69 – 1/70 พร้อมบรรจุผู้สมัคร 53 คนเป็นว่าที่สภานักเรียน',
+    'เพิ่มตัวกรองพิมพ์รายชื่อสมาชิกตามเพศ ฝ่าย สถานะ ห้อง และรูปแบบการจัดกลุ่ม พร้อมใบทะเบียนและใบลงชื่อ',
+  ],
   '10.22.1004': [
     'เพิ่มระบบวาระสภานักเรียน แยกวาระปัจจุบัน วาระใหม่ และประวัติวาระเดิม พร้อมพรีวิวก่อนเริ่มวาระ',
     'เพิ่มการแต่งตั้งสมาชิกโดยตรงแยกจากสายสัมภาษณ์ และศูนย์พิมพ์บัญชีรายชื่อสมาชิก/ผู้สมัคร',

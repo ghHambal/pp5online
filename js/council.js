@@ -4554,15 +4554,47 @@ function printCandidateRoster(gender) {
   openHtmlPrintOverlay(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายชื่อผู้สมัครประธานสภานักเรียน</title><style>@page{size:A4;margin:12mm}body{font-family:Tahoma,sans-serif;color:#111}h1,p{text-align:center}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #444;padding:7px;font-size:12px}th{background:#eee}td:first-child,td:nth-child(2){text-align:center}</style></head><body><h1>บัญชีรายชื่อผู้สมัครประธานสภานักเรียน${GENDER_LABEL[gender]}</h1><p>${esc(term?.term_label || '')} · จำนวน ${list.length} คน</p><table><thead><tr><th>ลำดับ</th><th>หมายเลข</th><th>รหัส</th><th>ชื่อ–สกุล</th><th>ห้อง</th><th>สถานะ</th><th>หมายเหตุ</th></tr></thead><tbody>${rows}</tbody></table></body></html>`)
 }
 
-function printMemberRoster() {
+function printMemberRoster({ gender = '', positionId = '', status = '', room = '', groupBy = 'gender_position', format = 'register' } = {}) {
   const term = selectedCouncilTerm()
-  const list = [...ctx.members].sort((a,b) => (a.council_positions?.gender || '').localeCompare(b.council_positions?.gender || '') || (a.council_positions?.sort_order || 99) - (b.council_positions?.sort_order || 99))
-  const rows = list.map((m,i) => `<tr><td>${i+1}</td><td>${esc(GENDER_LABEL[m.council_positions?.gender] || '')}</td><td>${esc(m.students?.student_code)}</td><td>${esc(m.students?.full_name)}</td><td>${esc(m.students?.main_room || '')}</td><td>${esc(m.council_positions?.position_name)}</td><td>${esc(m.status === 'designate' ? 'ว่าที่สมาชิก' : m.status === 'ended' ? 'หมดวาระ' : 'ปฏิบัติหน้าที่')}</td><td></td></tr>`).join('')
-  openHtmlPrintOverlay(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ทะเบียนสมาชิกสภานักเรียน</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:Tahoma,sans-serif;color:#111}h1,p{text-align:center}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #444;padding:6px;font-size:11px}th{background:#eee}</style></head><body><h1>ทะเบียนสมาชิกสภานักเรียน</h1><p>${esc(term?.term_label || '')} · จำนวน ${list.length} คน</p><table><thead><tr><th>ลำดับ</th><th>ฝ่าย</th><th>รหัส</th><th>ชื่อ–สกุล</th><th>ห้อง</th><th>ตำแหน่ง</th><th>สถานะ</th><th>หมายเหตุ/ลงชื่อ</th></tr></thead><tbody>${rows}</tbody></table></body></html>`)
+  const statusText = value => value === 'designate' ? 'ว่าที่สมาชิก' : value === 'ended' ? 'หมดวาระ' : value === 'active' ? 'ปฏิบัติหน้าที่' : value
+  const methodText = { direct: 'แต่งตั้งตรง', interview: 'ผ่านสัมภาษณ์', election: 'เลือกตั้ง', external_import: 'นำเข้ารายชื่อ', chair_nomination: 'ประธานเสนอ', legacy: 'ข้อมูลเดิม' }
+  const list = ctx.members.filter(m =>
+    (!gender || m.council_positions?.gender === gender) &&
+    (!positionId || String(m.position_id) === String(positionId)) &&
+    (!status || m.status === status) &&
+    (!room || m.students?.main_room === room)
+  ).sort((a,b) => (a.council_positions?.gender || '').localeCompare(b.council_positions?.gender || '') || (a.council_positions?.sort_order || 99) - (b.council_positions?.sort_order || 99) || (a.students?.full_name || '').localeCompare(b.students?.full_name || '', 'th'))
+  const groupKey = member => groupBy === 'gender' ? (member.council_positions?.gender || '')
+    : groupBy === 'position' ? String(member.position_id)
+      : groupBy === 'room' ? (member.students?.main_room || 'ไม่ระบุห้อง')
+        : groupBy === 'gender_position' ? `${member.council_positions?.gender || ''}:${member.position_id}` : 'all'
+  const groupLabel = member => groupBy === 'gender' ? `สภานักเรียน${GENDER_LABEL[member.council_positions?.gender] || ''}`
+    : groupBy === 'position' ? (member.council_positions?.position_name || 'ไม่ระบุฝ่าย')
+      : groupBy === 'room' ? `ห้อง ${member.students?.main_room || 'ไม่ระบุ'}`
+        : groupBy === 'gender_position' ? `สภานักเรียน${GENDER_LABEL[member.council_positions?.gender] || ''} — ${member.council_positions?.position_name || 'ไม่ระบุฝ่าย'}` : ''
+  const groups = new Map()
+  list.forEach(member => { const key = groupKey(member); if (!groups.has(key)) groups.set(key, { label: groupLabel(member), members: [] }); groups.get(key).members.push(member) })
+  let rowNo = 0
+  const tableFor = group => {
+    const register = format === 'register'
+    const rows = group.members.map(m => { rowNo += 1; return `<tr><td>${rowNo}</td><td>${esc(GENDER_LABEL[m.council_positions?.gender] || '')}</td><td>${esc(m.students?.student_code)}</td><td>${esc(m.students?.full_name)}</td><td>${esc(m.students?.main_room || '')}</td><td>${esc(m.council_positions?.position_name)}</td><td>${esc(statusText(m.status))}</td>${register ? `<td>${esc(methodText[m.appointment_method] || m.appointment_method || '')}</td><td>${esc(m.appointment_order_ref || '')}</td>` : '<td></td><td></td>'}<td></td></tr>` }).join('')
+    return `${group.label ? `<h2>${esc(group.label)} <small>(${group.members.length} คน)</small></h2>` : ''}<table><thead><tr><th>ลำดับ</th><th>เพศ</th><th>รหัส</th><th>ชื่อ–สกุล</th><th>ห้อง</th><th>ฝ่าย/ตำแหน่ง</th><th>สถานะ</th>${register ? '<th>ที่มา</th><th>เลขคำสั่ง/อ้างอิง</th>' : '<th>ลงชื่อ/เวลา</th><th>ผลการเข้าร่วม</th>'}<th>หมายเหตุ</th></tr></thead><tbody>${rows}</tbody></table>`
+  }
+  const filters = [gender ? `เพศ: ${GENDER_LABEL[gender]}` : '', positionId ? `ฝ่าย: ${ctx.positions.find(p => String(p.id) === String(positionId))?.position_name || ''}` : '', status ? `สถานะ: ${statusText(status)}` : '', room ? `ห้อง: ${room}` : ''].filter(Boolean).join(' · ')
+  openHtmlPrintOverlay(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ทะเบียนสมาชิกสภานักเรียน</title><style>@page{size:A4 landscape;margin:9mm}body{font-family:Tahoma,sans-serif;color:#111}h1,p{text-align:center;margin:4px}h2{font-size:14px;margin:18px 0 6px;break-after:avoid}h2 small{font-weight:normal}table{width:100%;border-collapse:collapse;margin-bottom:12px}th,td{border:1px solid #444;padding:5px;font-size:10px}th{background:#eee}thead{display:table-header-group}tr{break-inside:avoid}</style></head><body><h1>${format === 'attendance' ? 'ใบลงชื่อสมาชิกสภานักเรียน' : 'ทะเบียนสมาชิกสภานักเรียน'}</h1><p>${esc(term?.term_label || '')} · จำนวน ${list.length} คน</p>${filters ? `<p>${esc(filters)}</p>` : ''}${list.length ? [...groups.values()].map(tableFor).join('') : '<p style="margin-top:40px">ไม่พบรายชื่อตามตัวกรองที่เลือก</p>'}</body></html>`)
 }
 
 function renderPrintCenterView() {
-  return `<div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><h2 class="font-bold text-[var(--ink)]">ศูนย์พิมพ์ใบรายชื่อ</h2><p class="text-xs text-[var(--muted)] mt-1">ใช้เป็นทะเบียน บันทึกการประชุม เช็กชื่อ หรือแนบเอกสารอื่น</p><div class="grid sm:grid-cols-3 gap-3 mt-5"><button type="button" id="btn-print-members" class="rounded-xl border border-[var(--primary-45)] p-4 text-left"><span class="text-2xl">🏛️</span><p class="text-sm font-bold mt-2">สมาชิกสภาทั้งหมด</p><p class="text-xs text-[var(--muted)]">พร้อมช่องหมายเหตุ/ลงชื่อ</p></button>${['M','W'].map(g => `<button type="button" class="btn-print-candidates rounded-xl border border-[var(--primary-45)] p-4 text-left" data-gender="${g}"><span class="text-2xl">🗳️</span><p class="text-sm font-bold mt-2">ผู้สมัครประธาน${GENDER_LABEL[g]}</p><p class="text-xs text-[var(--muted)]">หมายเลข ชื่อ ห้อง และสถานะ</p></button>`).join('')}</div></div>`
+  const rooms = [...new Set(ctx.members.map(m => m.students?.main_room).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'th', { numeric: true }))
+  return `<div class="space-y-4"><div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><h2 class="font-bold text-[var(--ink)]">ศูนย์พิมพ์ใบรายชื่อสมาชิกสภานักเรียน</h2><p class="text-xs text-[var(--muted)] mt-1">เลือกวาระ เพศ ฝ่าย สถานะ ห้อง รูปแบบการจัดกลุ่ม และชนิดเอกสารก่อนพิมพ์</p><div class="grid grid-cols-2 lg:grid-cols-3 gap-2 mt-4">
+    <select id="print-member-gender" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกเพศ</option><option value="M">นักเรียนชาย</option><option value="W">นักเรียนหญิง</option></select>
+    <select id="print-member-position" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกฝ่าย/ตำแหน่ง</option>${ctx.positions.map(p => `<option value="${p.id}">${esc(GENDER_LABEL[p.gender])} — ${esc(p.position_name)}</option>`).join('')}</select>
+    <select id="print-member-status" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกสถานะ</option><option value="active">ปฏิบัติหน้าที่</option><option value="designate">ว่าที่สมาชิก</option><option value="ended">หมดวาระ</option></select>
+    <select id="print-member-room" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกห้อง</option>${rooms.map(room => `<option value="${esc(room)}">${esc(room)}</option>`).join('')}</select>
+    <select id="print-member-group" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="gender_position">แยกเพศและฝ่าย</option><option value="gender">แยกตามเพศ</option><option value="position">แยกตามฝ่าย</option><option value="room">แยกตามห้อง</option><option value="none">รวมรายชื่อเดียว</option></select>
+    <select id="print-member-format" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="register">ทะเบียนสมาชิก/ข้อมูลแต่งตั้ง</option><option value="attendance">ใบลงชื่อ/บันทึกการเข้าร่วม</option></select>
+  </div><button type="button" id="btn-print-members" class="w-full mt-3 rounded-xl bg-[var(--primary)] text-white px-4 py-3 text-sm font-bold">🖨️ พิมพ์รายชื่อสมาชิกตามตัวกรอง</button></div>
+  <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><h3 class="text-sm font-bold text-[var(--ink)]">ใบรายชื่อผู้สมัครประธานสภา</h3><div class="grid sm:grid-cols-2 gap-3 mt-3">${['M','W'].map(g => `<button type="button" class="btn-print-candidates rounded-xl border border-[var(--primary-45)] p-4 text-left" data-gender="${g}"><span class="text-2xl">🗳️</span><p class="text-sm font-bold mt-2">ผู้สมัครประธาน${GENDER_LABEL[g]}</p><p class="text-xs text-[var(--muted)]">หมายเลข ชื่อ ห้อง และสถานะ</p></button>`).join('')}</div></div></div>`
 }
 
 const VIEW_RENDERERS = {
@@ -4700,7 +4732,14 @@ function wireContentEvents() {
     if (election && adminCandidatesByGender[gender] === null) adminCandidatesByGender[gender] = await getCandidatesForElectionAdmin(election.id).catch(() => [])
     printCandidateRoster(gender)
   }))
-  document.getElementById('btn-print-members')?.addEventListener('click', printMemberRoster)
+  document.getElementById('btn-print-members')?.addEventListener('click', () => printMemberRoster({
+    gender: document.getElementById('print-member-gender')?.value || '',
+    positionId: document.getElementById('print-member-position')?.value || '',
+    status: document.getElementById('print-member-status')?.value || '',
+    room: document.getElementById('print-member-room')?.value || '',
+    groupBy: document.getElementById('print-member-group')?.value || 'gender_position',
+    format: document.getElementById('print-member-format')?.value || 'register',
+  }))
 
   wireCouncilRegulationEvents(ctx, render)
   wireCouncilResourceEvents({
