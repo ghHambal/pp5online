@@ -108,8 +108,8 @@ function _archiveLessonPlanPdf(payload) {
 }
 
 function _normalizeArchiveTeacherName(value) {
-  return String(value || '').trim().replace(/^(นาย|นางสาว|นาง|ครู)\\s*/u, '').trim()
-    ? 'ครู' + String(value || '').trim().replace(/^(นาย|นางสาว|นาง|ครู)\\s*/u, '').trim()
+  return String(value || '').trim().replace(/^(นาย|นางสาว|นาง|ครู)\s*/u, '').trim()
+    ? 'ครู' + String(value || '').trim().replace(/^(นาย|นางสาว|นาง|ครู)\s*/u, '').trim()
     : ''
 }
 

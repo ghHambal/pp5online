@@ -86,7 +86,9 @@ async function makePdf({ subject, teacher, roomRows, weekNo, academicYear, semes
   const mod = await import('html2pdf.js')
   const html2pdf = mod.default ?? mod
   const root = document.createElement('div')
-  root.style.cssText = 'position:fixed;left:-100000px;top:0;width:210mm;background:#fff;color:#111;font-family:Sarabun,Tahoma,sans-serif;font-size:10px;line-height:1.4'
+  // Keep the render surface inside the viewport. html2canvas can produce a
+  // white/blank PDF when the source element is positioned far off-screen.
+  root.style.cssText = 'position:fixed;left:0;top:0;width:210mm;z-index:-1;pointer-events:none;background:#fff;color:#111;font-family:Sarabun,Tahoma,sans-serif;font-size:10px;line-height:1.4'
   root.innerHTML = `<style>@page{size:A4;margin:0}.page{width:210mm;min-height:297mm;padding:10mm 11mm;page-break-after:always;background:#fff}.page:last-child{page-break-after:auto}.head{text-align:center;border-bottom:1px solid #176b3a;padding-bottom:3mm;margin-bottom:3mm}.head h1{font-size:18px;margin:0}.head p{margin:1mm 0}.cols{display:grid;grid-template-columns:1fr 1fr;gap:3mm}.box{border:1px solid #17743d;border-radius:2mm;margin-bottom:2.5mm;overflow:hidden}.box h3{margin:0;padding:1.5mm 2mm;background:#d8f6e2;color:#145f35;font-size:11px}.box>div{padding:2mm;white-space:pre-wrap;overflow-wrap:anywhere;min-height:10mm}.activities>div{min-height:70mm}.signs{display:flex;gap:4mm;margin-top:4mm}.sig{flex:1;text-align:center;font-size:9px}.sig-img{height:14mm;display:flex;align-items:end;justify-content:center}.sig-img img{max-width:30mm;max-height:13mm;object-fit:contain}</style><section class="page"><div class="head"><h1>รวมแผนการจัดการเรียนรู้รายสัปดาห์ที่ ${weekNo}</h1><p>${esc(subject.subject_name)} (${esc(subject.subject_code)}) · ภาคเรียนที่ ${esc(semester)} ปีการศึกษา ${esc(academicYear)}</p><p>เรียงตามห้องเรียนและวันที่สอน · ${roomRows.reduce((n, row) => n + row.plans.length, 0)} แผน</p></div></section>${(await Promise.all(roomRows.map(async row => { const pages = []; for (const item of row.items) { const urls = { classHead: await toDataUrl(await getLessonPlanAssetUrl(item.reflection?.class_head_signature_path).catch(() => '')), teacher: await toDataUrl(await getLessonPlanAssetUrl(item.reflection?.teacher_signature_path || item.reflection?.signature_data_url).catch(() => '')), deptHead: await toDataUrl(await getLessonPlanAssetUrl(item.reflection?.dept_head_signature_path).catch(() => '')) }; pages.push(renderPlanPage(item.plan, row.cls, item.reflection, urls, subject)) } return pages.join('') }))).join('')}`
   document.body.appendChild(root)
   try {
@@ -95,7 +97,13 @@ async function makePdf({ subject, teacher, roomRows, weekNo, academicYear, semes
   } finally { root.remove() }
 }
 
-function fileName(subject, weekNo) { return `${String(subject.subject_code || 'course').replace(/[^\p{L}\p{N}_-]+/gu, '_')}_${String(subject.subject_name || 'แผน').replace(/[^\p{L}\p{N}_-]+/gu, '_')}_สัปดาห์ที่_${weekNo}.pdf` }
+function safeFilePart(value, fallback) {
+  const part = String(value || fallback).normalize('NFC').trim()
+    .replace(/[^\p{L}\p{M}\p{N}_-]+/gu, '_')
+    .replace(/_+/g, '_').replace(/^_+|_+$/g, '')
+  return part || fallback
+}
+function fileName(subject, weekNo) { return `${safeFilePart(subject.subject_code, 'course')}_${safeFilePart(subject.subject_name, 'แผน')}_สัปดาห์ที่_${weekNo}.pdf` }
 function readFileBase64(blob) { return new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result).split(',')[1] || ''); reader.onerror = reject; reader.readAsDataURL(blob) }) }
 async function functionErrorMessage(error) {
   const response = error?.context
