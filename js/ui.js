@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1003'
+import { APP_VERSION } from './version.js?v=10.22.1004'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,11 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1004': [
+    'เพิ่มระบบวาระสภานักเรียน แยกวาระปัจจุบัน วาระใหม่ และประวัติวาระเดิม พร้อมพรีวิวก่อนเริ่มวาระ',
+    'เพิ่มการแต่งตั้งสมาชิกโดยตรงแยกจากสายสัมภาษณ์ และศูนย์พิมพ์บัญชีรายชื่อสมาชิก/ผู้สมัคร',
+    'เพิ่มหน้าจัดการผู้สมัครประธานสภาชาย–หญิง หมายเลขเลือกตั้ง และหน้ารณรงค์เต็มจอตามเพศของผู้ชม',
+  ],
   '10.22.1003': [
     'ปรับการแจ้งข้อผิดพลาดการส่งแผนเข้า Drive ให้แสดงสาเหตุจริงจาก Edge Function และ Central GAS เพื่อแก้ปัญหาได้ตรงจุด',
   ],

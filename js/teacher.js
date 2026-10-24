@@ -22,7 +22,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1003'
+import { APP_VERSION } from './version.js?v=10.22.1004'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -36,6 +36,7 @@ import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
 import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
+import { initCouncilCampaignPopup } from './council-campaign-popup.js'
 
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
@@ -3831,6 +3832,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _loadAnnouncementBanners()
   _checkTerangganuSurveyNudge()
   initHeavyLoadBanner()
+  initCouncilCampaignPopup().catch(() => {})
   if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
   if (_teacher?.id) import('./teacher-views-donor-chat.js').then(m => { m.injectDonorChatWidget(_teacher); _toggleFloatingFabsForView(_currentView) })
   _initHomeFab()

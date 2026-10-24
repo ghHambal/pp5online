@@ -25,6 +25,7 @@ import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { renderStudentSportsHome } from './sports-portals.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { initInstallPrompt } from './install-prompt.js'
+import { initCouncilCampaignPopup } from './council-campaign-popup.js'
 
 let _student = null
 let _activeClassId = null
@@ -245,6 +246,7 @@ async function init() {
   _loadAnnouncementBanners()
   _checkTerangganuSurveyNudge()
   initHeavyLoadBanner()
+  initCouncilCampaignPopup().catch(() => {})
 
   // เพิ่งเด้งกลับจาก Google (ux_mode:'redirect' ผ่าน supabase/functions/google-oauth-redirect)
   // — จัดการก่อนเช็คเด้งป๊อปอัพขอเชื่อมอีเมลตามปกติ แล้วล้าง query param ทิ้งกันเด้งซ้ำตอนรีเฟรช

@@ -17,7 +17,8 @@ import {
 } from './certificates-api.js'
 import QRCode from 'qrcode'
 import {
-  getCouncilConfig, updateCouncilConfig, getCouncilPositions, getCouncilMembers,
+  getCouncilConfig, updateCouncilConfig, getCouncilTerms, createCouncilTerm, previewCouncilTermActivation, activateCouncilTerm,
+  getCouncilPositions, getCouncilMembers,
   createCouncilPosition, updateCouncilPosition, deleteCouncilPosition,
   getCouncilElectionConfigs, getMyCouncilApplications, getMyCouncilMembership,
   submitCouncilApplication, getPendingEndorsements, getEndorsementPhrases,
@@ -26,8 +27,9 @@ import {
   getPendingPeerEndorsements, submitPeerEndorsement, updateRequestedPeerEndorser,
   getCouncilApplicationsForAdmin, scheduleCouncilInterview, saveCouncilInterviewScore,
   deleteCouncilApplication,
-  promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow,
-  getCandidatesForElection, publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
+  promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow, updateElectionCampaignSettings,
+  getCandidatesForElection, getCandidatesForElectionAdmin, updateCouncilCandidateAdmin,
+  publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
   getCouncilActivities, createActivity, updateActivityStatus, updateActivityOwnership,
   getActivityAttendance, getActivityAttendanceDetailed, checkInAttendance,
   getCertificateRule, upsertCertificateRule,
@@ -197,6 +199,12 @@ let candidateProfileOpen = null // { gender, id } — การ์ดผู้�
 let candidateEditMode = false // สลับเป็นฟอร์มแก้ไขโปรไฟล์ผู้สมัคร (เฉพาะแอดมิน/ครูที่ปรึกษาสภา)
 const electionResults = {} // { M: { tally, eligible }, W: {...} } — ผลนับคะแนนหลังประกาศผล (สเปคข้อ 8.13)
 let electionYear = null // ปีการศึกษาปัจจุบันที่ resolve แล้ว (จาก ctx.cfg.academicYear)
+let councilTerms = []
+let selectedCouncilTermId = null
+const selectedCouncilTerm = () => councilTerms.find(t => String(t.id) === String(selectedCouncilTermId)) ?? null
+const termIsEditable = () => ['active', 'upcoming'].includes(selectedCouncilTerm()?.status)
+const adminCandidatesByGender = { M: null, W: null }
+let candidateAdminGender = 'M'
 let activities = null // null = ยังไม่โหลด
 const attendanceByActivity = {} // { [activityId]: Set<studentId> }
 let ylaEvents = null
@@ -282,8 +290,19 @@ async function init() {
   document.getElementById('council-back-btn-desktop').href = backHref
   document.getElementById('council-back-btn-mobile').href = backHref
 
-  const [cfg, positions, members, elections] = await Promise.all([
-    getCouncilConfig(), getCouncilPositions(), getCouncilMembers(), getCouncilElectionConfigs(),
+  const [cfg, positions, terms] = await Promise.all([
+    getCouncilConfig(), getCouncilPositions(), getCouncilTerms(),
+  ])
+  councilTerms = terms
+  const requestedTermId = initialRouteParams.get('term')
+  const defaultTerm = councilTerms.find(t => String(t.id) === requestedTermId)
+    || councilTerms.find(t => t.status === 'active')
+    || councilTerms.find(t => t.status === 'upcoming')
+    || councilTerms[0]
+  selectedCouncilTermId = defaultTerm?.id ?? null
+  const electionYearForTerm = Number(defaultTerm?.academic_year || cfg.academicYear) || (new Date().getFullYear() + 543)
+  const [members, elections] = await Promise.all([
+    getCouncilMembers(null, selectedCouncilTermId), getCouncilElectionConfigs(null, selectedCouncilTermId),
   ])
   applyBranding(cfg)
 
@@ -308,8 +327,8 @@ async function init() {
 
   if (role === 'student' && student) {
     ;[applications, membership] = await Promise.all([
-      getMyCouncilApplications(student.id).catch(() => []),
-      getMyCouncilMembership(student.id).catch(() => []),
+      getMyCouncilApplications(student.id, selectedCouncilTermId).catch(() => []),
+      getMyCouncilMembership(student.id, selectedCouncilTermId).catch(() => []),
     ])
   }
 
@@ -329,13 +348,13 @@ async function init() {
 
   // ประธานสภา (chair) — นักเรียนที่ล็อกอินอยู่และมีสมาชิกภาพ active ในตำแหน่งที่ is_elected=true
   // ได้สิทธิ์จัดการกิจกรรม/ประกาศเท่าแอดมิน (RLS คุมไว้แล้ว ดู patch_council_phase3_activities_news.sql)
-  const isChair = role === 'student' && membership.some(m => m.council_positions?.is_elected)
+  const isChair = role === 'student' && membership.some(m => m.status === 'active' && m.council_positions?.is_elected)
   // สิทธิ์สร้างกิจกรรม/การประชุมเองได้ทันที (ไม่ใช่แค่จัดการกิจกรรมที่มีอยู่แล้วผ่าน owner_member_id)
   // — ประธานสภาได้เสมอ + สมาชิกที่แอดมิน/ประธานมอบสิทธิ์ can_create_activities ไว้ล่วงหน้า
-  const canCreateActivities = isChair || membership.some(m => m.can_create_activities)
+  const canCreateActivities = isChair || membership.some(m => m.status === 'active' && m.can_create_activities)
   // เพศของสภาที่ตัวเองเป็นประธานอยู่ — ใช้จำกัดขอบเขตตอนมอบสิทธิ์สร้างกิจกรรมให้สมาชิกคนอื่น
   // (ประธานสภาชาย มอบสิทธิ์ให้ได้เฉพาะสมาชิกสภาชายเท่านั้น ไม่ข้ามไปฝั่งหญิง)
-  const chairGender = membership.find(m => m.council_positions?.is_elected)?.council_positions?.gender ?? null
+  const chairGender = membership.find(m => m.status === 'active' && m.council_positions?.is_elected)?.council_positions?.gender ?? null
 
   // ครูที่ปรึกษาสภา — ตำแหน่ง (position) 'council_advisor' ที่แอดมินมอบให้จากหน้าตั้งค่าครูเดิม
   // (dashboard.html) เห็นเกือบทุกหน้าเหมือนแอดมิน ยกเว้นมอบสิทธิ์ — ต้องเช็คทั้ง teacher.position
@@ -360,7 +379,7 @@ async function init() {
     student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases,
   }
-  electionYear = Number(cfg.academicYear) || (new Date().getFullYear() + 543)
+  electionYear = electionYearForTerm
   if (role === 'teacher' && pendingEndorsements.length && !hasExplicitViewRoute) setActiveView('endorse')
   render()
 }
@@ -368,13 +387,56 @@ async function init() {
 // โหลดใบสมัคร/สมาชิกภาพของตัวเองใหม่หลังส่งใบสมัครสำเร็จ — ไม่ต้องรีโหลดทั้งหน้า
 async function refreshMyApplications() {
   if (!ctx?.student) return
-  ctx.applications = await getMyCouncilApplications(ctx.student.id).catch(() => ctx.applications)
+  ctx.applications = await getMyCouncilApplications(ctx.student.id, selectedCouncilTermId).catch(() => ctx.applications)
 }
 
 // โหลดคิวใบสมัครที่รอครูที่ปรึกษายืนยันใหม่หลังกดรับรอง/ไม่รับรอง
 async function refreshPendingEndorsements() {
   if (!ctx?.teacher) return
   ctx.pendingEndorsements = await getPendingEndorsements(ctx.homeroomMainRooms).catch(() => ctx.pendingEndorsements)
+}
+
+async function switchCouncilTerm(termId) {
+  const term = councilTerms.find(t => String(t.id) === String(termId))
+  if (!term || String(term.id) === String(selectedCouncilTermId)) return
+  selectedCouncilTermId = term.id
+  electionYear = Number(term.academic_year)
+  const [members, elections, applications, membership] = await Promise.all([
+    getCouncilMembers(null, term.id).catch(() => []),
+    getCouncilElectionConfigs(null, term.id).catch(() => []),
+    ctx.student ? getMyCouncilApplications(ctx.student.id, term.id).catch(() => []) : Promise.resolve([]),
+    ctx.student ? getMyCouncilMembership(ctx.student.id, term.id).catch(() => []) : Promise.resolve([]),
+  ])
+  ctx.members = members; ctx.elections = elections
+  if (ctx.student) {
+    ctx.applications = applications; ctx.membership = membership
+    ctx.isChair = membership.some(m => m.status === 'active' && m.council_positions?.is_elected)
+    ctx.canCreateActivities = ctx.isChair || membership.some(m => m.status === 'active' && m.can_create_activities)
+    ctx.chairGender = membership.find(m => m.status === 'active' && m.council_positions?.is_elected)?.council_positions?.gender ?? null
+  }
+  adminApps = null; activities = null; ylaEvents = null; docs = null
+  adminCandidatesByGender.M = null; adminCandidatesByGender.W = null
+  delete candidatesByGender.M; delete candidatesByGender.W
+  const url = new URL(window.location.href)
+  url.searchParams.set('term', term.id)
+  history.replaceState(null, '', url)
+  render()
+}
+
+const TERM_STATUS_LABEL = { draft: 'ร่าง', upcoming: 'วาระใหม่', active: 'กำลังดำรงตำแหน่ง', closed: 'หมดวาระ' }
+function renderCouncilTermBar() {
+  const term = selectedCouncilTerm()
+  if (!term) return ''
+  const tone = term.status === 'active' ? 'bg-[var(--ok-soft)] text-[#106143] border-[var(--ok-soft-line)]'
+    : term.status === 'upcoming' ? 'bg-[var(--gold-soft)] text-[var(--gold-ink)] border-[var(--gold-soft-line)]'
+      : 'bg-[var(--surface-2)] text-[var(--muted)] border-[var(--line)]'
+  return `<div class="mb-4 rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-3 flex flex-col sm:flex-row sm:items-center gap-2">
+    <div class="min-w-0 flex-1"><p class="text-[0.6875rem] font-bold text-[var(--muted)]">วาระที่กำลังดู</p><p class="text-sm font-bold text-[var(--ink)] truncate">${esc(term.term_label)}</p></div>
+    <span class="self-start sm:self-auto px-2.5 py-1 rounded-full border text-[0.6875rem] font-bold ${tone}">${esc(TERM_STATUS_LABEL[term.status] || term.status)}</span>
+    <select id="council-term-switcher" class="border border-[var(--line)] rounded-xl px-3 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">
+      ${councilTerms.map(t => `<option value="${t.id}" ${String(t.id) === String(term.id) ? 'selected' : ''}>${esc(t.term_label)} — ${esc(TERM_STATUS_LABEL[t.status] || t.status)}</option>`).join('')}
+    </select>
+  </div>`
 }
 
 // ใช้ inline style แทนสลับคลาส 'hidden' ตรงๆ เพราะ #council-sidebar/#council-bottom-tabs
@@ -447,6 +509,8 @@ function getNavItems() {
   if (isTeacherStaff) items.push({ id: 'apps', icon: '📋', label: 'ใบสมัคร', group: 'teacherWork' })
   if (isTeacherStaff) items.push({ id: 'interview', icon: '🗓️', label: 'สัมภาษณ์', group: 'teacherWork' })
   if (isTeacherStaff) items.push({ id: 'appoint', icon: '✅', label: 'แต่งตั้งสมาชิก', group: 'teacherWork' })
+  if (isTeacherStaff) items.push({ id: 'candidateAdmin', icon: '🗳️', label: 'จัดการผู้สมัครประธาน', group: 'teacherWork' })
+  if (isTeacherStaff) items.push({ id: 'printCenter', icon: '🖨️', label: 'พิมพ์ใบรายชื่อ', group: 'teacherWork' })
   if (isTeacherStaff || ctx.membership.length) items.push({ id: 'eval', icon: '🎖️', label: 'ประเมิน/เกียรติบัตร', group: 'teacherWork' })
   // เอกสารโครงการ — เห็นด้วยกันทั้งครูที่ปรึกษาสภา/ประธานสภา (ริเริ่ม+รับรอง) และหัวหน้าฝ่าย
   // กิจการนักเรียน/ผู้อำนวยการ (อนุมัติขั้นถัดไป) แม้ไม่ใช่ครูที่ปรึกษาสภาก็ตาม
@@ -457,6 +521,7 @@ function getNavItems() {
   if (ctx.isAdmin || ctx.isExecutive) items.push({ id: 'dashboard', icon: '📊', label: 'ภาพรวม', group: 'system' })
   // ตั้งค่า (Phase 2, สเปคข้อ 8.18)
   if (isTeacherStaff) items.push({ id: 'settings', icon: '⚙️', label: 'ตั้งค่า', group: 'system' })
+  if (isTeacherStaff) items.push({ id: 'termAdmin', icon: '🗓️', label: 'จัดการวาระ', group: 'system' })
   // มอบสิทธิ์ — เห็นเฉพาะแอดมิน (ตามสเปคข้อ 4 "เกือบทุกหน้าเหมือนแอดมิน ยกเว้นมอบสิทธิ์")
   if (ctx.isAdmin) items.push({ id: 'perms', icon: '🔑', label: 'มอบสิทธิ์', group: 'system' })
   // โปรไฟล์ของฉัน (รูป+ลายเซ็น) — เห็นเฉพาะ 3 บทบาทที่ต้องลงนามเอกสาร
@@ -1423,7 +1488,7 @@ function appPipelineStage(a) {
 }
 
 async function loadAdminApps() {
-  adminApps = await getCouncilApplicationsForAdmin(electionYear).catch(() => [])
+  adminApps = await getCouncilApplicationsForAdmin(electionYear, selectedCouncilTermId).catch(() => [])
   render()
 }
 async function loadIvTeachers() {
@@ -1451,7 +1516,7 @@ function ylaDateRange(event) {
 }
 
 async function loadYlaEvents() {
-  ylaEvents = await getCouncilYlaEvents(electionYear).catch(() => [])
+  ylaEvents = await getCouncilYlaEvents(electionYear, selectedCouncilTermId).catch(() => [])
   if (ylaSelectedEventId == null && ylaEvents.length) ylaSelectedEventId = ylaEvents[0].id
   if (ylaSelectedEventId != null && !ylaEvents.some(e => e.id === ylaSelectedEventId)) {
     ylaSelectedEventId = ylaEvents[0]?.id ?? null
@@ -1577,7 +1642,7 @@ function wireYlaEvents() {
     btn.disabled = true; btn.textContent = 'กำลังสร้าง...'
     try {
       const created = await createCouncilYlaEvent({
-        academicYear: electionYear, title: form.title.value.trim(), description: form.description.value.trim(),
+        academicYear: electionYear, termId: selectedCouncilTermId, title: form.title.value.trim(), description: form.description.value.trim(),
         startDate: form.start_date.value || null, endDate: form.end_date.value || null,
         location: form.location.value.trim(), capacity: form.capacity.value ? Number(form.capacity.value) : null,
         createdByTeacherId: ctx.teacher?.id,
@@ -2257,7 +2322,7 @@ function renderRosterView() {
         <button type="button" class="roster-gender-tab-btn flex-1 py-2.5 rounded-full text-sm font-bold transition ${g === rosterGenderTab ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-gender="${g}">สภา${GENDER_LABEL[g]}</button>`).join('')}
     </div>`
 
-  const addBtn = ctx.isAdmin
+  const addBtn = (ctx.isAdmin || ctx.isCouncilAdvisor) && termIsEditable()
     ? `<button type="button" id="btn-add-council-member" class="w-full py-2.5 rounded-xl border border-dashed border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold mb-4 hover:bg-[var(--primary-soft)]">＋ เพิ่มสมาชิกสภา${GENDER_LABEL[rosterGenderTab]}</button>`
     : ''
 
@@ -2271,9 +2336,10 @@ function renderRosterView() {
       <p class="text-sm font-bold text-[var(--ink)] truncate mt-2">${esc(m.students?.full_name ?? '—')}</p>
       <p class="text-[0.6875rem] text-[var(--muted)] truncate">${esc(m.students?.main_room ?? '')}</p>
       <p class="text-[0.6875rem] text-[var(--primary)] font-semibold truncate mt-0.5">${esc(m.council_positions?.position_name ?? '—')}</p>
+      ${m.status !== 'active' ? `<span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[0.625rem] font-bold ${m.status === 'designate' ? 'bg-[var(--gold-soft)] text-[var(--gold-ink)]' : 'bg-[var(--surface-2)] text-[var(--muted)]'}">${m.status === 'designate' ? 'ว่าที่สมาชิก' : 'หมดวาระ'}</span>` : ''}
       ${canGrantCreate ? `
         <button type="button" class="btn-toggle-can-create w-full mt-2 text-[0.625rem] font-bold py-1 rounded-[8px] border ${m.can_create_activities ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)] text-[#106143]' : 'border-[var(--line)] text-[var(--muted)]'}" data-id="${m.id}" data-value="${m.can_create_activities ? '' : '1'}">${m.can_create_activities ? '✅ สร้างกิจกรรมได้' : '➕ ให้สิทธิ์สร้างกิจกรรม'}</button>` : ''}
-      ${ctx.isAdmin ? `
+      ${ctx.isAdmin && termIsEditable() ? `
         <div class="flex gap-1.5 mt-2 pt-2 border-t border-[var(--line-soft)]">
           <button type="button" class="btn-edit-council-member flex-1 text-[0.6875rem] font-bold py-1 rounded-[8px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${m.id}">✏️ แก้ไข</button>
           <button type="button" class="btn-remove-council-member flex-1 text-[0.6875rem] font-bold py-1 rounded-[8px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${m.id}">🗑️ ลบ</button>
@@ -2334,7 +2400,7 @@ function openMemberModal({ mode, gender, member }) {
         <div class="grid grid-cols-2 gap-2">
           <div>
             <label class="block text-xs font-semibold text-[var(--muted)] mb-1">เริ่มวาระ</label>
-            <input type="date" id="member-term-start" value="${mode === 'edit' ? esc(member.term_start_date ?? '') : new Date().toISOString().slice(0, 10)}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+            <input type="date" id="member-term-start" value="${mode === 'edit' ? esc(member.term_start_date ?? '') : esc(selectedCouncilTerm()?.duty_start_date || new Date().toISOString().slice(0, 10))}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
           </div>
           ${mode === 'edit' ? `
           <div>
@@ -2342,6 +2408,13 @@ function openMemberModal({ mode, gender, member }) {
             <input type="date" id="member-term-end" value="${esc(member.term_end_date ?? '')}" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
           </div>` : ''}
         </div>
+        ${mode === 'add' ? `<div class="rounded-xl border border-[var(--line-soft)] bg-[var(--surface-2)] p-3 space-y-2">
+          <p class="text-xs font-bold text-[var(--ink-2)]">ข้อมูลการแต่งตั้งแยกจากการสัมภาษณ์</p>
+          <select id="member-appointment-method" class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-sm bg-[var(--surface)]"><option value="direct">แต่งตั้งโดยตรง</option><option value="external_import">นำเข้าจากบัญชีรายชื่อภายนอก</option><option value="chair_nomination">เสนอโดยประธานสภา</option></select>
+          <input id="member-order-ref" placeholder="เลขที่คำสั่ง/หนังสืออ้างอิง (ถ้ามี)" class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-sm bg-[var(--surface)]" />
+          <textarea id="member-reason" rows="2" placeholder="เหตุผลหรือหมายเหตุการแต่งตั้ง" class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-sm bg-[var(--surface)] resize-none"></textarea>
+          <input id="member-evidence" type="url" placeholder="ลิงก์หลักฐาน (ถ้ามี)" class="w-full border border-[var(--line)] rounded-xl px-3 py-2 text-sm bg-[var(--surface)]" />
+        </div>` : ''}
         <button type="button" id="btn-save-member" class="w-full py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">บันทึก</button>
       </div>
     </div>`
@@ -2398,8 +2471,11 @@ function openMemberModal({ mode, gender, member }) {
     try {
       if (mode === 'add') {
         await addCouncilMemberManual({
-          positionId, studentId: selectedStudent.id, academicYear: electionYear,
-          termStartDate: termStart, appointedByTeacherId: ctx.teacher?.id ?? null,
+          termId: selectedCouncilTermId, positionId, studentId: selectedStudent.id,
+          appointmentMethod: modal.querySelector('#member-appointment-method')?.value || 'direct',
+          termStartDate: termStart, orderRef: modal.querySelector('#member-order-ref')?.value.trim(),
+          reason: modal.querySelector('#member-reason')?.value.trim(), evidenceUrl: modal.querySelector('#member-evidence')?.value.trim(),
+          appointedByTeacherId: ctx.teacher?.id ?? null,
         })
       } else {
         const termEnd = modal.querySelector('#member-term-end').value
@@ -2407,7 +2483,7 @@ function openMemberModal({ mode, gender, member }) {
       }
       showToast('บันทึกแล้ว ✅', 'success')
       modal.remove()
-      ctx.members = await getCouncilMembers().catch(() => ctx.members)
+      ctx.members = await getCouncilMembers(null, selectedCouncilTermId).catch(() => ctx.members)
       render()
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
@@ -2540,7 +2616,7 @@ const ACT_NEXT_STATUS = { planned: 'ongoing', ongoing: 'completed' }
 const ACT_NEXT_LABEL = { planned: '▶️ เริ่มดำเนินการ', ongoing: '✅ ทำเครื่องหมายเสร็จแล้ว' }
 
 async function loadActivities() {
-  activities = await getCouncilActivities(electionYear).catch(() => [])
+  activities = await getCouncilActivities(electionYear, selectedCouncilTermId).catch(() => [])
   render()
 }
 
@@ -2911,7 +2987,7 @@ async function loadEvalCriteria() {
   render()
 }
 async function loadEvaluations() {
-  const rows = await getCouncilEvaluations(electionYear).catch(() => [])
+  const rows = await getCouncilEvaluations(electionYear, selectedCouncilTermId).catch(() => [])
   evaluations = Object.fromEntries(rows.map(r => [r.member_id, r]))
   render()
 }
@@ -3065,7 +3141,7 @@ const DOC_FORM_LABEL = {
 const docFormLabel = key => DOC_FORM_LABEL[key] ?? key ?? 'เอกสารโครงการ'
 
 async function loadDocs() {
-  docs = await getCouncilDocuments(electionYear).catch(() => [])
+  docs = await getCouncilDocuments(electionYear, selectedCouncilTermId).catch(() => [])
   render()
 }
 async function loadMyAdvisorPositions() {
@@ -4426,6 +4502,69 @@ function renderMyCouncilProfileView() {
     </div>`
 }
 
+function renderTermAdminView() {
+  if (!(ctx.isAdmin || ctx.isCouncilAdvisor)) return ''
+  const rows = councilTerms.map(t => `<div class="rounded-xl border border-[var(--line)] p-3 flex items-center gap-3">
+    <div class="min-w-0 flex-1"><p class="text-sm font-bold text-[var(--ink)]">${esc(t.term_label)}</p><p class="text-xs text-[var(--muted)]">ปีการศึกษา ${t.academic_year} · ${esc(TERM_STATUS_LABEL[t.status] || t.status)}${t.duty_start_date ? ` · ${esc(t.duty_start_date)} ถึง ${esc(t.duty_end_date || 'ไม่ระบุ')}` : ''}</p></div>
+    ${t.status === 'upcoming' && ctx.isAdmin ? `<button type="button" class="btn-activate-term px-3 py-2 rounded-xl bg-[var(--primary)] text-white text-xs font-bold" data-id="${t.id}">เริ่มวาระนี้</button>` : ''}
+  </div>`).join('')
+  const year = Number(ctx.cfg.academicYear) || new Date().getFullYear() + 543
+  return `<div class="space-y-4">
+    <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><h2 class="font-bold text-[var(--ink)]">วาระสภานักเรียน</h2><p class="text-xs text-[var(--muted)] mt-1">การเริ่มวาระใหม่จะปิดวาระเดิม เก็บประวัติเดิม และเลื่อนรายชื่อ “ว่าที่สมาชิก” เป็นสมาชิกปัจจุบัน</p><div class="space-y-2 mt-4">${rows}</div></div>
+    ${ctx.isAdmin ? `<form id="council-term-create-form" class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 space-y-3">
+      <h3 class="text-sm font-bold text-[var(--ink)]">เพิ่มวาระใหม่</h3>
+      <input name="label" required placeholder="เช่น วาระ 2/2569 – 1/2570" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]" />
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2"><input name="academic_year" type="number" required value="${year}" class="border border-[var(--line)] rounded-xl px-3 py-2 text-sm" /><select name="start_semester" class="border border-[var(--line)] rounded-xl px-3 py-2 text-sm"><option value="1">เริ่ม ภาคเรียน 1</option><option value="2" selected>เริ่ม ภาคเรียน 2</option></select><input name="start_year" type="number" required value="${year}" class="border border-[var(--line)] rounded-xl px-3 py-2 text-sm" /><select name="end_semester" class="border border-[var(--line)] rounded-xl px-3 py-2 text-sm"><option value="1" selected>สิ้นสุด ภาคเรียน 1</option><option value="2">สิ้นสุด ภาคเรียน 2</option></select><input name="end_year" type="number" required value="${year + 1}" class="border border-[var(--line)] rounded-xl px-3 py-2 text-sm" /><input name="duty_start_date" type="date" class="border border-[var(--line)] rounded-xl px-3 py-2 text-sm" /><input name="duty_end_date" type="date" class="border border-[var(--line)] rounded-xl px-3 py-2 text-sm" /></div>
+      <button class="px-4 py-2.5 rounded-xl bg-[var(--primary)] text-white text-sm font-bold">สร้างวาระใหม่</button>
+    </form>` : ''}
+  </div>`
+}
+
+async function loadCandidateAdmin(gender) {
+  const election = electionOf(gender)
+  adminCandidatesByGender[gender] = election ? await getCandidatesForElectionAdmin(election.id).catch(() => []) : []
+  render()
+}
+
+function renderCandidateAdminView() {
+  if (!(ctx.isAdmin || ctx.isCouncilAdvisor)) return ''
+  const gender = candidateAdminGender
+  const election = electionOf(gender)
+  if (election && adminCandidatesByGender[gender] === null) {
+    loadCandidateAdmin(gender)
+    return '<p class="text-sm text-[var(--muted)] text-center py-16">กำลังโหลดผู้สมัคร...</p>'
+  }
+  const list = adminCandidatesByGender[gender] || []
+  const localDate = value => toDatetimeLocal(value)
+  return `<div class="space-y-4">
+    <div class="flex gap-2">${['M','W'].map(g => `<button type="button" data-gender="${g}" class="candidate-admin-gender flex-1 py-2.5 rounded-full text-sm font-bold ${g === gender ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)] bg-[var(--surface)] text-[var(--muted)]'}">นักเรียน${GENDER_LABEL[g]}</button>`).join('')}</div>
+    ${!election ? `<div class="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-6 text-center"><p class="text-sm text-[var(--muted)]">ยังไม่มีรอบเลือกตั้งสำหรับวาระนี้</p><button type="button" id="btn-create-candidate-election" class="mt-3 px-4 py-2.5 rounded-xl bg-[var(--primary)] text-white text-sm font-bold">สร้างรอบเลือกตั้ง${GENDER_LABEL[gender]}</button></div>` : `
+      <form id="candidate-election-settings" data-id="${election.id}" class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 space-y-3">
+        <h3 class="text-sm font-bold text-[var(--ink)]">ตั้งค่าการเผยแพร่และรณรงค์</h3>
+        <div class="grid sm:grid-cols-3 gap-2"><label class="text-xs text-[var(--muted)]">เริ่มแนะนำผู้สมัคร<input name="campaign_opens_at" type="datetime-local" value="${localDate(election.campaign_opens_at)}" class="mt-1 w-full border border-[var(--line)] rounded-xl px-2 py-2 text-sm" /></label><label class="text-xs text-[var(--muted)]">เปิดลงคะแนน<input name="opens_at" type="datetime-local" value="${localDate(election.opens_at)}" class="mt-1 w-full border border-[var(--line)] rounded-xl px-2 py-2 text-sm" /></label><label class="text-xs text-[var(--muted)]">ปิดเลือกตั้ง<input name="closes_at" type="datetime-local" value="${localDate(election.closes_at)}" class="mt-1 w-full border border-[var(--line)] rounded-xl px-2 py-2 text-sm" /></label></div>
+        <div class="flex flex-wrap gap-2"><button type="button" class="candidate-setting-action px-3 py-2 rounded-xl border text-xs font-bold ${election.candidates_published ? 'border-[var(--bad-soft-line)] text-[var(--bad)]' : 'border-[var(--primary-45)] text-[var(--primary)]'}" data-field="candidates" data-value="${election.candidates_published ? '' : '1'}">${election.candidates_published ? 'ยกเลิกเผยแพร่รายชื่อ' : 'เผยแพร่รายชื่อผู้สมัคร'}</button><button type="button" class="candidate-setting-action px-3 py-2 rounded-xl border text-xs font-bold ${election.campaign_enabled ? 'border-[var(--bad-soft-line)] text-[var(--bad)]' : 'border-[var(--primary-45)] text-[var(--primary)]'}" data-field="campaign" data-value="${election.campaign_enabled ? '' : '1'}">${election.campaign_enabled ? 'ปิดหน้ารณรงค์' : 'เปิดหน้ารณรงค์'}</button><button class="px-4 py-2 rounded-xl bg-[var(--primary)] text-white text-xs font-bold">บันทึกวันเวลา</button></div>
+      </form>
+      <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><div class="flex items-center justify-between gap-2"><h3 class="text-sm font-bold text-[var(--ink)]">รายชื่อว่าที่ประธาน${GENDER_LABEL[gender]}</h3><button type="button" class="btn-print-candidates px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold" data-gender="${gender}">🖨️ พิมพ์</button></div><div class="space-y-2 mt-3">${list.length ? list.map(c => `<form class="candidate-admin-row flex flex-wrap items-center gap-2 border border-[var(--line)] rounded-xl p-2.5" data-id="${c.id}"><div class="min-w-0 flex-1"><p class="text-sm font-bold truncate">${esc(c.students?.full_name)}</p><p class="text-xs text-[var(--muted)]">${esc(c.students?.student_code)} · ${esc(c.students?.main_room || '')}</p></div><label class="text-[0.6875rem] text-[var(--muted)]">หมายเลข<input name="ballot" type="number" min="1" required value="${c.ballot_number}" class="block w-20 border border-[var(--line)] rounded-lg px-2 py-1.5 text-sm" /></label><select name="status" class="border border-[var(--line)] rounded-lg px-2 py-1.5 text-sm"><option value="draft" ${c.status === 'draft' ? 'selected' : ''}>ร่าง</option><option value="published" ${c.status === 'published' ? 'selected' : ''}>เผยแพร่</option><option value="withdrawn" ${c.status === 'withdrawn' ? 'selected' : ''}>ถอนตัว</option><option value="elected" ${c.status === 'elected' ? 'selected' : ''}>ได้รับเลือก</option></select><button class="px-3 py-2 rounded-lg bg-[var(--primary)] text-white text-xs font-bold">บันทึก</button></form>`).join('') : '<p class="text-xs text-[var(--muted)] text-center py-8">ยังไม่มีผู้สมัคร ให้ตั้งจากผู้ผ่านสัมภาษณ์ในหน้าแต่งตั้งสมาชิก</p>'}</div></div>`}
+  </div>`
+}
+
+function printCandidateRoster(gender) {
+  const term = selectedCouncilTerm(); const list = adminCandidatesByGender[gender] || candidatesByGender[gender] || []
+  const rows = list.map((c, i) => `<tr><td>${i + 1}</td><td>${c.ballot_number}</td><td>${esc(c.students?.student_code)}</td><td>${esc(c.students?.full_name)}</td><td>${esc(c.students?.main_room || '')}</td><td>${esc(c.status || 'published')}</td><td></td></tr>`).join('')
+  openHtmlPrintOverlay(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายชื่อผู้สมัครประธานสภานักเรียน</title><style>@page{size:A4;margin:12mm}body{font-family:Tahoma,sans-serif;color:#111}h1,p{text-align:center}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #444;padding:7px;font-size:12px}th{background:#eee}td:first-child,td:nth-child(2){text-align:center}</style></head><body><h1>บัญชีรายชื่อผู้สมัครประธานสภานักเรียน${GENDER_LABEL[gender]}</h1><p>${esc(term?.term_label || '')} · จำนวน ${list.length} คน</p><table><thead><tr><th>ลำดับ</th><th>หมายเลข</th><th>รหัส</th><th>ชื่อ–สกุล</th><th>ห้อง</th><th>สถานะ</th><th>หมายเหตุ</th></tr></thead><tbody>${rows}</tbody></table></body></html>`)
+}
+
+function printMemberRoster() {
+  const term = selectedCouncilTerm()
+  const list = [...ctx.members].sort((a,b) => (a.council_positions?.gender || '').localeCompare(b.council_positions?.gender || '') || (a.council_positions?.sort_order || 99) - (b.council_positions?.sort_order || 99))
+  const rows = list.map((m,i) => `<tr><td>${i+1}</td><td>${esc(GENDER_LABEL[m.council_positions?.gender] || '')}</td><td>${esc(m.students?.student_code)}</td><td>${esc(m.students?.full_name)}</td><td>${esc(m.students?.main_room || '')}</td><td>${esc(m.council_positions?.position_name)}</td><td>${esc(m.status === 'designate' ? 'ว่าที่สมาชิก' : m.status === 'ended' ? 'หมดวาระ' : 'ปฏิบัติหน้าที่')}</td><td></td></tr>`).join('')
+  openHtmlPrintOverlay(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ทะเบียนสมาชิกสภานักเรียน</title><style>@page{size:A4 landscape;margin:10mm}body{font-family:Tahoma,sans-serif;color:#111}h1,p{text-align:center}table{width:100%;border-collapse:collapse;margin-top:14px}th,td{border:1px solid #444;padding:6px;font-size:11px}th{background:#eee}</style></head><body><h1>ทะเบียนสมาชิกสภานักเรียน</h1><p>${esc(term?.term_label || '')} · จำนวน ${list.length} คน</p><table><thead><tr><th>ลำดับ</th><th>ฝ่าย</th><th>รหัส</th><th>ชื่อ–สกุล</th><th>ห้อง</th><th>ตำแหน่ง</th><th>สถานะ</th><th>หมายเหตุ/ลงชื่อ</th></tr></thead><tbody>${rows}</tbody></table></body></html>`)
+}
+
+function renderPrintCenterView() {
+  return `<div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><h2 class="font-bold text-[var(--ink)]">ศูนย์พิมพ์ใบรายชื่อ</h2><p class="text-xs text-[var(--muted)] mt-1">ใช้เป็นทะเบียน บันทึกการประชุม เช็กชื่อ หรือแนบเอกสารอื่น</p><div class="grid sm:grid-cols-3 gap-3 mt-5"><button type="button" id="btn-print-members" class="rounded-xl border border-[var(--primary-45)] p-4 text-left"><span class="text-2xl">🏛️</span><p class="text-sm font-bold mt-2">สมาชิกสภาทั้งหมด</p><p class="text-xs text-[var(--muted)]">พร้อมช่องหมายเหตุ/ลงชื่อ</p></button>${['M','W'].map(g => `<button type="button" class="btn-print-candidates rounded-xl border border-[var(--primary-45)] p-4 text-left" data-gender="${g}"><span class="text-2xl">🗳️</span><p class="text-sm font-bold mt-2">ผู้สมัครประธาน${GENDER_LABEL[g]}</p><p class="text-xs text-[var(--muted)]">หมายเลข ชื่อ ห้อง และสถานะ</p></button>`).join('')}</div></div>`
+}
+
 const VIEW_RENDERERS = {
   overview: renderOverviewView,
   regulation: () => renderCouncilRegulationView(ctx, render),
@@ -4452,6 +4591,9 @@ const VIEW_RENDERERS = {
   perms: renderPermsView,
   myCouncilProfile: renderMyCouncilProfileView,
   dashboard: renderExecDashboardView,
+  termAdmin: renderTermAdminView,
+  candidateAdmin: renderCandidateAdminView,
+  printCenter: renderPrintCenterView,
 }
 
 // เนื้อหาในแต่ละ subtab ของโฟลว์เต็มจอ ("สมัคร"/"เลือกตั้ง") — คนละชุดกับ VIEW_RENDERERS
@@ -4473,7 +4615,7 @@ function render() {
   // เนื้อหาเต็มพื้นที่ที่มีจริง (ไม่ล็อก max-width) — ตามที่ผู้ใช้ทักท้วงว่าจอใหญ่ยังมีขอบว่าง
   // เหลือมาก ระยะขอบ (padding) ไล่กว้างขึ้นตาม breakpoint แทน ให้เนื้อหาไม่ชิดขอบจอเกินไป
   const renderer = VIEW_RENDERERS[activeView] || renderOverviewView
-  content.innerHTML = `<div class="w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-4">${renderer()}</div>`
+  content.innerHTML = `<div class="w-full px-4 sm:px-6 lg:px-8 xl:px-10 py-4">${renderCouncilTermBar()}${renderer()}</div>`
   wireContentEvents()
 }
 
@@ -4513,6 +4655,53 @@ function renderFullscreenFlow() {
 }
 
 function wireContentEvents() {
+  document.getElementById('council-term-switcher')?.addEventListener('change', e => switchCouncilTerm(e.target.value))
+
+  document.getElementById('council-term-create-form')?.addEventListener('submit', async e => {
+    e.preventDefault(); const f = e.target; const btn = f.querySelector('button[type="submit"]'); btn.disabled = true
+    try {
+      await createCouncilTerm({ label: f.label.value.trim(), academicYear: f.academic_year.value, startSemester: f.start_semester.value, startYear: f.start_year.value, endSemester: f.end_semester.value, endYear: f.end_year.value, dutyStartDate: f.duty_start_date.value, dutyEndDate: f.duty_end_date.value })
+      councilTerms = await getCouncilTerms(); showToast('สร้างวาระใหม่แล้ว ✅', 'success'); render()
+    } catch (err) { showToast('สร้างวาระไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); btn.disabled = false }
+  })
+  document.querySelectorAll('.btn-activate-term').forEach(btn => btn.addEventListener('click', async () => {
+    try {
+      const preview = await previewCouncilTermActivation(Number(btn.dataset.id))
+      const oldCount = preview?.active_members_to_end ?? preview?.ended_members ?? 0
+      const newCount = preview?.designates_to_activate ?? preview?.activated_members ?? 0
+      if (!confirm(`ยืนยันเริ่มวาระใหม่?\n\nสมาชิกวาระเดิมที่จะหมดวาระ: ${oldCount} คน\nว่าที่สมาชิกที่จะเริ่มปฏิบัติหน้าที่: ${newCount} คน\n\nข้อมูลวาระเดิมจะยังคงอยู่ในประวัติ`)) return
+      await activateCouncilTerm(Number(btn.dataset.id)); councilTerms = await getCouncilTerms(); selectedCouncilTermId = null; await switchCouncilTerm(btn.dataset.id); showToast('เริ่มวาระใหม่แล้ว ✅', 'success')
+    } catch (err) { showToast('เริ่มวาระไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
+  }))
+
+  document.querySelectorAll('.candidate-admin-gender').forEach(btn => btn.addEventListener('click', () => { candidateAdminGender = btn.dataset.gender; render() }))
+  document.getElementById('btn-create-candidate-election')?.addEventListener('click', async () => {
+    try { await ensureElectionConfig({ gender: candidateAdminGender, academicYear: electionYear, termId: selectedCouncilTermId }); ctx.elections = await getCouncilElectionConfigs(null, selectedCouncilTermId); adminCandidatesByGender[candidateAdminGender] = null; render() }
+    catch (err) { showToast('สร้างรอบเลือกตั้งไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
+  })
+  const candidateSettings = document.getElementById('candidate-election-settings')
+  const saveCandidateSettings = async overrides => {
+    const f = candidateSettings; if (!f) return
+    const current = electionOf(candidateAdminGender)
+    await updateElectionCampaignSettings({ electionConfigId: Number(f.dataset.id), opensAt: f.opens_at.value ? new Date(f.opens_at.value).toISOString() : null, closesAt: f.closes_at.value ? new Date(f.closes_at.value).toISOString() : null, campaignOpensAt: f.campaign_opens_at.value ? new Date(f.campaign_opens_at.value).toISOString() : null, campaignEnabled: overrides?.campaignEnabled ?? current.campaign_enabled, candidatesPublished: overrides?.candidatesPublished ?? current.candidates_published })
+    ctx.elections = await getCouncilElectionConfigs(null, selectedCouncilTermId); showToast('บันทึกการตั้งค่าเลือกตั้งแล้ว ✅', 'success'); render()
+  }
+  candidateSettings?.addEventListener('submit', async e => { e.preventDefault(); try { await saveCandidateSettings() } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') } })
+  document.querySelectorAll('.candidate-setting-action').forEach(btn => btn.addEventListener('click', async () => {
+    try { await saveCandidateSettings(btn.dataset.field === 'campaign' ? { campaignEnabled: btn.dataset.value === '1' } : { candidatesPublished: btn.dataset.value === '1' }) } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
+  }))
+  document.querySelectorAll('.candidate-admin-row').forEach(form => form.addEventListener('submit', async e => {
+    e.preventDefault(); const f = e.target
+    try { await updateCouncilCandidateAdmin({ candidateId: Number(f.dataset.id), ballotNumber: f.ballot.value, status: f.status.value }); adminCandidatesByGender[candidateAdminGender] = await getCandidatesForElectionAdmin(electionOf(candidateAdminGender).id); delete candidatesByGender[candidateAdminGender]; showToast('บันทึกผู้สมัครแล้ว ✅', 'success'); render() }
+    catch (err) { showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
+  }))
+  document.querySelectorAll('.btn-print-candidates').forEach(btn => btn.addEventListener('click', async () => {
+    const gender = btn.dataset.gender; const election = electionOf(gender)
+    if (election && adminCandidatesByGender[gender] === null) adminCandidatesByGender[gender] = await getCandidatesForElectionAdmin(election.id).catch(() => [])
+    printCandidateRoster(gender)
+  }))
+  document.getElementById('btn-print-members')?.addEventListener('click', printMemberRoster)
+
   wireCouncilRegulationEvents(ctx, render)
   wireCouncilResourceEvents({
     esc,
@@ -4557,7 +4746,7 @@ function wireContentEvents() {
       try {
         await removeCouncilMember(Number(btn.dataset.id))
         showToast('ลบแล้ว ✅', 'success')
-        ctx.members = await getCouncilMembers().catch(() => ctx.members)
+        ctx.members = await getCouncilMembers(null, selectedCouncilTermId).catch(() => ctx.members)
         render()
       } catch (err) {
         showToast('ลบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
@@ -4751,9 +4940,9 @@ function wireContentEvents() {
         url: await uploadCouncilCertificate(ctx.student.id, c.file),
       })))
       await submitCouncilApplication({
+        termId: selectedCouncilTermId,
         studentId: ctx.student.id,
         positionId: Number(applyData.positionId),
-        academicYear: Number(ctx.cfg.academicYear) || new Date().getFullYear() + 543,
         motivation: applyData.motivation,
         photoUrl,
         gpaGeneral: Number(applyData.gpaGeneral),
@@ -5049,7 +5238,7 @@ function wireChairTeamEvents() {
         delete openPositionsByGender.M; delete openPositionsByGender.W
         delete interviewedByGender.M; delete interviewedByGender.W
         delete pendingNomsByGender.M; delete pendingNomsByGender.W
-        ctx.members = await getCouncilMembers().catch(() => ctx.members)
+        ctx.members = await getCouncilMembers(null, selectedCouncilTermId).catch(() => ctx.members)
         render()
       } catch (err) {
         showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
@@ -5359,7 +5548,7 @@ function wireDocsEvents() {
     try {
       if (docEditingId === 'new') {
         await createDocument({
-          ...fields, formKey: f.dataset.formKey || 'FORM_09_1_PROJECT_PROPOSAL', formVersion: 1, origin, academicYear: electionYear,
+          ...fields, formKey: f.dataset.formKey || 'FORM_09_1_PROJECT_PROPOSAL', formVersion: 1, origin, academicYear: electionYear, termId: selectedCouncilTermId,
           createdByStudentId: origin === 'council' && ctx.student ? ctx.student.id : null,
           createdByTeacherId: origin === 'teacher' && ctx.teacher ? ctx.teacher.id : null,
         })
@@ -5508,7 +5697,7 @@ function wireEvalEvents() {
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
         await saveEvaluation({
-          memberId, academicYear: electionYear, scores, totalScore: total, maxScore, decision,
+          memberId, academicYear: electionYear, termId: selectedCouncilTermId, scores, totalScore: total, maxScore, decision,
           comment: form.comment.value.trim(), evaluatorTeacherId: ctx.role === 'teacher' && ctx.teacher ? ctx.teacher.id : null,
         })
         showToast('บันทึกผลประเมินแล้ว ✅', 'success')
@@ -5566,7 +5755,7 @@ function wireActivitiesEvents() {
       await createActivity({
         title, detail: f.detail.value.trim(), gender: f.gender.value || null,
         activityDate: f.activity_date.value || null, budget: f.budget.value ? Number(f.budget.value) : null,
-        ownerText: f.owner_text.value.trim(), academicYear: electionYear,
+        ownerText: f.owner_text.value.trim(), academicYear: electionYear, termId: selectedCouncilTermId,
         openToGeneral: f.open_to_general.checked, ownerMemberId: f.owner_member_id.value ? Number(f.owner_member_id.value) : null,
         countsForEvaluation: f.counts_for_evaluation.checked,
       })
@@ -5936,14 +6125,15 @@ function wireApplicationsAdminEvents() {
       if (!app) return
       btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
       try {
-        const econf = await ensureElectionConfig({ gender: app.council_positions.gender, academicYear: electionYear })
+        const econf = await ensureElectionConfig({ gender: app.council_positions.gender, academicYear: electionYear, termId: selectedCouncilTermId })
         await promoteToCandidate({
           applicationId: appId, studentId: app.students.id, electionConfigId: econf.id,
           campaignStatement: app.motivation, photoUrl: app.photo_url,
         })
         showToast('ตั้งเป็นผู้สมัครเลือกตั้งแล้ว 🗳️', 'success')
         delete candidatesByGender[app.council_positions.gender]
-        ctx.elections = await getCouncilElectionConfigs().catch(() => ctx.elections)
+        adminCandidatesByGender[app.council_positions.gender] = null
+        ctx.elections = await getCouncilElectionConfigs(null, selectedCouncilTermId).catch(() => ctx.elections)
         adminApps = null
         render()
       } catch (err) {
@@ -5964,7 +6154,7 @@ function wireApplicationsAdminEvents() {
         await appointMember({ applicationId: appId, positionId: app.position_id, studentId: app.students.id, academicYear: electionYear, appointedByTeacherId: ctx.teacher?.id })
         showToast('แต่งตั้งสำเร็จ ✅', 'success')
         adminApps = null
-        ctx.members = await getCouncilMembers().catch(() => ctx.members)
+        ctx.members = await getCouncilMembers(null, selectedCouncilTermId).catch(() => ctx.members)
         render()
       } catch (err) {
         showToast('บันทึกไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
@@ -5980,7 +6170,7 @@ function wireElectionEvents() {
     btn.addEventListener('click', async () => {
       btn.disabled = true
       try {
-        const e = await ensureElectionConfig({ gender: btn.dataset.gender, academicYear: electionYear })
+        const e = await ensureElectionConfig({ gender: btn.dataset.gender, academicYear: electionYear, termId: selectedCouncilTermId })
         ctx.elections = [...ctx.elections.filter(x => x.id !== e.id), e]
         render()
       } catch (err) {
@@ -6000,7 +6190,7 @@ function wireElectionEvents() {
       btn.disabled = true
       try {
         await updateElectionWindow({ electionConfigId: id, opensAt, closesAt })
-        ctx.elections = await getCouncilElectionConfigs().catch(() => ctx.elections)
+        ctx.elections = await getCouncilElectionConfigs(null, selectedCouncilTermId).catch(() => ctx.elections)
         showToast('บันทึกช่วงเวลาแล้ว', 'success')
         render()
       } catch (err) {
@@ -6017,8 +6207,8 @@ function wireElectionEvents() {
       try {
         await publishElectionResults({ electionConfigId: Number(btn.dataset.electionId), gender: btn.dataset.gender, academicYear: electionYear })
         showToast('ประกาศผลแล้ว 🎉', 'success')
-        ctx.elections = await getCouncilElectionConfigs().catch(() => ctx.elections)
-        ctx.members = await getCouncilMembers().catch(() => ctx.members)
+        ctx.elections = await getCouncilElectionConfigs(null, selectedCouncilTermId).catch(() => ctx.elections)
+        ctx.members = await getCouncilMembers(null, selectedCouncilTermId).catch(() => ctx.members)
         render()
       } catch (err) {
         showToast('ประกาศผลไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')

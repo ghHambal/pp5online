@@ -34,6 +34,41 @@ export async function updateCouncilConfig(updates) {
   if (error) throw error
 }
 
+// ─── วาระสภานักเรียน ────────────────────────────────────────────────────────
+export async function getCouncilTerms() {
+  const { data, error } = await supabase.from('council_terms')
+    .select('*').order('duty_start_date', { ascending: false }).order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function createCouncilTerm(fields) {
+  const { data, error } = await supabase.rpc('create_council_term', {
+    p_term_label: fields.label,
+    p_academic_year: Number(fields.academicYear),
+    p_start_semester: Number(fields.startSemester),
+    p_start_year: Number(fields.startYear),
+    p_end_semester: Number(fields.endSemester),
+    p_end_year: Number(fields.endYear),
+    p_duty_start_date: fields.dutyStartDate || null,
+    p_duty_end_date: fields.dutyEndDate || null,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function previewCouncilTermActivation(termId) {
+  const { data, error } = await supabase.rpc('preview_council_term_activation', { p_term_id: termId })
+  if (error) throw error
+  return data
+}
+
+export async function activateCouncilTerm(termId) {
+  const { data, error } = await supabase.rpc('activate_council_term', { p_term_id: termId })
+  if (error) throw error
+  return data
+}
+
 // ─── ระเบียบ/ประกาศสภานักเรียน — อ่านได้ทุกผู้ใช้ที่ล็อกอิน; แก้ผ่าน RPC เฉพาะผู้ดูแล ───
 export async function getCouncilRegulationVersions() {
   const query = supabase.from('council_regulation_versions')
@@ -184,10 +219,11 @@ export async function removeEndorsementPhrase(id) {
 }
 
 // ─── รายชื่อสภาปัจจุบัน (public roster) ───────────────────────────────────────
-export async function getCouncilMembers(academicYear) {
+export async function getCouncilMembers(academicYear, termId) {
   let q = supabase.from('council_members')
-    .select('id, position_id, student_id, academic_year, status, source, can_create_activities, council_positions(gender, position_name, sort_order, is_elected), students(full_name, student_code, main_room, image_url, photo_url)')
-    .eq('status', 'active')
+    .select('id, term_id, position_id, student_id, academic_year, status, source, appointment_method, appointment_order_ref, appointment_reason, appointment_evidence_url, term_start_date, term_end_date, can_create_activities, council_positions(gender, position_name, sort_order, is_elected), students(full_name, student_code, main_room, image_url, photo_url)')
+    .in('status', ['active', 'designate', 'ended'])
+  if (termId) q = q.eq('term_id', termId)
   if (academicYear) q = q.eq('academic_year', academicYear)
   const { data, error } = await q
   if (error) throw error
@@ -195,8 +231,9 @@ export async function getCouncilMembers(academicYear) {
 }
 
 // ─── สถานะการเลือกตั้ง ─────────────────────────────────────────────────────
-export async function getCouncilElectionConfigs(academicYear) {
+export async function getCouncilElectionConfigs(academicYear, termId) {
   let q = supabase.from('council_election_config').select('*')
+  if (termId) q = q.eq('term_id', termId)
   if (academicYear) q = q.eq('academic_year', academicYear)
   const { data, error } = await q.order('gender')
   if (error) throw error
@@ -204,8 +241,8 @@ export async function getCouncilElectionConfigs(academicYear) {
 }
 
 // ─── ใบสมัคร/สมาชิกภาพของตัวเอง (นักเรียน) ────────────────────────────────────
-export async function getMyCouncilApplications(studentId) {
-  const { data, error } = await supabase.from('council_applications')
+export async function getMyCouncilApplications(studentId, termId) {
+  let q = supabase.from('council_applications')
     .select(`id, student_id, position_id, status, motivation, photo_url, created_at,
       gpa_general, gpa_religious, intro_video_url, certificates,
       endorsing_teacher_id, endorsement_comment, endorsed_at,
@@ -215,15 +252,19 @@ export async function getMyCouncilApplications(studentId) {
       council_members!council_applications_peer_endorsed_by_member_id_fkey(students(full_name)),
       requested_peer_endorser:council_members!council_applications_requested_peer_endorser_id_fkey(students(full_name)),
       council_positions(position_name, gender, is_elected)`)
-    .eq('student_id', studentId).is('deleted_at', null).order('created_at', { ascending: false })
+    .eq('student_id', studentId).is('deleted_at', null)
+  if (termId) q = q.eq('term_id', termId)
+  const { data, error } = await q.order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
 }
 
-export async function getMyCouncilMembership(studentId) {
-  const { data, error } = await supabase.from('council_members')
-    .select('id, position_id, status, source, term_start_date, term_end_date, can_create_activities, council_positions(position_name, gender, is_elected)')
-    .eq('student_id', studentId).eq('status', 'active')
+export async function getMyCouncilMembership(studentId, termId) {
+  let q = supabase.from('council_members')
+    .select('id, term_id, position_id, status, source, term_start_date, term_end_date, can_create_activities, council_positions(position_name, gender, is_elected)')
+    .eq('student_id', studentId).in('status', ['active', 'designate'])
+  if (termId) q = q.eq('term_id', termId)
+  const { data, error } = await q
   if (error) throw error
   return data ?? []
 }
@@ -237,9 +278,9 @@ export async function setMemberCanCreateActivities(memberId, value) {
 // ─── สมัครสภานักเรียน — wizard 5-6 ขั้น (สเปคข้อ 8.2 + เกียรติบัตร/รางวัลขั้นต่ำ 5 รายการ) ──
 // ขั้นเลือก "พี่สภาที่ต้องการให้รับรอง" (requestedPeerEndorserId) เป็นขั้นที่ 6 แบบมีเงื่อนไข
 // (โผล่เฉพาะตอน council_require_peer_endorsement เปิดอยู่) — ผู้สมัครเลือกได้ 2026-08-20
-export async function submitCouncilApplication({ studentId, positionId, academicYear, motivation, photoUrl, gpaGeneral, gpaReligious, introVideoUrl, certificates, requestedPeerEndorserId }) {
-  const { error } = await supabase.rpc('submit_council_application', {
-    p_student_id: studentId, p_position_id: positionId, p_academic_year: academicYear,
+export async function submitCouncilApplication({ termId, studentId, positionId, motivation, photoUrl, gpaGeneral, gpaReligious, introVideoUrl, certificates, requestedPeerEndorserId }) {
+  const { error } = await supabase.rpc('submit_council_application_for_term', {
+    p_term_id: termId, p_student_id: studentId, p_position_id: positionId,
     p_motivation: motivation, p_photo_url: photoUrl,
     p_gpa_general: gpaGeneral, p_gpa_religious: gpaReligious, p_intro_video_url: introVideoUrl,
     p_certificates: certificates ?? [],
@@ -334,9 +375,9 @@ export async function submitPeerEndorsement({ applicationId, memberId, comment }
 
 // ─── จัดการใบสมัคร (แอดมิน) — ดูได้ทุกสถานะ (รวม "รอรับรอง" เพื่อติดตามภาพรวม) แต่นัดสัมภาษณ์/
 // ให้คะแนนได้เฉพาะใบที่ครูที่ปรึกษาสามัญรับรองแล้วเท่านั้น (สเปคข้อ 8.4 — ฟิลเตอร์ 6 สถานะ) ──
-export async function getCouncilApplicationsForAdmin(academicYear) {
+export async function getCouncilApplicationsForAdmin(academicYear, termId) {
   let q = supabase.from('council_applications')
-    .select(`id, position_id, status, motivation, photo_url, academic_year, created_at,
+    .select(`id, term_id, position_id, status, motivation, photo_url, academic_year, created_at,
       gpa_general, gpa_religious, intro_video_url, certificates,
       endorsing_teacher_id, endorsement_comment, endorsed_at,
       peer_endorsed_by_member_id, peer_endorsement_comment, peer_endorsed_at,
@@ -345,10 +386,11 @@ export async function getCouncilApplicationsForAdmin(academicYear) {
       council_positions(id, position_name, gender, is_elected),
       students(id, full_name, student_code, main_room, image_url, photo_url, profile_id),
       council_interviews(id, scheduled_at, location, interviewer_teacher_id, result, score, scores, comment),
-      council_candidates(id, election_config_id, ballot_number)`)
+      council_candidates(id, election_config_id, ballot_number, status)`)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
   if (academicYear) q = q.eq('academic_year', academicYear)
+  if (termId) q = q.eq('term_id', termId)
   const { data, error } = await q
   if (error) throw error
   return data ?? []
@@ -418,14 +460,15 @@ export async function searchStudentsForCouncil(query) {
   return data ?? []
 }
 
-export async function addCouncilMemberManual({ positionId, studentId, academicYear, termStartDate, appointedByTeacherId }) {
-  const { error } = await supabase.from('council_members').insert({
-    position_id: positionId, student_id: studentId, academic_year: academicYear,
-    source: 'appointed', status: 'active',
-    term_start_date: termStartDate || new Date().toISOString().slice(0, 10),
-    appointed_by_teacher_id: appointedByTeacherId ?? null,
+export async function addCouncilMemberManual({ termId, positionId, studentId, appointmentMethod, termStartDate, orderRef, reason, evidenceUrl, appointedByTeacherId }) {
+  const { data, error } = await supabase.rpc('add_council_member_manual_atomic', {
+    p_term_id: termId, p_position_id: positionId, p_student_id: studentId,
+    p_appointment_method: appointmentMethod || 'direct', p_term_start_date: termStartDate || null,
+    p_order_ref: orderRef || null, p_reason: reason || null, p_evidence_url: evidenceUrl || null,
+    p_appointed_by_teacher_id: appointedByTeacherId ?? null,
   })
   if (error) throw error
+  return data
 }
 
 export async function updateCouncilMember(memberId, { positionId, termStartDate, termEndDate }) {
@@ -444,13 +487,13 @@ export async function removeCouncilMember(memberId) {
 }
 
 // ─── ตั้งค่าห้วงเวลาเลือกตั้ง (แอดมิน) ─────────────────────────────────────────
-export async function ensureElectionConfig({ gender, academicYear }) {
+export async function ensureElectionConfig({ gender, academicYear, termId }) {
   const { data: existing, error: e0 } = await supabase.from('council_election_config')
-    .select('*').eq('gender', gender).eq('academic_year', academicYear).maybeSingle()
+    .select('*').eq('gender', gender).eq('term_id', termId).maybeSingle()
   if (e0) throw e0
   if (existing) return existing
   const { data, error } = await supabase.from('council_election_config')
-    .insert({ gender, academic_year: academicYear }).select().single()
+    .insert({ gender, academic_year: academicYear, term_id: termId }).select().single()
   if (error) throw error
   return data
 }
@@ -461,16 +504,45 @@ export async function updateElectionWindow({ electionConfigId, opensAt, closesAt
   if (error) throw error
 }
 
+export async function updateElectionCampaignSettings({ electionConfigId, opensAt, closesAt, campaignOpensAt, campaignEnabled, candidatesPublished }) {
+  const { error } = await supabase.from('council_election_config').update({
+    opens_at: opensAt || null, closes_at: closesAt || null,
+    campaign_opens_at: campaignOpensAt || null,
+    campaign_enabled: !!campaignEnabled,
+    candidates_published: !!candidatesPublished,
+  }).eq('id', electionConfigId)
+  if (error) throw error
+}
+
 // ─── ผู้สมัครเลือกตั้ง (public) ────────────────────────────────────────────────
 export async function getCandidatesForElection(electionConfigId) {
   const { data, error } = await supabase.from('council_candidates')
-    .select(`id, ballot_number, campaign_statement, photo_url, student_id, application_id,
+    .select(`id, ballot_number, status, campaign_statement, photo_url, student_id, application_id,
       slogan, vision, policies, experience,
+      students(full_name, student_code, main_room, image_url, photo_url),
+      council_applications(gpa_general, gpa_religious)`)
+    .eq('election_config_id', electionConfigId).in('status', ['published', 'elected']).order('ballot_number')
+  if (error) throw error
+  return data ?? []
+}
+
+export async function getCandidatesForElectionAdmin(electionConfigId) {
+  const { data, error } = await supabase.from('council_candidates')
+    .select(`id, ballot_number, status, campaign_statement, photo_url, student_id, application_id,
+      slogan, vision, policies, experience, published_at, withdrawn_at,
       students(full_name, student_code, main_room, image_url, photo_url),
       council_applications(gpa_general, gpa_religious)`)
     .eq('election_config_id', electionConfigId).order('ballot_number')
   if (error) throw error
   return data ?? []
+}
+
+export async function updateCouncilCandidateAdmin({ candidateId, ballotNumber, status }) {
+  const { data, error } = await supabase.rpc('update_council_candidate_admin', {
+    p_candidate_id: candidateId, p_ballot_number: Number(ballotNumber), p_status: status,
+  })
+  if (error) throw error
+  return data
 }
 
 // แก้ไขโปรไฟล์ผู้สมัคร (สโลแกน/วิสัยทัศน์/นโยบาย/ประสบการณ์) — เห็นเฉพาะแอดมิน/ครูที่
@@ -584,18 +656,19 @@ export async function decideNomination({ nominationId, approve, teacherId, comme
 }
 
 // ─── กิจกรรมประจำปีของสภา — เขียนได้เฉพาะแอดมิน/ประธานสภา/ผู้รับผิดชอบกิจกรรมนั้นๆ (RLS คุมแล้ว) ──
-export async function getCouncilActivities(academicYear) {
+export async function getCouncilActivities(academicYear, termId) {
   let q = supabase.from('council_activities').select('*, council_members!council_activities_owner_member_id_fkey(students(full_name))').order('activity_date', { ascending: false, nullsFirst: false })
   if (academicYear) q = q.eq('academic_year', academicYear)
+  if (termId) q = q.eq('term_id', termId)
   const { data, error } = await q
   if (error) throw error
   return data ?? []
 }
 
-export async function createActivity({ title, detail, gender, activityDate, budget, ownerText, academicYear, openToGeneral, ownerMemberId, countsForEvaluation }) {
+export async function createActivity({ title, detail, gender, activityDate, budget, ownerText, academicYear, termId, openToGeneral, ownerMemberId, countsForEvaluation }) {
   const { error } = await supabase.from('council_activities').insert({
     title, detail, gender: gender || null, activity_date: activityDate || null,
-    budget: budget || null, owner_text: ownerText || null, academic_year: academicYear,
+    budget: budget || null, owner_text: ownerText || null, academic_year: academicYear, term_id: termId,
     open_to_general: !!openToGeneral, owner_member_id: ownerMemberId || null,
     counts_for_evaluation: countsForEvaluation !== false,
   })
@@ -832,15 +905,17 @@ export async function removeCriterion(id) {
   if (error) throw error
 }
 
-export async function getCouncilEvaluations(academicYear) {
-  const { data, error } = await supabase.from('council_evaluations').select('*').eq('academic_year', academicYear)
+export async function getCouncilEvaluations(academicYear, termId) {
+  let q = supabase.from('council_evaluations').select('*').eq('academic_year', academicYear)
+  if (termId) q = q.eq('term_id', termId)
+  const { data, error } = await q
   if (error) throw error
   return data ?? []
 }
 
-export async function saveEvaluation({ memberId, academicYear, scores, totalScore, maxScore, decision, comment, evaluatorTeacherId }) {
+export async function saveEvaluation({ memberId, academicYear, termId, scores, totalScore, maxScore, decision, comment, evaluatorTeacherId }) {
   const { error } = await supabase.from('council_evaluations').upsert({
-    member_id: memberId, academic_year: academicYear, scores, total_score: totalScore, max_score: maxScore,
+    member_id: memberId, academic_year: academicYear, term_id: termId, scores, total_score: totalScore, max_score: maxScore,
     decision, comment, evaluator_teacher_id: evaluatorTeacherId, evaluated_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }, { onConflict: 'member_id,academic_year' })
@@ -856,10 +931,12 @@ export async function issueCertificate({ evaluationId, certificateNo }) {
 // ─── เอกสารขออนุมัติโครงการ/กิจกรรม — ภายในแอดมิน/ครู/ประธานสภาเท่านั้น (ไม่ public) ─────────
 // ตามแบบฟอร์มจริงของโรงเรียน (แบบเสนอโครงการ) + อนุมัติ 3 ระดับ: ครูที่ปรึกษาประจำฝ่าย
 // (เฉพาะ origin='council') → หัวหน้าฝ่ายกิจการนักเรียน → ผู้อำนวยการ (2026-08-16)
-export async function getCouncilDocuments(academicYear) {
-  const { data, error } = await supabase.from('council_documents')
+export async function getCouncilDocuments(academicYear, termId) {
+  let q = supabase.from('council_documents')
     .select('*, council_positions(position_name, gender)')
-    .eq('academic_year', academicYear).order('created_at', { ascending: false })
+    .eq('academic_year', academicYear)
+  if (termId) q = q.eq('term_id', termId)
+  const { data, error } = await q.order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
 }
@@ -880,6 +957,7 @@ export async function createDocument(fields) {
   payload.form_version = Number(fields.formVersion) || 1
   payload.origin = fields.origin
   payload.academic_year = fields.academicYear
+  payload.term_id = fields.termId || null
   payload.created_by_student_id = fields.createdByStudentId || null
   payload.created_by_teacher_id = fields.createdByTeacherId || null
   const { data, error } = await supabase.from('council_documents').insert(payload).select().single()
@@ -908,6 +986,7 @@ export async function createDocumentRevision(id, { createdByStudentId = null, cr
   payload.document_revision = (Number(source.document_revision) || 1) + 1
   payload.origin = source.origin || 'council'
   payload.academic_year = source.academic_year
+  payload.term_id = source.term_id || null
   payload.created_by_student_id = createdByStudentId || null
   payload.created_by_teacher_id = createdByTeacherId || null
   const { data, error } = await supabase.from('council_documents').insert(payload).select().single()
@@ -1055,18 +1134,20 @@ const DEFAULT_YLA_CRITERIA = [
   ['ความรับผิดชอบและจริยธรรม', 20],
 ]
 
-export async function getCouncilYlaEvents(academicYear) {
+export async function getCouncilYlaEvents(academicYear, termId) {
   let q = supabase.from('council_yla_events')
     .select('id, academic_year, event_code, title, description, status, start_date, end_date, location, capacity, created_by_teacher_id, created_at, updated_at')
   if (academicYear) q = q.eq('academic_year', academicYear)
+  if (termId) q = q.eq('term_id', termId)
   const { data, error } = await q.order('start_date', { ascending: false }).order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
 }
 
-export async function createCouncilYlaEvent({ academicYear, title, description, startDate, endDate, location, capacity, createdByTeacherId }) {
+export async function createCouncilYlaEvent({ academicYear, termId, title, description, startDate, endDate, location, capacity, createdByTeacherId }) {
   const { data: event, error } = await supabase.from('council_yla_events').insert({
     academic_year: academicYear,
+    term_id: termId,
     event_code: 'YLA',
     title,
     description: description || null,
