@@ -86,7 +86,7 @@ function _archiveLessonPlanPdf(payload) {
   var weekNo = Number(payload.weekNo)
   var fileName = String(payload.fileName || '').trim()
   var base64 = String(payload.pdfBase64 || '').trim()
-  if (!rootId || !teacherName || !Number.isInteger(weekNo) || weekNo < 1 || weekNo > 60 || !/^[^\\/]{1,180}\\.pdf$/i.test(fileName)) throw new Error('ข้อมูลโฟลเดอร์/สัปดาห์/ชื่อไฟล์ไม่ถูกต้อง')
+  if (!rootId || !teacherName || !Number.isInteger(weekNo) || weekNo < 1 || weekNo > 60 || !/^[^\\/]{1,180}\.pdf$/i.test(fileName)) throw new Error('ข้อมูลโฟลเดอร์/สัปดาห์/ชื่อไฟล์ไม่ถูกต้อง')
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(base64)) throw new Error('ข้อมูล PDF ไม่ถูกต้อง')
   var bytes = Utilities.base64Decode(base64)
   if (bytes.length < 4 || String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== '%PDF') throw new Error('ไฟล์ที่ส่งมาต้องเป็น PDF')
