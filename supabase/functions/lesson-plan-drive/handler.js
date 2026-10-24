@@ -19,17 +19,27 @@ export function validateGasUrl(value, redirect = false) {
 
 export async function callGas(gasUrl, payload, fetchImpl = fetch) {
   let url = validateGasUrl(gasUrl)
+  let method = 'POST'
+  let body = JSON.stringify(payload)
+  let requestHeaders = { 'Content-Type': 'application/json' }
   for (let attempt = 0; attempt <= 5; attempt++) {
     const response = await fetchImpl(url.toString(), {
-      method: 'POST',
+      method,
       redirect: 'manual',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: requestHeaders,
+      ...(body === undefined ? {} : { body }),
     })
     if ([301, 302, 303, 307, 308].includes(response.status)) {
       const location = response.headers.get('location')
       if (!location) throw new Error('GAS ส่ง redirect ที่ไม่ครบ')
       url = validateGasUrl(new URL(location, url).toString(), true)
+      // Apps Script returns a 302 to a one-time result URL. The result URL
+      // must be fetched with GET; replaying the POST returns HTTP 405.
+      if ([301, 302, 303].includes(response.status)) {
+        method = 'GET'
+        body = undefined
+        requestHeaders = {}
+      }
       continue
     }
     if (!response.ok) throw new Error('GAS ตอบ HTTP ' + response.status)

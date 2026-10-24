@@ -109,6 +109,23 @@ async function functionErrorMessage(error) {
   return getFriendlyErrorMessage(error)
 }
 
+function showArchiveConfirm(file, weekNo) {
+  return new Promise(resolve => {
+    document.getElementById('lesson-plan-archive-confirm')?.remove()
+    const dialog = document.createElement('div')
+    dialog.id = 'lesson-plan-archive-confirm'
+    dialog.className = 'fixed inset-0 z-[100000] flex items-center justify-center p-4'
+    dialog.innerHTML = `<div data-confirm-overlay class="absolute inset-0 bg-black/55 backdrop-blur-sm"></div><div role="dialog" aria-modal="true" class="relative w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl"><div class="h-1.5 bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600"></div><div class="px-6 pt-6 pb-5 text-center"><div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full border-2 border-emerald-100 bg-emerald-50 text-2xl">☁️</div><h3 class="mb-2 text-lg font-extrabold text-gray-900">ยืนยันบันทึกแผนเข้า Drive</h3><p class="text-sm leading-relaxed text-gray-600">ระบบจะบันทึกไฟล์ <span class="font-bold text-gray-900">${esc(file)}</span><br>ไปยังโฟลเดอร์ส่วนตัวของคุณ: <span class="font-bold text-emerald-700">สัปดาห์ที่ ${esc(weekNo)}</span></p></div><div class="grid grid-cols-2 gap-3 px-6 pb-6"><button data-confirm-cancel type="button" class="rounded-2xl border border-gray-200 py-3 text-sm font-semibold text-gray-600 transition hover:bg-gray-50">ยกเลิก</button><button data-confirm-ok type="button" class="rounded-2xl bg-emerald-600 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-emerald-700">บันทึกเข้า Drive</button></div></div><style>@keyframes lessonArchiveConfirmIn{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:scale(1) translateY(0)}}#lesson-plan-archive-confirm>div[role=dialog]{animation:lessonArchiveConfirmIn .2s ease-out}</style>`
+    document.body.appendChild(dialog)
+    const cleanup = result => { document.removeEventListener('keydown', onKey); dialog.remove(); resolve(result) }
+    dialog.querySelector('[data-confirm-overlay]').addEventListener('click', () => cleanup(false))
+    dialog.querySelector('[data-confirm-cancel]').addEventListener('click', () => cleanup(false))
+    dialog.querySelector('[data-confirm-ok]').addEventListener('click', () => cleanup(true))
+    const onKey = event => { if (event.key === 'Escape') { document.removeEventListener('keydown', onKey); cleanup(false) } }
+    document.addEventListener('keydown', onKey)
+  })
+}
+
 export async function openLessonPlanArchiveCenter({ subject, teacher, classes = [], plans = [], semesterStart, semesterEnd, termSchedule = [], scheduleLinks = [], academicYear, semester }) {
   document.getElementById('lesson-plan-archive-modal')?.remove()
   const weeks = [...new Set(plans.flatMap(plan => { const start = Number(plan.week_start); const end = Number(plan.week_end ?? start); return Number.isInteger(start) ? Array.from({ length: Math.max(1, end - start + 1) }, (_, i) => start + i) : [] }))].sort((a, b) => a - b)
@@ -165,6 +182,6 @@ export async function openLessonPlanArchiveCenter({ subject, teacher, classes = 
   })
   const renderPdf = async () => { if (!current) await build(); return makePdf({ subject, teacher, roomRows: current.rows, weekNo: selectedWeek, academicYear, semester }) }
   modal.querySelector('[data-archive-download]').addEventListener('click', async event => { const button = event.currentTarget; button.disabled = true; try { const blob = await renderPdf(); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = fileName(subject, selectedWeek); link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000) } catch (error) { showToast(`สร้าง PDF ไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error') } finally { await build() } })
-  modal.querySelector('[data-archive-drive]').addEventListener('click', async event => { const button = event.currentTarget; if (!current || !driveSettings?.root_folder_id) return; const name = fileName(subject, selectedWeek); if (!confirm(`ยืนยันส่งไฟล์ ${name}\nไปที่โฟลเดอร์ส่วนตัวของคุณ: สัปดาห์ที่ ${selectedWeek} หรือไม่?`)) return; button.disabled = true; try { const blob = await renderPdf(); if (blob.size > 12 * 1024 * 1024) throw new Error('ไฟล์ PDF ใหญ่เกิน 12 MB กรุณาลดรูปภาพลายเซ็นหรือแบ่งส่ง') ; const pdfBase64 = await readFileBase64(blob); const { data, error } = await supabase.functions.invoke('lesson-plan-drive', { body: { courseId: subject.id, academicYear, semester, weekNo: selectedWeek, fileName: name, pdfBase64, planCount: current.planCount, roomCount: current.roomCount } }); if (error) throw error; if (!data?.ok) throw new Error(data?.error || 'บันทึกเข้า Drive ไม่สำเร็จ'); showToast('บันทึกไฟล์เข้า Drive ส่วนตัวแล้ว ✅', 'success'); await build() } catch (error) { showToast(`ส่งเข้า Drive ไม่สำเร็จ: ${await functionErrorMessage(error)}`, 'error') } finally { button.disabled = false; await build() } })
+  modal.querySelector('[data-archive-drive]').addEventListener('click', async event => { const button = event.currentTarget; if (!current || !driveSettings?.root_folder_id) return; const name = fileName(subject, selectedWeek); if (!await showArchiveConfirm(name, selectedWeek)) return; button.disabled = true; try { const blob = await renderPdf(); if (blob.size > 12 * 1024 * 1024) throw new Error('ไฟล์ PDF ใหญ่เกิน 12 MB กรุณาลดรูปภาพลายเซ็นหรือแบ่งส่ง') ; const pdfBase64 = await readFileBase64(blob); const { data, error } = await supabase.functions.invoke('lesson-plan-drive', { body: { courseId: subject.id, academicYear, semester, weekNo: selectedWeek, fileName: name, pdfBase64, planCount: current.planCount, roomCount: current.roomCount } }); if (error) throw error; if (!data?.ok) throw new Error(data?.error || 'บันทึกเข้า Drive ไม่สำเร็จ'); showToast('บันทึกไฟล์เข้า Drive ส่วนตัวแล้ว ✅', 'success'); await build() } catch (error) { showToast(`ส่งเข้า Drive ไม่สำเร็จ: ${await functionErrorMessage(error)}`, 'error') } finally { button.disabled = false; await build() } })
   await build()
 }
