@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1007'
+import { APP_VERSION } from './version.js?v=10.22.1008'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1008': [
+    'แก้การสร้าง PDF รวมเข้า Drive ให้เรนเดอร์บนพื้นที่ A4 ที่มองเห็นจริงและรอโหลดฟอนต์/รูปภาพก่อน จึงไม่เกิดไฟล์ PDF เปล่า',
+    'ปรับหน้าพิมพ์แผนรายบุคคลให้หัวเรื่องและเนื้อหาไม่ถูก grid ดันแยกหน้าโดยไม่จำเป็น และลดระยะห่างสำหรับกระดาษ A4',
+  ],
   '10.22.1007': [
     'ปรับพื้นที่ render PDF ให้อยู่ในลำดับการแสดงผลที่ html2canvas อ่านได้ เพื่อแก้ไฟล์ PDF หน้าเปล่าในบางเบราว์เซอร์',
   ],
