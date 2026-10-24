@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1006'
+import { APP_VERSION } from './version.js?v=10.22.1007'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1007': [
+    'ปรับพื้นที่ render PDF ให้อยู่ในลำดับการแสดงผลที่ html2canvas อ่านได้ เพื่อแก้ไฟล์ PDF หน้าเปล่าในบางเบราว์เซอร์',
+  ],
   '10.22.1006': [
     'แก้การสร้าง PDF แผนที่เคยได้หน้าเปล่า และปรับชื่อไฟล์ภาษาไทยให้แสดงสระ/วรรณยุกต์ครบถ้วน',
     'แก้การจับคู่โฟลเดอร์ครูให้ตัดคำนำหน้า นาย/นาง/นางสาว ก่อนค้นหา จึงบันทึกเข้าโฟลเดอร์ครูที่เตรียมไว้ได้ถูกต้อง',
