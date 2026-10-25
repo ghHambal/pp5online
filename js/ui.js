@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1012'
+import { APP_VERSION } from './version.js?v=10.22.1013'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1013': [
+    'จัดโลโก้โรงเรียนใน PDF ที่บันทึกเข้า Drive ให้อยู่กึ่งกลางหัวกระดาษ และป้องกัน CSS ของหน้าหลักไม่ให้ทับตำแหน่ง',
+  ],
   '10.22.1012': [
     'ปรับ PDF ที่บันทึกเข้า Drive ให้ใช้แม่แบบ A4 เดียวกับหน้าพรีวิว ทั้งหัวกระดาษ กล่องเนื้อหา บันทึกลายมือ และลายเซ็น',
   ],
