@@ -64,6 +64,30 @@ export async function deleteQuizQuestion(id) {
   if (error) throw error
 }
 
+export async function getQuizQuestionCount(bankId) {
+  const { count, error } = await supabase
+    .from('quiz_questions')
+    .select('id', { count: 'exact', head: true })
+    .eq('bank_id', bankId)
+  if (error) throw error
+  return count ?? 0
+}
+
+export async function deleteQuizQuestions(bankId, questionIds = null) {
+  if (!bankId) throw new Error('ไม่พบคลังข้อสอบที่ต้องการลบ')
+  if (questionIds !== null && !Array.isArray(questionIds)) throw new Error('รายการข้อสอบไม่ถูกต้อง')
+
+  const ids = questionIds === null ? null : [...new Set(questionIds.map(String).filter(Boolean))]
+  if (ids && ids.length === 0) return
+
+  let query = supabase.from('quiz_questions').delete({ count: 'exact' }).eq('bank_id', bankId)
+  if (ids) query = query.in('id', ids)
+
+  const { count, error } = await query
+  if (error) throw error
+  return count ?? 0
+}
+
 // ─── Quizzes (exam sessions) ────────────────────────────────────────────────
 export async function getQuizzesForClass(classId) {
   const { data, error } = await supabase
