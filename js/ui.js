@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1008'
+import { APP_VERSION } from './version.js?v=10.22.1009'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1009': [
+    'เปลี่ยนการสร้าง PDF รวมเข้า Drive เป็น html-to-image + jsPDF ตามแนวทาง iPlan เพื่อแก้ไฟล์ PDF เปล่าและรักษาการวาดภาษาไทย/ลายเซ็น',
+    'ปรับหน้าพิมพ์แผนให้เป็น A4 คงที่ 210×297 มม. และใช้โครงคอลัมน์แบบเดียวกับพรีวิว ลดการบีบอัดและการแยกหน้าโดยไม่จำเป็น',
+  ],
   '10.22.1008': [
     'แก้การสร้าง PDF รวมเข้า Drive ให้เรนเดอร์บนพื้นที่ A4 ที่มองเห็นจริงและรอโหลดฟอนต์/รูปภาพก่อน จึงไม่เกิดไฟล์ PDF เปล่า',
     'ปรับหน้าพิมพ์แผนรายบุคคลให้หัวเรื่องและเนื้อหาไม่ถูก grid ดันแยกหน้าโดยไม่จำเป็น และลดระยะห่างสำหรับกระดาษ A4',

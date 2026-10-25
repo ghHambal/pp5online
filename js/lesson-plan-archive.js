@@ -8,6 +8,8 @@ import {
 import { getLessonPlanAssetUrl } from './storage.js'
 import { supabase } from './supabase.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { toPng } from 'html-to-image'
+import { jsPDF } from 'jspdf'
 
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[ch])
 const text = value => Array.isArray(value) ? value.map(item => typeof item === 'string' ? item : JSON.stringify(item)).join('\n') : String(value ?? '')
@@ -83,24 +85,30 @@ async function toDataUrl(url) {
 }
 
 async function makePdf({ subject, teacher, roomRows, weekNo, academicYear, semester }) {
-  const mod = await import('html2pdf.js')
-  const html2pdf = mod.default ?? mod
   const root = document.createElement('div')
-  const archiveModal = document.getElementById('lesson-plan-archive-modal')
-  const priorModalVisibility = archiveModal?.style.visibility ?? ''
-  // html2canvas cannot reliably capture fixed/off-screen nodes. Render on a
-  // real, visible A4-sized surface at the top of the document instead.
-  root.style.cssText = 'position:absolute;left:0;top:0;width:794px;z-index:999999;background:#fff;color:#111;font-family:Sarabun,Tahoma,sans-serif;font-size:10px;line-height:1.4'
-  root.innerHTML = `<style>@page{size:A4;margin:0}.lp-pdf-page{width:794px;min-height:1123px;padding:38px 42px;page-break-after:always;background:#fff}.lp-pdf-page:last-child{page-break-after:auto}.head{text-align:center;border-bottom:1px solid #176b3a;padding-bottom:11px;margin-bottom:11px}.head h1{font-size:18px;margin:0}.head p{margin:4px 0}.cols{display:grid;grid-template-columns:1fr 1fr;gap:11px}.box{border:1px solid #17743d;border-radius:7px;margin-bottom:9px;overflow:hidden}.box h3{margin:0;padding:6px 8px;background:#d8f6e2;color:#145f35;font-size:11px}.box>div{padding:8px;white-space:pre-wrap;overflow-wrap:anywhere;min-height:38px}.activities>div{min-height:265px}.signs{display:flex;gap:15px;margin-top:15px}.sig{flex:1;text-align:center;font-size:9px}.sig-img{height:53px;display:flex;align-items:end;justify-content:center}.sig-img img{max-width:113px;max-height:49px;object-fit:contain}</style><section class="lp-pdf-page"><div class="head"><h1>รวมแผนการจัดการเรียนรู้รายสัปดาห์ที่ ${weekNo}</h1><p>${esc(subject.subject_name)} (${esc(subject.subject_code)}) · ภาคเรียนที่ ${esc(semester)} ปีการศึกษา ${esc(academicYear)}</p><p>เรียงตามห้องเรียนและวันที่สอน · ${roomRows.reduce((n, row) => n + row.plans.length, 0)} แผน</p></div></section>${(await Promise.all(roomRows.map(async row => { const pages = []; for (const item of row.items) { const urls = { classHead: await toDataUrl(await getLessonPlanAssetUrl(item.reflection?.class_head_signature_path).catch(() => '')), teacher: await toDataUrl(await getLessonPlanAssetUrl(item.reflection?.teacher_signature_path || item.reflection?.signature_data_url).catch(() => '')), deptHead: await toDataUrl(await getLessonPlanAssetUrl(item.reflection?.dept_head_signature_path).catch(() => '')) }; pages.push(renderPlanPage(item.plan, row.cls, item.reflection, urls, subject)) } return pages.join('') }))).join('')}`
+  // Use the iPlane approach: let the browser paint the real DOM, then
+  // rasterize each fixed A4 page with html-to-image and place it in jsPDF.
+  // This avoids html2canvas's blank output on Thai text/signature pages.
+  root.style.cssText = 'position:absolute;left:-9999mm;top:-9999mm;display:block;width:210mm;background:#fff;color:#111;font-family:Sarabun,Tahoma,sans-serif;font-size:10px;line-height:1.4'
+  root.innerHTML = `<style>@page{size:A4;margin:0}.lp-pdf-page{width:210mm;height:297mm;padding:9mm 11mm;box-sizing:border-box;overflow:hidden;page-break-after:always;background:#fff}.lp-pdf-page:last-child{page-break-after:auto}.head{text-align:center;border-bottom:1px solid #176b3a;padding-bottom:3mm;margin-bottom:3mm}.head h1{font-size:18px;margin:0}.head p{margin:1mm 0}.cols{display:block;width:100%;height:calc(100% - 25mm);overflow:hidden}.cols>div{width:48.5%;display:flex;flex-direction:column;gap:4mm;height:100%;max-height:100%;overflow:hidden;box-sizing:border-box}.cols>div:first-child{float:left}.cols>div:last-child{float:right}.box{border:1px solid #17743d;border-radius:2mm;margin:0;overflow:hidden;flex-shrink:0}.box h3{margin:0;padding:1.5mm 2mm;background:#d8f6e2;color:#145f35;font-size:11px}.box>div{padding:2mm;white-space:pre-wrap;overflow-wrap:anywhere;min-height:10mm}.activities>div{min-height:70mm}.signs{display:flex;gap:4mm;margin-top:4mm}.sig{flex:1;text-align:center;font-size:9px}.sig-img{height:14mm;display:flex;align-items:end;justify-content:center}.sig-img img{max-width:30mm;max-height:13mm;object-fit:contain}</style>${(await Promise.all(roomRows.map(async row => { const pages = []; for (const item of row.items) { const urls = { classHead: await toDataUrl(await getLessonPlanAssetUrl(item.reflection?.class_head_signature_path).catch(() => '')), teacher: await toDataUrl(await getLessonPlanAssetUrl(item.reflection?.teacher_signature_path || item.reflection?.signature_data_url).catch(() => '')), deptHead: await toDataUrl(await getLessonPlanAssetUrl(item.reflection?.dept_head_signature_path).catch(() => '')) }; pages.push(renderPlanPage(item.plan, row.cls, item.reflection, urls, subject)) } return pages.join('') }))).join('')}`
   document.body.appendChild(root)
   try {
-    if (archiveModal) archiveModal.style.visibility = 'hidden'
     await document.fonts?.ready
-    await Promise.all([...root.querySelectorAll('img')].map(img => img.complete ? Promise.resolve() : new Promise(resolve => { img.addEventListener('load', resolve, { once: true }); img.addEventListener('error', resolve, { once: true }) })))
+    await Promise.all([...root.querySelectorAll('img')].map(img => img.complete
+      ? (typeof img.decode === 'function' ? img.decode().catch(() => undefined) : undefined)
+      : new Promise(resolve => { img.addEventListener('load', resolve, { once: true }); img.addEventListener('error', resolve, { once: true }) })))
     await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-    const worker = html2pdf().set({ margin: 0, filename: 'lesson-plan.pdf', image: { type: 'jpeg', quality: 0.9 }, html2canvas: { scale: 1.5, useCORS: true, backgroundColor: '#fff', windowWidth: 794, windowHeight: root.scrollHeight, scrollX: 0, scrollY: 0, logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css'] } }).from(root)
-    return await worker.outputPdf('blob')
-  } finally { root.remove(); if (archiveModal) archiveModal.style.visibility = priorModalVisibility }
+    const pages = [...root.querySelectorAll('.lp-pdf-page')]
+    let doc = null
+    for (const page of pages) {
+      const dataUrl = await toPng(page, { pixelRatio: 3, backgroundColor: '#fff', width: page.offsetWidth, height: page.offsetHeight, cacheBust: true })
+      if (!doc) doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+      else doc.addPage('a4', 'portrait')
+      doc.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'FAST')
+    }
+    if (!doc) throw new Error('ไม่พบหน้าเอกสารสำหรับสร้าง PDF')
+    return doc.output('blob')
+  } finally { root.remove() }
 }
 
 function safeFilePart(value, fallback) {
