@@ -533,7 +533,7 @@ function _renderAIGenerator(teacher, bank) {
 
     <div class="flex-1 overflow-y-auto p-5">
       <div class="max-w-3xl mx-auto space-y-4">
-        <p class="text-xs text-gray-400">AI จะร่างคำถามให้เป็นแบบร่าง — <strong>ครูต้องตรวจสอบและกดยืนยันความถูกต้องทีละข้อก่อนบันทึกเข้าคลังจริงเสมอ</strong> (ไม่ว่าจะสร้างด้วยวิธีไหนก็ตาม)</p>
+        <p class="text-xs text-gray-400">AI จะร่างคำถามให้เป็นแบบร่าง — <strong>ครูต้องตรวจสอบความถูกต้องก่อนยืนยันและบันทึกเข้าคลังจริงเสมอ</strong> (ไม่ว่าจะสร้างด้วยวิธีไหนก็ตาม)</p>
 
         <div class="flex gap-2">
           <button id="ai-mode-inapp" class="ai-mode-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-purple-600 bg-purple-600 text-white">🤖 ให้ AI ในระบบสร้างให้เลย</button>
@@ -705,7 +705,7 @@ function _renderAIGenerator(teacher, bank) {
       drafts.push(...generated.map(_normalizeAIQuestion))
       _renderDrafts()
       modal.querySelector('#ai-paste-response').value = ''
-      showToast(`แปลงคำตอบสำเร็จ ${generated.length} ข้อ — กรุณาตรวจสอบและยืนยันทีละข้อ`, 'success')
+      showToast(`แปลงคำตอบสำเร็จ ${generated.length} ข้อ — กรุณาตรวจสอบก่อนยืนยัน`, 'success')
     } catch (err) {
       showToast('แปลงคำตอบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     }
@@ -718,7 +718,11 @@ function _renderAIGenerator(teacher, bank) {
   }
 
   function _renderDrafts() {
-    listEl.innerHTML = drafts.map((d, i) => `
+    listEl.innerHTML = `${drafts.length ? `
+      <div class="flex justify-end">
+        <button type="button" class="d-confirm-all px-4 py-2 rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-xs font-bold">✅ ยืนยันทุกข้อ (${drafts.length})</button>
+      </div>
+    ` : ''}${drafts.map((d, i) => `
       <div class="bg-white border ${d.confirmed ? 'border-emerald-300' : 'border-gray-200'} rounded-2xl p-4 space-y-2">
         <div class="flex items-center justify-between">
           <p class="text-xs text-gray-400">ข้อร่างที่ ${i + 1}${d.difficulty ? ` · ${_htmlEsc(d.difficulty)}` : ''}</p>
@@ -727,9 +731,10 @@ function _renderAIGenerator(teacher, bank) {
         <textarea class="d-qtext ${INPUT_CLS}" rows="2" data-idx="${i}">${_htmlEsc(d.question_text)}</textarea>
         <div class="space-y-1.5">
           ${d.choices.map((c, ci) => `
-            <div class="flex items-center gap-2">
-              <input type="radio" name="d-correct-${i}" value="${ci}" ${ci === d.correct_choice_index ? 'checked' : ''} class="d-correct-radio flex-shrink-0" data-idx="${i}" data-ci="${ci}" />
-              <input class="d-choice ${INPUT_CLS}" value="${_htmlEsc(c)}" data-idx="${i}" data-ci="${ci}" />
+            <div class="d-choice-card flex items-center gap-2 rounded-xl border-2 px-3 py-1 cursor-pointer transition-colors ${ci === d.correct_choice_index ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/40'}" data-idx="${i}" data-ci="${ci}" role="radio" aria-checked="${ci === d.correct_choice_index}" tabindex="0">
+              <input type="radio" name="d-correct-${i}" value="${ci}" ${ci === d.correct_choice_index ? 'checked' : ''} class="d-correct-radio sr-only" data-idx="${i}" data-ci="${ci}" tabindex="-1" />
+              <span class="flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${ci === d.correct_choice_index ? 'border-emerald-600' : 'border-gray-300'}"><span class="w-2.5 h-2.5 rounded-full ${ci === d.correct_choice_index ? 'bg-emerald-600' : 'bg-transparent'}"></span></span>
+              <input class="d-choice w-full bg-transparent border-0 outline-none focus:ring-0 px-1 py-2 text-sm" value="${_htmlEsc(c)}" data-idx="${i}" data-ci="${ci}" aria-label="ตัวเลือกที่ ${ci + 1}" />
             </div>
           `).join('')}
         </div>
@@ -738,7 +743,7 @@ function _renderAIGenerator(teacher, bank) {
           <input type="checkbox" class="d-confirm" data-idx="${i}" ${d.confirmed ? 'checked' : ''} /> ✅ ตรวจสอบแล้ว ถูกต้อง พร้อมบันทึก
         </label>
       </div>
-    `).join('')
+    `).join('')}`
 
     loadKaTeX().then(() => renderMathIn(listEl)).catch(() => {})
 
@@ -748,9 +753,22 @@ function _renderAIGenerator(teacher, bank) {
     listEl.querySelectorAll('.d-choice').forEach(el => el.addEventListener('input', () => {
       drafts[+el.dataset.idx].choices[+el.dataset.ci] = el.value
     }))
-    listEl.querySelectorAll('.d-correct-radio').forEach(el => el.addEventListener('change', () => {
-      drafts[+el.dataset.idx].correct_choice_index = +el.dataset.ci
-    }))
+    const selectCorrectChoice = (idx, ci) => {
+      drafts[idx].correct_choice_index = ci
+      _renderDrafts()
+    }
+    listEl.querySelectorAll('.d-choice-card').forEach(card => {
+      const select = () => selectCorrectChoice(+card.dataset.idx, +card.dataset.ci)
+      card.addEventListener('click', e => {
+        if (e.target.closest('.d-choice')) return
+        select()
+      })
+      card.addEventListener('keydown', e => {
+        if (e.target !== card || !['Enter', ' '].includes(e.key)) return
+        e.preventDefault()
+        select()
+      })
+    })
     listEl.querySelectorAll('.d-explanation').forEach(el => el.addEventListener('input', () => {
       drafts[+el.dataset.idx].explanation = el.value
     }))
@@ -773,6 +791,21 @@ function _renderAIGenerator(teacher, bank) {
       _renderDrafts()
       _updateSaveButton()
     }))
+    listEl.querySelector('.d-confirm-all')?.addEventListener('click', () => {
+      const invalid = []
+      drafts.forEach((draft, idx) => {
+        const check = _validateDraftQuestion(draft)
+        draft.confirmed = check.ok
+        if (!check.ok) invalid.push(idx + 1)
+      })
+      _renderDrafts()
+      _updateSaveButton()
+      if (invalid.length) {
+        showToast(`ยืนยันได้ ${drafts.length - invalid.length} ข้อ — ข้อ ${invalid.join(', ')} ยังต้องแก้ไขก่อน`, 'warning')
+      } else {
+        showToast(`ยืนยันครบ ${drafts.length} ข้อแล้ว กดบันทึกเพื่อเพิ่มเข้าคลัง`, 'success')
+      }
+    })
 
     _updateSaveButton()
   }
@@ -808,7 +841,7 @@ function _renderAIGenerator(teacher, bank) {
 
       drafts.push(...generated.map(_normalizeAIQuestion))
       _renderDrafts()
-      showToast(`AI ร่างข้อสอบมาแล้ว ${generated.length} ข้อ — กรุณาตรวจสอบและยืนยันทีละข้อ`, 'success')
+      showToast(`AI ร่างข้อสอบมาแล้ว ${generated.length} ข้อ — กรุณาตรวจสอบก่อนยืนยัน`, 'success')
     } catch (err) {
       showToast('AI ไม่สามารถร่างข้อสอบได้: ' + (getFriendlyErrorMessage(err)), 'error')
     } finally {
