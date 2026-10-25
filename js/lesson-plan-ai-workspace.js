@@ -2,7 +2,7 @@
 // ระบบไม่เรียก AI เอง: สร้าง Prompt + JSON Schema ให้ครูนำไปใช้กับ AI ส่วนตัว แล้วนำ JSON กลับมาบันทึก
 import {
   createSyllabusItem, updateSyllabusItem, createLessonPlan, updateLessonPlan,
-  getLessonPlanReflection, getLessonPlanReflectionsForPlan, upsertLessonPlanReflection, getDepartments, getTeachersWithSignatures,
+  getLessonPlanReflection, getLessonPlanReflectionsForPlan, getLessonPlanReflectionsForPlans, getLessonPlans, upsertLessonPlanReflection, getDepartments, getTeachersWithSignatures,
 } from './api.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { uploadLessonPlanSignature, getLessonPlanAssetUrl, uploadCouncilTeacherSignature } from './storage.js'
@@ -67,14 +67,14 @@ function bindReflectionNote(box) {
     return { x: (event.clientX - rect.left) * canvas.width / rect.width, y: (event.clientY - rect.top) * canvas.height / rect.height }
   }
   canvas.addEventListener('pointerdown', event => {
-    drawing = true; hasDrawing = true; canvas.setPointerCapture?.(event.pointerId)
+    event.preventDefault(); event.stopPropagation(); drawing = true; hasDrawing = true; canvas.setPointerCapture?.(event.pointerId)
     const p = point(event); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.strokeStyle = color.value
   })
   canvas.addEventListener('pointermove', event => {
     if (!drawing) return
-    const p = point(event); ctx.lineTo(p.x, p.y); ctx.stroke()
+    event.preventDefault(); event.stopPropagation(); const p = point(event); ctx.lineTo(p.x, p.y); ctx.stroke()
   })
-  for (const eventName of ['pointerup', 'pointercancel', 'pointerleave']) canvas.addEventListener(eventName, () => { drawing = false })
+  for (const eventName of ['pointerup', 'pointercancel', 'pointerleave']) canvas.addEventListener(eventName, event => { event.stopPropagation(); drawing = false })
   mode.addEventListener('change', syncMode)
   color.addEventListener('input', () => { ctx.strokeStyle = color.value; paintTextStyle() })
   font.addEventListener('change', paintTextStyle)
@@ -749,9 +749,9 @@ function bindPad(box) {
     else { ctx.clearRect(0, 0, canvas.width, canvas.height); drawn = false; ctx.strokeStyle = color.value }
   }
   const pos = e => { const r = canvas.getBoundingClientRect(), p = e.touches?.[0] ?? e; return { x:(p.clientX-r.left)*canvas.width/r.width, y:(p.clientY-r.top)*canvas.height/r.height } }
-  const start = e => { if (mode.value !== 'draw') return; e.preventDefault(); drawing = true; drawn = true; last = pos(e) }
-  const move = e => { if (!drawing) return; e.preventDefault(); const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p }
-  const end = () => { drawing = false }
+  const start = e => { if (mode.value !== 'draw') return; e.preventDefault(); e.stopPropagation(); drawing = true; drawn = true; last = pos(e) }
+  const move = e => { if (!drawing) return; e.preventDefault(); e.stopPropagation(); const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p }
+  const end = e => { e?.stopPropagation(); drawing = false }
   canvas.addEventListener('pointerdown', start); canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerup', end); canvas.addEventListener('pointerleave', end)
   mode.addEventListener('change', setMode)
   const updateSource = () => {
@@ -802,7 +802,7 @@ function lessonDateState(plan, reflection, weekNo, semesterStart, semesterEnd, s
   return { selectedWeek, saved, suggested, availableDates, value: saved ?? suggested ?? '' }
 }
 
-function printLessonPlan({ plan, cls, teacher, reflection, urls, dept, semesterStart, semesterEnd, scheduledDays = [], weekNo = null, lessonDate = null }) {
+function printLessonPlan({ plan, cls, teacher, reflection, urls, dept, semesterStart, semesterEnd, scheduledDays = [], weekNo = null, lessonDate = null, showClassHead = true }) {
   const meta = courseMeta(cls)
   const dateState = lessonDateState(plan, reflection, weekNo ?? plan.week_start, semesterStart, semesterEnd, scheduledDays)
   const initialDate = isoDate(lessonDate) ?? dateState.value
@@ -840,7 +840,7 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept, semesterS
   const w = window.open('', '_blank')
   if (!w) { showToast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาต Pop-up', 'warning'); return }
   w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(plan.title)}</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Itim&family=Mali:wght@400;500&family=Sriracha&display=swap" rel="stylesheet"><style>
-    @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:10.5px;line-height:1.42;background:#eef2f7}.print-toolbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:12px;padding:10px;background:#172b4d;color:#fff;font-size:13px}.print-toolbar label{display:flex;align-items:center;gap:7px}.print-toolbar input{padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;color:#111;background:#fff}.print-toolbar button{padding:7px 14px;border:0;border-radius:7px;background:#16a36a;color:#fff;font-weight:700;cursor:pointer}.page{width:210mm;height:297mm;padding:9mm 11mm;margin:8mm auto;background:#fff;box-shadow:0 2px 16px #0002;overflow:hidden;position:relative}.head{text-align:center}.logo{width:15mm;height:15mm;object-fit:contain}.head h1{font-size:18px;line-height:1.15;margin:1mm 0}.head h2{font-size:13px;line-height:1.15;margin:0 0 1mm}.head p{font-size:10.5px;margin:.5mm 0}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #176b3a;border-bottom:1px solid #176b3a;padding:1.7mm 2mm;margin-top:2.5mm;font-size:10.5px}.meta span:nth-child(2){text-align:center}.meta span:last-child{text-align:right}.cols{display:block;width:100%;height:calc(100% - 47mm);overflow:hidden;margin-top:3mm}.cols>div{width:48.5%;display:flex;flex-direction:column;gap:4mm;height:100%;max-height:100%;overflow:hidden;box-sizing:border-box}.cols>div:first-child{float:left}.cols>div:last-child{float:right}.box{border:.8px solid #17743d;border-radius:1.2mm;margin:0;overflow:hidden;flex-shrink:0}.box h3{font-size:11px;font-weight:500;margin:0;padding:1.5mm 2.2mm;background:#d8f6e2;color:#145f35;border-bottom:.8px solid #17743d}.box .content{padding:1.8mm 2.2mm;line-height:1.5;min-height:15mm;white-space:pre-wrap;outline:none}.activities{min-height:80mm!important}.sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:7mm;margin-top:10mm}.sig{text-align:center;font-size:9px;line-height:1.55}.sig-img{height:12mm;display:flex;align-items:flex-end;justify-content:center}.sig-img img{max-height:12mm;max-width:35mm;object-fit:contain}.sig-sign-row{display:flex;align-items:center;justify-content:center;gap:1.5mm}.sig-line{display:inline-block;width:31mm;border-bottom:1px dotted #111;vertical-align:middle}.reflection-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:10mm 0 2mm}.ruled{margin-top:0}.rule{min-height:7mm;border-bottom:.6px solid #8ca1bd;padding:1mm 2mm;color:#111;outline:none}.rule.title{color:#176b3a}.drawing-rule{height:22mm;display:flex;align-items:center}.note-drawing{width:100%;height:100%;object-fit:contain}.suggest-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:5mm 0 2mm}.dept{position:absolute;left:14%;right:14%;bottom:8mm;width:auto;margin:0;text-align:center;font-size:9.5px;line-height:1.6}.dept .sig-img{height:12mm}.dept-line{display:inline-block;width:38mm;border-bottom:1px dotted #111;vertical-align:middle}.dept-date{display:inline-block;min-width:34mm;min-height:1em;border-bottom:1px dotted #111;outline:none}@media print{body{background:#fff;print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-toolbar{display:none}.page{margin:0;box-shadow:none}}</style></head><body>
+    @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:10.5px;line-height:1.42;background:#eef2f7}.print-toolbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:12px;padding:10px;background:#172b4d;color:#fff;font-size:13px}.print-toolbar label{display:flex;align-items:center;gap:7px}.print-toolbar input{padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;color:#111;background:#fff}.print-toolbar button{padding:7px 14px;border:0;border-radius:7px;background:#16a36a;color:#fff;font-weight:700;cursor:pointer}.page{width:210mm;height:297mm;padding:9mm 11mm;margin:8mm auto;background:#fff;box-shadow:0 2px 16px #0002;overflow:hidden;position:relative}.head{text-align:center}.logo{width:15mm;height:15mm;object-fit:contain}.head h1{font-size:18px;line-height:1.15;margin:1mm 0}.head h2{font-size:13px;line-height:1.15;margin:0 0 1mm}.head p{font-size:10.5px;margin:.5mm 0}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #176b3a;border-bottom:1px solid #176b3a;padding:1.7mm 2mm;margin-top:2.5mm;font-size:10.5px}.meta span:nth-child(2){text-align:center}.meta span:last-child{text-align:right}.cols{display:block;width:100%;height:calc(100% - 47mm);overflow:hidden;margin-top:3mm}.cols>div{width:48.5%;display:flex;flex-direction:column;gap:4mm;height:100%;max-height:100%;overflow:hidden;box-sizing:border-box}.cols>div:first-child{float:left}.cols>div:last-child{float:right}.box{border:.8px solid #17743d;border-radius:1.2mm;margin:0;overflow:hidden;flex-shrink:0}.box h3{font-size:11px;font-weight:500;margin:0;padding:1.5mm 2.2mm;background:#d8f6e2;color:#145f35;border-bottom:.8px solid #17743d}.box .content{padding:1.8mm 2.2mm;line-height:1.5;min-height:15mm;white-space:pre-wrap;outline:none}.activities{min-height:80mm!important}.sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:7mm;margin-top:10mm}.sign-pair.single{grid-template-columns:1fr}.sig{text-align:center;font-size:9px;line-height:1.55}.sig-img{height:12mm;display:flex;align-items:flex-end;justify-content:center}.sig-img img{max-height:12mm;max-width:35mm;object-fit:contain}.sig-sign-row{display:flex;align-items:center;justify-content:center;gap:1.5mm}.sig-line{display:inline-block;width:31mm;border-bottom:1px dotted #111;vertical-align:middle}.reflection-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:10mm 0 2mm}.ruled{margin-top:0}.rule{min-height:7mm;border-bottom:.6px solid #8ca1bd;padding:1mm 2mm;color:#111;outline:none}.rule.title{color:#176b3a}.drawing-rule{height:22mm;display:flex;align-items:center}.note-drawing{width:100%;height:100%;object-fit:contain}.suggest-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:5mm 0 2mm}.dept{position:absolute;left:14%;right:14%;bottom:8mm;width:auto;margin:0;text-align:center;font-size:9.5px;line-height:1.6}.dept .sig-img{height:12mm}.dept-line{display:inline-block;width:38mm;border-bottom:1px dotted #111;vertical-align:middle}.dept-date{display:inline-block;min-width:34mm;min-height:1em;border-bottom:1px dotted #111;outline:none}@media print{body{background:#fff;print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-toolbar{display:none}.page{margin:0;box-shadow:none}}</style></head><body>
     <div class="print-toolbar"><span>คลิกข้อความในเอกสารเพื่อแก้ไขก่อนพิมพ์</span><label>วันที่สอน<input id="lesson-date" type="date" value="${esc(initialDate)}"></label><button id="print-document" type="button">🖨️ พิมพ์เอกสาร</button></div><div class="page">
     <div class="head"><img class="logo" src="${esc(logoUrl)}"><h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1><h2>กลุ่มสาระการเรียนรู้${esc(learningArea)}</h2><p>วิชา ${esc(meta.subject_name)} รหัสวิชา ${esc(meta.subject_code)} ชั้นมัธยมศึกษาปีที่ ${esc(className)}</p><p contenteditable="true" spellcheck="true">${esc(lessonHeading || 'เรื่อง ................................')}</p></div>
     <div class="meta"><span>ครั้งที่ ${plan.session_number || 1} · ${periodCount} คาบ</span><span>เวลา ${duration}</span><span>วันที่ <span data-plan-date>${date}</span></span></div>
@@ -851,7 +851,7 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept, semesterS
       <section class="box"><h3>4.การวัดและประเมินผล</h3><div class="content" contenteditable="true" spellcheck="true">${nl(plan.assessment)}</div></section>
     </div><div>
       <section class="box"><h3>5.สื่อการเรียนรู้</h3><div class="content" contenteditable="true" spellcheck="true">${nl(plan.media)}</div></section>
-      <div class="sign-pair">${sig(urls.classHead, reflection?.class_head_name, 'หัวหน้าห้อง')}${sig(urls.teacher, reflection?.teacher_name || teacher.full_name, 'ครูผู้สอน')}</div>
+      <div class="sign-pair ${showClassHead ? '' : 'single'}">${showClassHead ? sig(urls.classHead, reflection?.class_head_name, 'หัวหน้าห้อง') : ''}${sig(urls.teacher, reflection?.teacher_name || teacher.full_name, 'ครูผู้สอน')}</div>
       <div class="reflection-title">บันทึกหลังการสอน</div>${ruled('ผลการจัดการเรียนรู้:', reflection?.reflection_text, 3)}${ruled('แนวทางการแก้ปัญหา:', reflection?.issues_solutions, 3)}
       <div class="suggest-title">ข้อเสนอแนะ</div>${ruled('', reflection?.suggestions, 3)}
     </div></div>
@@ -953,11 +953,13 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     fonts.href = 'https://fonts.googleapis.com/css2?family=Itim&family=Mali:wght@400;500&family=Sriracha&display=swap'
     document.head.appendChild(fonts)
   }
-  const [departments, signatureTeachers, planReflections] = await Promise.all([
+  const [departments, signatureTeachers, planReflections, coursePlans] = await Promise.all([
     getDepartments().catch(() => []),
     getTeachersWithSignatures().catch(() => []),
     getLessonPlanReflectionsForPlan(plan.id).catch(() => []),
+    plan.course_id ? getLessonPlans(plan.course_id, classId).catch(() => []) : Promise.resolve([]),
   ])
+  const courseReflections = await getLessonPlanReflectionsForPlans(coursePlans.map(item => item.id)).catch(() => [])
   const courseHeadName = String(cls?.master_subjects?.learning_area ?? '').trim()
   const deptKey = String(cls?.master_subjects?.dept ?? teacher?.dept ?? '').trim().toLowerCase()
   const subjectGroup = String(cls?.master_subjects?.subject_group ?? '').toUpperCase()
@@ -976,6 +978,15 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
   const headRel = cls?.students
   const classHeadDefault = (Array.isArray(headRel) ? headRel[0]?.full_name : headRel?.full_name) ?? ''
   const signaturePreferences = () => plan.source_json?.signature_preferences ?? {}
+  const inheritedClassHeadPolicy = [...coursePlans]
+    .filter(item => Number(item.id) !== Number(plan.id) && item.source_json?.signature_preferences?.['class-head'])
+    .sort((a, b) => Number(b.week_start ?? 0) - Number(a.week_start ?? 0))[0]
+    ?.source_json?.signature_preferences?.['class-head'] ?? null
+  const classHeadPreference = () => signaturePreferences()['class-head'] ?? inheritedClassHeadPolicy ?? { enabled: true, reuse: true }
+  const classHeadEnabled = () => classHeadPreference()?.enabled !== false
+  const priorClassHeadReflection = [...courseReflections]
+    .filter(item => Number(item.class_id) === Number(classId) && item.class_head_signature_path && Number(item.lesson_plan_id) !== Number(plan.id))
+    .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')) || Number(b.week_no || 0) - Number(a.week_no || 0))[0] ?? null
   let weekNo = currentWeek >= plan.week_start && currentWeek <= plan.week_end ? currentWeek : plan.week_start
   const m = document.createElement('div'); m.id='lp-document-modal'; m.className='fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-3'; document.body.appendChild(m)
 
@@ -998,6 +1009,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
       resolve(effectiveReflectionDeptPath || courseHeadSignature),
     ])
     const preference = signaturePreferences()
+    const classHeadPolicy = classHeadPreference()
     const storedDeptPlanPreference = preference['dept-head']
     const deptPlanPreference = deptHeadName && storedDeptPlanPreference?.name !== deptHeadName
       ? null
@@ -1019,6 +1031,10 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
       const previewUrl = await resolve(item.class_head_signature_path)
       addSaved('class-head', item.class_head_signature_path, item.class_head_name || classHeadDefault, `ลายเซ็นเดิม · ${item.class_head_name || 'หัวหน้าห้อง'}`, previewUrl)
     }
+    if (priorClassHeadReflection?.class_head_signature_path) {
+      const previewUrl = await resolve(priorClassHeadReflection.class_head_signature_path)
+      addSaved('class-head', priorClassHeadReflection.class_head_signature_path, priorClassHeadReflection.class_head_name || classHeadDefault, `ใช้จากแผนก่อนหน้า · ${priorClassHeadReflection.class_head_name || 'หัวหน้าห้อง'}`, previewUrl)
+    }
     if (currentPaths.teacher) addSaved('teacher', currentPaths.teacher, reflection?.teacher_name || teacher.full_name, 'ลายเซ็นครั้งนี้', teacherUrl)
     if (profileTeacher?.signature_url) addSaved('teacher', profileTeacher.signature_url, profileTeacher.full_name || teacher.full_name, 'ลายเซ็นที่บันทึกในโปรไฟล์ครู')
     if (currentPaths['dept-head']) addSaved('dept-head', currentPaths['dept-head'], effectiveReflectionDeptName || deptHeadName, 'ลายเซ็นครั้งนี้', deptHeadUrl)
@@ -1032,11 +1048,12 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     }
     const sourceFor = role => {
       if (currentPaths[role]) return 'saved'
-      const savedPreference = role === 'dept-head' ? deptPlanPreference : preference[role]
+      const savedPreference = role === 'dept-head' ? deptPlanPreference : role === 'class-head' ? classHeadPolicy : preference[role]
       const sessionPreference = role === 'dept-head' ? deptSessionPreference : null
       if (sessionPreference?.mode === 'blank') return 'blank'
       if (sessionPreference?.signature_path) return 'saved'
       if (sessionPreference?.mode === 'custom') return 'custom'
+      if (role === 'class-head' && classHeadPolicy?.enabled === false) return 'blank'
       if (savedPreference?.mode === 'blank') return 'blank'
       if (savedPreference?.signature_path) return 'saved'
       if (savedPreference?.mode === 'custom') return 'custom'
@@ -1047,19 +1064,23 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
       selected: currentPaths[role] ? option.path === currentPaths[role]
         : role === 'dept-head' && deptSessionPreference?.signature_path ? option.path === deptSessionPreference.signature_path
           : role === 'dept-head' && deptPlanPreference?.signature_path ? option.path === deptPlanPreference.signature_path
-          : role === 'teacher' && profileTeacher?.signature_url ? option.path === profileTeacher.signature_url
+          : role === 'class-head' && classHeadPolicy?.signature_path ? option.path === classHeadPolicy.signature_path
+            : role === 'class-head' && priorClassHeadReflection?.class_head_signature_path ? option.path === priorClassHeadReflection.class_head_signature_path
+            : role === 'teacher' && profileTeacher?.signature_url ? option.path === profileTeacher.signature_url
             : false,
     }))
     m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
-      <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-bold text-gray-800">📝 ${esc(plan.title)}</h3><p class="text-xs text-gray-400">บันทึกหลังสอนและลายเซ็นครบ 3 ฝ่าย</p></div><button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button></div>
+      <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-bold text-gray-800">📝 ${esc(plan.title)}</h3><p class="text-xs text-gray-400">บันทึกหลังสอนและลายเซ็นตามการตั้งค่าของแผน</p></div><button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button></div>
       <div class="flex flex-wrap items-end gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
         <label class="text-xs font-bold text-gray-600">ครั้งที่<select id="lp-doc-week" class="mt-1 block min-h-[40px] border border-gray-200 rounded-xl px-3 bg-white text-sm">${Array.from({length:plan.week_end-plan.week_start+1},(_,i)=>({ week:plan.week_start+i, session:asInt(plan.session_number,1)+i })).map(item=>`<option value="${item.week}" ${item.week===weekNo?'selected':''}>${item.session}</option>`).join('')}</select></label>
         <label class="text-xs font-bold text-gray-600">วันที่สอน<input id="lp-doc-date" type="date" value="${esc(dateState.value)}" ${isoDate(semesterStart) ? `min="${esc(semesterStart)}"` : ''} ${isoDate(semesterEnd) ? `max="${esc(semesterEnd)}"` : ''} class="mt-1 block min-h-[40px] rounded-xl border border-gray-200 bg-white px-3 text-sm"></label>
         ${dateState.suggested ? `<button id="lp-doc-use-suggested-date" type="button" class="min-h-[40px] rounded-xl border border-indigo-200 bg-white px-3 text-[11px] font-bold text-indigo-700">↻ ใช้วันที่ตามตาราง</button>` : ''}
         <p id="lp-doc-date-hint" class="basis-full text-[11px] ${dateState.saved ? 'text-emerald-700' : dateState.suggested ? 'text-indigo-700' : 'text-amber-700'}">${esc(dateHint)}</p>
       </div>
+      <div class="flex flex-wrap items-center justify-between gap-2 mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-3"><div><p class="text-xs font-bold text-amber-900">การลงชื่อหัวหน้าห้อง: ${classHeadEnabled() ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}</p><p class="text-[10px] text-amber-700">เมื่อเปิด ระบบจะเสนอใช้ลายเซ็นจากแผนก่อนหน้าให้อัตโนมัติ</p></div><div class="flex gap-2"><button data-class-head-enable type="button" class="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-[11px] font-bold text-emerald-700">เปิดใช้งาน</button><button data-class-head-disable type="button" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-[11px] font-bold text-red-700">ปิดใช้งาน</button></div></div>
+      <div data-write-nav class="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3"><span data-write-label class="text-[11px] font-bold text-indigo-900">เลือกช่องเพื่อเริ่มเขียน</span><div class="flex items-center gap-2"><button data-write-prev type="button" class="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-[11px] font-bold text-indigo-700">← ย้อนกลับ</button><button data-write-next type="button" class="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-[11px] font-bold text-indigo-700">ถัดไป →</button><button data-write-unlock type="button" class="hidden rounded-xl bg-indigo-600 px-3 py-2 text-[11px] font-bold text-white">ปลดล็อกส่วนอื่น</button></div></div>
       <div class="grid sm:grid-cols-3 gap-3 mt-4">
-        ${signaturePadHTML('class-head','หัวหน้าห้อง',reflection?.class_head_name || classHeadDefault,classHeadUrl,makePadOptions('class-head'),sourceFor('class-head'))}
+        ${classHeadEnabled() ? signaturePadHTML('class-head','หัวหน้าห้อง',reflection?.class_head_name || priorClassHeadReflection?.class_head_name || classHeadDefault,classHeadUrl,makePadOptions('class-head'),sourceFor('class-head')) : ''}
         ${signaturePadHTML('teacher','ครูผู้สอน',reflection?.teacher_name || teacher.full_name,teacherUrl,makePadOptions('teacher'),sourceFor('teacher'),Boolean(profileTeacher?.signature_url))}
         ${signaturePadHTML('dept-head','หัวหน้ากลุ่มสาระ',effectiveReflectionDeptName || deptHeadName,deptHeadUrl,makePadOptions('dept-head'),sourceFor('dept-head'),false,true)}
       </div>
@@ -1068,7 +1089,43 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     </div>`
     const pads = Object.fromEntries([...m.querySelectorAll('[data-sign-role]')].map(box => [box.dataset.signRole, bindPad(box)]))
     const notePads = Object.fromEntries([...m.querySelectorAll('[data-reflection-note]')].map(box => [box.dataset.reflectionNote, bindReflectionNote(box)]))
+    const writeBoxes = [...m.querySelectorAll('[data-sign-role], [data-reflection-note]')]
+    const writeSteps = writeBoxes.map(box => ({ box, label: box.dataset.signRole === 'teacher' ? 'ลายเซ็นครูผู้สอน' : box.dataset.signRole === 'dept-head' ? 'ลายเซ็นหัวหน้ากลุ่มสาระ' : box.dataset.signRole === 'class-head' ? 'ลายเซ็นหัวหน้าห้อง' : box.dataset.reflectionNote === 'result' ? 'ผลการจัดการเรียนรู้' : box.dataset.reflectionNote === 'issues' ? 'ปัญหา/แนวทางแก้ไข' : 'ข้อเสนอแนะ' }))
+    let activeWrite = -1
+    let writeLocked = false
+    const writeLabel = m.querySelector('[data-write-label]')
+    const writeUnlock = m.querySelector('[data-write-unlock]')
+    const applyWriteLock = () => {
+      writeSteps.forEach((step, index) => { step.box.style.pointerEvents = writeLocked && index !== activeWrite ? 'none' : ''; step.box.classList.toggle('ring-2', writeLocked && index === activeWrite); step.box.classList.toggle('ring-indigo-400', writeLocked && index === activeWrite) })
+      writeUnlock.classList.toggle('hidden', !writeLocked)
+      writeLabel.textContent = writeLocked && writeSteps[activeWrite] ? `กำลังเขียน: ${writeSteps[activeWrite].label}` : 'เลือกช่องเพื่อเริ่มเขียน'
+    }
+    const targetForStep = step => step.box.dataset.reflectionNote
+      ? (step.box.querySelector('[data-note-mode]')?.value === 'draw' ? step.box.querySelector('[data-note-canvas]') : step.box.querySelector('[data-note-text]'))
+      : step.box.querySelector('[data-sign-canvas], [data-sign-typed], [data-sign-name]')
+    const beginWrite = index => { if (!writeSteps[index]) return; activeWrite = index; writeLocked = true; applyWriteLock() }
+    const moveWrite = delta => { if (!writeSteps.length) return; beginWrite((activeWrite + delta + writeSteps.length) % writeSteps.length); const target = targetForStep(writeSteps[activeWrite]); target?.focus?.() }
+    writeSteps.forEach((step, index) => {
+      const targets = step.box.dataset.reflectionNote ? [step.box.querySelector('[data-note-text]'), step.box.querySelector('[data-note-canvas]')] : [step.box.querySelector('[data-sign-canvas]'), step.box.querySelector('[data-sign-typed]'), step.box.querySelector('[data-sign-name]')]
+      targets.filter(Boolean).forEach(target => {
+        target.addEventListener('pointerdown', event => { event.stopPropagation(); beginWrite(index) }, { capture: true })
+        target.addEventListener('focus', () => beginWrite(index))
+      })
+    })
+    m.querySelector('[data-write-prev]').addEventListener('click', event => { event.stopPropagation(); moveWrite(-1) })
+    m.querySelector('[data-write-next]').addEventListener('click', event => { event.stopPropagation(); moveWrite(1) })
+    writeUnlock.addEventListener('click', event => { event.stopPropagation(); writeLocked = false; activeWrite = -1; applyWriteLock() })
+    applyWriteLock()
     m.querySelector('[data-close]').addEventListener('click',()=>m.remove())
+    const persistClassHeadPreference = async enabled => {
+      const nextPreference = { ...classHeadPreference(), enabled, reuse: true }
+      const updateRows = (coursePlans.length ? coursePlans : [plan]).map(item => ({ id: item.id, source_json: { ...(item.source_json ?? {}), signature_preferences: { ...(item.source_json?.signature_preferences ?? {}), 'class-head': nextPreference } } }))
+      await Promise.all(updateRows.map(item => updateLessonPlan(item.id, { source_json: item.source_json })))
+      const nextSource = updateRows.find(item => Number(item.id) === Number(plan.id))?.source_json ?? { ...(plan.source_json ?? {}), signature_preferences: { ...signaturePreferences(), 'class-head': nextPreference } }
+      plan.source_json = nextSource
+    }
+    m.querySelector('[data-class-head-enable]').addEventListener('click', async event => { const button = event.currentTarget; button.disabled = true; try { await persistClassHeadPreference(true); await render() } catch (err) { showToast('เปิดใช้งานลายเซ็นหัวหน้าห้องไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); button.disabled = false } })
+    m.querySelector('[data-class-head-disable]').addEventListener('click', async event => { const button = event.currentTarget; button.disabled = true; try { await persistClassHeadPreference(false); await render() } catch (err) { showToast('ปิดใช้งานลายเซ็นหัวหน้าห้องไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); button.disabled = false } })
     m.querySelector('#lp-doc-week').addEventListener('change',e=>{weekNo=asInt(e.target.value,plan.week_start);render()})
     m.querySelector('#lp-doc-date').addEventListener('change', event => {
       const hint = m.querySelector('#lp-doc-date-hint')
@@ -1107,7 +1164,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
       const saved = await upsertLessonPlanReflection({
         lesson_plan_id:plan.id,class_id:classId,teacher_id:teacher.id,week_no:selectedWeek,lesson_date:selectedLessonDate,
         reflection_text:notePads.result.value(),issues_solutions:notePads.issues.value(),suggestions:notePads.suggestions.value(),
-        class_head_name:pads['class-head'].name()||pads['class-head'].savedName()||null,class_head_signature_path:nextPaths['class-head']||null,class_head_signed_at:nextPaths['class-head']?new Date().toISOString():null,
+        class_head_name:classHeadEnabled() ? (pads['class-head']?.name()||pads['class-head']?.savedName()||reflection?.class_head_name||null) : (reflection?.class_head_name||null),class_head_signature_path:classHeadEnabled() ? (nextPaths['class-head']||reflection?.class_head_signature_path||null) : (reflection?.class_head_signature_path||null),class_head_signed_at:classHeadEnabled() ? (nextPaths['class-head']?new Date().toISOString():reflection?.class_head_signed_at||null) : (reflection?.class_head_signed_at||null),
         teacher_name:pads.teacher.name()||pads.teacher.savedName()||null,teacher_signature_path:nextPaths.teacher||null,teacher_signed_at:nextPaths.teacher?new Date().toISOString():null,
         dept_head_name:pads['dept-head'].name()||pads['dept-head'].savedName()||null,dept_head_signature_path:nextPaths['dept-head']||null,dept_head_signed_at:nextPaths['dept-head']?new Date().toISOString():null,
         signature_data_url:null,signed_at:nextPaths.teacher?new Date().toISOString():null,
@@ -1129,6 +1186,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
           }
         }
         const nextPreferences = { ...signaturePreferences(), 'dept-head': nextDeptPreference }
+        if (classHeadEnabled() && nextPaths['class-head']) nextPreferences['class-head'] = { ...classHeadPreference(), enabled: true, reuse: true, signature_path: nextPaths['class-head'], name: saved.class_head_name }
         const nextSource = { ...(plan.source_json ?? {}), signature_preferences: nextPreferences }
         await updateLessonPlan(plan.id, { source_json: nextSource })
         plan.source_json = nextSource
@@ -1136,7 +1194,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
       return { reflection: saved, lessonDate: selectedLessonDate, weekNo: selectedWeek }
     }
     m.querySelector('#lp-doc-save').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังบันทึก...';try{await save();showToast('บันทึกเอกสารและลายเซ็นแล้ว ✅','success');await render()}catch(err){showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error');b.disabled=false;b.textContent='💾 บันทึกทั้งหมด'}})
-    m.querySelector('#lp-doc-print').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังเตรียมเอกสาร...';try{const result=await save();const saved=result.reflection;const urls={classHead:await resolve(saved.class_head_signature_path),teacher:await resolve(saved.teacher_signature_path||saved.signature_data_url),deptHead:await resolve(saved.dept_head_signature_path)};printLessonPlan({plan,cls,teacher,reflection:saved,urls,dept,semesterStart,semesterEnd,scheduledDays,weekNo:result.weekNo,lessonDate:result.lessonDate});showToast('เปิดหน้าพิมพ์แล้ว','success')}catch(err){showToast('เตรียมเอกสารไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')}finally{b.disabled=false;b.textContent='🖨️ บันทึกแล้วพิมพ์'}})
+    m.querySelector('#lp-doc-print').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังเตรียมเอกสาร...';try{const result=await save();const saved=result.reflection;const urls={classHead:await resolve(saved.class_head_signature_path),teacher:await resolve(saved.teacher_signature_path||saved.signature_data_url),deptHead:await resolve(saved.dept_head_signature_path)};printLessonPlan({plan,cls,teacher,reflection:saved,urls,dept,semesterStart,semesterEnd,scheduledDays,weekNo:result.weekNo,lessonDate:result.lessonDate,showClassHead:classHeadEnabled()});showToast('เปิดหน้าพิมพ์แล้ว','success')}catch(err){showToast('เตรียมเอกสารไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error')}finally{b.disabled=false;b.textContent='🖨️ บันทึกแล้วพิมพ์'}})
   }
   m.addEventListener('click',e=>{if(e.target===m)m.remove()}); await render()
 }

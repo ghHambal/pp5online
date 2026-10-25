@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1013'
+import { APP_VERSION } from './version.js?v=10.22.1014'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,11 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1014': [
+    'เพิ่มการเปิด/ปิดลายเซ็นหัวหน้าห้อง พร้อมใช้ลายเซ็นเดิมจากแผนก่อนหน้าเป็นค่าเริ่มต้นของแผนถัดไป',
+    'เพิ่มปุ่มย้อนกลับ/ถัดไปสำหรับช่องลายเซ็นและบันทึกท้ายแผน และล็อกช่องอื่นระหว่างเขียนเพื่อป้องกันการแตะพลาด',
+    'ให้หน้าพิมพ์และ PDF รวมใน Drive เคารพการตั้งค่าลายเซ็นหัวหน้าห้องเหมือนกัน',
+  ],
   '10.22.1013': [
     'จัดโลโก้โรงเรียนใน PDF ที่บันทึกเข้า Drive ให้อยู่กึ่งกลางหัวกระดาษ และป้องกัน CSS ของหน้าหลักไม่ให้ทับตำแหน่ง',
   ],
