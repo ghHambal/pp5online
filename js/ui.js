@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1009'
+import { APP_VERSION } from './version.js?v=10.22.1010'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1010': [
+    'แก้ไฟล์ PDF รวมให้แสดงบันทึกลายมือเป็นภาพ ไม่แสดงข้อมูล pp5-reflection เป็น JSON ดิบ',
+    'เพิ่มส่วนลายเซ็นหัวหน้ากลุ่มสาระไว้ด้านล่างหน้า A4 และจัดตำแหน่งหัวกระดาษของ PDF ให้คงอยู่ในหน้าเดียว',
+  ],
   '10.22.1009': [
     'เปลี่ยนการสร้าง PDF รวมเข้า Drive เป็น html-to-image + jsPDF ตามแนวทาง iPlan เพื่อแก้ไฟล์ PDF เปล่าและรักษาการวาดภาษาไทย/ลายเซ็น',
     'ปรับหน้าพิมพ์แผนให้เป็น A4 คงที่ 210×297 มม. และใช้โครงคอลัมน์แบบเดียวกับพรีวิว ลดการบีบอัดและการแยกหน้าโดยไม่จำเป็น',

@@ -13,6 +13,15 @@ import { jsPDF } from 'jspdf'
 
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[ch])
 const text = value => Array.isArray(value) ? value.map(item => typeof item === 'string' ? item : JSON.stringify(item)).join('\n') : String(value ?? '')
+const REFLECTION_NOTE_PREFIX = 'pp5-reflection-v1:'
+function parseReflectionNote(value) {
+  const raw = String(value ?? '')
+  if (!raw.startsWith(REFLECTION_NOTE_PREFIX)) return { mode: 'type', text: raw, drawing: '' }
+  try {
+    const parsed = JSON.parse(raw.slice(REFLECTION_NOTE_PREFIX.length))
+    return { mode: parsed.mode === 'draw' ? 'draw' : 'type', text: String(parsed.text ?? ''), drawing: String(parsed.drawing ?? '') }
+  } catch { return { mode: 'type', text: '', drawing: '' } }
+}
 const iso = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? '')) ? String(value) : ''
 const thaiDate = value => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? '')); return m ? `${m[3]}/${m[2]}/${Number(m[1]) + 543}` : '—' }
 const scopedClassId = plan => { const n = Number(plan?.source_json?.class_id); return Number.isInteger(n) && n > 0 ? n : null }
@@ -71,9 +80,10 @@ function planDuration(plan) {
 
 function renderPlanPage(plan, cls, reflection, urls, subject) {
   const nl = value => esc(text(value).trim() || '—').replace(/\n/g, '<br>')
+  const note = value => { const parsed = parseReflectionNote(value); if (parsed.mode === 'draw' && parsed.drawing) return `<img class="note-drawing" style="display:block;width:100%;height:22mm;object-fit:contain" src="${esc(parsed.drawing)}" alt="บันทึกด้วยลายมือ">`; return nl(parsed.text) }
   const sig = (url, name, role) => `<div class="sig"><div class="sig-img">${url ? `<img src="${esc(url)}">` : ''}</div><div>ลงชื่อ................................</div><div>${esc(name || '................................')}</div><small>${role}</small></div>`
   const activities = plan.activities ?? {}
-  return `<section class="lp-pdf-page"><div class="head"><h1>แผนการจัดการเรียนรู้ (หน้าเดียว)</h1><p>รายวิชา ${esc(subject.subject_name)} (${esc(subject.subject_code)}) · ชั้น ${esc(cls.grade_level ?? subject.grade_level ?? '')} ${esc(roomName(cls))}</p><p>${esc(plan.title || '')} · วันที่สอน ${thaiDate(reflection?.lesson_date)} · ${planDuration(plan)}</p></div><div class="cols"><div><div class="box"><h3>มาตรฐาน/ตัวชี้วัด</h3><div>${nl(plan.standards)}</div></div><div class="box"><h3>จุดประสงค์การเรียนรู้</h3><div>${nl(plan.objectives)}</div></div><div class="box activities"><h3>กิจกรรมการเรียนรู้</h3><div><b>ขั้นนำ</b><br>${nl(plan.activities_intro ?? activities.intro)}<br><br><b>ขั้นสอน</b><br>${nl(plan.activities_main ?? activities.main)}<br><br><b>ขั้นสรุป</b><br>${nl(plan.activities_wrap ?? activities.wrap)}</div></div></div><div><div class="box"><h3>การวัดและประเมินผล</h3><div>${nl(plan.assessment)}</div></div><div class="box"><h3>สื่อการเรียนรู้</h3><div>${nl(plan.media)}</div></div><div class="box"><h3>บันทึกหลังการสอน</h3><div><b>ผลการจัดการเรียนรู้</b><br>${nl(reflection?.reflection_text)}<br><br><b>ปัญหา/แนวทางแก้ไข</b><br>${nl(reflection?.issues_solutions)}<br><br><b>ข้อเสนอแนะ</b><br>${nl(reflection?.suggestions)}</div></div><div class="signs">${sig(urls.classHead, reflection?.class_head_name, 'หัวหน้าห้อง')}${sig(urls.teacher, reflection?.teacher_name, 'ครูผู้สอน')}${sig(urls.deptHead, reflection?.dept_head_name, 'หัวหน้ากลุ่มสาระ')}</div></div></div></section>`
+  return `<section class="lp-pdf-page" style="display:block;position:relative"><div class="head" style="display:block;position:relative;z-index:2"><h1>แผนการจัดการเรียนรู้ (หน้าเดียว)</h1><p>รายวิชา ${esc(subject.subject_name)} (${esc(subject.subject_code)}) · ชั้น ${esc(cls.grade_level ?? subject.grade_level ?? '')} ${esc(roomName(cls))}</p><p>${esc(plan.title || '')} · วันที่สอน ${thaiDate(reflection?.lesson_date)} · ${planDuration(plan)}</p></div><div class="cols"><div><div class="box"><h3>มาตรฐาน/ตัวชี้วัด</h3><div>${nl(plan.standards)}</div></div><div class="box"><h3>จุดประสงค์การเรียนรู้</h3><div>${nl(plan.objectives)}</div></div><div class="box activities"><h3>กิจกรรมการเรียนรู้</h3><div><b>ขั้นนำ</b><br>${nl(plan.activities_intro ?? activities.intro)}<br><br><b>ขั้นสอน</b><br>${nl(plan.activities_main ?? activities.main)}<br><br><b>ขั้นสรุป</b><br>${nl(plan.activities_wrap ?? activities.wrap)}</div></div></div><div><div class="box"><h3>การวัดและประเมินผล</h3><div>${nl(plan.assessment)}</div></div><div class="box"><h3>สื่อการเรียนรู้</h3><div>${nl(plan.media)}</div></div><div class="box reflection-box"><h3>บันทึกหลังการสอน</h3><div><b>ผลการจัดการเรียนรู้</b><br>${note(reflection?.reflection_text)}<br><br><b>ปัญหา/แนวทางแก้ไข</b><br>${note(reflection?.issues_solutions)}<br><br><b>ข้อเสนอแนะ</b><br>${note(reflection?.suggestions)}</div></div><div class="signs">${sig(urls.classHead, reflection?.class_head_name, 'หัวหน้าห้อง')}${sig(urls.teacher, reflection?.teacher_name, 'ครูผู้สอน')}${sig(urls.deptHead, reflection?.dept_head_name, 'หัวหน้ากลุ่มสาระ')}</div></div></div></section>`
 }
 
 async function toDataUrl(url) {
