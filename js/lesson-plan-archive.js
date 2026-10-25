@@ -111,7 +111,7 @@ async function makePdf({ subject, teacher, roomRows, weekNo, academicYear, semes
     const pages = [...root.querySelectorAll('.lp-pdf-page')]
     let doc = null
     for (const page of pages) {
-      const dataUrl = await toPng(page, { pixelRatio: 3, backgroundColor: '#fff', width: page.offsetWidth, height: page.offsetHeight, cacheBust: true })
+      const dataUrl = await toPng(page, { pixelRatio: 3, backgroundColor: '#fff', width: page.offsetWidth, height: page.offsetHeight, cacheBust: true, skipFonts: true })
       if (!doc) doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
       else doc.addPage('a4', 'portrait')
       doc.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'FAST')

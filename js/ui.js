@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1010'
+import { APP_VERSION } from './version.js?v=10.22.1011'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1011': [
+    'แก้การสร้าง PDF เมื่อหน้าเว็บโหลด Google Fonts จากโดเมนภายนอก โดยไม่อ่าน CSSStyleSheet ข้ามโดเมนที่ทำให้เกิด SecurityError',
+  ],
   '10.22.1010': [
     'แก้ไฟล์ PDF รวมให้แสดงบันทึกลายมือเป็นภาพ ไม่แสดงข้อมูล pp5-reflection เป็น JSON ดิบ',
     'เพิ่มส่วนลายเซ็นหัวหน้ากลุ่มสาระไว้ด้านล่างหน้า A4 และจัดตำแหน่งหัวกระดาษของ PDF ให้คงอยู่ในหน้าเดียว',
