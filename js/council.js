@@ -30,6 +30,8 @@ import {
   promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow, updateElectionCampaignSettings,
   getCandidatesForElection, getCandidatesForElectionAdmin, addDesignateCouncilCandidate, updateCouncilCandidateAdmin,
   publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
+  getMyCouncilCampaign, saveMyCouncilCampaign, uploadCouncilCampaignVideo,
+  getCouncilCampaignReviews, reviewCouncilCampaign,
   getCouncilActivities, createActivity, updateActivityStatus, updateActivityOwnership,
   getActivityAttendance, getActivityAttendanceDetailed, checkInAttendance,
   getCertificateRule, upsertCertificateRule,
@@ -205,7 +207,10 @@ let selectedCouncilTermId = null
 const selectedCouncilTerm = () => councilTerms.find(t => String(t.id) === String(selectedCouncilTermId)) ?? null
 const termIsEditable = () => ['active', 'upcoming'].includes(selectedCouncilTerm()?.status)
 const adminCandidatesByGender = { M: null, W: null }
+const campaignReviewsByGender = { M: null, W: null }
 let candidateAdminGender = 'M'
+let myCouncilCampaign = null
+let campaignVideoBusy = false
 let activities = null // null = ยังไม่โหลด
 const attendanceByActivity = {} // { [activityId]: Set<studentId> }
 let ylaEvents = null
@@ -309,7 +314,10 @@ async function init() {
 
   // ดึงข้อมูลนักเรียนก่อน (ถ้า role เป็น student) เพราะต้องใช้ student_code เช็ครายชื่อทดสอบ
   let student = null, applications = [], membership = []
-  if (role === 'student') student = await getMyStudentProfile().catch(() => null)
+  if (role === 'student') {
+    student = await getMyStudentProfile().catch(() => null)
+    myCouncilCampaign = student ? await getMyCouncilCampaign().catch(() => null) : null
+  }
 
   // ปิดการแสดงผลได้จากหน้าตั้งค่าแอดมิน — ปิดแล้วเข้าได้เฉพาะแอดมิน/ครูที่ได้รับมอบหมายเป็นแอดมิน
   // หรือนักเรียนที่รหัสอยู่ในรายชื่อทดสอบที่แอดมินตั้งไว้ (council_test_student_codes)
@@ -417,6 +425,7 @@ async function switchCouncilTerm(termId) {
   }
   adminApps = null; activities = null; ylaEvents = null; docs = null
   adminCandidatesByGender.M = null; adminCandidatesByGender.W = null
+  campaignReviewsByGender.M = null; campaignReviewsByGender.W = null
   delete candidatesByGender.M; delete candidatesByGender.W
   const url = new URL(window.location.href)
   url.searchParams.set('term', term.id)
@@ -501,6 +510,7 @@ function getNavItems() {
   items.push({ id: 'activityDocs', icon: '🧩', label: 'โครงการและกิจกรรม', group: 'resources' })
   // เลือกตั้ง — สาธารณะ
   items.push({ id: 'candidates', icon: '🗳️', label: 'ว่าที่ประธาน', group: 'election' })
+  if (ctx.role === 'student' && myCouncilCampaign) items.push({ id: 'myCampaign', icon: '📣', label: 'บอร์ดหาเสียงของฉัน', group: 'election' })
   items.push({ id: 'result', icon: '📊', label: 'ผลเลือกตั้ง', group: 'election' })
   // งานครู — ครูที่ปรึกษาสามัญ/ครูที่ปรึกษาสภา/แอดมิน
   if (ctx.role === 'teacher' && ctx.pendingEndorsements.length) {
@@ -1419,11 +1429,42 @@ function renderCandidateProfileModal() {
           ${c.vision ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">วิสัยทัศน์</p><p class="text-sm text-[var(--ink-2)]">${esc(c.vision)}</p></div>` : ''}
           ${policies.length ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">นโยบาย</p><ul class="text-sm text-[var(--ink-2)] list-disc list-inside space-y-0.5">${policies.map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>` : ''}
           ${experience.length ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">ประสบการณ์และผลงาน</p><ul class="text-sm text-[var(--ink-2)] list-disc list-inside space-y-0.5">${experience.map(p => `<li>${esc(p)}</li>`).join('')}</ul></div>` : ''}
+          ${c.campaign_video_url ? `<div><p class="text-xs font-bold text-[var(--muted)] mb-1">วิดีโอหาเสียง</p><video class="w-full rounded-xl bg-black" controls playsinline preload="metadata" src="${esc(c.campaign_video_url)}"></video></div>` : ''}
           ${!c.slogan && !c.vision && !policies.length && !experience.length ? `<p class="text-xs text-[var(--muted-2)] text-center py-4">ยังไม่ได้กรอกข้อมูลโปรไฟล์เพิ่มเติม</p>` : ''}
           ${canEdit ? `<button type="button" id="btn-candidate-edit" class="w-full py-2.5 rounded-xl border border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold mt-2">✏️ แก้ไขโปรไฟล์</button>` : ''}
         </div>
       </div>
     </div>`
+}
+
+const CAMPAIGN_REVIEW_LABEL = {
+  draft: ['ร่าง', 'bg-[var(--bg-2)] text-[var(--muted)]'],
+  submitted: ['ส่งตรวจแล้ว', 'bg-[var(--gold-soft-line)] text-[var(--gold-ink)]'],
+  approved: ['อนุมัติและเผยแพร่แล้ว', 'bg-[var(--ok-soft-line)] text-[#106143]'],
+  changes_requested: ['ขอให้แก้ไข', 'bg-[var(--bad-soft-line)] text-[#8a2f22]'],
+}
+
+function renderMyCampaignView() {
+  const c = myCouncilCampaign
+  if (!ctx.student || !c) return '<div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-6 text-center text-sm text-[var(--muted)]">บัญชีนี้ยังไม่มีสิทธิ์จัดการบอร์ดหาเสียงของผู้สมัคร</div>'
+  const [status, statusClass] = CAMPAIGN_REVIEW_LABEL[c.review_status] || CAMPAIGN_REVIEW_LABEL.draft
+  const policies = Array.isArray(c.policies) ? c.policies : []
+  const experience = Array.isArray(c.experience) ? c.experience : []
+  const video = c.campaign_video_url ? `<video class="w-full rounded-xl bg-black max-h-80" controls playsinline preload="metadata" src="${esc(c.campaign_video_url)}"></video>` : ''
+  return `<div class="max-w-3xl mx-auto space-y-4">
+    <section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold text-[var(--primary)]">บอร์ดหาเสียงของฉัน · หมายเลข ${esc(c.ballot_number)}</p><h2 class="text-xl font-bold text-[var(--ink)] mt-1">${esc(c.full_name)}</h2><p class="text-xs text-[var(--muted)] mt-1">แก้ไขร่างได้ตลอด ส่งให้ครูที่ปรึกษาสภาหรือแอดมินตรวจ ก่อนขึ้นแสดงบนบอร์ดสาธารณะ</p></div><span class="px-3 py-1.5 rounded-full text-xs font-bold ${statusClass}">${status}</span></div>
+      ${c.review_comment ? `<p class="mt-3 p-3 rounded-xl bg-[var(--bad-soft-line)] text-sm text-[#8a2f22]">ข้อเสนอแนะ: ${esc(c.review_comment)}</p>` : ''}
+      <form id="my-campaign-form" class="space-y-3 mt-4" data-candidate-id="${c.candidate_id}">
+        <label class="block text-xs font-bold text-[var(--muted)]">สโลแกน (ไม่เกิน 160 ตัวอักษร)<input name="slogan" maxlength="160" value="${esc(c.slogan)}" class="mt-1 w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]" /></label>
+        <label class="block text-xs font-bold text-[var(--muted)]">วิสัยทัศน์<textarea name="vision" maxlength="800" rows="3" class="mt-1 w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">${esc(c.vision)}</textarea></label>
+        <label class="block text-xs font-bold text-[var(--muted)]">นโยบาย (บรรทัดละ 1 ข้อ)<textarea name="policies" rows="5" class="mt-1 w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">${esc(policies.join('\n'))}</textarea></label>
+        <label class="block text-xs font-bold text-[var(--muted)]">ประสบการณ์และผลงาน (บรรทัดละ 1 ข้อ)<textarea name="experience" rows="4" class="mt-1 w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">${esc(experience.join('\n'))}</textarea></label>
+        <div class="rounded-xl border border-dashed border-[var(--primary-45)] p-3 space-y-2"><p class="text-xs font-bold text-[var(--ink-2)]">🎥 วิดีโอหาเสียงสั้น (ไม่เกิน 60 วินาที · 50 MB)</p><p class="text-[0.6875rem] text-[var(--muted)]">บนมือถือเลือก “ถ่ายวิดีโอ” เพื่ออัดคลิปใหม่ หรือเลือกไฟล์วิดีโอที่มีอยู่</p><input type="hidden" name="campaign_video_url" value="${esc(c.campaign_video_url || '')}"/><input type="file" id="campaign-video-file" accept="video/mp4,video/webm,video/quicktime,video/ogg" capture="environment" class="block w-full text-xs"/><p id="campaign-video-status" class="text-xs text-[var(--muted)]">${c.campaign_video_url ? 'มีวิดีโอที่เลือกไว้' : 'ยังไม่ได้เลือกวิดีโอ'} · ลิงก์วิดีโอจะขึ้นบอร์ดหลังอนุมัติ</p>${video}</div>
+        <div class="flex flex-col sm:flex-row gap-2 pt-2"><button type="submit" data-submit="0" class="flex-1 py-2.5 rounded-xl border border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold">บันทึกร่าง</button><button type="submit" data-submit="1" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold">ส่งให้ครูตรวจและเผยแพร่</button></div>
+      </form>
+    </section>
+  </div>`
 }
 
 // ─── จัดการใบสมัคร (แอดมิน) — รับรองแล้ว → นัดสัมภาษณ์ → ให้คะแนน → ตั้งผู้สมัคร/แต่งตั้ง ──
@@ -2908,7 +2949,10 @@ function renderNewsView() {
   // (ไม่มีการแยกบทบาทหัวหน้าฝ่ายจากสมาชิกสภาทั่วไป) จึงยังไม่ implement ส่วนนั้น
   const canPost = ctx.isAdmin || ctx.isCouncilAdvisor || ctx.isChair
 
-  const visible = announcements.filter(a => a.audience === 'all' || a.audience === (ctx.student ? normalizeGender(ctx.student.gender) : null) || ctx.isAdmin || ctx.isChair)
+  const visible = announcements.filter(a =>
+    a.audience === 'all' || a.audience === (ctx.student ? normalizeGender(ctx.student.gender) : null) ||
+    (a.audience === 'candidates' && !!myCouncilCampaign) || ctx.isAdmin || ctx.isChair || ctx.isCouncilAdvisor
+  )
   const filtered = annFilter === 'all' ? visible : visible.filter(a => a.type === annFilter)
 
   const postBtn = canPost ? `<button type="button" id="btn-open-ann-form" class="w-full py-3 rounded-2xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white text-sm font-bold mb-4">➕ เพิ่มประกาศ</button>` : ''
@@ -2929,6 +2973,7 @@ function renderNewsView() {
             <option value="all">ทุกคน</option>
             <option value="M">สภาชาย</option>
             <option value="W">สภาหญิง</option>
+            <option value="candidates">ว่าที่ประธานทุกคน</option>
           </select>
         </div>
         <label class="flex items-center gap-2 text-xs text-[var(--muted)]"><input type="checkbox" name="pinned" class="rounded" /> ปักหมุดไว้บนสุด</label>
@@ -2959,7 +3004,7 @@ function renderNewsView() {
         <div class="flex items-center gap-2 flex-wrap">
           ${a.pinned ? '<span class="text-[0.6875rem] font-bold text-[var(--gold-ink)]">📌 ปักหมุด</span>' : ''}
           <span class="text-[0.6875rem] font-bold px-2 py-0.5 rounded-full border ${border} ${bg} ${fg}">${label}</span>
-          ${a.audience !== 'all' ? `<span class="text-[0.6875rem] text-[var(--muted-2)]">สภา${GENDER_LABEL[a.audience] ?? ''}</span>` : ''}
+          ${a.audience === 'M' || a.audience === 'W' ? `<span class="text-[0.6875rem] text-[var(--muted-2)]">สภา${GENDER_LABEL[a.audience]}</span>` : a.audience === 'candidates' ? '<span class="text-[0.6875rem] text-[var(--muted-2)]">ว่าที่ประธาน</span>' : ''}
         </div>
         <p class="text-sm font-bold text-[var(--ink)]">${esc(a.title)}</p>
         ${a.body ? `<p class="text-xs text-[var(--ink-2)] whitespace-pre-line">${esc(a.body)}</p>` : ''}
@@ -4525,15 +4570,24 @@ function renderTermAdminView() {
 
 async function loadCandidateAdmin(gender) {
   const election = electionOf(gender)
-  adminCandidatesByGender[gender] = election ? await getCandidatesForElectionAdmin(election.id).catch(() => []) : []
+  if (!election) { adminCandidatesByGender[gender] = []; campaignReviewsByGender[gender] = []; render(); return }
+  ;[adminCandidatesByGender[gender], campaignReviewsByGender[gender]] = await Promise.all([
+    getCandidatesForElectionAdmin(election.id).catch(() => []),
+    getCouncilCampaignReviews(election.id).catch(() => []),
+  ])
   render()
+}
+
+function renderCampaignReviewQueue(gender) {
+  const reviews = campaignReviewsByGender[gender] || []
+  return `<section class="rounded-2xl border border-[var(--gold-soft-line)] bg-[var(--surface)] p-5 space-y-3"><div><h3 class="text-sm font-bold text-[var(--ink)]">ตรวจบอร์ดหาเสียงที่ส่งมา</h3><p class="text-xs text-[var(--muted)] mt-1">ผู้สมัครแก้ไขร่างได้เอง ข้อมูลจะขึ้นบนบอร์ดสาธารณะหลังครูที่ปรึกษาหรือแอดมินอนุมัติ</p></div>${reviews.length ? reviews.map(r => `<article class="rounded-xl border border-[var(--line)] p-3 space-y-2"><p class="text-sm font-bold">${esc(r.full_name)} · หมายเลข ${esc(r.ballot_number)}</p>${r.slogan ? `<p class="text-sm font-bold text-[var(--primary)]">“${esc(r.slogan)}”</p>` : ''}${r.vision ? `<p class="text-xs whitespace-pre-line">${esc(r.vision)}</p>` : ''}${Array.isArray(r.policies) && r.policies.length ? `<ul class="text-xs list-disc list-inside">${r.policies.map(p => `<li>${esc(p)}</li>`).join('')}</ul>` : ''}${r.campaign_video_url ? `<video class="w-full max-h-64 rounded-xl bg-black" controls playsinline src="${esc(r.campaign_video_url)}"></video>` : ''}<div class="flex flex-wrap gap-2"><button type="button" class="btn-review-campaign px-3 py-2 rounded-lg bg-[var(--ok)] text-white text-xs font-bold" data-id="${r.candidate_id}" data-approve="1">อนุมัติและเผยแพร่</button><button type="button" class="btn-review-campaign px-3 py-2 rounded-lg border border-[var(--bad-soft-line)] text-[var(--bad)] text-xs font-bold" data-id="${r.candidate_id}" data-approve="0">ขอให้แก้ไข</button></div></article>`).join('') : '<p class="text-xs text-[var(--muted)] text-center py-3">ยังไม่มีรายการส่งตรวจ</p>'}</section>`
 }
 
 function renderCandidateAdminView() {
   if (!(ctx.isAdmin || ctx.isCouncilAdvisor)) return ''
   const gender = candidateAdminGender
   const election = electionOf(gender)
-  if (election && adminCandidatesByGender[gender] === null) {
+  if (election && (adminCandidatesByGender[gender] === null || campaignReviewsByGender[gender] === null)) {
     loadCandidateAdmin(gender)
     return '<p class="text-sm text-[var(--muted)] text-center py-16">กำลังโหลดผู้สมัคร...</p>'
   }
@@ -4558,6 +4612,7 @@ function renderCandidateAdminView() {
       <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><div class="flex items-center justify-between gap-2"><h3 class="text-sm font-bold text-[var(--ink)]">รายชื่อว่าที่ประธาน${GENDER_LABEL[gender]}</h3><button type="button" class="btn-print-candidates px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold" data-gender="${gender}">🖨️ พิมพ์</button></div>
         <div class="mt-3 rounded-xl border border-[var(--primary-45)] bg-[var(--primary-soft)] p-3 space-y-2"><p class="text-xs font-bold text-[var(--primary-dark)]">เพิ่มจากว่าที่ประธานใน roster</p><p class="text-[0.6875rem] text-[var(--muted)]">การเพิ่มโดยตรงจะข้ามขั้นตอนใบสมัครและสัมภาษณ์ ระบบจะเพิ่มเป็นผู้สมัครสถานะร่าง และยังไม่เผยแพร่จนกว่าจะเปลี่ยนสถานะ</p><div class="flex flex-col sm:flex-row gap-2"><select id="candidate-designate-select" class="min-w-0 flex-1 border border-[var(--line)] rounded-lg px-2.5 py-2 text-sm bg-[var(--surface)]" ${designateChairs.length ? '' : 'disabled'}><option value="">${designateChairs.length ? 'เลือกว่าที่ประธาน' : 'ไม่มีว่าที่ประธานที่เพิ่มได้'}</option>${designateChairs.map(m => `<option value="${m.student_id}">${esc(m.students?.full_name)} · ${esc(m.students?.student_code || '')} · ${esc(m.students?.main_room || '')}</option>`).join('')}</select><button type="button" id="btn-add-designate-candidate" class="px-3 py-2 rounded-lg bg-[var(--primary)] text-white text-xs font-bold" ${designateChairs.length ? '' : 'disabled'}>เพิ่มเป็นผู้สมัครร่าง</button></div></div>
         <div class="space-y-2 mt-3">${list.length ? list.map(c => `<form class="candidate-admin-row flex flex-wrap items-center gap-2 border border-[var(--line)] rounded-xl p-2.5" data-id="${c.id}"><div class="min-w-0 flex-1"><p class="text-sm font-bold truncate">${esc(c.students?.full_name)}</p><p class="text-xs text-[var(--muted)]">${esc(c.students?.student_code)} · ${esc(c.students?.main_room || '')}</p></div><label class="text-[0.6875rem] text-[var(--muted)]">หมายเลข<input name="ballot" type="number" min="1" required value="${c.ballot_number}" class="block w-20 border border-[var(--line)] rounded-lg px-2 py-1.5 text-sm" /></label><select name="status" class="border border-[var(--line)] rounded-lg px-2 py-1.5 text-sm"><option value="draft" ${c.status === 'draft' ? 'selected' : ''}>ร่าง</option><option value="published" ${c.status === 'published' ? 'selected' : ''}>เผยแพร่</option><option value="withdrawn" ${c.status === 'withdrawn' ? 'selected' : ''}>ถอนตัว</option><option value="elected" ${c.status === 'elected' ? 'selected' : ''}>ได้รับเลือก</option></select><button class="px-3 py-2 rounded-lg bg-[var(--primary)] text-white text-xs font-bold">บันทึก</button></form>`).join('') : '<p class="text-xs text-[var(--muted)] text-center py-8">ยังไม่มีผู้สมัคร ให้ตั้งจากผู้ผ่านสัมภาษณ์ในหน้าแต่งตั้งสมาชิก</p>'}</div></div>`}
+    ${election ? renderCampaignReviewQueue(gender) : ''}
   </div>`
 }
 
@@ -4625,6 +4680,7 @@ const VIEW_RENDERERS = {
   eval: renderEvalView,
   docs: renderDocsView,
   candidates: renderCandidatesView,
+  myCampaign: renderMyCampaignView,
   roster: renderRosterView,
   result: renderElectionView,
   settings: renderSettingsView,
@@ -4702,6 +4758,50 @@ function renderFullscreenFlow() {
 function wireContentEvents() {
   document.getElementById('council-term-switcher')?.addEventListener('change', e => switchCouncilTerm(e.target.value))
 
+  document.getElementById('campaign-video-file')?.addEventListener('change', async e => {
+    const input = e.target, file = input.files?.[0], form = input.closest('form')
+    const status = document.getElementById('campaign-video-status')
+    if (!file || !form) return
+    if (file.size > 50 * 1024 * 1024) { input.value = ''; showToast('วิดีโอต้องมีขนาดไม่เกิน 50 MB', 'warning'); return }
+    if (!['video/mp4', 'video/webm', 'video/quicktime', 'video/ogg'].includes(file.type)) { input.value = ''; showToast('รองรับวิดีโอ MP4, WebM, MOV หรือ OGG', 'warning'); return }
+    const duration = await new Promise(resolve => {
+      const probe = document.createElement('video'); probe.preload = 'metadata'
+      probe.onloadedmetadata = () => { URL.revokeObjectURL(probe.src); resolve(probe.duration) }
+      probe.onerror = () => resolve(null)
+      probe.src = URL.createObjectURL(file)
+    })
+    if (duration != null && duration > 60) { input.value = ''; showToast('วิดีโอต้องยาวไม่เกิน 60 วินาที', 'warning'); return }
+    campaignVideoBusy = true; input.disabled = true
+    if (status) status.textContent = 'กำลังอัปโหลดวิดีโอ…'
+    try {
+      form.campaign_video_url.value = await uploadCouncilCampaignVideo({ candidateId: Number(form.dataset.candidateId), file })
+      if (status) status.textContent = 'อัปโหลดแล้ว · วิดีโอจะแสดงบนบอร์ดหลังอนุมัติ'
+    } catch (err) {
+      input.value = ''
+      if (status) status.textContent = 'อัปโหลดไม่สำเร็จ'
+      showToast('อัปโหลดวิดีโอไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+    } finally { campaignVideoBusy = false; input.disabled = false }
+  })
+
+  document.getElementById('my-campaign-form')?.addEventListener('submit', async e => {
+    e.preventDefault()
+    if (campaignVideoBusy) { showToast('รออัปโหลดวิดีโอให้เสร็จก่อน', 'warning'); return }
+    const form = e.currentTarget, submit = e.submitter?.dataset.submit === '1'
+    const btn = e.submitter; if (btn) { btn.disabled = true; btn.textContent = 'กำลังบันทึก…' }
+    try {
+      const policies = form.policies.value.split('\n').map(x => x.trim()).filter(Boolean)
+      const experience = form.experience.value.split('\n').map(x => x.trim()).filter(Boolean)
+      if (policies.length > 12 || experience.length > 12) throw new Error('นโยบายและผลงานใส่ได้อย่างละไม่เกิน 12 ข้อ')
+      await saveMyCouncilCampaign({ slogan: form.slogan.value.trim(), vision: form.vision.value.trim(), policies, experience, campaignVideoUrl: form.campaign_video_url.value, submit })
+      myCouncilCampaign = await getMyCouncilCampaign()
+      showToast(submit ? 'ส่งบอร์ดหาเสียงให้ตรวจแล้ว ✅' : 'บันทึกร่างแล้ว ✅', 'success')
+      render()
+    } catch (err) {
+      showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      if (btn) { btn.disabled = false; btn.textContent = submit ? 'ส่งให้ครูตรวจและเผยแพร่' : 'บันทึกร่าง' }
+    }
+  })
+
   document.getElementById('council-term-create-form')?.addEventListener('submit', async e => {
     e.preventDefault(); const f = e.target; const btn = f.querySelector('button[type="submit"]'); btn.disabled = true
     try {
@@ -4739,6 +4839,25 @@ function wireContentEvents() {
     e.preventDefault(); const f = e.target
     try { await updateCouncilCandidateAdmin({ candidateId: Number(f.dataset.id), ballotNumber: f.ballot.value, status: f.status.value }); adminCandidatesByGender[candidateAdminGender] = await getCandidatesForElectionAdmin(electionOf(candidateAdminGender).id); delete candidatesByGender[candidateAdminGender]; showToast('บันทึกผู้สมัครแล้ว ✅', 'success'); render() }
     catch (err) { showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
+  }))
+  document.querySelectorAll('.btn-review-campaign').forEach(btn => btn.addEventListener('click', async () => {
+    const approve = btn.dataset.approve === '1'
+    const comment = approve ? null : prompt('แจ้งข้อเสนอแนะให้ผู้สมัครแก้ไข (ใส่หรือเว้นว่างได้)')
+    if (!approve && comment === null) return
+    btn.disabled = true
+    try {
+      await reviewCouncilCampaign({ candidateId: Number(btn.dataset.id), approve, comment })
+      const election = electionOf(candidateAdminGender)
+      ;[adminCandidatesByGender[candidateAdminGender], campaignReviewsByGender[candidateAdminGender]] = await Promise.all([
+        getCandidatesForElectionAdmin(election.id), getCouncilCampaignReviews(election.id),
+      ])
+      delete candidatesByGender[candidateAdminGender]
+      showToast(approve ? 'อนุมัติและเผยแพร่บอร์ดแล้ว ✅' : 'ส่งข้อเสนอแนะกลับให้ผู้สมัครแล้ว', 'success')
+      render()
+    } catch (err) {
+      showToast('ดำเนินการไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      btn.disabled = false
+    }
   }))
   document.getElementById('btn-add-designate-candidate')?.addEventListener('click', async e => {
     const button = e.currentTarget

@@ -521,7 +521,7 @@ export async function updateElectionCampaignSettings({ electionConfigId, opensAt
 export async function getCandidatesForElection(electionConfigId) {
   const { data, error } = await supabase.from('council_candidates')
     .select(`id, ballot_number, status, campaign_statement, photo_url, student_id, application_id,
-      slogan, vision, policies, experience,
+      slogan, vision, policies, experience, campaign_video_url,
       students(full_name, student_code, main_room, image_url, photo_url),
       council_applications(gpa_general, gpa_religious)`)
     .eq('election_config_id', electionConfigId).in('status', ['published', 'elected']).order('ballot_number')
@@ -532,7 +532,7 @@ export async function getCandidatesForElection(electionConfigId) {
 export async function getCandidatesForElectionAdmin(electionConfigId) {
   const { data, error } = await supabase.from('council_candidates')
     .select(`id, ballot_number, status, campaign_statement, photo_url, student_id, application_id,
-      slogan, vision, policies, experience, published_at, withdrawn_at,
+      slogan, vision, policies, experience, campaign_video_url, published_at, withdrawn_at,
       students(full_name, student_code, main_room, image_url, photo_url),
       council_applications(gpa_general, gpa_religious)`)
     .eq('election_config_id', electionConfigId).order('ballot_number')
@@ -562,6 +562,48 @@ export async function updateCouncilCandidateAdmin({ candidateId, ballotNumber, s
 export async function updateCandidateProfile({ candidateId, slogan, vision, policies, experience }) {
   const { error } = await supabase.from('council_candidates')
     .update({ slogan, vision, policies, experience }).eq('id', candidateId)
+  if (error) throw error
+}
+
+export async function getMyCouncilCampaign() {
+  const { data, error } = await supabase.rpc('get_my_council_campaign')
+  if (error) throw error
+  return data ?? null
+}
+
+export async function saveMyCouncilCampaign({ slogan, vision, policies, experience, campaignVideoUrl, submit = false }) {
+  const { data, error } = await supabase.rpc('save_my_council_campaign', {
+    p_slogan: slogan, p_vision: vision, p_policies: policies, p_experience: experience,
+    p_campaign_video_url: campaignVideoUrl || null, p_submit: submit,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function uploadCouncilCampaignVideo({ candidateId, file }) {
+  if (!(file instanceof File) || !file.type.startsWith('video/')) throw new Error('กรุณาเลือกไฟล์วิดีโอ')
+  if (file.size > 50 * 1024 * 1024) throw new Error('วิดีโอต้องมีขนาดไม่เกิน 50 MB')
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) throw authError || new Error('กรุณาเข้าสู่ระบบใหม่')
+  const ext = file.type.includes('webm') ? 'webm' : file.type.includes('quicktime') ? 'mov' : file.type.includes('ogg') ? 'ogg' : 'mp4'
+  const path = `${user.id}/${candidateId}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('council-campaign-videos').upload(path, file, {
+    contentType: file.type, cacheControl: '3600', upsert: false,
+  })
+  if (error) throw error
+  return supabase.storage.from('council-campaign-videos').getPublicUrl(path).data.publicUrl
+}
+
+export async function getCouncilCampaignReviews(electionConfigId) {
+  const { data, error } = await supabase.rpc('get_council_campaign_reviews', { p_election_config_id: electionConfigId })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function reviewCouncilCampaign({ candidateId, approve, comment = null }) {
+  const { error } = await supabase.rpc('review_council_campaign', {
+    p_candidate_id: candidateId, p_approve: approve, p_comment: comment,
+  })
   if (error) throw error
 }
 
