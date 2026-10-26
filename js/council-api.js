@@ -540,6 +540,15 @@ export async function getCandidatesForElectionAdmin(electionConfigId) {
   return data ?? []
 }
 
+export async function addDesignateCouncilCandidate({ electionConfigId, studentId }) {
+  const { data, error } = await supabase.rpc('add_designate_council_candidate_atomic', {
+    p_election_config_id: electionConfigId,
+    p_student_id: studentId,
+  })
+  if (error) throw error
+  return data
+}
+
 export async function updateCouncilCandidateAdmin({ candidateId, ballotNumber, status }) {
   const { data, error } = await supabase.rpc('update_council_candidate_admin', {
     p_candidate_id: candidateId, p_ballot_number: Number(ballotNumber), p_status: status,

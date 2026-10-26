@@ -28,7 +28,7 @@ import {
   getCouncilApplicationsForAdmin, scheduleCouncilInterview, saveCouncilInterviewScore,
   deleteCouncilApplication,
   promoteToCandidate, appointMember, ensureElectionConfig, updateElectionWindow, updateElectionCampaignSettings,
-  getCandidatesForElection, getCandidatesForElectionAdmin, updateCouncilCandidateAdmin,
+  getCandidatesForElection, getCandidatesForElectionAdmin, addDesignateCouncilCandidate, updateCouncilCandidateAdmin,
   publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
   getCouncilActivities, createActivity, updateActivityStatus, updateActivityOwnership,
   getActivityAttendance, getActivityAttendanceDetailed, checkInAttendance,
@@ -4538,6 +4538,14 @@ function renderCandidateAdminView() {
     return '<p class="text-sm text-[var(--muted)] text-center py-16">กำลังโหลดผู้สมัคร...</p>'
   }
   const list = adminCandidatesByGender[gender] || []
+  const existingCandidateIds = new Set(list.map(c => Number(c.student_id)))
+  const designateChairs = ctx.members.filter(m =>
+    m.status === 'designate' &&
+    Number(m.term_id) === Number(election?.term_id) &&
+    m.council_positions?.gender === gender &&
+    m.council_positions?.is_elected === true &&
+    !existingCandidateIds.has(Number(m.student_id))
+  )
   const localDate = value => toDatetimeLocal(value)
   return `<div class="space-y-4">
     <div class="flex gap-2">${['M','W'].map(g => `<button type="button" data-gender="${g}" class="candidate-admin-gender flex-1 py-2.5 rounded-full text-sm font-bold ${g === gender ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)] bg-[var(--surface)] text-[var(--muted)]'}">นักเรียน${GENDER_LABEL[g]}</button>`).join('')}</div>
@@ -4547,7 +4555,9 @@ function renderCandidateAdminView() {
         <div class="grid sm:grid-cols-3 gap-2"><label class="text-xs text-[var(--muted)]">เริ่มแนะนำผู้สมัคร<input name="campaign_opens_at" type="datetime-local" value="${localDate(election.campaign_opens_at)}" class="mt-1 w-full border border-[var(--line)] rounded-xl px-2 py-2 text-sm" /></label><label class="text-xs text-[var(--muted)]">เปิดลงคะแนน<input name="opens_at" type="datetime-local" value="${localDate(election.opens_at)}" class="mt-1 w-full border border-[var(--line)] rounded-xl px-2 py-2 text-sm" /></label><label class="text-xs text-[var(--muted)]">ปิดเลือกตั้ง<input name="closes_at" type="datetime-local" value="${localDate(election.closes_at)}" class="mt-1 w-full border border-[var(--line)] rounded-xl px-2 py-2 text-sm" /></label></div>
         <div class="flex flex-wrap gap-2"><button type="button" class="candidate-setting-action px-3 py-2 rounded-xl border text-xs font-bold ${election.candidates_published ? 'border-[var(--bad-soft-line)] text-[var(--bad)]' : 'border-[var(--primary-45)] text-[var(--primary)]'}" data-field="candidates" data-value="${election.candidates_published ? '' : '1'}">${election.candidates_published ? 'ยกเลิกเผยแพร่รายชื่อ' : 'เผยแพร่รายชื่อผู้สมัคร'}</button><button type="button" class="candidate-setting-action px-3 py-2 rounded-xl border text-xs font-bold ${election.campaign_enabled ? 'border-[var(--bad-soft-line)] text-[var(--bad)]' : 'border-[var(--primary-45)] text-[var(--primary)]'}" data-field="campaign" data-value="${election.campaign_enabled ? '' : '1'}">${election.campaign_enabled ? 'ปิดหน้ารณรงค์' : 'เปิดหน้ารณรงค์'}</button><button class="px-4 py-2 rounded-xl bg-[var(--primary)] text-white text-xs font-bold">บันทึกวันเวลา</button></div>
       </form>
-      <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><div class="flex items-center justify-between gap-2"><h3 class="text-sm font-bold text-[var(--ink)]">รายชื่อว่าที่ประธาน${GENDER_LABEL[gender]}</h3><button type="button" class="btn-print-candidates px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold" data-gender="${gender}">🖨️ พิมพ์</button></div><div class="space-y-2 mt-3">${list.length ? list.map(c => `<form class="candidate-admin-row flex flex-wrap items-center gap-2 border border-[var(--line)] rounded-xl p-2.5" data-id="${c.id}"><div class="min-w-0 flex-1"><p class="text-sm font-bold truncate">${esc(c.students?.full_name)}</p><p class="text-xs text-[var(--muted)]">${esc(c.students?.student_code)} · ${esc(c.students?.main_room || '')}</p></div><label class="text-[0.6875rem] text-[var(--muted)]">หมายเลข<input name="ballot" type="number" min="1" required value="${c.ballot_number}" class="block w-20 border border-[var(--line)] rounded-lg px-2 py-1.5 text-sm" /></label><select name="status" class="border border-[var(--line)] rounded-lg px-2 py-1.5 text-sm"><option value="draft" ${c.status === 'draft' ? 'selected' : ''}>ร่าง</option><option value="published" ${c.status === 'published' ? 'selected' : ''}>เผยแพร่</option><option value="withdrawn" ${c.status === 'withdrawn' ? 'selected' : ''}>ถอนตัว</option><option value="elected" ${c.status === 'elected' ? 'selected' : ''}>ได้รับเลือก</option></select><button class="px-3 py-2 rounded-lg bg-[var(--primary)] text-white text-xs font-bold">บันทึก</button></form>`).join('') : '<p class="text-xs text-[var(--muted)] text-center py-8">ยังไม่มีผู้สมัคร ให้ตั้งจากผู้ผ่านสัมภาษณ์ในหน้าแต่งตั้งสมาชิก</p>'}</div></div>`}
+      <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><div class="flex items-center justify-between gap-2"><h3 class="text-sm font-bold text-[var(--ink)]">รายชื่อว่าที่ประธาน${GENDER_LABEL[gender]}</h3><button type="button" class="btn-print-candidates px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold" data-gender="${gender}">🖨️ พิมพ์</button></div>
+        <div class="mt-3 rounded-xl border border-[var(--primary-45)] bg-[var(--primary-soft)] p-3 space-y-2"><p class="text-xs font-bold text-[var(--primary-dark)]">เพิ่มจากว่าที่ประธานใน roster</p><p class="text-[0.6875rem] text-[var(--muted)]">การเพิ่มโดยตรงจะข้ามขั้นตอนใบสมัครและสัมภาษณ์ ระบบจะเพิ่มเป็นผู้สมัครสถานะร่าง และยังไม่เผยแพร่จนกว่าจะเปลี่ยนสถานะ</p><div class="flex flex-col sm:flex-row gap-2"><select id="candidate-designate-select" class="min-w-0 flex-1 border border-[var(--line)] rounded-lg px-2.5 py-2 text-sm bg-[var(--surface)]" ${designateChairs.length ? '' : 'disabled'}><option value="">${designateChairs.length ? 'เลือกว่าที่ประธาน' : 'ไม่มีว่าที่ประธานที่เพิ่มได้'}</option>${designateChairs.map(m => `<option value="${m.student_id}">${esc(m.students?.full_name)} · ${esc(m.students?.student_code || '')} · ${esc(m.students?.main_room || '')}</option>`).join('')}</select><button type="button" id="btn-add-designate-candidate" class="px-3 py-2 rounded-lg bg-[var(--primary)] text-white text-xs font-bold" ${designateChairs.length ? '' : 'disabled'}>เพิ่มเป็นผู้สมัครร่าง</button></div></div>
+        <div class="space-y-2 mt-3">${list.length ? list.map(c => `<form class="candidate-admin-row flex flex-wrap items-center gap-2 border border-[var(--line)] rounded-xl p-2.5" data-id="${c.id}"><div class="min-w-0 flex-1"><p class="text-sm font-bold truncate">${esc(c.students?.full_name)}</p><p class="text-xs text-[var(--muted)]">${esc(c.students?.student_code)} · ${esc(c.students?.main_room || '')}</p></div><label class="text-[0.6875rem] text-[var(--muted)]">หมายเลข<input name="ballot" type="number" min="1" required value="${c.ballot_number}" class="block w-20 border border-[var(--line)] rounded-lg px-2 py-1.5 text-sm" /></label><select name="status" class="border border-[var(--line)] rounded-lg px-2 py-1.5 text-sm"><option value="draft" ${c.status === 'draft' ? 'selected' : ''}>ร่าง</option><option value="published" ${c.status === 'published' ? 'selected' : ''}>เผยแพร่</option><option value="withdrawn" ${c.status === 'withdrawn' ? 'selected' : ''}>ถอนตัว</option><option value="elected" ${c.status === 'elected' ? 'selected' : ''}>ได้รับเลือก</option></select><button class="px-3 py-2 rounded-lg bg-[var(--primary)] text-white text-xs font-bold">บันทึก</button></form>`).join('') : '<p class="text-xs text-[var(--muted)] text-center py-8">ยังไม่มีผู้สมัคร ให้ตั้งจากผู้ผ่านสัมภาษณ์ในหน้าแต่งตั้งสมาชิก</p>'}</div></div>`}
   </div>`
 }
 
@@ -4730,6 +4740,27 @@ function wireContentEvents() {
     try { await updateCouncilCandidateAdmin({ candidateId: Number(f.dataset.id), ballotNumber: f.ballot.value, status: f.status.value }); adminCandidatesByGender[candidateAdminGender] = await getCandidatesForElectionAdmin(electionOf(candidateAdminGender).id); delete candidatesByGender[candidateAdminGender]; showToast('บันทึกผู้สมัครแล้ว ✅', 'success'); render() }
     catch (err) { showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
   }))
+  document.getElementById('btn-add-designate-candidate')?.addEventListener('click', async e => {
+    const button = e.currentTarget
+    const studentId = Number(document.getElementById('candidate-designate-select')?.value)
+    const election = electionOf(candidateAdminGender)
+    const student = ctx.members.find(m => Number(m.student_id) === studentId && m.status === 'designate' &&
+      Number(m.term_id) === Number(election?.term_id) && m.council_positions?.gender === candidateAdminGender &&
+      m.council_positions?.is_elected === true)?.students
+    if (!studentId || !election) { showToast('กรุณาเลือกว่าที่ประธาน', 'warning'); return }
+    if (!confirm(`เพิ่ม ${student?.full_name || 'นักเรียนคนนี้'} เป็นผู้สมัครประธาน${GENDER_LABEL[candidateAdminGender]} สถานะร่างหรือไม่? การเพิ่มโดยตรงจะข้ามขั้นตอนใบสมัครและสัมภาษณ์`)) return
+    button.disabled = true
+    try {
+      await addDesignateCouncilCandidate({ electionConfigId: election.id, studentId })
+      adminCandidatesByGender[candidateAdminGender] = await getCandidatesForElectionAdmin(election.id)
+      delete candidatesByGender[candidateAdminGender]
+      showToast('เพิ่มเป็นผู้สมัครสถานะร่างแล้ว ✅', 'success')
+      render()
+    } catch (err) {
+      showToast('เพิ่มผู้สมัครไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      button.disabled = false
+    }
+  })
   document.querySelectorAll('.btn-print-candidates').forEach(btn => btn.addEventListener('click', async () => {
     const gender = btn.dataset.gender; const election = electionOf(gender)
     if (election && adminCandidatesByGender[gender] === null) adminCandidatesByGender[gender] = await getCandidatesForElectionAdmin(election.id).catch(() => [])
