@@ -57,6 +57,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const content = document.getElementById('council-content')
 
 const GENDER_LABEL = { M: 'ชาย', W: 'หญิง' }
+const UNASSIGNED_POSITION_NAME = 'ยังไม่ระบุฝ่าย'
 
 // ค่าจริงของ students.gender ปนกัน 'ชาย'/'หญิง'/'M' อยู่ (data inconsistency) — ต้อง
 // normalize เป็น 'M'/'W' มาตรฐานของโมดูลนี้เองเสมอ ห้ามเทียบ === 'ชาย' หรือ === 'M' เฉยๆ
@@ -885,7 +886,7 @@ function renderApplyView() {
   const gender = normalizeGender(ctx.student.gender)
   const positionsForGender = ctx.positions.filter(p => p.gender === gender)
   const appliedIds = new Set(ctx.applications.filter(a => a.status !== 'rejected').map(a => a.position_id))
-  const openPositions = positionsForGender.filter(p => !appliedIds.has(p.id))
+  const openPositions = positionsForGender.filter(p => p.position_name !== UNASSIGNED_POSITION_NAME && !appliedIds.has(p.id))
 
   if (!gender) {
     return `<div class="bg-[var(--gold-soft)] border border-[var(--gold-soft-line)] rounded-2xl p-4 text-center text-[var(--gold-ink)] text-sm">
@@ -2306,7 +2307,8 @@ const ROSTER_CATEGORIES = [
   { label: 'ประธาน', match: p => !!p?.is_elected },
   { label: 'รองประธาน', match: p => p?.position_name === 'รองประธานสภานักเรียน' },
   { label: 'ฝ่ายงาน', match: p => (p?.position_name ?? '').startsWith('ฝ่าย') },
-  { label: 'สำนักงานสภา', match: p => !p?.is_elected && p?.position_name !== 'รองประธานสภานักเรียน' && !(p?.position_name ?? '').startsWith('ฝ่าย') },
+  { label: 'สำนักงานสภา', match: p => !p?.is_elected && p?.position_name !== 'รองประธานสภานักเรียน' && p?.position_name !== UNASSIGNED_POSITION_NAME && !(p?.position_name ?? '').startsWith('ฝ่าย') },
+  { label: 'ยังไม่ระบุฝ่าย', match: p => p?.position_name === UNASSIGNED_POSITION_NAME },
 ]
 
 let rosterGenderTab = 'M'
@@ -2339,10 +2341,10 @@ function renderRosterView() {
       ${m.status !== 'active' ? `<span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[0.625rem] font-bold ${m.status === 'designate' ? 'bg-[var(--gold-soft)] text-[var(--gold-ink)]' : 'bg-[var(--surface-2)] text-[var(--muted)]'}">${m.status === 'designate' ? 'ว่าที่สมาชิก' : 'หมดวาระ'}</span>` : ''}
       ${canGrantCreate ? `
         <button type="button" class="btn-toggle-can-create w-full mt-2 text-[0.625rem] font-bold py-1 rounded-[8px] border ${m.can_create_activities ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)] text-[#106143]' : 'border-[var(--line)] text-[var(--muted)]'}" data-id="${m.id}" data-value="${m.can_create_activities ? '' : '1'}">${m.can_create_activities ? '✅ สร้างกิจกรรมได้' : '➕ ให้สิทธิ์สร้างกิจกรรม'}</button>` : ''}
-      ${ctx.isAdmin && termIsEditable() ? `
+      ${(ctx.isAdmin || ctx.isCouncilAdvisor) && termIsEditable() ? `
         <div class="flex gap-1.5 mt-2 pt-2 border-t border-[var(--line-soft)]">
           <button type="button" class="btn-edit-council-member flex-1 text-[0.6875rem] font-bold py-1 rounded-[8px] border border-[var(--line)] text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-id="${m.id}">✏️ แก้ไข</button>
-          <button type="button" class="btn-remove-council-member flex-1 text-[0.6875rem] font-bold py-1 rounded-[8px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${m.id}">🗑️ ลบ</button>
+          ${ctx.isAdmin ? `<button type="button" class="btn-remove-council-member flex-1 text-[0.6875rem] font-bold py-1 rounded-[8px] border border-[var(--bad-soft-line)] text-[var(--bad)] hover:bg-[var(--bad-soft)]" data-id="${m.id}">🗑️ ลบ</button>` : ''}
         </div>` : ''}
     </div>`
 
@@ -2359,9 +2361,10 @@ function renderRosterView() {
   return `${addBtn}${tabs}${groups || `<p class="text-xs text-[var(--muted-2)] text-center py-10">ยังไม่มีข้อมูลสมาชิกสภา${GENDER_LABEL[rosterGenderTab]}</p>`}`
 }
 
-// ─── เพิ่ม/แก้ไขสมาชิกสภาโดยตรง (แอดมิน) — นอกเหนือจากทางแต่งตั้ง/เลือกตั้ง/เสนอคณะทำงานปกติ ──
+// ─── เพิ่ม/แก้ไขสมาชิกสภาโดยตรง (แอดมิน/ครูที่ปรึกษาสภา) ────────────────────────────
 // ใช้ตอนนำเข้าข้อมูลสภาจริงจากภายนอก (เช่น Google ชีท) หรือแก้ไขข้อมูลที่คลาดเคลื่อน
 function openMemberModal({ mode, gender, member }) {
+  if (!(ctx.isAdmin || ctx.isCouncilAdvisor) || !termIsEditable()) return
   document.getElementById('member-modal')?.remove()
   const positionsForGender = ctx.positions.filter(p => p.gender === gender)
   let selectedStudent = mode === 'edit' ? member.students : null

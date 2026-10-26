@@ -472,9 +472,12 @@ export async function addCouncilMemberManual({ termId, positionId, studentId, ap
 }
 
 export async function updateCouncilMember(memberId, { positionId, termStartDate, termEndDate }) {
-  const { error } = await supabase.from('council_members')
-    .update({ position_id: positionId, term_start_date: termStartDate || null, term_end_date: termEndDate || null, updated_at: new Date().toISOString() })
-    .eq('id', memberId)
+  const { error } = await supabase.rpc('update_council_member_assignment_atomic', {
+    p_member_id: memberId,
+    p_position_id: positionId,
+    p_term_start_date: termStartDate || null,
+    p_term_end_date: termEndDate || null,
+  })
   if (error) throw error
 }
 

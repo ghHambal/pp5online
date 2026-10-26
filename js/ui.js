@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1014'
+import { APP_VERSION } from './version.js?v=10.22.1017'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1017': [
+    'เพิ่มตัวเลือก “ยังไม่ระบุฝ่าย” สำหรับสมาชิกสภานักเรียน และแสดงเป็นกลุ่มแยกในหน้ารายชื่อ',
+    'ให้ครูที่ปรึกษาสภานักเรียนทุกคนแก้ไขฝ่ายและช่วงวาระของสมาชิกได้ พร้อมบันทึกประวัติการแก้ไข',
+  ],
   '10.22.1016': [
     '🗑️ คลังข้อสอบ: เพิ่มโหมดเลือกหลายข้อเพื่อลบ และปุ่มลบข้อสอบทั้งหมดพร้อมยืนยันก่อนลบ',
   ],
