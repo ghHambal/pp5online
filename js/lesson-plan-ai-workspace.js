@@ -10,6 +10,20 @@ import { updateMySignature } from './council-api.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[ch])
+const applyCanvasBrush = (ctx, tool, size, color) => {
+  const width = Math.max(1, Number(size) || 3)
+  ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over'
+  ctx.globalAlpha = tool === 'marker' ? 0.62 : tool === 'highlighter' ? 0.24 : tool === 'eraser' ? 1 : 1
+  ctx.lineWidth = width * (tool === 'marker' ? 1.8 : tool === 'highlighter' || tool === 'eraser' ? 3 : 1)
+  ctx.lineCap = tool === 'marker' || tool === 'highlighter' ? 'square' : 'round'
+  ctx.lineJoin = 'round'
+  ctx.strokeStyle = color
+}
+const hasCanvasInk = (ctx, canvas) => {
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+  for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) return true
+  return false
+}
 const asText = value => Array.isArray(value) ? value.map(v => typeof v === 'string' ? v : JSON.stringify(v)).join('\n') : value == null ? '' : String(value)
 const asInt = (value, fallback = null) => Number.isFinite(Number(value)) ? Math.trunc(Number(value)) : fallback
 const isoDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? '')) ? String(value) : null
@@ -25,11 +39,11 @@ const REFLECTION_NOTE_FONTS = [
 ]
 function parseReflectionNote(value) {
   const raw = String(value ?? '')
-  if (!raw.startsWith(REFLECTION_NOTE_PREFIX)) return { mode: 'type', text: raw, color: '#173b78', font: 'Sarabun', drawing: '' }
+  if (!raw.startsWith(REFLECTION_NOTE_PREFIX)) return { mode: 'type', text: raw, color: '#173b78', font: 'Sarabun', drawing: '', pen: 'pen', size: 3 }
   try {
     const parsed = JSON.parse(raw.slice(REFLECTION_NOTE_PREFIX.length))
-    return { mode: parsed.mode === 'draw' ? 'draw' : 'type', text: String(parsed.text ?? ''), color: /^#[0-9a-f]{6}$/i.test(parsed.color) ? parsed.color : '#173b78', font: REFLECTION_NOTE_FONTS.some(([font]) => font === parsed.font) ? parsed.font : 'Sarabun', drawing: String(parsed.drawing ?? '') }
-  } catch { return { mode: 'type', text: '', color: '#173b78', font: 'Sarabun', drawing: '' } }
+    return { mode: parsed.mode === 'draw' ? 'draw' : 'type', text: String(parsed.text ?? ''), color: /^#[0-9a-f]{6}$/i.test(parsed.color) ? parsed.color : '#173b78', font: REFLECTION_NOTE_FONTS.some(([font]) => font === parsed.font) ? parsed.font : 'Sarabun', drawing: String(parsed.drawing ?? ''), pen: ['pen', 'marker', 'highlighter', 'eraser'].includes(parsed.pen) ? parsed.pen : 'pen', size: Math.min(12, Math.max(1, Number(parsed.size) || 3)) }
+  } catch { return { mode: 'type', text: '', color: '#173b78', font: 'Sarabun', drawing: '', pen: 'pen', size: 3 } }
 }
 function reflectionNoteFieldHTML(key, label, value) {
   const note = parseReflectionNote(value)
@@ -38,7 +52,7 @@ function reflectionNoteFieldHTML(key, label, value) {
     <div class="flex flex-wrap items-center justify-between gap-2 mb-2"><span class="text-[10px] font-normal text-gray-400">${note.mode === 'draw' ? 'บันทึกลายมือ' : 'บันทึกข้อความ'}</span><button data-note-open type="button" class="px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[10px] font-bold">เปิดพื้นที่เขียน</button></div>
     <div class="flex flex-wrap items-center gap-2 mb-2"><select data-note-mode class="border rounded-lg px-2 py-1.5 text-[11px] bg-white font-normal"><option value="type" ${note.mode === 'type' ? 'selected' : ''}>พิมพ์ข้อความ</option><option value="draw" ${note.mode === 'draw' ? 'selected' : ''}>เขียนด้วยลายมือ</option></select><label class="flex items-center gap-1 text-[10px] font-normal">สี <input data-note-color type="color" value="${note.color}" class="w-8 h-7 p-0.5 border rounded"></label><select data-note-font class="border rounded-lg px-2 py-1.5 text-[10px] bg-white font-normal">${fontOptions}</select></div>
     <textarea data-note-text rows="4" class="w-full border rounded-lg p-2 font-normal resize-y" style="color:${note.color};font-family:'${esc(note.font)}',sans-serif;${note.mode === 'draw' ? 'display:none' : ''}" placeholder="${label}">${esc(note.text)}</textarea>
-    <div data-note-draw-wrap style="${note.mode === 'draw' ? '' : 'display:none'}"><canvas data-note-canvas width="1000" height="240" class="w-full h-24 border rounded-lg bg-white touch-none"></canvas><div class="mt-1 flex gap-3"><button data-note-undo type="button" class="text-[10px] text-indigo-600 font-normal">↶ ย้อนการเขียน</button><button data-note-clear type="button" class="text-[10px] text-red-500 font-normal">ล้างลายมือ</button></div></div>
+    <div data-note-draw-wrap style="${note.mode === 'draw' ? '' : 'display:none'}"><div class="flex flex-wrap items-center gap-2 mb-2"><label class="text-[10px] font-normal">เครื่องมือ <select data-note-pen class="border rounded-lg px-2 py-1.5 text-[10px] bg-white"><option value="pen" ${note.pen === 'pen' ? 'selected' : ''}>ปากกาลูกลื่น</option><option value="marker" ${note.pen === 'marker' ? 'selected' : ''}>ปากกาเมจิก</option><option value="highlighter" ${note.pen === 'highlighter' ? 'selected' : ''}>ไฮไลต์</option><option value="eraser" ${note.pen === 'eraser' ? 'selected' : ''}>ยางลบ</option></select></label><label class="flex items-center gap-2 text-[10px] font-normal">ขนาด <input data-note-size type="range" min="1" max="12" value="${note.size}" class="w-24"><span data-note-size-label class="min-w-8">${note.size} px</span></label></div><canvas data-note-canvas width="1000" height="240" class="w-full h-24 border rounded-lg bg-white touch-none"></canvas><div class="mt-1 flex gap-3"><button data-note-undo type="button" class="text-[10px] text-indigo-600 font-normal">↶ ย้อนการเขียน</button><button data-note-clear type="button" class="text-[10px] text-red-500 font-normal">ล้างลายมือ</button></div></div>
   </div></div>`
 }
 function bindReflectionNote(box) {
@@ -49,13 +63,13 @@ function bindReflectionNote(box) {
   const drawWrap = box.querySelector('[data-note-draw-wrap]')
   const canvas = box.querySelector('[data-note-canvas]')
   const ctx = canvas.getContext('2d')
+  const pen = box.querySelector('[data-note-pen]')
+  const size = box.querySelector('[data-note-size]')
+  const sizeLabel = box.querySelector('[data-note-size-label]')
   let drawing = false
   let hasDrawing = false
   const undoStack = []
-  ctx.lineWidth = 3
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
-  ctx.strokeStyle = color.value
+  applyCanvasBrush(ctx, pen.value, size.value, color.value)
   const paintTextStyle = () => {
     text.style.color = color.value
     text.style.fontFamily = `'${font.value}', sans-serif`
@@ -71,22 +85,23 @@ function bindReflectionNote(box) {
   }
   canvas.addEventListener('pointerdown', event => {
     event.preventDefault(); event.stopPropagation(); undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height)); if (undoStack.length > 20) undoStack.shift(); drawing = true; hasDrawing = true; canvas.setPointerCapture?.(event.pointerId)
-    const p = point(event); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.strokeStyle = color.value
+    const p = point(event); ctx.beginPath(); ctx.moveTo(p.x, p.y); applyCanvasBrush(ctx, pen.value, size.value, color.value)
   })
   canvas.addEventListener('pointermove', event => {
     if (!drawing) return
-    event.preventDefault(); event.stopPropagation(); const p = point(event); ctx.lineTo(p.x, p.y); ctx.stroke()
+    event.preventDefault(); event.stopPropagation(); const p = point(event); ctx.lineTo(p.x, p.y); applyCanvasBrush(ctx, pen.value, size.value, color.value); ctx.stroke()
   })
-  for (const eventName of ['pointerup', 'pointercancel', 'pointerleave']) canvas.addEventListener(eventName, event => { event.stopPropagation(); drawing = false })
+  const endDrawing = event => { event.stopPropagation(); drawing = false; hasDrawing = hasCanvasInk(ctx, canvas) }
+  for (const eventName of ['pointerup', 'pointercancel']) canvas.addEventListener(eventName, endDrawing)
   mode.addEventListener('change', syncMode)
-  color.addEventListener('input', () => { ctx.strokeStyle = color.value; paintTextStyle() })
+  color.addEventListener('input', () => { applyCanvasBrush(ctx, pen.value, size.value, color.value); paintTextStyle() })
+  size.addEventListener('input', () => { sizeLabel.textContent = `${size.value} px`; applyCanvasBrush(ctx, pen.value, size.value, color.value) })
+  pen.addEventListener('change', () => applyCanvasBrush(ctx, pen.value, size.value, color.value))
   font.addEventListener('change', paintTextStyle)
   box.querySelector('[data-note-undo]').addEventListener('click', () => {
     const previous = undoStack.pop()
     if (previous) ctx.putImageData(previous, 0, 0)
-    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
-    hasDrawing = false
-    for (let i = 3; i < pixels.length; i += 4) { if (pixels[i] > 0) { hasDrawing = true; break } }
+    hasDrawing = hasCanvasInk(ctx, canvas)
   })
   box.querySelector('[data-note-clear]').addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); undoStack.length = 0; hasDrawing = false })
   const note = parseReflectionNote(box.dataset.initialValue ?? '')
@@ -98,7 +113,7 @@ function bindReflectionNote(box) {
   syncMode()
   return {
     value() {
-      const payload = { mode: mode.value, text: text.value.trim(), color: color.value, font: font.value, drawing: mode.value === 'draw' && hasDrawing ? canvas.toDataURL('image/png') : '' }
+      const payload = { mode: mode.value, text: text.value.trim(), color: color.value, font: font.value, pen: pen.value, size: Number(size.value) || 3, drawing: mode.value === 'draw' && hasDrawing ? canvas.toDataURL('image/png') : '' }
       if (payload.mode === 'type' && !payload.text) return null
       if (payload.mode === 'draw' && !payload.drawing) return null
       return REFLECTION_NOTE_PREFIX + JSON.stringify(payload)
@@ -720,6 +735,10 @@ function signaturePadHTML(key, label, name, currentUrl, savedOptions = [], sourc
       <label class="text-[10px] font-bold text-gray-500">วิธีลงชื่อ<select data-sign-mode class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white"><option value="draw">วาดลายเซ็น</option><option value="type">พิมพ์ชื่อ</option></select></label>
       <label class="text-[10px] font-bold text-gray-500">สีปากกา/ตัวอักษร<input data-sign-color type="color" value="#173b78" class="mt-1 w-full h-8 border rounded-lg bg-white p-1"></label>
     </div>
+    <div data-sign-brush-controls class="flex flex-wrap items-center gap-2 mt-2">
+      <label class="text-[10px] font-bold text-gray-500">ชนิดปากกา<select data-sign-pen class="mt-1 border rounded-lg px-2 py-1.5 text-[10px] bg-white"><option value="pen">ปากกาลูกลื่น</option><option value="marker">ปากกาเมจิก</option><option value="highlighter">ไฮไลต์</option><option value="eraser">ยางลบ</option></select></label>
+      <label class="flex items-center gap-2 text-[10px] font-bold text-gray-500">ขนาดหัวปากกา<input data-sign-size type="range" min="1" max="12" value="3" class="w-24"><span data-sign-size-label class="min-w-8">3 px</span></label>
+    </div>
     <div data-sign-typed-controls hidden class="grid grid-cols-2 gap-2 mt-2">
       <label class="col-span-2 text-[10px] font-bold text-gray-500">ข้อความลายเซ็น<input data-sign-typed maxlength="80" value="${esc(name)}" class="mt-1 w-full border rounded-lg px-2 py-1.5 font-normal" placeholder="พิมพ์ชื่อสำหรับใช้เป็นลายเซ็น"></label>
       <label class="col-span-2 text-[10px] font-bold text-gray-500">รูปแบบตัวอักษร<select data-sign-font class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white font-normal"><option value="Sarabun, sans-serif">Sarabun</option><option value="Tahoma, sans-serif">Tahoma</option><option value="serif">Serif</option><option value="cursive">Cursive</option></select></label>
@@ -736,15 +755,18 @@ function signaturePadHTML(key, label, name, currentUrl, savedOptions = [], sourc
 function bindPad(box) {
   const canvas = box.querySelector('[data-sign-canvas]'), ctx = canvas.getContext('2d')
   const mode = box.querySelector('[data-sign-mode]'), color = box.querySelector('[data-sign-color]')
+  const pen = box.querySelector('[data-sign-pen]'), size = box.querySelector('[data-sign-size]'), sizeLabel = box.querySelector('[data-sign-size-label]')
+  const brushControls = box.querySelector('[data-sign-brush-controls]')
   const source = box.querySelector('[data-sign-source]'), saved = box.querySelector('[data-sign-saved]')
   const savedWrap = box.querySelector('[data-sign-saved-wrap]'), preview = box.querySelector('[data-sign-current]')
   const customControls = box.querySelector('[data-sign-custom-controls]')
   const typedControls = box.querySelector('[data-sign-typed-controls]'), typed = box.querySelector('[data-sign-typed]'), font = box.querySelector('[data-sign-font]')
-  ctx.strokeStyle = color.value; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
+  applyCanvasBrush(ctx, pen.value, size.value, color.value)
   let drawing = false, drawn = false, last = null
   const undoStack = []
   const renderTyped = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1
     const value = typed.value.trim()
     if (!value) { drawn = false; return }
     ctx.fillStyle = color.value
@@ -756,14 +778,15 @@ function bindPad(box) {
   const setMode = () => {
     const isTyped = mode.value === 'type'
     typedControls.hidden = !isTyped
+    brushControls.hidden = isTyped
     if (isTyped) renderTyped()
-    else { ctx.clearRect(0, 0, canvas.width, canvas.height); drawn = false; ctx.strokeStyle = color.value }
+    else { ctx.clearRect(0, 0, canvas.width, canvas.height); undoStack.length = 0; drawn = false; applyCanvasBrush(ctx, pen.value, size.value, color.value) }
   }
   const pos = e => { const r = canvas.getBoundingClientRect(), p = e.touches?.[0] ?? e; return { x:(p.clientX-r.left)*canvas.width/r.width, y:(p.clientY-r.top)*canvas.height/r.height } }
-  const start = e => { if (mode.value !== 'draw') return; e.preventDefault(); e.stopPropagation(); undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height)); if (undoStack.length > 20) undoStack.shift(); drawing = true; drawn = true; last = pos(e) }
-  const move = e => { if (!drawing) return; e.preventDefault(); e.stopPropagation(); const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p }
-  const end = e => { e?.stopPropagation(); drawing = false }
-  canvas.addEventListener('pointerdown', start); canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerup', end); canvas.addEventListener('pointerleave', end)
+  const start = e => { if (mode.value !== 'draw') return; e.preventDefault(); e.stopPropagation(); undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height)); if (undoStack.length > 20) undoStack.shift(); drawing = true; drawn = true; last = pos(e); canvas.setPointerCapture?.(e.pointerId); applyCanvasBrush(ctx, pen.value, size.value, color.value) }
+  const move = e => { if (!drawing) return; e.preventDefault(); e.stopPropagation(); const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); applyCanvasBrush(ctx, pen.value, size.value, color.value); ctx.stroke(); last=p }
+  const end = e => { e?.stopPropagation(); drawing = false; drawn = hasCanvasInk(ctx, canvas) }
+  canvas.addEventListener('pointerdown', start); canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerup', end); canvas.addEventListener('pointercancel', end)
   mode.addEventListener('change', setMode)
   const updateSource = () => {
     const useSaved = source.value === 'saved'
@@ -780,14 +803,14 @@ function bindPad(box) {
   }
   source.addEventListener('change', updateSource)
   saved?.addEventListener('change', updateSource)
-  color.addEventListener('input', () => { ctx.strokeStyle = color.value; if (mode.value === 'type') renderTyped() })
+  color.addEventListener('input', () => { applyCanvasBrush(ctx, pen.value, size.value, color.value); if (mode.value === 'type') renderTyped() })
+  size.addEventListener('input', () => { sizeLabel.textContent = `${size.value} px`; applyCanvasBrush(ctx, pen.value, size.value, color.value) })
+  pen.addEventListener('change', () => applyCanvasBrush(ctx, pen.value, size.value, color.value))
   typed.addEventListener('input', renderTyped); font.addEventListener('change', renderTyped)
   box.querySelector('[data-sign-undo]').addEventListener('click', () => {
     const previous = undoStack.pop()
     if (previous) ctx.putImageData(previous, 0, 0)
-    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
-    drawn = false
-    for (let i = 3; i < pixels.length; i += 4) { if (pixels[i] > 0) { drawn = true; break } }
+    drawn = hasCanvasInk(ctx, canvas)
   })
   box.querySelector('[data-sign-clear]').addEventListener('click', () => { ctx.clearRect(0,0,canvas.width,canvas.height); undoStack.length = 0; if (mode.value === 'type') typed.value = ''; drawn=false })
   box.querySelector('[data-sign-file]').addEventListener('change', e => { box.querySelector('[data-sign-file-name]').textContent = e.target.files[0]?.name ?? '' })
