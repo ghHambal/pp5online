@@ -7,6 +7,7 @@ import {
 import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { uploadLessonPlanSignature, getLessonPlanAssetUrl, uploadCouncilTeacherSignature } from './storage.js'
 import { updateMySignature } from './council-api.js'
+import { openHtmlPrintOverlay } from './print-overlay.js'
 
 const esc = value => String(value ?? '').replace(/[&<>'"]/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[ch])
 const asText = value => Array.isArray(value) ? value.map(v => typeof v === 'string' ? v : JSON.stringify(v)).join('\n') : value == null ? '' : String(value)
@@ -33,11 +34,12 @@ function parseReflectionNote(value) {
 function reflectionNoteFieldHTML(key, label, value) {
   const note = parseReflectionNote(value)
   const fontOptions = REFLECTION_NOTE_FONTS.map(([font, title]) => `<option value="${esc(font)}" ${note.font === font ? 'selected' : ''}>${esc(title)}</option>`).join('')
-  return `<label class="text-xs font-bold text-gray-500">${label}<div data-reflection-note="${key}" data-initial-value="${esc(value ?? '')}" class="mt-1 rounded-xl border border-gray-200 p-2">
+  return `<div class="text-xs font-bold text-gray-500"><span>${label}</span><div data-reflection-note="${key}" data-initial-value="${esc(value ?? '')}" class="mt-1 rounded-xl border border-gray-200 p-2">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-2"><span class="text-[10px] font-normal text-gray-400">${note.mode === 'draw' ? 'บันทึกลายมือ' : 'บันทึกข้อความ'}</span><button data-note-open type="button" class="px-2.5 py-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[10px] font-bold">เปิดพื้นที่เขียน</button></div>
     <div class="flex flex-wrap items-center gap-2 mb-2"><select data-note-mode class="border rounded-lg px-2 py-1.5 text-[11px] bg-white font-normal"><option value="type" ${note.mode === 'type' ? 'selected' : ''}>พิมพ์ข้อความ</option><option value="draw" ${note.mode === 'draw' ? 'selected' : ''}>เขียนด้วยลายมือ</option></select><label class="flex items-center gap-1 text-[10px] font-normal">สี <input data-note-color type="color" value="${note.color}" class="w-8 h-7 p-0.5 border rounded"></label><select data-note-font class="border rounded-lg px-2 py-1.5 text-[10px] bg-white font-normal">${fontOptions}</select></div>
     <textarea data-note-text rows="4" class="w-full border rounded-lg p-2 font-normal resize-y" style="color:${note.color};font-family:'${esc(note.font)}',sans-serif;${note.mode === 'draw' ? 'display:none' : ''}" placeholder="${label}">${esc(note.text)}</textarea>
-    <div data-note-draw-wrap style="${note.mode === 'draw' ? '' : 'display:none'}"><canvas data-note-canvas width="1000" height="240" class="w-full h-24 border rounded-lg bg-white touch-none"></canvas><button data-note-clear type="button" class="mt-1 text-[10px] text-red-500 font-normal">ล้างลายมือ</button></div>
-  </div></label>`
+    <div data-note-draw-wrap style="${note.mode === 'draw' ? '' : 'display:none'}"><canvas data-note-canvas width="1000" height="240" class="w-full h-24 border rounded-lg bg-white touch-none"></canvas><div class="mt-1 flex gap-3"><button data-note-undo type="button" class="text-[10px] text-indigo-600 font-normal">↶ ย้อนการเขียน</button><button data-note-clear type="button" class="text-[10px] text-red-500 font-normal">ล้างลายมือ</button></div></div>
+  </div></div>`
 }
 function bindReflectionNote(box) {
   const mode = box.querySelector('[data-note-mode]')
@@ -49,6 +51,7 @@ function bindReflectionNote(box) {
   const ctx = canvas.getContext('2d')
   let drawing = false
   let hasDrawing = false
+  const undoStack = []
   ctx.lineWidth = 3
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
@@ -67,7 +70,7 @@ function bindReflectionNote(box) {
     return { x: (event.clientX - rect.left) * canvas.width / rect.width, y: (event.clientY - rect.top) * canvas.height / rect.height }
   }
   canvas.addEventListener('pointerdown', event => {
-    event.preventDefault(); event.stopPropagation(); drawing = true; hasDrawing = true; canvas.setPointerCapture?.(event.pointerId)
+    event.preventDefault(); event.stopPropagation(); undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height)); if (undoStack.length > 20) undoStack.shift(); drawing = true; hasDrawing = true; canvas.setPointerCapture?.(event.pointerId)
     const p = point(event); ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.strokeStyle = color.value
   })
   canvas.addEventListener('pointermove', event => {
@@ -78,7 +81,14 @@ function bindReflectionNote(box) {
   mode.addEventListener('change', syncMode)
   color.addEventListener('input', () => { ctx.strokeStyle = color.value; paintTextStyle() })
   font.addEventListener('change', paintTextStyle)
-  box.querySelector('[data-note-clear]').addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); hasDrawing = false })
+  box.querySelector('[data-note-undo]').addEventListener('click', () => {
+    const previous = undoStack.pop()
+    if (previous) ctx.putImageData(previous, 0, 0)
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+    hasDrawing = false
+    for (let i = 3; i < pixels.length; i += 4) { if (pixels[i] > 0) { hasDrawing = true; break } }
+  })
+  box.querySelector('[data-note-clear]').addEventListener('click', () => { ctx.clearRect(0, 0, canvas.width, canvas.height); undoStack.length = 0; hasDrawing = false })
   const note = parseReflectionNote(box.dataset.initialValue ?? '')
   if (note.drawing) {
     const image = new Image()
@@ -701,7 +711,7 @@ function signaturePadHTML(key, label, name, currentUrl, savedOptions = [], sourc
     ? `<label data-sign-saved-wrap class="block text-[10px] font-bold text-gray-500 mt-2">เลือกลายเซ็นที่บันทึกไว้<select data-sign-saved class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white font-normal">${savedOptions.map((option, index) => `<option value="${esc(option.path)}" data-name="${esc(option.name)}" data-preview="${esc(option.previewUrl)}" ${option.selected ? 'selected' : index === 0 && !savedOptions.some(item => item.selected) ? 'selected' : ''}>${esc(option.label)}</option>`).join('')}</select></label>`
     : `<p data-sign-no-saved class="text-[10px] text-amber-600 mt-2">ยังไม่มีลายเซ็นที่บันทึกไว้สำหรับรายการนี้</p>`
   return `<div class="rounded-2xl border border-gray-200 p-3" data-sign-role="${key}">
-    <p class="text-xs font-bold text-gray-700">${label}</p><input data-sign-name class="mt-1 border rounded-lg px-2 py-1 text-xs w-full" value="${esc(name)}" placeholder="ชื่อผู้ลงนาม">
+    <div class="flex items-center justify-between gap-2"><p class="text-xs font-bold text-gray-700">${label}</p><button data-sign-open type="button" class="px-2 py-1 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[10px] font-bold">เปิดพื้นที่ลงชื่อ</button></div><input data-sign-name class="mt-1 border rounded-lg px-2 py-1 text-xs w-full" value="${esc(name)}" placeholder="ชื่อผู้ลงนาม">
     <label class="block text-[10px] font-bold text-gray-500 mt-2">การลงชื่อ<select data-sign-source class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white"><option value="saved" ${sourceMode === 'saved' ? 'selected' : ''} ${savedOptions.length ? '' : 'disabled'}>ใช้ลายเซ็นที่บันทึกไว้</option><option value="custom" ${sourceMode === 'custom' ? 'selected' : ''}>วาด/พิมพ์/อัปโหลดลายเซ็น</option><option value="blank" ${sourceMode === 'blank' ? 'selected' : ''}>เว้นช่องไว้เซ็นเอง</option></select></label>
     ${savedSelect}
     <img data-sign-current src="${esc(currentUrl ?? '')}" class="h-14 w-28 object-contain border rounded-lg bg-white mt-2" ${currentUrl && sourceMode === 'saved' ? '' : 'hidden'}>
@@ -715,7 +725,7 @@ function signaturePadHTML(key, label, name, currentUrl, savedOptions = [], sourc
       <label class="col-span-2 text-[10px] font-bold text-gray-500">รูปแบบตัวอักษร<select data-sign-font class="mt-1 w-full border rounded-lg px-2 py-1.5 bg-white font-normal"><option value="Sarabun, sans-serif">Sarabun</option><option value="Tahoma, sans-serif">Tahoma</option><option value="serif">Serif</option><option value="cursive">Cursive</option></select></label>
     </div>
     <canvas data-sign-canvas width="700" height="180" class="mt-2 w-full h-24 border rounded-xl bg-white touch-none"></canvas>
-    <div class="flex items-center justify-between gap-2 mt-2"><button data-sign-clear type="button" class="text-[11px] text-red-500">ล้างที่วาด</button><label class="text-[11px] font-bold text-indigo-600 cursor-pointer">📤 อัปโหลดภาพ<input data-sign-file type="file" accept="image/png,image/jpeg,image/webp" class="hidden"></label></div>
+    <div class="flex items-center justify-between gap-2 mt-2"><div class="flex gap-3"><button data-sign-undo type="button" class="text-[11px] text-indigo-600">↶ ย้อนการเขียน</button><button data-sign-clear type="button" class="text-[11px] text-red-500">ล้างที่วาด</button></div><label class="text-[11px] font-bold text-indigo-600 cursor-pointer">📤 อัปโหลดภาพ<input data-sign-file type="file" accept="image/png,image/jpeg,image/webp" class="hidden"></label></div>
     <p data-sign-file-name class="text-[10px] text-gray-400 mt-1"></p>
     ${key === 'teacher' ? `<label class="mt-2 flex items-start gap-2 text-[10px] text-gray-600"><input data-sign-save-profile type="checkbox" class="mt-0.5" ${saveProfile ? 'checked' : ''}><span>บันทึกลายเซ็นนี้ในโปรไฟล์ครู เพื่อเลือกใช้กับเอกสารครั้งต่อไป</span></label>` : ''}
     </div>
@@ -732,6 +742,7 @@ function bindPad(box) {
   const typedControls = box.querySelector('[data-sign-typed-controls]'), typed = box.querySelector('[data-sign-typed]'), font = box.querySelector('[data-sign-font]')
   ctx.strokeStyle = color.value; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round'
   let drawing = false, drawn = false, last = null
+  const undoStack = []
   const renderTyped = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     const value = typed.value.trim()
@@ -749,7 +760,7 @@ function bindPad(box) {
     else { ctx.clearRect(0, 0, canvas.width, canvas.height); drawn = false; ctx.strokeStyle = color.value }
   }
   const pos = e => { const r = canvas.getBoundingClientRect(), p = e.touches?.[0] ?? e; return { x:(p.clientX-r.left)*canvas.width/r.width, y:(p.clientY-r.top)*canvas.height/r.height } }
-  const start = e => { if (mode.value !== 'draw') return; e.preventDefault(); e.stopPropagation(); drawing = true; drawn = true; last = pos(e) }
+  const start = e => { if (mode.value !== 'draw') return; e.preventDefault(); e.stopPropagation(); undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height)); if (undoStack.length > 20) undoStack.shift(); drawing = true; drawn = true; last = pos(e) }
   const move = e => { if (!drawing) return; e.preventDefault(); e.stopPropagation(); const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p }
   const end = e => { e?.stopPropagation(); drawing = false }
   canvas.addEventListener('pointerdown', start); canvas.addEventListener('pointermove', move); canvas.addEventListener('pointerup', end); canvas.addEventListener('pointerleave', end)
@@ -771,7 +782,14 @@ function bindPad(box) {
   saved?.addEventListener('change', updateSource)
   color.addEventListener('input', () => { ctx.strokeStyle = color.value; if (mode.value === 'type') renderTyped() })
   typed.addEventListener('input', renderTyped); font.addEventListener('change', renderTyped)
-  box.querySelector('[data-sign-clear]').addEventListener('click', () => { ctx.clearRect(0,0,canvas.width,canvas.height); if (mode.value === 'type') typed.value = ''; drawn=false })
+  box.querySelector('[data-sign-undo]').addEventListener('click', () => {
+    const previous = undoStack.pop()
+    if (previous) ctx.putImageData(previous, 0, 0)
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+    drawn = false
+    for (let i = 3; i < pixels.length; i += 4) { if (pixels[i] > 0) { drawn = true; break } }
+  })
+  box.querySelector('[data-sign-clear]').addEventListener('click', () => { ctx.clearRect(0,0,canvas.width,canvas.height); undoStack.length = 0; if (mode.value === 'type') typed.value = ''; drawn=false })
   box.querySelector('[data-sign-file]').addEventListener('change', e => { box.querySelector('[data-sign-file-name]').textContent = e.target.files[0]?.name ?? '' })
   updateSource()
   return {
@@ -837,11 +855,9 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept, semesterS
     const style = `color:${note.color};font-family:'${note.font}',sans-serif`
     return `<section class="ruled"><div class="rule title">${title}</div>${textLines.map(line => `<div class="rule" contenteditable="true" spellcheck="true" style="${style}">${esc(line)}</div>`).join('')}${Array.from({ length: Math.max(1, lines - textLines.length) }, () => '<div class="rule" contenteditable="true" spellcheck="true"></div>').join('')}</section>`
   }
-  const w = window.open('', '_blank')
-  if (!w) { showToast('เบราว์เซอร์บล็อกหน้าต่างพิมพ์ กรุณาอนุญาต Pop-up', 'warning'); return }
-  w.document.write(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(plan.title)}</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Itim&family=Mali:wght@400;500&family=Sriracha&display=swap" rel="stylesheet"><style>
+  const html = `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${esc(plan.title)}</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Itim&family=Mali:wght@400;500&family=Sriracha&display=swap" rel="stylesheet"><style>
     @page{size:A4;margin:0}*{box-sizing:border-box}body{font-family:"Sarabun",Tahoma,sans-serif;color:#111;margin:0;font-size:10.5px;line-height:1.42;background:#eef2f7}.print-toolbar{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:12px;padding:10px;background:#172b4d;color:#fff;font-size:13px}.print-toolbar label{display:flex;align-items:center;gap:7px}.print-toolbar input{padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;color:#111;background:#fff}.print-toolbar button{padding:7px 14px;border:0;border-radius:7px;background:#16a36a;color:#fff;font-weight:700;cursor:pointer}.page{width:210mm;height:297mm;padding:9mm 11mm;margin:8mm auto;background:#fff;box-shadow:0 2px 16px #0002;overflow:hidden;position:relative}.head{text-align:center}.logo{width:15mm;height:15mm;object-fit:contain}.head h1{font-size:18px;line-height:1.15;margin:1mm 0}.head h2{font-size:13px;line-height:1.15;margin:0 0 1mm}.head p{font-size:10.5px;margin:.5mm 0}.meta{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid #176b3a;border-bottom:1px solid #176b3a;padding:1.7mm 2mm;margin-top:2.5mm;font-size:10.5px}.meta span:nth-child(2){text-align:center}.meta span:last-child{text-align:right}.cols{display:block;width:100%;height:calc(100% - 47mm);overflow:hidden;margin-top:3mm}.cols>div{width:48.5%;display:flex;flex-direction:column;gap:4mm;height:100%;max-height:100%;overflow:hidden;box-sizing:border-box}.cols>div:first-child{float:left}.cols>div:last-child{float:right}.box{border:.8px solid #17743d;border-radius:1.2mm;margin:0;overflow:hidden;flex-shrink:0}.box h3{font-size:11px;font-weight:500;margin:0;padding:1.5mm 2.2mm;background:#d8f6e2;color:#145f35;border-bottom:.8px solid #17743d}.box .content{padding:1.8mm 2.2mm;line-height:1.5;min-height:15mm;white-space:pre-wrap;outline:none}.activities{min-height:80mm!important}.sign-pair{display:grid;grid-template-columns:1fr 1fr;gap:7mm;margin-top:10mm}.sign-pair.single{grid-template-columns:1fr}.sig{text-align:center;font-size:9px;line-height:1.55}.sig-img{height:12mm;display:flex;align-items:flex-end;justify-content:center}.sig-img img{max-height:12mm;max-width:35mm;object-fit:contain}.sig-sign-row{display:flex;align-items:center;justify-content:center;gap:1.5mm}.sig-line{display:inline-block;width:31mm;border-bottom:1px dotted #111;vertical-align:middle}.reflection-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:10mm 0 2mm}.ruled{margin-top:0}.rule{min-height:7mm;border-bottom:.6px solid #8ca1bd;padding:1mm 2mm;color:#111;outline:none}.rule.title{color:#176b3a}.drawing-rule{height:22mm;display:flex;align-items:center}.note-drawing{width:100%;height:100%;object-fit:contain}.suggest-title{border-bottom:1px solid #111;font-size:10.5px;padding-bottom:1mm;margin:5mm 0 2mm}.dept{position:absolute;left:14%;right:14%;bottom:8mm;width:auto;margin:0;text-align:center;font-size:9.5px;line-height:1.6}.dept .sig-img{height:12mm}.dept-line{display:inline-block;width:38mm;border-bottom:1px dotted #111;vertical-align:middle}.dept-date{display:inline-block;min-width:34mm;min-height:1em;border-bottom:1px dotted #111;outline:none}@media print{body{background:#fff;print-color-adjust:exact;-webkit-print-color-adjust:exact}.print-toolbar{display:none}.page{margin:0;box-shadow:none}}</style></head><body>
-    <div class="print-toolbar"><span>คลิกข้อความในเอกสารเพื่อแก้ไขก่อนพิมพ์</span><label>วันที่สอน<input id="lesson-date" type="date" value="${esc(initialDate)}"></label><button id="print-document" type="button">🖨️ พิมพ์เอกสาร</button></div><div class="page">
+    <div class="print-toolbar"><span>แก้ไขบันทึกได้จากหน้าก่อนพรีวิว · iPad กดปุ่มเพื่อเปิดเมนูพิมพ์หรือบันทึก PDF</span><label>วันที่สอน<input id="lesson-date" type="date" value="${esc(initialDate)}"></label><button id="print-document" type="button">🖨️ พิมพ์ / บันทึก PDF</button></div><div class="page">
     <div class="head"><img class="logo" src="${esc(logoUrl)}"><h1>แผนการจัดการเรียนรู้(หน้าเดียว)</h1><h2>กลุ่มสาระการเรียนรู้${esc(learningArea)}</h2><p>วิชา ${esc(meta.subject_name)} รหัสวิชา ${esc(meta.subject_code)} ชั้นมัธยมศึกษาปีที่ ${esc(className)}</p><p contenteditable="true" spellcheck="true">${esc(lessonHeading || 'เรื่อง ................................')}</p></div>
     <div class="meta"><span>ครั้งที่ ${plan.session_number || 1} · ${periodCount} คาบ</span><span>เวลา ${duration}</span><span>วันที่ <span data-plan-date>${date}</span></span></div>
     <div class="cols"><div>
@@ -856,8 +872,8 @@ function printLessonPlan({ plan, cls, teacher, reflection, urls, dept, semesterS
       <div class="suggest-title">ข้อเสนอแนะ</div>${ruled('', reflection?.suggestions, 3)}
     </div></div>
     <div class="dept"><div class="sig-img">${urls.deptHead ? `<img src="${esc(urls.deptHead)}">` : ''}</div>ลงชื่อ <span class="dept-line"></span> หัวหน้ากลุ่มสาระ<div contenteditable="true" spellcheck="false">( ${esc(reflection?.dept_head_name || dept?.head_name || '................................')} )</div><div>วันที่ <span class="dept-date" contenteditable="true" spellcheck="false">........................</span></div></div>
-  </div><script>const dateInput=document.querySelector('#lesson-date');dateInput.addEventListener('input',()=>{const value=dateInput.value;const label=value?new Date(value+'T00:00:00').toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'}):'........................';document.querySelector('[data-plan-date]').textContent=label;document.querySelectorAll('[data-sign-date]').forEach(node=>node.textContent=label)});document.querySelector('#print-document').addEventListener('click',()=>window.print())<\/script></body></html>`)
-  w.document.close()
+  </div><script>const dateInput=document.querySelector('#lesson-date');dateInput.addEventListener('input',()=>{const value=dateInput.value;const label=value?new Date(value+'T00:00:00').toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'2-digit'}):'........................';document.querySelector('[data-plan-date]').textContent=label;document.querySelectorAll('[data-sign-date]').forEach(node=>node.textContent=label)});document.querySelector('#print-document').addEventListener('click',()=>window.print())<\/script></body></html>`
+  openHtmlPrintOverlay(html)
 }
 
 export function openLessonPlansPrint({ plans = [], subject = {}, teacher = {}, roomNames = [], roomGroups = [], semester, academicYear, departmentHead = null }) {
@@ -1105,6 +1121,55 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
       : step.box.querySelector('[data-sign-canvas], [data-sign-typed], [data-sign-name]')
     const beginWrite = index => { if (!writeSteps[index]) return; activeWrite = index; writeLocked = true; applyWriteLock() }
     const moveWrite = delta => { if (!writeSteps.length) return; beginWrite((activeWrite + delta + writeSteps.length) % writeSteps.length); const target = targetForStep(writeSteps[activeWrite]); target?.focus?.() }
+    const openFocusedEditor = step => {
+      if (!step || document.getElementById('lp-focused-write-modal')) return
+      const box = step.box
+      const placeholder = document.createComment('focused lesson-plan editor')
+      box.before(placeholder)
+      const overlay = document.createElement('div')
+      overlay.id = 'lp-focused-write-modal'
+      overlay.className = 'fixed inset-0 z-[150] flex items-center justify-center bg-black/60 p-3 sm:p-5'
+      overlay.innerHTML = `<div class="w-full max-w-3xl max-h-[94vh] overflow-y-auto rounded-3xl bg-white p-4 shadow-2xl sm:p-6">
+        <div class="mb-4 flex items-start justify-between gap-3"><div><h3 class="text-base font-extrabold text-gray-800">✍️ ${esc(step.label)}</h3><p class="mt-1 text-xs text-gray-500">พิมพ์ข้อความหรือเขียนด้วยนิ้ว/Apple Pencil แล้วกดบันทึกที่หน้าหลัก</p></div><button data-focused-close type="button" class="h-10 w-10 flex-shrink-0 rounded-xl border border-gray-200 text-gray-500">✕</button></div>
+        <div data-focused-editor-host></div>
+        <div class="mt-4 flex justify-end"><button data-focused-done type="button" class="rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-bold text-white">เสร็จแล้ว</button></div>
+      </div>
+      <style>
+        #lp-focused-write-modal [data-note-text]{min-height:32vh;font-size:16px}
+        #lp-focused-write-modal [data-note-canvas]{height:36vh!important;min-height:220px}
+        #lp-focused-write-modal [data-sign-canvas]{height:32vh!important;min-height:200px}
+        #lp-focused-write-modal [data-sign-open]{display:none}
+      </style>`
+      const close = () => {
+        placeholder.replaceWith(box)
+        overlay.remove()
+        applyWriteLock()
+      }
+      overlay.querySelector('[data-focused-editor-host]').append(box)
+      overlay.querySelector('[data-focused-close]').addEventListener('click', close)
+      overlay.querySelector('[data-focused-done]').addEventListener('click', close)
+      overlay.addEventListener('click', event => { if (event.target === overlay) close() })
+      document.body.append(overlay)
+      const index = writeSteps.indexOf(step)
+      if (index >= 0) beginWrite(index)
+    }
+    writeSteps.forEach(step => {
+      step.box.querySelector('[data-sign-open], [data-note-open]')?.addEventListener('click', event => {
+        event.stopPropagation()
+        openFocusedEditor(step)
+      })
+      const targets = step.box.dataset.reflectionNote
+        ? step.box.querySelectorAll('[data-note-text], [data-note-canvas]')
+        : step.box.querySelectorAll('[data-sign-canvas], [data-sign-typed], [data-sign-name]')
+      for (const target of targets) {
+        target.addEventListener('pointerdown', event => {
+          if (step.box.closest('#lp-focused-write-modal')) return
+          event.preventDefault()
+          event.stopImmediatePropagation()
+          openFocusedEditor(step)
+        }, { capture: true })
+      }
+    })
     writeSteps.forEach((step, index) => {
       const targets = step.box.dataset.reflectionNote ? [step.box.querySelector('[data-note-text]'), step.box.querySelector('[data-note-canvas]')] : [step.box.querySelector('[data-sign-canvas]'), step.box.querySelector('[data-sign-typed]'), step.box.querySelector('[data-sign-name]')]
       targets.filter(Boolean).forEach(target => {

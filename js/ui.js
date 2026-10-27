@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1019'
+import { APP_VERSION } from './version.js?v=10.22.1020'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1020': [
+    '✍️ แผนการสอน: เปิดตัวแก้ไขบันทึกและลายเซ็นในหน้าต่างกลางจอ พร้อมปุ่มย้อนการเขียน',
+    '📄 แสดงพรีวิวในหน้าเดิมและเปิดเมนูพิมพ์/บันทึก PDF บน iPad โดยไม่เรียกหน้าต่าง Pop-up',
+  ],
   '10.22.1019': [
     'ว่าที่ประธานจัดการบอร์ดหาเสียงของตัวเองได้ บันทึกร่าง ส่งตรวจ และเพิ่มคลิปสั้นก่อนขึ้นเผยแพร่',
     'เพิ่มคิวตรวจบอร์ดหาเสียงสำหรับแอดมิน/ครูที่ปรึกษาสภา และประกาศเฉพาะว่าที่ประธานทุกคน',
