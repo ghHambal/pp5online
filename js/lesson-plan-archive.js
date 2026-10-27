@@ -2,6 +2,7 @@ import {
   getLessonPlanReflectionsForPlans,
   getLessonPlanArchives,
   getLessonPlanDriveSettings,
+  getLessonPlans,
   upsertLessonPlanDriveSettings,
   upsertLessonPlanReflection,
 } from './api.js'
@@ -59,13 +60,16 @@ export function plansForRoomWeek(plans, classId, weekNo) {
     .sort((a, b) => Number(a.session_in_week ?? a.source_json?.session_in_week ?? 1) - Number(b.session_in_week ?? b.source_json?.session_in_week ?? 1) || Number(a.session_number ?? 0) - Number(b.session_number ?? 0))
 }
 
-export function archiveReadiness(plan, reflection) {
+export function archiveReadiness(plan, reflection, weekNo = null) {
   const missing = []
   if (!iso(reflection?.lesson_date)) missing.push('วันที่สอน')
   if (!text(reflection?.reflection_text).trim()) missing.push('ผลการจัดการเรียนรู้')
   if (classHeadEnabled(plan) && !reflection?.class_head_signature_path) missing.push('ลายเซ็นหัวหน้าห้อง')
   if (!reflection?.teacher_signature_path && !reflection?.signature_data_url) missing.push('ลายเซ็นครูผู้สอน')
-  if (!reflection?.dept_head_signature_path) missing.push('ลายเซ็นหัวหน้ากลุ่มสาระ')
+  const deptPreference = plan?.source_json?.signature_preferences?.['dept-head']
+  const deptSessionPreference = weekNo == null ? null : deptPreference?.session_overrides?.[String(weekNo)]
+  const deptSignatureMode = deptSessionPreference?.mode ?? deptPreference?.mode
+  if (deptSignatureMode !== 'blank' && !reflection?.dept_head_signature_path) missing.push('ลายเซ็นหัวหน้ากลุ่มสาระ')
   return { ready: missing.length === 0, missing }
 }
 
@@ -188,6 +192,7 @@ function showArchiveConfirm(file, weekNo) {
 
 export async function openLessonPlanArchiveCenter({ subject, teacher, classes = [], plans = [], semesterStart, semesterEnd, termSchedule = [], scheduleLinks = [], academicYear, semester }) {
   document.getElementById('lesson-plan-archive-modal')?.remove()
+  plans = await getLessonPlans(subject.id).catch(() => plans)
   const weeks = [...new Set(plans.flatMap(plan => { const start = Number(plan.week_start); const end = Number(plan.week_end ?? start); return Number.isInteger(start) ? Array.from({ length: Math.max(1, end - start + 1) }, (_, i) => start + i) : [] }))].sort((a, b) => a - b)
   if (!weeks.length) { showToast('ยังไม่มีแผนการสอนสำหรับจัดเก็บ', 'warning'); return }
   let driveSettings = await getLessonPlanDriveSettings(teacher?.id, academicYear, semester).catch(() => null)
@@ -206,7 +211,7 @@ export async function openLessonPlanArchiveCenter({ subject, teacher, classes = 
     const reflectionMap = new Map(reflections.map(item => [`${item.lesson_plan_id}:${item.class_id}:${selectedWeek}`, item]))
     const rows = [...classes].sort(sortRooms).map(cls => {
       const roomPlans = plansForRoomWeek(plans, cls.id, selectedWeek); const days = scheduleDaysForClass(cls.id, termSchedule, scheduleLinks); const used = new Set()
-      const items = roomPlans.map(plan => { const reflection = reflectionMap.get(`${plan.id}:${cls.id}:${selectedWeek}`) ?? null; const date = iso(reflection?.lesson_date) || suggestedDate(plan, selectedWeek, semesterStart, semesterEnd, days, used); if (date) used.add(date); return { plan, reflection, date, readiness: archiveReadiness(plan, reflection) } })
+      const items = roomPlans.map(plan => { const reflection = reflectionMap.get(`${plan.id}:${cls.id}:${selectedWeek}`) ?? null; const date = iso(reflection?.lesson_date) || suggestedDate(plan, selectedWeek, semesterStart, semesterEnd, days, used); if (date) used.add(date); return { plan, reflection, date, readiness: archiveReadiness(plan, reflection, selectedWeek) } })
       return { cls, plans: roomPlans, items, days }
     }).filter(row => row.items.length)
     current = { rows, items: rows.flatMap(row => row.items), roomCount: rows.length, planCount: rows.reduce((n, row) => n + row.items.length, 0) }

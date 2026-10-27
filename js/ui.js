@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1022'
+import { APP_VERSION } from './version.js?v=10.22.1023'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1023': [
+    '📦 ศูนย์จัดเก็บ Drive โหลดการตั้งค่าล่าสุดของแต่ละแผนก่อนตรวจความพร้อม',
+    'ยกเว้นลายเซ็นหัวหน้ากลุ่มสาระเมื่อกำหนดให้เว้นช่องเซ็นเอง โดยยังตรวจข้อมูลและลายเซ็นที่จำเป็นรายการอื่นตามปกติ',
+  ],
   '10.22.1022': [
     '✍️ เพิ่มปากกาลูกลื่น ปากกาเมจิก ไฮไลต์ และยางลบ พร้อมปรับขนาดหัวปากกาในช่องบันทึกและช่องลงชื่อ',
     'จำชนิดและขนาดปากกาของบันทึกไว้เมื่อบันทึก และคงการย้อนเขียน/ล้างลายมือ',
