@@ -1141,6 +1141,8 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
       const close = () => {
         placeholder.replaceWith(box)
         overlay.remove()
+        writeLocked = false
+        activeWrite = -1
         applyWriteLock()
       }
       overlay.querySelector('[data-focused-editor-host]').append(box)
@@ -1171,7 +1173,11 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     writeSteps.forEach((step, index) => {
       const targets = step.box.dataset.reflectionNote ? [step.box.querySelector('[data-note-text]'), step.box.querySelector('[data-note-canvas]')] : [step.box.querySelector('[data-sign-canvas]'), step.box.querySelector('[data-sign-typed]'), step.box.querySelector('[data-sign-name]')]
       targets.filter(Boolean).forEach(target => {
-        target.addEventListener('pointerdown', event => { event.stopPropagation(); beginWrite(index) }, { capture: true })
+        target.addEventListener('pointerdown', event => {
+          if (step.box.closest('#lp-focused-write-modal')) return
+          event.stopPropagation()
+          beginWrite(index)
+        }, { capture: true })
         target.addEventListener('focus', () => beginWrite(index))
       })
     })

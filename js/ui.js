@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1020'
+import { APP_VERSION } from './version.js?v=10.22.1021'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1021': [
+    'แก้การเขียนด้วยนิ้ว/Apple Pencil ในตัวแก้ไขบันทึกและลายเซ็น โดยไม่ให้ตัวล็อกเดิมบังการแตะบน canvas',
+    'ปิดตัวแก้ไขแล้วคืนสถานะการเขียนและปลดล็อกส่วนอื่นโดยอัตโนมัติ',
+  ],
   '10.22.1020': [
     '✍️ แผนการสอน: เปิดตัวแก้ไขบันทึกและลายเซ็นในหน้าต่างกลางจอ พร้อมปุ่มย้อนการเขียน',
     '📄 แสดงพรีวิวในหน้าเดิมและเปิดเมนูพิมพ์/บันทึก PDF บน iPad โดยไม่เรียกหน้าต่าง Pop-up',
