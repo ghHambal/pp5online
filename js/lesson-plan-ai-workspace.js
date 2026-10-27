@@ -981,7 +981,7 @@ export function openLessonPlansPrint({ plans = [], subject = {}, teacher = {}, r
   openHtmlPrintOverlay(html)
 }
 
-export async function openLessonPlanDocument({ plan, cls, teacher, classId, currentWeek, semesterStart = null, semesterEnd = null, scheduledDays = [] }) {
+export async function openLessonPlanDocument({ plan, cls, teacher, classId, currentWeek, semesterStart = null, semesterEnd = null, scheduledDays = [], onSaved = null }) {
   document.getElementById('lp-document-modal')?.remove()
   if (!document.getElementById('lp-reflection-fonts')) {
     const fonts = document.createElement('link')
@@ -1025,7 +1025,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     .filter(item => Number(item.class_id) === Number(classId) && item.class_head_signature_path && Number(item.lesson_plan_id) !== Number(plan.id))
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')) || Number(b.week_no || 0) - Number(a.week_no || 0))[0] ?? null
   let weekNo = currentWeek >= plan.week_start && currentWeek <= plan.week_end ? currentWeek : plan.week_start
-  const m = document.createElement('div'); m.id='lp-document-modal'; m.className='fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-3'; document.body.appendChild(m)
+  const m = document.createElement('div'); m.id='lp-document-modal'; m.className='fixed inset-0 z-[140] bg-black/60 flex items-center justify-center p-3'; document.body.appendChild(m)
 
   const render = async () => {
     const reflection = await getLessonPlanReflection(plan.id, classId, weekNo).catch(() => null)
@@ -1283,6 +1283,7 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
         await updateLessonPlan(plan.id, { source_json: nextSource })
         plan.source_json = nextSource
       }
+      await onSaved?.()
       return { reflection: saved, lessonDate: selectedLessonDate, weekNo: selectedWeek }
     }
     m.querySelector('#lp-doc-save').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='กำลังบันทึก...';try{await save();showToast('บันทึกเอกสารและลายเซ็นแล้ว ✅','success');await render()}catch(err){showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)),'error');b.disabled=false;b.textContent='💾 บันทึกทั้งหมด'}})

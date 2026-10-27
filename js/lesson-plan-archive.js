@@ -9,6 +9,7 @@ import {
 import { getLessonPlanAssetUrl } from './storage.js'
 import { supabase } from './supabase.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { openLessonPlanDocument } from './lesson-plan-ai-workspace.js'
 import { toPng } from 'html-to-image'
 import { jsPDF } from 'jspdf'
 
@@ -206,6 +207,10 @@ export async function openLessonPlanArchiveCenter({ subject, teacher, classes = 
   modal.querySelector('[data-archive-close]').addEventListener('click', close)
   modal.addEventListener('click', event => { if (event.target === modal) close() })
   const build = async () => {
+    const status = modal.querySelector('[data-archive-status]')
+    status.textContent = `กำลังโหลดแผนและบันทึกของสัปดาห์ที่ ${selectedWeek}…`
+    modal.querySelector('[data-archive-body]').innerHTML = '<div class="p-10 text-center text-sm text-gray-500">กำลังโหลดข้อมูลของสัปดาห์ที่เลือก…</div>'
+    plans = await getLessonPlans(subject.id).catch(() => plans)
     const allForWeek = plans.filter(plan => Number(plan.week_start) <= selectedWeek && Number(plan.week_end ?? plan.week_start) >= selectedWeek)
     const reflections = await getLessonPlanReflectionsForPlans(allForWeek.map(plan => plan.id), selectedWeek).catch(() => [])
     const reflectionMap = new Map(reflections.map(item => [`${item.lesson_plan_id}:${item.class_id}:${selectedWeek}`, item]))
@@ -217,11 +222,18 @@ export async function openLessonPlanArchiveCenter({ subject, teacher, classes = 
     current = { rows, items: rows.flatMap(row => row.items), roomCount: rows.length, planCount: rows.reduce((n, row) => n + row.items.length, 0) }
     const missing = current.items.filter(item => !item.readiness.ready)
     const settingsMissing = !driveSettings?.enabled || !String(driveSettings.root_folder_id || '').trim()
-    modal.querySelector('[data-archive-status]').textContent = missing.length ? `ยังไม่พร้อม ${missing.length} รายการ · ต้องบันทึกข้อมูล/ลายเซ็นให้ครบก่อนส่ง Drive` : settingsMissing ? `พร้อมดาวน์โหลด ${current.planCount} แผน · กรุณาบันทึกโฟลเดอร์ Drive ส่วนตัวก่อนส่ง` : `พร้อมส่ง ${current.planCount} แผน ${current.roomCount} ห้อง`
+    status.textContent = missing.length ? `สัปดาห์ที่ ${selectedWeek} · ${current.planCount} แผน ${current.roomCount} ห้อง · ยังไม่พร้อม ${missing.length} รายการ` : settingsMissing ? `สัปดาห์ที่ ${selectedWeek} · พร้อมดาวน์โหลด ${current.planCount} แผน · กรุณาบันทึกโฟลเดอร์ Drive ส่วนตัวก่อนส่ง` : `สัปดาห์ที่ ${selectedWeek} · พร้อมส่ง ${current.planCount} แผน ${current.roomCount} ห้อง`
     modal.querySelector('[data-archive-settings-status]').textContent = settingsMissing ? 'ยังไม่ได้บันทึกโฟลเดอร์ส่วนตัวสำหรับภาคเรียนนี้' : `เชื่อมกับโฟลเดอร์ส่วนตัวแล้ว · ภาคเรียนที่ ${semester} ปีการศึกษา ${academicYear}`
     modal.querySelector('[data-archive-download]').disabled = !current.planCount || missing.length > 0
     modal.querySelector('[data-archive-drive]').disabled = !current.planCount || missing.length > 0 || settingsMissing
-    modal.querySelector('[data-archive-body]').innerHTML = rows.length ? `<div class="overflow-auto rounded-2xl border"><table class="w-full min-w-[760px] text-sm"><thead class="bg-gray-50 text-xs"><tr><th class="p-3 text-left">ห้อง</th><th class="p-3 text-left">แผน/ครั้งที่</th><th class="p-3 text-left">วันที่สอน</th><th class="p-3 text-left">สถานะ</th></tr></thead><tbody>${rows.flatMap(row => row.items.map(item => `<tr class="border-t"><td class="p-3 font-bold">${esc(roomName(row.cls))}</td><td class="p-3">${esc(item.plan.title || `ครั้งที่ ${item.plan.session_number || ''}`)}</td><td class="p-3"><input data-archive-date data-plan-id="${item.plan.id}" data-class-id="${row.cls.id}" type="date" value="${esc(item.date)}" class="rounded-lg border px-2 py-1.5" /></td><td class="p-3 ${item.readiness.ready ? 'text-emerald-700' : 'text-amber-700'}">${item.readiness.ready ? 'พร้อม' : `ขาด ${esc(item.readiness.missing.join(', '))}`}</td></tr>`)).join('')}</tbody></table></div>` : '<div class="p-10 text-center text-sm text-gray-400">ไม่พบแผนของสัปดาห์นี้สำหรับห้องที่ผูกไว้</div>'
+    modal.querySelector('[data-archive-body]').innerHTML = rows.length ? `<div class="overflow-auto rounded-2xl border"><table class="w-full min-w-[860px] text-sm"><thead class="bg-gray-50 text-xs"><tr><th class="p-3 text-left">ห้อง</th><th class="p-3 text-left">แผน/ครั้งที่</th><th class="p-3 text-left">วันที่สอน</th><th class="p-3 text-left">สถานะ</th><th class="p-3 text-left">เปิดแผน</th></tr></thead><tbody>${rows.flatMap(row => row.items.map(item => `<tr class="border-t"><td class="p-3 font-bold">${esc(roomName(row.cls))}</td><td class="p-3">${esc(item.plan.title || `ครั้งที่ ${item.plan.session_number || ''}`)}</td><td class="p-3"><input data-archive-date data-plan-id="${item.plan.id}" data-class-id="${row.cls.id}" type="date" value="${esc(item.date)}" class="rounded-lg border px-2 py-1.5" /></td><td class="p-3 ${item.readiness.ready ? 'text-emerald-700' : 'text-amber-700'}">${item.readiness.ready ? 'พร้อม' : `ขาด ${esc(item.readiness.missing.join(', '))}`}</td><td class="p-3"><button type="button" data-archive-open-plan data-plan-id="${item.plan.id}" data-class-id="${row.cls.id}" class="whitespace-nowrap rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50">📝 เปิดแผน</button></td></tr>`)).join('')}</tbody></table></div>` : '<div class="p-10 text-center text-sm text-gray-400">ไม่พบแผนของสัปดาห์นี้สำหรับห้องที่ผูกไว้</div>'
+    modal.querySelectorAll('[data-archive-open-plan]').forEach(button => button.addEventListener('click', () => {
+      const classId = Number(button.dataset.classId)
+      const row = current.rows.find(item => Number(item.cls.id) === classId)
+      const plan = row?.items.find(item => Number(item.plan.id) === Number(button.dataset.planId))?.plan
+      if (!plan || !row) return
+      openLessonPlanDocument({ plan, cls: row.cls, teacher, classId, currentWeek: selectedWeek, semesterStart, semesterEnd, scheduledDays: row.days, onSaved: refresh })
+    }))
     archives = await getLessonPlanArchives(subject.id, academicYear, semester).catch(() => [])
     const prior = archives.find(item => Number(item.week_no) === selectedWeek && item.status === 'completed')
     if (prior?.drive_url) modal.querySelector('[data-archive-body]').insertAdjacentHTML('afterbegin', `<div class="mb-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-xs text-emerald-800">จัดเก็บแล้วเมื่อ ${esc(new Date(prior.updated_at || prior.created_at).toLocaleString('th-TH'))} · <a class="underline font-bold" href="${esc(prior.drive_url)}" target="_blank" rel="noreferrer">เปิดไฟล์ใน Drive</a></div>`)
