@@ -1,8 +1,8 @@
 import { supabase } from './supabase.js'
 import { esc, toast } from './sports-portals.js'
 
-// ─── โหวตเลือกตั้งสภานักเรียน — หน้าแยกสำหรับจุดลงคะแนนที่มีครู/เจ้าหน้าที่คุมเท่านั้น ──────
-// ไม่ใช้ session ล็อกอินเลย (anon key + RPC ฝั่ง server ทำหน้าที่ตรวจสอบ+กันโหวตซ้ำแทน)
+// ─── โหวตเลือกตั้งสภานักเรียน — หน้าแยกสำหรับจุดลงคะแนนของโรงเรียน ──────
+// ผู้ใช้ไม่ต้องล็อกอิน; RPC ฝั่ง server ตรวจผู้มีสิทธิ์ ช่วงเวลา และการลงคะแนนซ้ำ
 // mirror pattern เดียวกับ js/shirt-vote-public.js
 
 const app = document.getElementById('council-election-app')
@@ -215,16 +215,6 @@ function subscribeTurnoutRealtime() {
     .subscribe()
 }
 
-async function ensureStaffSession() {
-  if (isSimulation) return true
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) return false
-  const { data, error } = await supabase.rpc('is_council_staff')
-  if (!error && data === true) return true
-  const teacher = await supabase.rpc('is_council_election_authenticated_teacher')
-  return !teacher.error && teacher.data === true
-}
-
 async function loadPageSettings() {
   if (isSimulation) {
     pageSettings = { header_text: 'โหมดจำลองการเลือกตั้ง', header_alignment: 'center', footer_text: 'ข้อมูลจำลองเท่านั้น ไม่บันทึกลงฐานข้อมูลจริง', countdown_enabled: true }
@@ -280,28 +270,8 @@ async function renderLanding() {
   renderPageChrome()
   renderCountdown()
 
-  app.querySelector('#btn-open-voting').addEventListener('click', async () => {
-    if (!isSimulation && !await ensureStaffSession()) {
-      app.innerHTML = `
-        <div class="bg-white rounded-2xl border p-6 text-center">
-          <p class="text-3xl mb-2">🔒</p><h2 class="font-bold text-lg">ใช้ลงคะแนนจากเครื่องห้องคอมที่เจ้าหน้าที่เข้าสู่ระบบไว้</h2>
-          <p class="text-sm text-[var(--muted)] mt-2">หากเป็นเครื่องประจำจุดเลือกตั้ง ให้ครูหรือผู้ดูแลเข้าสู่ระบบก่อนเริ่มใช้งาน</p>
-          <a class="block mt-4 py-3 rounded-xl bg-[var(--primary)] text-white font-bold" href="/pp5online/index.html?next=vt69.html">เข้าสู่ระบบครู/ผู้ดูแล</a>
-          <button id="btn-return-landing" class="mt-3 text-sm text-[var(--muted)]">กลับหน้าหลัก</button>
-        </div>`
-      app.querySelector('#btn-return-landing').addEventListener('click', renderLanding)
-      return
-    }
-    openStudentCodeModal()
-  })
-
-  app.querySelector('#btn-personnel-voting')?.addEventListener('click', async () => {
-    if (!await ensureStaffSession()) {
-      alert('กรุณาให้เจ้าหน้าที่ประจำจุดเข้าสู่ระบบก่อน แล้วจึงเปิดรายชื่อบุคลากร')
-      return
-    }
-    openPersonnelRoster()
-  })
+  app.querySelector('#btn-open-voting').addEventListener('click', openStudentCodeModal)
+  app.querySelector('#btn-personnel-voting')?.addEventListener('click', openPersonnelRoster)
 
 }
 
@@ -481,9 +451,8 @@ function openStudentCodeModal() {
     else {
       const result = await supabase.rpc('get_public_council_election_bundle_v2', { p_code: code })
       bundle = result.data
-      if (result.error) { errorEl.textContent = 'ระบบตรวจสอบไม่สำเร็จ กรุณาให้เจ้าหน้าที่เข้าสู่ระบบใหม่'; errorEl.classList.remove('hidden'); return }
+      if (result.error) { errorEl.textContent = 'ระบบตรวจสอบไม่สำเร็จ กรุณาลองอีกครั้ง'; errorEl.classList.remove('hidden'); return }
     }
-    if (bundle?.error === 'staff_login_required') { errorEl.textContent = 'เซสชันเจ้าหน้าที่หมดอายุ กรุณาเข้าสู่ระบบใหม่'; errorEl.classList.remove('hidden'); return }
     if (bundle?.error === 'student_not_found' || bundle?.error === 'voter_not_found') { errorEl.textContent = 'ไม่พบรหัสนักเรียนหรือครูนี้ กรุณาตรวจสอบอีกครั้ง'; errorEl.classList.remove('hidden'); return }
     if (bundle?.error === 'gender_unknown') { errorEl.textContent = 'ไม่พบข้อมูลเพศของนักเรียน ติดต่อผู้ดูแลระบบ'; errorEl.classList.remove('hidden'); return }
     renderConfirmCard(bundle, code, modal)
@@ -752,7 +721,7 @@ function renderVotePage(bundle, code) {
         data = result.data; error = result.error
       }
       if (error || data?.error) {
-        const msg = data?.error === 'already_voted' ? 'รหัสนี้ลงคะแนนไปแล้ว' : data?.error === 'election_not_open' ? 'ปิดโหวตแล้ว' : data?.error === 'staff_login_required' ? 'กรุณาเข้าสู่ระบบเจ้าหน้าที่ใหม่' : 'บันทึกไม่สำเร็จ กรุณาลองใหม่'
+        const msg = data?.error === 'already_voted' ? 'รหัสนี้ลงคะแนนไปแล้ว' : data?.error === 'election_not_open' ? 'ปิดโหวตแล้ว' : 'บันทึกไม่สำเร็จ กรุณาลองใหม่'
         toast(msg, 'error')
         btn.disabled = false; btn.textContent = '✅ ยืนยันลงคะแนน'
         return
