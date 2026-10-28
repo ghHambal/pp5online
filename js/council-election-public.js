@@ -10,6 +10,7 @@ const isSimulation = new URLSearchParams(location.search).get('mode') === 'simul
 const installPromptState = { event: null }
 const installDisplayMode = window.matchMedia?.('(display-mode: standalone)')
 let pageSettings = null
+let settingsAdminCode = ''
 let turnout = { total_students: 0, voted_count: 0, percent: 0, opens_at: null, closes_at: null }
 let staffPositionTurnout = { male: {}, female: {} }
 let simulationVotes = 537
@@ -57,6 +58,17 @@ const PUBLIC_TEXT_FIELDS = [
 ]
 const DEFAULT_PUBLIC_TEXTS = Object.fromEntries(PUBLIC_TEXT_FIELDS.map(([key, , value]) => [key, value]))
 function publicText(key) { return pageSettings?.public_texts?.[key] ?? DEFAULT_PUBLIC_TEXTS[key] ?? '' }
+
+async function callElectionAdmin(body) {
+  const { data, error } = await supabase.functions.invoke('council-election-admin-upload', { body })
+  if (error) {
+    let message = error.message || 'เชื่อมต่อบริการตั้งค่าไม่สำเร็จ'
+    try { message = (await error.context?.clone().json())?.error || message } catch {}
+    throw new Error(message)
+  }
+  if (data?.error) throw new Error(data.error)
+  return data
+}
 
 window.addEventListener('beforeinstallprompt', event => {
   event.preventDefault()
@@ -325,35 +337,34 @@ function openSettingsGate() {
   modal.className = 'fixed inset-0 z-[95] bg-black/60 flex items-center justify-center p-4'
   modal.innerHTML = `
     <form class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5 space-y-3">
-      <h2 class="font-extrabold text-lg">ยืนยันผู้ดูแลการเลือกตั้ง</h2>
-      <p class="text-sm text-[var(--muted)]">ต้องเข้าสู่ระบบด้วยบัญชีครูผู้ดูแลที่ได้รับสิทธิ์ ระบบจะตรวจสิทธิ์จากบัญชีโดยตรง</p>
+      <h2 class="font-extrabold text-lg">ตั้งค่าระบบเลือกตั้ง</h2>
+      <label class="block text-sm font-semibold text-[var(--muted)]">กรอกรหัสผู้ดูแล
+        <input name="passcode" type="password" inputmode="numeric" autocomplete="off" class="mt-2 w-full border rounded-xl px-4 py-3 text-center text-xl tracking-[.35em]" />
+      </label>
       <p data-error class="hidden text-sm text-[var(--bad)]"></p>
-      <div class="flex gap-2"><button type="button" data-cancel class="flex-1 py-2.5 rounded-xl border font-bold">ยกเลิก</button><button class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-white font-bold">ตรวจสอบบัญชี</button></div>
+      <div class="flex gap-2"><button type="button" data-cancel class="flex-1 py-2.5 rounded-xl border font-bold">ยกเลิก</button><button class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-white font-bold">ยืนยัน</button></div>
     </form>`
   document.body.append(modal)
   const form = modal.querySelector('form')
+  form.elements.passcode.focus()
   modal.querySelector('[data-cancel]').addEventListener('click', () => modal.remove())
   form.addEventListener('submit', async event => {
     event.preventDefault()
     const errorEl = modal.querySelector('[data-error]')
+    const code = form.elements.passcode.value.trim()
     const button = form.querySelector('button[type="submit"],button:not([type])')
     button.disabled = true
     button.textContent = 'กำลังตรวจสอบ…'
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      errorEl.innerHTML = 'กรุณาเข้าสู่ระบบก่อน โดยใช้บัญชีครูที่ได้รับสิทธิ์ตั้งค่า <a class="underline font-bold" href="/pp5online/index.html?next=vt69.html">เข้าสู่ระบบ</a>'
+    try {
+      await callElectionAdmin({ action: 'verify', passcode: code })
+      settingsAdminCode = code
+      modal.remove()
+      openSettings()
+    } catch (error) {
+      errorEl.textContent = error.message || 'ตรวจสอบรหัสไม่สำเร็จ'
       errorEl.classList.remove('hidden')
-      button.disabled = false; button.textContent = 'ตรวจสอบบัญชี'
-      return
+      button.disabled = false; button.textContent = 'ยืนยัน'
     }
-    const { data, error } = await supabase.rpc('is_council_election_tester_1087')
-    if (error || data !== true) {
-      errorEl.textContent = 'บัญชีนี้ไม่มีสิทธิ์ตั้งค่าระบบเลือกตั้ง'; errorEl.classList.remove('hidden')
-      button.disabled = false; button.textContent = 'ตรวจสอบบัญชี'
-      return
-    }
-    modal.remove()
-    openSettings()
   })
 }
 
@@ -391,7 +402,7 @@ function openSettings() {
   form.elements.thank_you_message.value = pageSettings?.thank_you_message || ''
   form.elements.countdown_enabled.value = pageSettings?.countdown_enabled === false ? 'false' : 'true'
   PUBLIC_TEXT_FIELDS.forEach(([key]) => { form.elements[`text_${key}`].value = publicText(key) })
-  modal.querySelector('#settings-close').addEventListener('click', () => modal.remove())
+  modal.querySelector('#settings-close').addEventListener('click', () => { settingsAdminCode = ''; modal.remove() })
   form.addEventListener('submit', async event => {
     event.preventDefault()
     const errorEl = form.querySelector('#settings-error')
@@ -404,9 +415,13 @@ function openSettings() {
       if (file) {
         if (file.type !== 'image/png' || file.size > 3 * 1024 * 1024) throw new Error('เลือกไฟล์ PNG ที่มีขนาดไม่เกิน 3 MB')
         if (!pageSettings?.term_id) throw new Error('ยังไม่พบเทอมการเลือกตั้ง')
-        imagePath = `${pageSettings.term_id}/header-${Date.now()}.png`
-        const { error: uploadError } = await supabase.storage.from('council-election-assets').upload(imagePath, file, { contentType: 'image/png', upsert: false })
-        if (uploadError) throw uploadError
+        const uploadForm = new FormData()
+        uploadForm.set('action', 'upload')
+        uploadForm.set('passcode', settingsAdminCode)
+        uploadForm.set('term_id', String(pageSettings.term_id))
+        uploadForm.set('file', file, file.name || 'header.png')
+        const uploadResult = await callElectionAdmin(uploadForm)
+        imagePath = uploadResult.path
       }
       const payload = {
         header_text: form.elements.header_text.value,
@@ -424,9 +439,10 @@ function openSettings() {
           closes_at: form.elements[`position_${i}_closes_at`].value ? new Date(form.elements[`position_${i}_closes_at`].value).toISOString() : null,
         })),
       }
-      const { data, error } = await supabase.rpc('save_council_election_page_settings', { p_settings: payload })
-      if (error) throw error
-      pageSettings = data
+      const data = await callElectionAdmin({ action: 'save', passcode: settingsAdminCode, settings: payload })
+      if (data?.ok !== true) throw new Error('บันทึกไม่สำเร็จ')
+      pageSettings = data.settings
+      settingsAdminCode = ''
       renderPageChrome(); renderCountdown(); modal.remove()
       toast('บันทึกการตั้งค่าแล้ว')
     } catch (error) {
