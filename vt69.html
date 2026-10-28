@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#064e3b" />
   <title>ลงคะแนนเลือกตั้งสภานักเรียน</title>
-  <link rel="manifest" href="/pp5online/council-election.webmanifest?v=10.22.1027" />
+  <link rel="manifest" href="/pp5online/council-election.webmanifest?v=10.22.1028" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/css/main.css?v=10.22.1027" />
-  <link rel="stylesheet" href="/css/council-theme.css?v=10.22.1027" />
+  <link rel="stylesheet" href="/css/main.css?v=10.22.1028" />
+  <link rel="stylesheet" href="/css/council-theme.css?v=10.22.1028" />
   <style>
     body { font-family: 'Sarabun', sans-serif; }
   </style>
@@ -22,17 +22,20 @@
         <img id="council-header-image" class="hidden max-h-14 max-w-24 object-contain" alt="ภาพหัวหน้าการเลือกตั้ง" />
         <div id="council-header-text-wrap" class="min-w-0 flex-1 text-center">
           <h1 id="council-page-title" class="text-lg sm:text-xl font-extrabold text-[var(--hero-3)]">ลงคะแนนเลือกตั้งสภานักเรียน</h1>
-          <p class="text-xs text-[var(--muted)] mt-0.5">จุดลงคะแนนของโรงเรียน — สถิติผู้มาใช้สิทธิ์แสดงแบบเรียลไทม์</p>
+          <p id="council-page-subtitle" class="text-xs text-[var(--muted)] mt-0.5">จุดลงคะแนนของโรงเรียน — สถิติผู้มาใช้สิทธิ์แสดงแบบเรียลไทม์</p>
         </div>
       </div>
-      <button id="council-election-settings" class="hidden flex-shrink-0 rounded-lg border px-3 py-2 text-xs font-bold bg-white/80" title="ตั้งค่าหน้าลงคะแนน">ตั้งค่า</button>
+      <div class="flex flex-shrink-0 items-center gap-2">
+        <button id="council-install-app" class="hidden rounded-lg border border-emerald-800/20 bg-white/80 px-3 py-2 text-xs font-bold text-emerald-900" title="ติดตั้งหน้านี้เป็นแอป">📲 ติดตั้ง</button>
+        <button id="council-election-settings" class="rounded-lg border px-3 py-2 text-xs font-bold bg-white/80" title="ตั้งค่าระบบเลือกตั้ง">ตั้งค่า</button>
+      </div>
     </header>
 
     <section class="flex-1 p-4 sm:p-6">
-      <div id="council-election-app" class="max-w-md mx-auto"></div>
+      <div id="council-election-app" class="w-full max-w-7xl mx-auto"></div>
     </section>
   </main>
 
-  <script type="module" src="/js/council-election-public.js?v=10.22.1027"></script>
+  <script type="module" src="/js/council-election-public.js?v=10.22.1028"></script>
 </body>
 </html>
