@@ -31,6 +31,7 @@ export default defineConfig({
         studentcareInstall: resolve(__dirname, 'studentcare-install.html'),
         council:       resolve(__dirname, 'council.html'),
         councilElection: resolve(__dirname, 'council-election.html'),
+        councilElectionShort: resolve(__dirname, 'vt69.html'),
         terangganu:     resolve(__dirname, 'terangganu.html'),
         regrade:        resolve(__dirname, 'regrade.html'),
       },

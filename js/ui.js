@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1024'
+import { APP_VERSION } from './version.js?v=10.22.1025'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1025': [
+    '🗳️ เพิ่ม URL สั้น vt69.html สำหรับเปิดหน้าลงคะแนนเลือกตั้งสภานักเรียน',
+  ],
   '10.22.1024': [
     '📦 ศูนย์จัดเก็บรายสัปดาห์เปิดเอกสารแผนของแต่ละห้องได้จากปุ่มในแถวนั้น',
     'เมื่อเลือกสัปดาห์จะโหลดแผนและบันทึกของสัปดาห์นั้นใหม่ พร้อมแสดงจำนวนแผนและสถานะให้ชัดเจน',
