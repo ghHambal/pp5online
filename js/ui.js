@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1027'
+import { APP_VERSION } from './version.js?v=10.22.1034'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1034': [
+    'เมื่อคลิก “ไม่ประสงค์ลงคะแนน” จะแสดงป๊อปอัปกลางหน้าจอเพื่อยืนยันก่อนบันทึก เช่นเดียวกับการเลือกผู้สมัคร',
+    'เพิ่มตัวเลือกแก้ไขหัวข้อ คำเตือน และข้อความปุ่มยืนยันการไม่ประสงค์ลงคะแนนในหน้าตั้งค่า',
+  ],
   '10.22.1033': [
     'เมื่อคลิกการ์ดผู้สมัคร จะแสดงป๊อปอัปกลางหน้าจอเพื่อยืนยันชื่อก่อนบันทึกคะแนน และปรับข้อความป๊อปอัปได้ในหน้าตั้งค่า',
     'แก้ปุ่มไปลงคะแนนอีกตำแหน่งให้เปิดบัตรอีกเพศโดยตรง พร้อมระบุชื่อเพศที่จะไปลงคะแนน',

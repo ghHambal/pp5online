@@ -48,6 +48,9 @@ const PUBLIC_TEXT_FIELDS = [
   ['candidate_confirm_warning', 'คำเตือนก่อนยืนยันผู้สมัคร', 'เมื่อลงคะแนนแล้วจะไม่สามารถเปลี่ยนบัตรใบนี้ได้'],
   ['candidate_confirm_cancel', 'ปุ่มกลับไปเลือกผู้สมัคร', 'กลับไปเลือก'],
   ['candidate_confirm_button', 'ปุ่มยืนยันผู้สมัคร', '✅ ยืนยันเลือกคนนี้'],
+  ['abstain_confirm_title', 'หัวข้อป๊อปอัปไม่ประสงค์ลงคะแนน', 'ยืนยันไม่ประสงค์ลงคะแนน'],
+  ['abstain_confirm_warning', 'คำเตือนก่อนยืนยันไม่ประสงค์ลงคะแนน', 'การยืนยันจะบันทึกว่าไม่ประสงค์ลงคะแนนสำหรับตำแหน่งนี้'],
+  ['abstain_confirm_button', 'ปุ่มยืนยันไม่ประสงค์ลงคะแนน', '✅ ยืนยันไม่ประสงค์ลงคะแนน'],
   ['male_position_label', 'ชื่อตำแหน่งเพศชาย', 'ประธานชาย'],
   ['female_position_label', 'ชื่อตำแหน่งเพศหญิง', 'ประธานหญิง'],
   ['candidate_heading', 'หัวข้อหน้าผู้สมัคร', 'เลือกผู้สมัครที่ต้องการเลือกตั้ง'],
@@ -641,17 +644,14 @@ function renderVotePage(bundle, code) {
     return
   }
 
-  let selected = null
   app.innerHTML = `
     <button id="btn-back" class="text-xs font-bold text-white/80 hover:text-white mb-3">← กลับไปกรอกรหัสใหม่</button>
     <div class="bg-white/95 rounded-3xl border border-white/70 p-4 sm:p-7 space-y-5 shadow-[0_20px_55px_rgba(2,38,28,.2)]">
       <div class="text-center"><p class="text-xs font-bold uppercase tracking-[.18em] text-emerald-700">${esc(positionLabel(bundle.gender))}</p><p class="text-lg font-extrabold text-[var(--ink-2)] mt-1">${esc(publicText('candidate_heading'))}</p></div>
       <div id="candidate-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-      <div id="vote-confirm-area" class="max-w-xl mx-auto w-full"></div>
     </div>`
   app.querySelector('#btn-back').addEventListener('click', renderLanding)
   const list = app.querySelector('#candidate-list')
-  const confirmArea = app.querySelector('#vote-confirm-area')
 
   const submitVote = async (candidateId, button, confirmationModal = null) => {
     button.disabled = true; button.textContent = 'กำลังบันทึก...'
@@ -722,6 +722,31 @@ function renderVotePage(bundle, code) {
     modal.querySelector('[data-confirm]').focus()
   }
 
+  const openAbstainVoteConfirm = () => {
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4'
+    modal.innerHTML = `
+      <section role="dialog" aria-modal="true" aria-labelledby="abstain-vote-title" class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-7 text-center">
+        <div class="mx-auto mb-4 w-14 h-14 rounded-2xl bg-rose-50 text-rose-700 grid place-items-center text-3xl">🙅</div>
+        <h2 id="abstain-vote-title" class="text-xl font-extrabold text-[var(--ink)]">${esc(publicText('abstain_confirm_title'))}</h2>
+        <p class="text-sm text-[var(--muted)] mt-2">${esc(publicText('confirm_abstain'))}</p>
+        <div class="mt-5 rounded-2xl border border-rose-100 bg-rose-50/70 p-4">
+          <p class="text-xs font-bold text-rose-800">${esc(positionLabel(bundle.gender))}</p>
+          <p class="text-sm text-[var(--ink-2)] mt-2">${esc(publicText('abstain_confirm_warning'))}</p>
+        </div>
+        <div class="grid grid-cols-2 gap-3 mt-5">
+          <button type="button" data-cancel class="py-3 rounded-xl border border-slate-200 text-[var(--ink-2)] font-bold hover:bg-slate-50">${esc(publicText('candidate_confirm_cancel'))}</button>
+          <button type="button" data-confirm class="py-3 rounded-xl bg-rose-700 text-white font-bold hover:bg-rose-800">${esc(publicText('abstain_confirm_button'))}</button>
+        </div>
+      </section>`
+    document.body.appendChild(modal)
+    const close = () => modal.remove()
+    modal.querySelector('[data-cancel]').addEventListener('click', close)
+    modal.addEventListener('click', event => { if (event.target === modal) close() })
+    modal.querySelector('[data-confirm]').addEventListener('click', event => submitVote(null, event.currentTarget, modal))
+    modal.querySelector('[data-confirm]').focus()
+  }
+
   const renderProfileModal = c => {
     const policies = Array.isArray(c.policies) ? c.policies : []
     const experience = Array.isArray(c.experience) ? c.experience : []
@@ -760,7 +785,7 @@ function renderVotePage(bundle, code) {
 
   const renderList = () => {
     list.innerHTML = bundle.candidates.map(c => `
-      <div class="min-h-[24rem] rounded-2xl border p-4 sm:p-5 transition flex flex-col ${selected === c.id ? 'border-emerald-700 bg-emerald-50 ring-2 ring-emerald-700/20' : 'border-[var(--line-soft)] bg-white hover:border-emerald-700/40 hover:shadow-lg'}">
+      <div class="min-h-[24rem] rounded-2xl border p-4 sm:p-5 transition flex flex-col border-[var(--line-soft)] bg-white hover:border-emerald-700/40 hover:shadow-lg">
         <button data-candidate="${c.id}" class="relative w-full flex-1 flex flex-col items-center justify-center gap-3 text-center rounded-xl p-2">
           <div class="absolute top-0 left-0 w-11 h-11 rounded-full bg-emerald-100 text-emerald-900 grid place-items-center font-extrabold text-lg shadow-sm">${c.ballot_number}</div>
           ${c.image_url
@@ -774,11 +799,11 @@ function renderVotePage(bundle, code) {
         </button>
         <button data-detail="${c.id}" class="w-full mt-3 pt-3 border-t border-[var(--line-soft)] text-sm font-bold text-[var(--primary)]">${esc(publicText('candidate_details'))}</button>
       </div>`).join('') + `
-      <button data-candidate="abstain" class="col-span-full w-full max-w-md justify-self-center p-4 sm:p-5 rounded-2xl border-2 ${selected === 'abstain' ? 'border-emerald-700 bg-emerald-50 ring-2 ring-emerald-700/20' : 'border-[var(--line-soft)] bg-white hover:border-rose-300'} text-base font-extrabold text-[var(--ink-2)] shadow-sm">${esc(publicText('abstain_label'))}</button>`
+      <button data-candidate="abstain" class="col-span-full w-full max-w-md justify-self-center p-4 sm:p-5 rounded-2xl border-2 border-[var(--line-soft)] bg-white hover:border-rose-300 text-base font-extrabold text-[var(--ink-2)] shadow-sm">${esc(publicText('abstain_label'))}</button>`
     list.querySelectorAll('[data-candidate]').forEach(btn => {
       btn.addEventListener('click', () => {
         if (btn.dataset.candidate === 'abstain') {
-          selected = 'abstain'; renderList(); renderConfirm(); return
+          openAbstainVoteConfirm(); return
         }
         const candidate = bundle.candidates.find(item => item.id === Number(btn.dataset.candidate))
         if (candidate) openCandidateVoteConfirm(candidate)
@@ -789,21 +814,6 @@ function renderVotePage(bundle, code) {
         const c = bundle.candidates.find(x => x.id === Number(btn.dataset.detail))
         if (c) renderProfileModal(c)
       })
-    })
-  }
-
-  const renderConfirm = () => {
-    if (!selected) { confirmArea.innerHTML = ''; return }
-    const isAbstain = selected === 'abstain'
-    const c = isAbstain ? null : bundle.candidates.find(x => x.id === selected)
-    confirmArea.innerHTML = `
-      <div class="border-t border-[var(--line-soft)] pt-3 mt-1 space-y-2">
-        <p class="text-xs text-[var(--muted)] text-center">${isAbstain ? esc(publicText('confirm_abstain')) : `แน่ใจนะว่าจะเลือก <span class="font-bold text-[var(--ink-2)]">${esc(c?.full_name || '')}</span>?`}</p>
-        <button id="btn-confirm-vote" class="w-full py-3 rounded-2xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white font-bold text-sm">${esc(publicText('confirm_vote'))}</button>
-      </div>`
-    confirmArea.querySelector('#btn-confirm-vote').addEventListener('click', async () => {
-      const btn = confirmArea.querySelector('#btn-confirm-vote')
-      await submitVote(isAbstain ? null : selected, btn)
     })
   }
 
