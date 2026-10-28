@@ -43,6 +43,11 @@ const PUBLIC_TEXT_FIELDS = [
   ['student_code_hint', 'คำแนะนำกรอกรหัส', 'กรอกรหัสของตนเองและตรวจสอบชื่อก่อนยืนยัน'],
   ['teacher_ballot_title', 'หัวข้อเลือกตำแหน่ง', 'เลือกลงคะแนนประธานสภานักเรียน'],
   ['teacher_ballot_hint', 'คำแนะนำครู/บุคลากร', 'ครูและบุคลากรลงคะแนนได้ทั้งตำแหน่งประธานชายและประธานหญิง ตำแหน่งละหนึ่งครั้ง'],
+  ['candidate_confirm_title', 'หัวข้อป๊อปอัปยืนยันผู้สมัคร', 'ยืนยันผู้สมัครที่ต้องการเลือก'],
+  ['candidate_confirm_question', 'คำถามยืนยันผู้สมัคร', 'คุณต้องการเลือกผู้สมัครคนนี้ใช่หรือไม่?'],
+  ['candidate_confirm_warning', 'คำเตือนก่อนยืนยันผู้สมัคร', 'เมื่อลงคะแนนแล้วจะไม่สามารถเปลี่ยนบัตรใบนี้ได้'],
+  ['candidate_confirm_cancel', 'ปุ่มกลับไปเลือกผู้สมัคร', 'กลับไปเลือก'],
+  ['candidate_confirm_button', 'ปุ่มยืนยันผู้สมัคร', '✅ ยืนยันเลือกคนนี้'],
   ['male_position_label', 'ชื่อตำแหน่งเพศชาย', 'ประธานชาย'],
   ['female_position_label', 'ชื่อตำแหน่งเพศหญิง', 'ประธานหญิง'],
   ['candidate_heading', 'หัวข้อหน้าผู้สมัคร', 'เลือกผู้สมัครที่ต้องการเลือกตั้ง'],
@@ -604,14 +609,27 @@ function renderVotePage(bundle, code) {
   const alreadyVoted = bundle.already_voted || !!bundle.already_voted_candidate_id
 
   if (alreadyVoted) {
+    const nextBallot = bundle.parentBundle?.ballots?.find(item =>
+      !item.already_voted && String(item.election_id) !== String(bundle.election_id))
+    const restartText = bundle.parentBundle
+      ? (nextBallot ? `${publicText('next_gender_button')}: ${positionLabel(nextBallot.gender)}` : publicText('finish_button'))
+      : publicText('finish_button')
     app.innerHTML = `
       <div class="bg-white rounded-2xl border p-6 text-center space-y-3">
         <p class="text-3xl">✅</p>
         <p class="font-bold text-[var(--ink)]">${esc(publicText('already_voted'))}</p>
         <p class="text-xs text-[var(--muted-2)] mt-2">${bundle.already_abstained ? 'บันทึกการไม่ประสงค์ลงคะแนนแล้ว' : esc(bundle.thank_you_message || 'ผลการเลือกตั้งจะประกาศภายหลังปิดหีบ')}</p>
-        <button id="btn-restart" class="w-full mt-2 py-3 rounded-2xl bg-[var(--bg-2)] hover:bg-[var(--line)] text-[var(--ink-2)] font-bold text-sm">${bundle.parentBundle ? esc(publicText('next_gender_button')) : esc(publicText('finish_button'))}</button>
+        <button id="btn-restart" class="w-full mt-2 py-3 rounded-2xl bg-[var(--bg-2)] hover:bg-[var(--line)] text-[var(--ink-2)] font-bold text-sm">${esc(restartText)}</button>
       </div>`
-    app.querySelector('#btn-restart').addEventListener('click', () => bundle.parentBundle ? renderVotePage(bundle.parentBundle, code) : renderLanding())
+    app.querySelector('#btn-restart').addEventListener('click', () => {
+      if (bundle.parentBundle && nextBallot) {
+        renderVotePage({ ...bundle.parentBundle, selectedBallotId: nextBallot.election_id }, code)
+      } else if (bundle.parentBundle) {
+        const parent = { ...bundle.parentBundle }
+        delete parent.selectedBallotId
+        renderVotePage(parent, code)
+      } else renderLanding()
+    })
     return
   }
 
@@ -635,12 +653,75 @@ function renderVotePage(bundle, code) {
   const list = app.querySelector('#candidate-list')
   const confirmArea = app.querySelector('#vote-confirm-area')
 
+  const submitVote = async (candidateId, button, confirmationModal = null) => {
+    button.disabled = true; button.textContent = 'กำลังบันทึก...'
+    let data, error
+    if (isSimulation) {
+      simulationVotes += 1
+      data = { ok: true }
+    } else {
+      const result = await supabase.rpc('cast_public_council_vote', {
+        p_code: code,
+        p_candidate_id: candidateId,
+        p_election_config_id: bundle.election_id,
+      })
+      data = result.data; error = result.error
+    }
+    if (error || data?.error) {
+      const msg = data?.error === 'already_voted' ? 'รหัสนี้ลงคะแนนไปแล้ว' : data?.error === 'election_not_open' ? 'ปิดโหวตแล้ว' : 'บันทึกไม่สำเร็จ กรุณาลองใหม่'
+      toast(msg, 'error')
+      button.disabled = false; button.textContent = '✅ ยืนยันลงคะแนน'
+      return
+    }
+    confirmationModal?.remove()
+    toast(isSimulation ? 'บัตรจำลองสำเร็จ — ฐานข้อมูลจริงไม่ได้เปลี่ยนแปลง' : 'บันทึกคะแนนแล้ว ขอบคุณที่ใช้สิทธิ์!')
+    bundle.already_voted_candidate_id = candidateId
+    bundle.already_voted = true
+    bundle.already_abstained = candidateId == null
+    await refreshTurnout()
+    if (bundle.parentBundle) {
+      const parent = bundle.parentBundle
+      const index = parent.ballots.findIndex(item => String(item.election_id) === String(bundle.election_id))
+      if (index >= 0) parent.ballots[index] = { ...parent.ballots[index], already_voted: true, already_voted_candidate_id: candidateId, already_abstained: candidateId == null }
+      delete parent.selectedBallotId
+      renderVotePage(parent, code)
+    } else renderVotePage(bundle, code)
+  }
+
   if (!bundle.candidates.length) {
     list.innerHTML = `<p class="col-span-full text-sm text-[var(--muted-2)] text-center py-8">${esc(publicText('no_candidates'))}</p>`
   }
 
   // โปรไฟล์เต็มของผู้สมัคร (สเปคข้อ 8.11) — ปุ่ม "ดูรายละเอียด" แยกจากปุ่มเลือก และเลือก
   // จากในโปรไฟล์ได้เลย (append ไป document.body ตรงๆ เพราะหน้านี้ standalone ไม่มีระบบ modal อื่น)
+  const openCandidateVoteConfirm = c => {
+    const modal = document.createElement('div')
+    modal.className = 'fixed inset-0 z-[100] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4'
+    modal.innerHTML = `
+      <section role="dialog" aria-modal="true" aria-labelledby="candidate-vote-title" class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-6 sm:p-7 text-center">
+        <div class="mx-auto mb-4 w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-800 grid place-items-center text-3xl">🗳️</div>
+        <h2 id="candidate-vote-title" class="text-xl font-extrabold text-[var(--ink)]">${esc(publicText('candidate_confirm_title'))}</h2>
+        <p class="text-sm text-[var(--muted)] mt-2">${esc(publicText('candidate_confirm_question'))}</p>
+        <div class="mt-5 flex items-center gap-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3 text-left">
+          ${c.image_url
+            ? `<img src="${esc(c.image_url)}" alt="" class="w-16 h-20 object-cover object-top rounded-xl border border-white shadow-sm">`
+            : `<div class="w-16 h-20 rounded-xl bg-white text-emerald-800 grid place-items-center text-2xl font-extrabold">${c.ballot_number}</div>`}
+          <div class="min-w-0"><p class="text-xs font-bold text-emerald-800">หมายเลข ${esc(c.ballot_number)}</p><p class="font-extrabold text-[var(--ink)] mt-1">${esc(c.full_name)}</p><p class="text-xs text-[var(--muted)] mt-1">${esc(c.main_room || '')}</p></div>
+        </div>
+        <p class="text-xs text-[var(--muted-2)] mt-4">${esc(publicText('candidate_confirm_warning'))}</p>
+        <div class="grid grid-cols-2 gap-3 mt-5">
+          <button type="button" data-cancel class="py-3 rounded-xl border border-slate-200 text-[var(--ink-2)] font-bold hover:bg-slate-50">${esc(publicText('candidate_confirm_cancel'))}</button>
+          <button type="button" data-confirm class="py-3 rounded-xl bg-[var(--primary)] text-white font-bold hover:bg-[var(--primary-dark)]">${esc(publicText('candidate_confirm_button'))}</button>
+        </div>
+      </section>`
+    document.body.appendChild(modal)
+    const close = () => modal.remove()
+    modal.querySelector('[data-cancel]').addEventListener('click', close)
+    modal.addEventListener('click', event => { if (event.target === modal) close() })
+    modal.querySelector('[data-confirm]').addEventListener('click', event => submitVote(c.id, event.currentTarget, modal))
+    modal.querySelector('[data-confirm]').focus()
+  }
+
   const renderProfileModal = c => {
     const policies = Array.isArray(c.policies) ? c.policies : []
     const experience = Array.isArray(c.experience) ? c.experience : []
@@ -673,7 +754,7 @@ function renderVotePage(bundle, code) {
     modal.addEventListener('click', e => { if (e.target === modal) close() })
     modal.querySelector('#profile-modal-close').addEventListener('click', close)
     modal.querySelector('#profile-modal-select').addEventListener('click', () => {
-      close(); selected = c.id; renderList(); renderConfirm()
+      close(); openCandidateVoteConfirm(c)
     })
   }
 
@@ -695,7 +776,13 @@ function renderVotePage(bundle, code) {
       </div>`).join('') + `
       <button data-candidate="abstain" class="col-span-full w-full max-w-md justify-self-center p-4 sm:p-5 rounded-2xl border-2 ${selected === 'abstain' ? 'border-emerald-700 bg-emerald-50 ring-2 ring-emerald-700/20' : 'border-[var(--line-soft)] bg-white hover:border-rose-300'} text-base font-extrabold text-[var(--ink-2)] shadow-sm">${esc(publicText('abstain_label'))}</button>`
     list.querySelectorAll('[data-candidate]').forEach(btn => {
-      btn.addEventListener('click', () => { selected = btn.dataset.candidate === 'abstain' ? 'abstain' : Number(btn.dataset.candidate); renderList(); renderConfirm() })
+      btn.addEventListener('click', () => {
+        if (btn.dataset.candidate === 'abstain') {
+          selected = 'abstain'; renderList(); renderConfirm(); return
+        }
+        const candidate = bundle.candidates.find(item => item.id === Number(btn.dataset.candidate))
+        if (candidate) openCandidateVoteConfirm(candidate)
+      })
     })
     list.querySelectorAll('[data-detail]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -716,32 +803,7 @@ function renderVotePage(bundle, code) {
       </div>`
     confirmArea.querySelector('#btn-confirm-vote').addEventListener('click', async () => {
       const btn = confirmArea.querySelector('#btn-confirm-vote')
-      btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
-      let data, error
-      if (isSimulation) {
-        simulationVotes += 1
-        data = { ok: true }
-      } else {
-        const result = await supabase.rpc('cast_public_council_vote', { p_code: code, p_candidate_id: isAbstain ? null : selected, p_election_config_id: bundle.election_id })
-        data = result.data; error = result.error
-      }
-      if (error || data?.error) {
-        const msg = data?.error === 'already_voted' ? 'รหัสนี้ลงคะแนนไปแล้ว' : data?.error === 'election_not_open' ? 'ปิดโหวตแล้ว' : 'บันทึกไม่สำเร็จ กรุณาลองใหม่'
-        toast(msg, 'error')
-        btn.disabled = false; btn.textContent = '✅ ยืนยันลงคะแนน'
-        return
-      }
-      toast(isSimulation ? 'บัตรจำลองสำเร็จ — ฐานข้อมูลจริงไม่ได้เปลี่ยนแปลง' : 'บันทึกคะแนนแล้ว ขอบคุณที่ใช้สิทธิ์!')
-      bundle.already_voted_candidate_id = isAbstain ? null : selected
-      bundle.already_voted = true
-      bundle.already_abstained = isAbstain
-      await refreshTurnout()
-      if (bundle.parentBundle) {
-        const parent = bundle.parentBundle
-        const index = parent.ballots.findIndex(item => String(item.election_id) === String(bundle.election_id))
-        if (index >= 0) parent.ballots[index] = { ...parent.ballots[index], already_voted: true, already_voted_candidate_id: bundle.already_voted_candidate_id, already_abstained: bundle.already_abstained }
-        renderVotePage(parent, code)
-      } else renderVotePage(bundle, code)
+      await submitVote(isAbstain ? null : selected, btn)
     })
   }
 
