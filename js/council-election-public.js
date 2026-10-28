@@ -529,6 +529,7 @@ function openElectionResetConfirm(sourceModal = null) {
       <h2 class="text-lg font-extrabold text-rose-700">รีเซ็ตคะแนนเลือกตั้ง</h2>
       <p class="text-sm text-gray-700">การยืนยันจะลบคะแนนทั้งหมดของการเลือกตั้งชายและหญิงในเทอมปัจจุบัน เพื่อให้สามารถเริ่มลงคะแนนใหม่ได้</p>
       <p class="text-xs text-rose-700 font-bold">ใช้ได้เมื่อไม่มีตำแหน่งใดกำลังเปิดรับคะแนน และยังไม่ประกาศผล</p>
+      <label class="block text-sm font-bold">รหัสผู้ดูแล<input name="passcode" type="password" inputmode="numeric" autocomplete="off" class="mt-1 w-full border rounded-xl px-3 py-2" /></label>
       <label class="block text-sm font-bold">พิมพ์ RESET เพื่อยืนยัน<input name="confirm" autocomplete="off" class="mt-1 w-full border rounded-xl px-3 py-2" /></label>
       <p class="hidden text-sm text-rose-700" data-error></p>
       <div class="flex gap-2"><button type="button" data-cancel class="flex-1 py-2.5 rounded-xl border font-bold">ยกเลิก</button><button class="flex-1 py-2.5 rounded-xl bg-rose-600 text-white font-bold">ยืนยันรีเซ็ต</button></div>
@@ -542,17 +543,21 @@ function openElectionResetConfirm(sourceModal = null) {
     if (form.elements.confirm.value.trim() !== 'RESET') {
       error.textContent = 'พิมพ์ RESET ให้ตรงเพื่อยืนยัน'; error.classList.remove('hidden'); return
     }
+    if (!form.elements.passcode.value.trim()) {
+      error.textContent = 'กรอกรหัสผู้ดูแลเพื่อยืนยัน'; error.classList.remove('hidden'); return
+    }
     const button = form.querySelector('button[type="submit"],button:not([type])')
     button.disabled = true; button.textContent = 'กำลังรีเซ็ต…'
-    const result = await supabase.rpc('reset_current_council_election_votes')
-    if (result.error || result.data?.error) {
-      error.textContent = result.error?.message || result.data?.error || 'รีเซ็ตไม่สำเร็จ'
+    try {
+      const result = await callElectionAdmin({ action: 'reset', passcode: form.elements.passcode.value.trim() })
+      modal.remove()
+      sourceModal?.remove()
+      toast(`รีเซ็ตคะแนนแล้ว ${formatCount(result.deleted_vote_count)} คะแนน`)
+      await refreshTurnout(); renderLanding()
+    } catch (resetError) {
+      error.textContent = resetError.message || 'รีเซ็ตไม่สำเร็จ'
       error.classList.remove('hidden'); button.disabled = false; button.textContent = 'ยืนยันรีเซ็ต'; return
     }
-    modal.remove()
-    sourceModal?.remove()
-    toast(`รีเซ็ตคะแนนแล้ว ${formatCount(result.data.deleted_vote_count)} คะแนน`)
-    await refreshTurnout(); renderLanding()
   })
 }
 

@@ -67,6 +67,15 @@ Deno.serve(async (request) => {
     if (!authorization.ok) return respond({ error: authorization.error }, authorization.status)
     if (action === "verify") return respond({ ok: true })
 
+    if (action === "reset") {
+      const { data, error } = await admin.rpc("reset_current_council_election_votes_with_passcode", {
+        p_admin_code: passcode,
+      })
+      if (error) return respond({ error: error.message }, 400)
+      if (!data?.ok) return respond({ error: "รีเซ็ตคะแนนไม่สำเร็จ" }, 400)
+      return respond(data)
+    }
+
     if (action === "save") {
       const settings = body.settings
       if (!settings || typeof settings !== "object" || Array.isArray(settings)) return respond({ error: "ข้อมูลการตั้งค่าไม่ถูกต้อง" }, 400)
