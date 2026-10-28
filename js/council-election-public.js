@@ -8,6 +8,7 @@ import { esc, toast } from './sports-portals.js'
 const app = document.getElementById('council-election-app')
 const isSimulation = new URLSearchParams(location.search).get('mode') === 'simulation'
 const installPromptState = { event: null }
+const installDisplayMode = window.matchMedia?.('(display-mode: standalone)')
 let pageSettings = null
 let turnout = { total_students: 0, voted_count: 0, percent: 0, opens_at: null, closes_at: null }
 let simulationVotes = 537
@@ -15,9 +16,19 @@ if (isSimulation) turnout = { total_students: 1280, voted_count: simulationVotes
 
 window.addEventListener('beforeinstallprompt', event => {
   event.preventDefault()
+  if (isInstalledApp()) return
   installPromptState.event = event
   const installBtn = document.getElementById('council-install-app')
   if (installBtn) installBtn.classList.remove('hidden')
+})
+
+function isInstalledApp() {
+  return Boolean(navigator.standalone || installDisplayMode?.matches)
+}
+
+window.addEventListener('appinstalled', () => {
+  installPromptState.event = null
+  document.getElementById('council-install-app')?.classList.add('hidden')
 })
 
 function formatCount(value) { return new Intl.NumberFormat('th-TH').format(Number(value || 0)) }
@@ -37,6 +48,7 @@ function renderTurnout() {
       <div class="flex items-end gap-2 mt-3"><strong class="text-4xl text-[var(--primary-dark)]">${formatCount(count)}</strong><span class="text-sm text-[var(--muted)] mb-1">จากนักเรียนทั้งหมด ${formatCount(total)} คน</span></div>
       <div class="w-full h-2.5 bg-[var(--surface-2)] rounded-full mt-3 overflow-hidden"><div class="h-full bg-[var(--primary)] rounded-full" style="width:${Math.min(100, percent)}%"></div></div>
       <p class="text-xs text-[var(--muted)] mt-2">${percent.toFixed(1)}% ของนักเรียนทั้งหมด</p>
+      ${Number(turnout.staff_voted_ballots || 0) ? `<p class="text-xs text-[var(--muted)] mt-2">ครู/บุคลากรลงคะแนนแล้ว ${formatCount(turnout.staff_voted_ballots)} บัตร</p>` : ''}
     </div>`
 }
 
@@ -64,12 +76,20 @@ async function refreshTurnout() {
   renderTurnout()
 }
 
+function subscribeTurnoutRealtime() {
+  return supabase.channel('council-election-turnout')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'council_election_turnout_signals' }, () => refreshTurnout())
+    .subscribe()
+}
+
 async function ensureStaffSession() {
   if (isSimulation) return true
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return false
   const { data, error } = await supabase.rpc('is_council_staff')
-  return !error && data === true
+  if (!error && data === true) return true
+  const teacher = await supabase.rpc('is_council_election_authenticated_teacher')
+  return !teacher.error && teacher.data === true
 }
 
 async function loadPageSettings() {
@@ -113,7 +133,8 @@ async function renderLanding() {
     <div class="bg-white/90 rounded-2xl border p-5 text-center">
       <p class="text-sm text-[var(--muted)]">${isSimulation ? 'ทดสอบขั้นตอนลงคะแนนได้โดยใช้รหัสจำลอง' : 'ลงคะแนนได้ที่จุดซึ่งโรงเรียนจัดไว้ และมีเจ้าหน้าที่ประจำเครื่อง'}</p>
       <button id="btn-open-voting" class="w-full mt-4 py-4 rounded-2xl bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white font-extrabold text-lg shadow">🗳️ ลงคะแนนเลือกตั้ง</button>
-      ${!isSimulation ? '<button id="council-install-app" class="w-full mt-3 py-3 rounded-xl border border-[var(--primary-70)] text-[var(--primary-dark)] font-bold">ติดตั้งหน้านี้เป็นแอปบนเครื่องห้องคอม</button><p class="text-[11px] text-[var(--muted-2)] mt-2">แนะนำติดตั้งเฉพาะเครื่องห้องคอมที่โรงเรียนจัดไว้</p>' : ''}
+      ${!isSimulation ? '<button id="btn-personnel-voting" class="w-full mt-3 py-3 rounded-xl border border-white/70 text-white font-bold">บุคลากรคลิกที่นี่เพื่อเลือกตั้ง</button>' : ''}
+      ${!isSimulation ? `<button id="council-install-app" class="w-full mt-3 py-3 rounded-xl border border-[var(--primary-70)] text-[var(--primary-dark)] font-bold ${isInstalledApp() ? 'hidden' : ''}">ติดตั้งหน้านี้เป็นแอปบนเครื่องห้องคอม</button><p class="text-[11px] text-[var(--muted-2)] mt-2">แนะนำติดตั้งเฉพาะเครื่องห้องคอมที่โรงเรียนจัดไว้</p>` : ''}
     </div>
     <div id="council-countdown" class="mt-4 text-center text-white/90 text-sm"></div>
     <div id="council-page-footer" class="text-xs text-white/70 text-center mt-5"></div>
@@ -136,6 +157,14 @@ async function renderLanding() {
       return
     }
     openStudentCodeModal()
+  })
+
+  app.querySelector('#btn-personnel-voting')?.addEventListener('click', async () => {
+    if (!await ensureStaffSession()) {
+      alert('กรุณาให้เจ้าหน้าที่ประจำจุดเข้าสู่ระบบก่อน แล้วจึงเปิดรายชื่อบุคลากร')
+      return
+    }
+    openPersonnelRoster()
   })
 
   const installBtn = app.querySelector('#council-install-app')
@@ -254,12 +283,12 @@ function openStudentCodeModal() {
     let bundle
     if (isSimulation) bundle = simulationBundle()
     else {
-      const result = await supabase.rpc('get_public_council_election_bundle', { p_code: code })
+      const result = await supabase.rpc('get_public_council_election_bundle_v2', { p_code: code })
       bundle = result.data
       if (result.error) { errorEl.textContent = 'ระบบตรวจสอบไม่สำเร็จ กรุณาให้เจ้าหน้าที่เข้าสู่ระบบใหม่'; errorEl.classList.remove('hidden'); return }
     }
     if (bundle?.error === 'staff_login_required') { errorEl.textContent = 'เซสชันเจ้าหน้าที่หมดอายุ กรุณาเข้าสู่ระบบใหม่'; errorEl.classList.remove('hidden'); return }
-    if (bundle?.error === 'student_not_found') { errorEl.textContent = 'ไม่พบรหัสนักเรียนนี้ กรุณาตรวจสอบอีกครั้ง'; errorEl.classList.remove('hidden'); return }
+    if (bundle?.error === 'student_not_found' || bundle?.error === 'voter_not_found') { errorEl.textContent = 'ไม่พบรหัสนักเรียนหรือครูนี้ กรุณาตรวจสอบอีกครั้ง'; errorEl.classList.remove('hidden'); return }
     if (bundle?.error === 'gender_unknown') { errorEl.textContent = 'ไม่พบข้อมูลเพศของนักเรียน ติดต่อผู้ดูแลระบบ'; errorEl.classList.remove('hidden'); return }
     renderConfirmCard(bundle, code, modal)
   }
@@ -274,12 +303,122 @@ function openStudentCodeModal() {
       <button id="btn-not-me" class="w-full mt-2 py-2 text-xs text-[var(--muted-2)] hover:text-[var(--ink-2)]">ไม่ใช่ฉัน กรอกรหัสใหม่</button>
     `
     cardEl.classList.remove('hidden')
+    if (bundle.is_1087_tester) {
+      const resetButton = document.createElement('button')
+      resetButton.type = 'button'
+      resetButton.className = 'w-full mt-3 py-3 rounded-xl border border-rose-300 bg-rose-50 text-rose-700 font-bold text-sm'
+      resetButton.textContent = 'รีเซ็ตคะแนนเลือกตั้งทั้งหมด'
+      resetButton.addEventListener('click', () => openElectionResetConfirm(modal))
+      cardEl.append(resetButton)
+    }
     cardEl.querySelector('#btn-enter-vote').addEventListener('click', () => { modal.remove(); renderVotePage(bundle, code) })
     cardEl.querySelector('#btn-not-me').addEventListener('click', () => { input.value = ''; cardEl.classList.add('hidden'); input.focus() })
   }
 }
 
+async function openPersonnelRoster() {
+  const { data, error } = await supabase.rpc('get_public_council_personnel_roster')
+  if (error || !Array.isArray(data) || !data.length) {
+    toast('ไม่พบรายชื่อบุคลากรในทะเบียนแจ้งไซซ์เสื้อ', 'error')
+    return
+  }
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[80] bg-black/55 flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[88vh] p-5 flex flex-col">
+      <div class="flex items-center justify-between gap-2 mb-3"><h2 class="font-extrabold text-lg">เลือกชื่อบุคลากร</h2><button data-close class="text-xl text-[var(--muted)]">✕</button></div>
+      <p class="text-xs text-[var(--muted)] mb-3">เลือกชื่อของตนเอง แล้วตรวจสอบชื่อก่อนเข้าสู่บัตรเลือกตั้ง</p>
+      <input data-search placeholder="ค้นหาชื่อ-สกุล" class="w-full border rounded-xl px-3 py-2 mb-3" />
+      <div data-list class="overflow-y-auto space-y-2"></div>
+      <div data-confirm class="hidden mt-3 border-t pt-3"></div>
+    </div>`
+  document.body.append(modal)
+  const list = modal.querySelector('[data-list]')
+  const confirm = modal.querySelector('[data-confirm]')
+  const render = query => {
+    const rows = data.filter(person => person.full_name.toLocaleLowerCase('th-TH').includes(query.toLocaleLowerCase('th-TH')))
+    list.innerHTML = rows.map(person => `<button data-person="${person.id}" class="w-full text-left rounded-xl border p-3 font-semibold hover:bg-emerald-50">${esc(person.full_name)}</button>`).join('') || '<p class="text-center text-sm text-gray-400 py-6">ไม่พบรายชื่อ</p>'
+    list.querySelectorAll('[data-person]').forEach(button => button.addEventListener('click', () => {
+      const person = data.find(item => String(item.id) === button.dataset.person)
+      confirm.innerHTML = `<p class="text-sm text-center">คุณคือ <b>${esc(person.full_name)}</b> ใช่หรือไม่?</p><div class="flex gap-2 mt-3"><button data-cancel class="flex-1 rounded-xl border py-2 font-bold">เลือกชื่อใหม่</button><button data-enter class="flex-1 rounded-xl bg-[var(--primary)] text-white py-2 font-bold">ใช่ เข้าสู่การเลือกตั้ง</button></div>`
+      confirm.classList.remove('hidden')
+      confirm.querySelector('[data-cancel]').addEventListener('click', () => confirm.classList.add('hidden'))
+      confirm.querySelector('[data-enter]').addEventListener('click', async () => {
+        const { data: bundle, error: bundleError } = await supabase.rpc('get_public_council_election_bundle_v2', { p_code: `personnel:${person.id}` })
+        if (bundleError || bundle?.error) { toast(bundleError?.message || 'ตรวจสอบรายชื่อไม่สำเร็จ', 'error'); return }
+        modal.remove()
+        renderVotePage(bundle, `personnel:${person.id}`)
+      })
+    }))
+  }
+  modal.querySelector('[data-close]').addEventListener('click', () => modal.remove())
+  modal.querySelector('[data-search]').addEventListener('input', event => render(event.target.value.trim()))
+  render('')
+}
+
+function openElectionResetConfirm(sourceModal = null) {
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[95] bg-black/60 flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <form class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 space-y-3">
+      <h2 class="text-lg font-extrabold text-rose-700">รีเซ็ตคะแนนเลือกตั้ง</h2>
+      <p class="text-sm text-gray-700">การยืนยันจะลบคะแนนทั้งหมดของการเลือกตั้งชายและหญิงในเทอมปัจจุบัน เพื่อให้สามารถเริ่มลงคะแนนใหม่ได้</p>
+      <p class="text-xs text-rose-700 font-bold">ใช้ได้เมื่อไม่มีตำแหน่งใดกำลังเปิดรับคะแนน และยังไม่ประกาศผล</p>
+      <label class="block text-sm font-bold">พิมพ์ RESET เพื่อยืนยัน<input name="confirm" autocomplete="off" class="mt-1 w-full border rounded-xl px-3 py-2" /></label>
+      <p class="hidden text-sm text-rose-700" data-error></p>
+      <div class="flex gap-2"><button type="button" data-cancel class="flex-1 py-2.5 rounded-xl border font-bold">ยกเลิก</button><button class="flex-1 py-2.5 rounded-xl bg-rose-600 text-white font-bold">ยืนยันรีเซ็ต</button></div>
+    </form>`
+  document.body.append(modal)
+  const form = modal.querySelector('form')
+  modal.querySelector('[data-cancel]').addEventListener('click', () => modal.remove())
+  form.addEventListener('submit', async event => {
+    event.preventDefault()
+    const error = modal.querySelector('[data-error]')
+    if (form.elements.confirm.value.trim() !== 'RESET') {
+      error.textContent = 'พิมพ์ RESET ให้ตรงเพื่อยืนยัน'; error.classList.remove('hidden'); return
+    }
+    const button = form.querySelector('button[type="submit"],button:not([type])')
+    button.disabled = true; button.textContent = 'กำลังรีเซ็ต…'
+    const result = await supabase.rpc('reset_current_council_election_votes')
+    if (result.error || result.data?.error) {
+      error.textContent = result.error?.message || result.data?.error || 'รีเซ็ตไม่สำเร็จ'
+      error.classList.remove('hidden'); button.disabled = false; button.textContent = 'ยืนยันรีเซ็ต'; return
+    }
+    modal.remove()
+    sourceModal?.remove()
+    toast(`รีเซ็ตคะแนนแล้ว ${formatCount(result.data.deleted_vote_count)} คะแนน`)
+    await refreshTurnout(); renderLanding()
+  })
+}
+
 function renderVotePage(bundle, code) {
+  const teacherParent = ['teacher', 'personnel'].includes(bundle.voter_type) ? (bundle.parentBundle || bundle) : null
+  if (teacherParent && !bundle.parentBundle && teacherParent.selectedBallotId == null) {
+    const ballots = teacherParent.ballots || []
+    app.innerHTML = `
+      <button id="btn-back" class="text-xs font-bold text-white/80 hover:text-white mb-3">← กลับหน้าหลัก</button>
+      <div class="bg-white rounded-2xl border p-5 space-y-3">
+        <p class="font-extrabold text-center">เลือกลงคะแนนประธานสภานักเรียน</p>
+        <p class="text-xs text-center text-[var(--muted)]">ครูและบุคลากรลงคะแนนได้ทั้งตำแหน่งประธานชายและประธานหญิง ตำแหน่งละหนึ่งครั้ง</p>
+        ${ballots.map(b => `<button data-ballot="${b.election_id}" class="w-full p-4 rounded-xl border text-left ${b.already_voted ? 'bg-emerald-50 border-emerald-200' : 'bg-white'}"><b>${b.gender === 'M' ? 'ประธานชาย' : 'ประธานหญิง'}</b><span class="block text-xs mt-1 ${b.already_voted ? 'text-emerald-700' : 'text-[var(--muted)]'}">${b.already_voted ? 'ลงคะแนนแล้ว' : (b.is_open ? 'พร้อมลงคะแนน' : 'ยังไม่เปิดรับคะแนน')}</span></button>`).join('')}
+        ${teacherParent.is_1087_tester ? '<button id="btn-reset-votes" class="w-full py-3 rounded-xl border border-rose-300 bg-rose-50 text-rose-700 font-bold text-sm">รีเซ็ตคะแนนเลือกตั้งทั้งหมด</button>' : ''}
+        <button id="btn-finish" class="w-full py-3 rounded-xl bg-[var(--bg-2)] font-bold text-sm">เสร็จสิ้น</button>
+      </div>`
+    app.querySelector('#btn-back').addEventListener('click', renderLanding)
+    app.querySelector('#btn-finish').addEventListener('click', renderLanding)
+    app.querySelectorAll('[data-ballot]').forEach(button => button.addEventListener('click', () => {
+      const ballot = ballots.find(item => String(item.election_id) === button.dataset.ballot)
+      if (!ballot || ballot.already_voted) return
+      renderVotePage({ ...teacherParent, selectedBallotId: ballot.election_id }, code)
+    }))
+    app.querySelector('#btn-reset-votes')?.addEventListener('click', () => openElectionResetConfirm())
+    return
+  }
+  if (teacherParent && !bundle.parentBundle && teacherParent.selectedBallotId != null) {
+    const selectedBallot = teacherParent.ballots.find(item => String(item.election_id) === String(teacherParent.selectedBallotId))
+    if (!selectedBallot) return renderVotePage(teacherParent, code)
+    bundle = { ...selectedBallot, voter_type: 'teacher', parentBundle: teacherParent }
+  }
   if (bundle.error === 'election_not_found') {
     app.innerHTML = `
       <button id="btn-back" class="text-xs font-bold text-white/80 hover:text-white mb-3">← กลับไปกรอกรหัสใหม่</button>
@@ -296,9 +435,9 @@ function renderVotePage(bundle, code) {
         <p class="text-3xl">✅</p>
         <p class="font-bold text-[var(--ink)]">คุณลงคะแนนแล้ว ขอบคุณที่ใช้สิทธิ์!</p>
         <p class="text-xs text-[var(--muted-2)] mt-2">${bundle.already_abstained ? 'บันทึกการไม่ประสงค์ลงคะแนนแล้ว' : esc(bundle.thank_you_message || 'ผลการเลือกตั้งจะประกาศภายหลังปิดหีบ')}</p>
-        <button id="btn-restart" class="w-full mt-2 py-3 rounded-2xl bg-[var(--bg-2)] hover:bg-[var(--line)] text-[var(--ink-2)] font-bold text-sm">เสร็จสิ้น — คนต่อไปกรอกรหัสใหม่</button>
+        <button id="btn-restart" class="w-full mt-2 py-3 rounded-2xl bg-[var(--bg-2)] hover:bg-[var(--line)] text-[var(--ink-2)] font-bold text-sm">${bundle.parentBundle ? 'กลับไปเลือกอีกตำแหน่ง' : 'เสร็จสิ้น — คนต่อไปกรอกรหัสใหม่'}</button>
       </div>`
-    app.querySelector('#btn-restart').addEventListener('click', renderLanding)
+    app.querySelector('#btn-restart').addEventListener('click', () => bundle.parentBundle ? renderVotePage(bundle.parentBundle, code) : renderLanding())
     return
   }
 
@@ -409,7 +548,7 @@ function renderVotePage(bundle, code) {
         simulationVotes += 1
         data = { ok: true }
       } else {
-        const result = await supabase.rpc('cast_public_council_vote', { p_code: code, p_candidate_id: isAbstain ? null : selected })
+        const result = await supabase.rpc('cast_public_council_vote', { p_code: code, p_candidate_id: isAbstain ? null : selected, p_election_config_id: bundle.election_id })
         data = result.data; error = result.error
       }
       if (error || data?.error) {
@@ -423,7 +562,12 @@ function renderVotePage(bundle, code) {
       bundle.already_voted = true
       bundle.already_abstained = isAbstain
       await refreshTurnout()
-      renderVotePage(bundle, code)
+      if (bundle.parentBundle) {
+        const parent = bundle.parentBundle
+        const index = parent.ballots.findIndex(item => String(item.election_id) === String(bundle.election_id))
+        if (index >= 0) parent.ballots[index] = { ...parent.ballots[index], already_voted: true, already_voted_candidate_id: bundle.already_voted_candidate_id, already_abstained: bundle.already_abstained }
+        renderVotePage(parent, code)
+      } else renderVotePage(bundle, code)
     })
   }
 
@@ -448,6 +592,7 @@ async function boot() {
     }
     setInterval(refreshTurnout, 10000)
     setInterval(renderCountdown, 30000)
+    subscribeTurnoutRealtime()
   }
 }
 
