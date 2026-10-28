@@ -10,7 +10,6 @@ const isSimulation = new URLSearchParams(location.search).get('mode') === 'simul
 const installPromptState = { event: null }
 const installDisplayMode = window.matchMedia?.('(display-mode: standalone)')
 let pageSettings = null
-let settingsAdminCode = ''
 let turnout = { total_students: 0, voted_count: 0, percent: 0, opens_at: null, closes_at: null }
 let staffPositionTurnout = { male: {}, female: {} }
 let simulationVotes = 537
@@ -327,32 +326,32 @@ function openSettingsGate() {
   modal.innerHTML = `
     <form class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-5 space-y-3">
       <h2 class="font-extrabold text-lg">ยืนยันผู้ดูแลการเลือกตั้ง</h2>
-      <p class="text-sm text-[var(--muted)]">กรอกรหัสผู้ดูแล 1087 และเข้าสู่ระบบด้วยบัญชีครูรหัส 1087</p>
-      <input name="admin_code" type="password" inputmode="numeric" maxlength="4" autocomplete="off" placeholder="รหัส 4 หลัก" class="w-full border rounded-xl px-4 py-3 text-center text-xl tracking-[.4em]" />
+      <p class="text-sm text-[var(--muted)]">ต้องเข้าสู่ระบบด้วยบัญชีครูผู้ดูแลที่ได้รับสิทธิ์ ระบบจะตรวจสิทธิ์จากบัญชีโดยตรง</p>
       <p data-error class="hidden text-sm text-[var(--bad)]"></p>
-      <div class="flex gap-2"><button type="button" data-cancel class="flex-1 py-2.5 rounded-xl border font-bold">ยกเลิก</button><button class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-white font-bold">ยืนยัน</button></div>
+      <div class="flex gap-2"><button type="button" data-cancel class="flex-1 py-2.5 rounded-xl border font-bold">ยกเลิก</button><button class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-white font-bold">ตรวจสอบบัญชี</button></div>
     </form>`
   document.body.append(modal)
   const form = modal.querySelector('form')
-  form.elements.admin_code.focus()
   modal.querySelector('[data-cancel]').addEventListener('click', () => modal.remove())
   form.addEventListener('submit', async event => {
     event.preventDefault()
     const errorEl = modal.querySelector('[data-error]')
-    const code = form.elements.admin_code.value.trim()
-    if (code !== '1087') {
-      errorEl.textContent = 'รหัสผู้ดูแลไม่ถูกต้อง'; errorEl.classList.remove('hidden'); return
-    }
+    const button = form.querySelector('button[type="submit"],button:not([type])')
+    button.disabled = true
+    button.textContent = 'กำลังตรวจสอบ…'
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) {
-      errorEl.innerHTML = 'กรุณาเข้าสู่ระบบด้วยบัญชีครูรหัส 1087 ก่อนตั้งค่า <a class="underline font-bold" href="/pp5online/index.html?next=vt69.html">เข้าสู่ระบบ</a>'
-      errorEl.classList.remove('hidden'); return
+      errorEl.innerHTML = 'กรุณาเข้าสู่ระบบก่อน โดยใช้บัญชีครูที่ได้รับสิทธิ์ตั้งค่า <a class="underline font-bold" href="/pp5online/index.html?next=vt69.html">เข้าสู่ระบบ</a>'
+      errorEl.classList.remove('hidden')
+      button.disabled = false; button.textContent = 'ตรวจสอบบัญชี'
+      return
     }
     const { data, error } = await supabase.rpc('is_council_election_tester_1087')
     if (error || data !== true) {
-      errorEl.textContent = 'บัญชีที่เข้าสู่ระบบไม่ใช่ผู้ดูแลรหัส 1087'; errorEl.classList.remove('hidden'); return
+      errorEl.textContent = 'บัญชีนี้ไม่มีสิทธิ์ตั้งค่าระบบเลือกตั้ง'; errorEl.classList.remove('hidden')
+      button.disabled = false; button.textContent = 'ตรวจสอบบัญชี'
+      return
     }
-    settingsAdminCode = code
     modal.remove()
     openSettings()
   })
@@ -410,7 +409,6 @@ function openSettings() {
         if (uploadError) throw uploadError
       }
       const payload = {
-        admin_code: settingsAdminCode,
         header_text: form.elements.header_text.value,
         header_subtitle: form.elements.header_subtitle.value,
         header_alignment: form.elements.header_alignment.value,
@@ -429,7 +427,6 @@ function openSettings() {
       const { data, error } = await supabase.rpc('save_council_election_page_settings', { p_settings: payload })
       if (error) throw error
       pageSettings = data
-      settingsAdminCode = ''
       renderPageChrome(); renderCountdown(); modal.remove()
       toast('บันทึกการตั้งค่าแล้ว')
     } catch (error) {
@@ -774,15 +771,16 @@ async function boot() {
     settingsButton?.classList.add('hidden')
     installButton?.classList.add('hidden')
   } else {
-    if (isInstalledApp()) installButton?.classList.add('hidden')
-    else installButton?.classList.remove('hidden')
+    if (installPromptState.event && !isInstalledApp()) installButton?.classList.remove('hidden')
+    else installButton?.classList.add('hidden')
     installButton?.addEventListener('click', async () => {
       if (installPromptState.event) {
-        installPromptState.event.prompt()
-        await installPromptState.event.userChoice
+        const promptEvent = installPromptState.event
         installPromptState.event = null
-      } else {
-        alert('ใน Chrome ให้เปิดเมนู ⋮ แล้วเลือก “ติดตั้งหน้าเว็บเป็นแอป” หรือ “Install page as app”\n\nหากไม่พบเมนูนี้ ให้ตรวจว่าใช้ Chrome/Edge รุ่นปัจจุบันและเปิดลิงก์ผ่าน HTTPS')
+        installButton.classList.add('hidden')
+        await promptEvent.prompt()
+        const { outcome } = await promptEvent.userChoice
+        if (outcome === 'dismissed' && !isInstalledApp()) installPromptState.event = null
       }
     })
     setInterval(refreshTurnout, 10000)
