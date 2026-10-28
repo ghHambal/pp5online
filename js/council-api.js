@@ -631,7 +631,7 @@ export async function getVoteTally(electionConfigId) {
   const { data, error } = await supabase.from('council_votes').select('candidate_id').eq('election_config_id', electionConfigId)
   if (error) throw error
   const counts = {}
-  ;(data ?? []).forEach(v => { counts[v.candidate_id] = (counts[v.candidate_id] ?? 0) + 1 })
+  ;(data ?? []).forEach(v => { if (v.candidate_id != null) counts[v.candidate_id] = (counts[v.candidate_id] ?? 0) + 1 })
   return counts
 }
 

@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1025'
+import { APP_VERSION } from './version.js?v=10.22.1026'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,11 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1026': [
+    '🗳️ ปรับหน้าลงคะแนนให้แสดงสถิติผู้ใช้สิทธิ์เทียบกับนักเรียนทั้งหมด และเพิ่มตัวเลือกไม่ประสงค์ลงคะแนน',
+    'เพิ่มโหมดจำลองแยกจากฐานข้อมูลจริง พร้อมตั้งค่าหัวหน้า/ท้ายหน้า เวลานับถอยหลัง และติดตั้งเป็นแอปบนเครื่องห้องคอม',
+    'จำกัดการตรวจรหัสและบันทึกคะแนนจริงให้ใช้ได้เฉพาะบัญชีครูหรือผู้ดูแลที่ได้รับสิทธิ์',
+  ],
   '10.22.1025': [
     '🗳️ เพิ่ม URL สั้น vt69.html สำหรับเปิดหน้าลงคะแนนเลือกตั้งสภานักเรียน',
   ],
