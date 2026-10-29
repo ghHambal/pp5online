@@ -436,13 +436,18 @@ function openStudentCodeModal() {
   modal.innerHTML = `
       <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
       <div class="flex items-center justify-between gap-2 mb-4"><h2 class="font-extrabold text-lg">${esc(publicText('student_code_title'))}</h2><button id="code-modal-close" class="text-xl text-[var(--muted)]">✕</button></div>
-      <input id="student-code-input" inputmode="numeric" autocomplete="off" placeholder="${esc(publicText('student_code_placeholder'))}" class="w-full border border-[var(--line)] rounded-xl px-4 py-4 text-xl font-bold text-center tracking-widest focus:outline-none focus:border-[var(--primary-70)]" />
+      <form id="student-code-form" class="flex gap-2">
+        <input id="student-code-input" inputmode="numeric" autocomplete="off" placeholder="${esc(publicText('student_code_placeholder'))}" class="min-w-0 flex-1 border border-[var(--line)] rounded-xl px-4 py-4 text-xl font-bold text-center tracking-widest focus:outline-none focus:border-[var(--primary-70)]" />
+        <button id="btn-search-student" type="submit" class="shrink-0 rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white hover:bg-[var(--primary-dark)] disabled:opacity-60">ค้นหา</button>
+      </form>
       <p id="student-code-error" class="hidden text-xs text-[var(--bad)] mt-2 text-center"></p>
       <div id="student-confirm-card" class="hidden mt-4"></div>
       <p class="text-xs text-[var(--muted-2)] text-center mt-4">${esc(publicText('student_code_hint'))}</p>
     </div>`
   document.body.appendChild(modal)
   const input = modal.querySelector('#student-code-input')
+  const form = modal.querySelector('#student-code-form')
+  const searchButton = modal.querySelector('#btn-search-student')
   const errorEl = modal.querySelector('#student-code-error')
   const cardEl = modal.querySelector('#student-confirm-card')
   modal.querySelector('#code-modal-close').addEventListener('click', () => modal.remove())
@@ -454,19 +459,25 @@ function openStudentCodeModal() {
     cardEl.classList.add('hidden')
     cardEl.innerHTML = ''
     if (!code) return
-    let bundle
-    if (isSimulation) bundle = simulationBundle()
-    else {
-      const result = await supabase.rpc('get_public_council_election_bundle_v2', { p_code: code })
-      bundle = result.data
-      if (result.error) { errorEl.textContent = 'ระบบตรวจสอบไม่สำเร็จ กรุณาลองอีกครั้ง'; errorEl.classList.remove('hidden'); return }
+    searchButton.disabled = true
+    searchButton.textContent = 'กำลังค้นหา...'
+    try {
+      let bundle
+      if (isSimulation) bundle = simulationBundle()
+      else {
+        const result = await supabase.rpc('get_public_council_election_bundle_v2', { p_code: code })
+        bundle = result.data
+        if (result.error) { errorEl.textContent = 'ระบบตรวจสอบไม่สำเร็จ กรุณาลองอีกครั้ง'; errorEl.classList.remove('hidden'); return }
+      }
+      if (bundle?.error === 'student_not_found' || bundle?.error === 'voter_not_found') { errorEl.textContent = 'ไม่พบรหัสนักเรียนหรือครูนี้ กรุณาตรวจสอบอีกครั้ง'; errorEl.classList.remove('hidden'); return }
+      if (bundle?.error === 'gender_unknown') { errorEl.textContent = 'ไม่พบข้อมูลเพศของนักเรียน ติดต่อผู้ดูแลระบบ'; errorEl.classList.remove('hidden'); return }
+      renderConfirmCard(bundle, code, modal)
+    } finally {
+      searchButton.disabled = false
+      searchButton.textContent = 'ค้นหา'
     }
-    if (bundle?.error === 'student_not_found' || bundle?.error === 'voter_not_found') { errorEl.textContent = 'ไม่พบรหัสนักเรียนหรือครูนี้ กรุณาตรวจสอบอีกครั้ง'; errorEl.classList.remove('hidden'); return }
-    if (bundle?.error === 'gender_unknown') { errorEl.textContent = 'ไม่พบข้อมูลเพศของนักเรียน ติดต่อผู้ดูแลระบบ'; errorEl.classList.remove('hidden'); return }
-    renderConfirmCard(bundle, code, modal)
   }
-  input.addEventListener('blur', () => { if (input.value.trim()) lookup() })
-  input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); input.blur() } })
+  form.addEventListener('submit', event => { event.preventDefault(); lookup() })
 
   function renderConfirmCard(bundle, code, modal) {
     const s = bundle.student

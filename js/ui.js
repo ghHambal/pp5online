@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1034'
+import { APP_VERSION } from './version.js?v=10.22.1035'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1035': [
+    'เพิ่มปุ่มค้นหาข้างช่องกรอกรหัสนักเรียน/ครูบนหน้าลงคะแนน เพื่อใช้ค้นหาได้แม้แป้นพิมพ์มือถือไม่มีปุ่ม Enter',
+  ],
   '10.22.1034': [
     'เมื่อคลิก “ไม่ประสงค์ลงคะแนน” จะแสดงป๊อปอัปกลางหน้าจอเพื่อยืนยันก่อนบันทึก เช่นเดียวกับการเลือกผู้สมัคร',
     'เพิ่มตัวเลือกแก้ไขหัวข้อ คำเตือน และข้อความปุ่มยืนยันการไม่ประสงค์ลงคะแนนในหน้าตั้งค่า',
