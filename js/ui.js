@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1039'
+import { APP_VERSION } from './version.js?v=10.22.1040'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1040': [
+    'เพิ่มหน้าติดตามคะแนนแยกบัตรชายและหญิงสำหรับครูผู้ดูแล พร้อมกำหนดการเปิดเผยผลต่อบุคคลทั่วไปหลังปิดหีบ',
+    'ปรับสีพื้นหลังสถิติรายห้องจากแดงตามสัดส่วนผู้มาใช้สิทธิ์น้อยไปเขียวตามสัดส่วนที่มากขึ้น',
+  ],
   '10.22.1039': [
     'เพิ่มสถิติครูชาย/หญิงจากคำนำหน้าชื่อ และแสดงกลุ่มคำนำหน้าอื่นแยกต่างหาก',
   ],

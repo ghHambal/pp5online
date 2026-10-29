@@ -11,6 +11,10 @@ const installPromptState = { event: null }
 const installDisplayMode = window.matchMedia?.('(display-mode: standalone)')
 let pageSettings = null
 let settingsAdminCode = ''
+let electionResults = null
+let canViewResults = false
+let currentPage = 'landing'
+let activeResultGender = 'M'
 let turnout = { total_students: 0, voted_count: 0, percent: 0, opens_at: null, closes_at: null }
 let staffPositionTurnout = { male: {}, female: {} }
 let simulationVotes = 537
@@ -190,7 +194,16 @@ function renderClassStatsModal() {
     return
   }
   const summary = (voted, total) => `${formatCount(voted)} / ${formatCount(total)}${total ? ` · ${(Number(voted) * 100 / Number(total)).toFixed(1)}%` : ''}`
-  content.innerHTML = `<div class="overflow-x-auto rounded-2xl border border-slate-200"><table class="w-full min-w-[720px] text-left text-sm"><thead class="sticky top-0 bg-slate-100 text-xs uppercase tracking-wide text-slate-600"><tr><th class="px-4 py-3">ห้องเรียน</th><th class="px-4 py-3">รวม</th><th class="px-4 py-3">ชาย</th><th class="px-4 py-3">หญิง</th><th class="px-4 py-3">ไม่ระบุเพศ</th></tr></thead><tbody class="divide-y divide-slate-100">${rows.map((row, i) => `<tr class="${i % 2 ? 'bg-slate-50/70' : 'bg-white'}"><td class="px-4 py-3 font-bold text-slate-800">${esc(row.room)}</td><td class="px-4 py-3"><b>${summary(row.voted, row.total)}</b></td><td class="px-4 py-3 text-sky-800">${summary(row.male_voted, row.male_total)}</td><td class="px-4 py-3 text-rose-800">${summary(row.female_voted, row.female_total)}</td><td class="px-4 py-3 text-slate-500">${summary(row.unknown_voted, row.unknown_total)}</td></tr>`).join('')}</tbody></table></div><p class="text-[11px] text-slate-500 mt-3">ตัวเลขด้านบนคือจำนวนผู้มาใช้สิทธิ์เทียบกับจำนวนนักเรียนทั้งหมดของห้อง ไม่เปิดเผยตัวเลือกที่ลงคะแนน</p>`
+  const roomColor = (voted, total) => {
+    if (!Number(total)) return 'rgb(241 245 249)'
+    const ratio = Math.max(0, Math.min(1, Number(voted) / Number(total)))
+    const red = [254, 226, 226], yellow = [254, 249, 195], green = [220, 252, 231]
+    const from = ratio < 0.5 ? red : yellow
+    const to = ratio < 0.5 ? yellow : green
+    const mix = ratio < 0.5 ? ratio * 2 : (ratio - 0.5) * 2
+    return `rgb(${from.map((value, index) => Math.round(value + (to[index] - value) * mix)).join(' ')})`
+  }
+  content.innerHTML = `<div class="overflow-x-auto rounded-2xl border border-slate-200"><table class="w-full min-w-[720px] text-left text-sm"><thead class="sticky top-0 bg-slate-100 text-xs uppercase tracking-wide text-slate-600"><tr><th class="px-4 py-3">ห้องเรียน</th><th class="px-4 py-3">รวม</th><th class="px-4 py-3">ชาย</th><th class="px-4 py-3">หญิง</th><th class="px-4 py-3">ไม่ระบุเพศ</th></tr></thead><tbody class="divide-y divide-slate-100">${rows.map(row => `<tr style="background-color:${roomColor(row.voted, row.total)}"><td class="px-4 py-3 font-bold text-slate-800">${esc(row.room)}</td><td class="px-4 py-3"><b>${summary(row.voted, row.total)}</b></td><td class="px-4 py-3 text-sky-800">${summary(row.male_voted, row.male_total)}</td><td class="px-4 py-3 text-rose-800">${summary(row.female_voted, row.female_total)}</td><td class="px-4 py-3 text-slate-500">${summary(row.unknown_voted, row.unknown_total)}</td></tr>`).join('')}</tbody></table></div><p class="text-[11px] text-slate-500 mt-3">สีพื้นหลังแสดงเปอร์เซ็นต์รวมของห้อง: ยิ่งเขียวหมายถึงมาใช้สิทธิ์มาก ยิ่งแดงหมายถึงมาใช้สิทธิ์น้อย ตัวเลขไม่เปิดเผยตัวเลือกที่ลงคะแนน</p>`
 }
 
 function renderPageChrome() {
@@ -223,9 +236,25 @@ async function refreshTurnout() {
   renderTurnout()
 }
 
+async function refreshElectionResults({ render = true } = {}) {
+  if (isSimulation) return
+  const { data, error } = await supabase.rpc('get_council_election_results')
+  if (error || !data) return
+  const wasVisible = canViewResults
+  const wasLiveAccess = electionResults?.live_access === true
+  electionResults = data
+  canViewResults = data.visible === true
+  if (render && currentPage === 'results' && canViewResults) renderElectionResultsPage()
+  else if (render && currentPage === 'results') renderLanding()
+  else if (render && currentPage === 'landing' && (wasVisible !== canViewResults || wasLiveAccess !== (data.live_access === true))) renderLanding()
+}
+
 function subscribeTurnoutRealtime() {
   return supabase.channel('council-election-turnout')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'council_election_turnout_signals' }, () => refreshTurnout())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'council_election_turnout_signals' }, () => {
+      refreshTurnout()
+      if (currentPage === 'results') refreshElectionResults()
+    })
     .subscribe()
 }
 
@@ -268,8 +297,10 @@ function positionLabel(gender) {
 }
 
 async function renderLanding() {
+  currentPage = 'landing'
   app.innerHTML = `
     ${isSimulation ? '<div class="mb-3 rounded-xl bg-amber-100 text-amber-900 p-3 text-center text-sm font-bold">โหมดจำลอง — ไม่มีข้อมูลใดถูกบันทึกในฐานข้อมูลจริง</div>' : ''}
+    ${canViewResults ? `<nav class="mb-4 flex gap-2" aria-label="เมนูการเลือกตั้ง"><button class="rounded-xl border border-white/60 bg-white/10 px-4 py-2 text-sm font-bold text-white">ลงคะแนน</button><button id="btn-open-election-results" class="rounded-xl bg-white px-4 py-2 text-sm font-bold text-emerald-900">${electionResults?.live_access ? 'ติดตามผลเรียลไทม์' : 'ผลการเลือกตั้ง'}</button></nav>` : ''}
     <div id="council-turnout" class="mb-4"></div>
     <div class="bg-white/90 rounded-2xl border p-5 text-center">
       <p class="text-sm text-[var(--muted)]">${esc(isSimulation ? 'ทดสอบขั้นตอนลงคะแนนได้โดยใช้รหัสจำลอง' : publicText('landing_instruction'))}</p>
@@ -286,7 +317,26 @@ async function renderLanding() {
 
   app.querySelector('#btn-open-voting').addEventListener('click', openStudentCodeModal)
   app.querySelector('#btn-personnel-voting')?.addEventListener('click', openPersonnelRoster)
+  app.querySelector('#btn-open-election-results')?.addEventListener('click', renderElectionResultsPage)
 
+}
+
+function renderElectionResultsPage() {
+  currentPage = 'results'
+  const ballots = Array.isArray(electionResults?.results) ? electionResults.results : []
+  const ballot = ballots.find(item => item.gender === activeResultGender)
+  const candidates = Array.isArray(ballot?.candidates) ? ballot.candidates : []
+  const maximum = Math.max(1, ...candidates.map(candidate => Number(candidate.votes) || 0))
+  app.innerHTML = `
+    <button id="btn-results-back" class="mb-3 text-xs font-bold text-white/80 hover:text-white">← กลับหน้าลงคะแนน</button>
+    <section class="rounded-2xl bg-white p-5 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3"><div><p class="text-xs font-bold uppercase tracking-[.16em] text-emerald-700">${electionResults?.live_access ? 'LIVE ELECTION TRACKER' : 'ELECTION RESULTS'}</p><h2 class="text-xl font-extrabold text-slate-900">${electionResults?.live_access ? 'ติดตามผลการเลือกตั้งเรียลไทม์' : 'ผลการเลือกตั้ง'}</h2><p class="mt-1 text-xs text-slate-500">${electionResults?.live_access ? 'อัปเดตอัตโนมัติเมื่อมีคะแนนใหม่' : 'แสดงผลหลังปิดหีบตามการตั้งค่าของโรงเรียน'}</p></div><span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">${electionResults?.live_access ? 'กำลังติดตาม' : 'ปิดหีบแล้ว'}</span></div>
+      <div class="my-4 grid grid-cols-2 gap-2"><button data-result-gender="M" class="rounded-xl border px-4 py-3 font-bold ${activeResultGender === 'M' ? 'border-emerald-800 bg-emerald-800 text-white' : 'border-slate-200 text-slate-700'}">${esc(positionLabel('M'))}</button><button data-result-gender="W" class="rounded-xl border px-4 py-3 font-bold ${activeResultGender === 'W' ? 'border-emerald-800 bg-emerald-800 text-white' : 'border-slate-200 text-slate-700'}">${esc(positionLabel('W'))}</button></div>
+      ${ballot ? `<div class="mb-4 grid grid-cols-2 gap-3 text-sm"><div class="rounded-xl bg-slate-50 p-3"><span class="text-slate-500">คะแนนรวม</span><b class="block text-xl text-slate-900">${formatCount(ballot.vote_total)}</b></div><div class="rounded-xl bg-slate-50 p-3"><span class="text-slate-500">งดออกเสียง</span><b class="block text-xl text-slate-900">${formatCount(ballot.abstentions)}</b></div></div><div class="space-y-3">${candidates.map(candidate => { const votes = Number(candidate.votes) || 0; const width = Math.round(votes * 100 / maximum); return `<article class="rounded-xl border border-slate-200 p-4"><div class="flex items-start justify-between gap-3"><div><p class="text-xs font-bold text-slate-500">หมายเลข ${formatCount(candidate.ballot_number)}</p><h3 class="font-extrabold text-slate-900">${esc(candidate.full_name || 'ผู้สมัคร')}</h3><p class="text-xs text-slate-500">${esc(candidate.room || '')}</p></div><b class="text-lg text-emerald-900">${formatCount(votes)} คะแนน</b></div><div class="mt-3 h-2 overflow-hidden rounded-full bg-slate-100"><div class="h-full rounded-full bg-emerald-600 transition-all" style="width:${width}%"></div></div></article>` }).join('') || '<p class="rounded-xl bg-slate-50 p-5 text-center text-sm text-slate-500">ยังไม่มีรายชื่อผู้สมัครที่เผยแพร่</p>'}</div>` : '<p class="rounded-xl bg-slate-50 p-5 text-center text-sm text-slate-500">ไม่พบข้อมูลบัตรเลือกตั้ง</p>'}
+      <p class="mt-4 text-right text-[11px] text-slate-400">อัปเดต ${electionResults?.updated_at ? new Date(electionResults.updated_at).toLocaleTimeString('th-TH') : '—'}</p>
+    </section>`
+  app.querySelector('#btn-results-back').addEventListener('click', renderLanding)
+  app.querySelectorAll('[data-result-gender]').forEach(button => button.addEventListener('click', () => { activeResultGender = button.dataset.resultGender; renderElectionResultsPage() }))
 }
 
 function renderCountdown() {
@@ -368,6 +418,7 @@ function openSettings() {
         <label class="block text-xs font-bold">ข้อความขอบคุณหลังลงคะแนน<textarea name="thank_you_message" maxlength="1000" rows="2" class="mt-1 w-full border rounded-xl px-3 py-2"></textarea></label>
         <label class="block text-xs font-bold">เวลานับถอยหลัง<select name="countdown_enabled" class="mt-1 w-full border rounded-xl px-3 py-2"><option value="true">เปิดใช้งาน</option><option value="false">ปิดใช้งาน</option></select></label>
       </section>
+      <section class="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 space-y-3"><div><h3 class="font-bold">การแสดงผลคะแนนต่อบุคคลทั่วไป</h3><p class="mt-1 text-xs text-[var(--muted)]">ครูผู้ดูแลรหัส 1087 ดูผลเรียลไทม์ได้ระหว่างเลือกตั้ง การตั้งค่านี้กำหนดว่าบุคคลทั่วไปจะเห็นผลหลังปิดหีบทั้งสองตำแหน่งหรือไม่</p></div><input type="hidden" name="show_results_after_close" value="false"><p id="results-visibility-status" class="rounded-lg bg-white px-3 py-2 text-sm font-bold"></p><div class="grid grid-cols-1 gap-2 sm:grid-cols-2"><button type="button" data-results-visibility="true" class="rounded-xl border border-emerald-700 bg-white px-3 py-2 text-sm font-bold text-emerald-800">เปิดเผยผลหลังปิดหีบ</button><button type="button" data-results-visibility="false" class="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700">ซ่อนผลหลังปิดหีบ</button></div></section>
       <section class="rounded-xl border p-3 space-y-3"><h3 class="font-bold">ตำแหน่งและเวลาเปิดรับคะแนน</h3>
         ${positions.map((p, i) => `<div class="rounded-lg bg-[var(--surface-2)] p-3 space-y-2"><p class="font-bold">${p.gender === 'M' ? esc(publicText('male_position_label')) : esc(publicText('female_position_label'))}</p><input type="hidden" name="position_${i}_id" value="${Number(p.id)}"><input type="hidden" name="position_${i}_gender" value="${esc(p.gender)}"><label class="block text-xs font-bold">เริ่ม<input type="datetime-local" name="position_${i}_opens_at" value="${asLocalDateTime(p.opens_at)}" class="mt-1 w-full border rounded-xl px-3 py-2"></label><label class="block text-xs font-bold">ปิดรับคะแนน<input type="datetime-local" name="position_${i}_closes_at" value="${asLocalDateTime(p.closes_at)}" class="mt-1 w-full border rounded-xl px-3 py-2"></label></div>`).join('') || '<p class="text-xs text-[var(--muted)]">ไม่พบตำแหน่งที่ตั้งค่าได้ในเทอมนี้</p>'}
       </section>
@@ -385,6 +436,14 @@ function openSettings() {
   form.elements.footer_text.value = pageSettings?.footer_text || ''
   form.elements.thank_you_message.value = pageSettings?.thank_you_message || ''
   form.elements.countdown_enabled.value = pageSettings?.countdown_enabled === false ? 'false' : 'true'
+  const setResultsVisibility = enabled => {
+    form.elements.show_results_after_close.value = String(enabled)
+    const status = form.querySelector('#results-visibility-status')
+    status.textContent = enabled ? 'สถานะปัจจุบัน: เปิดเผยผลต่อบุคคลทั่วไปหลังปิดหีบทั้งสองตำแหน่ง' : 'สถานะปัจจุบัน: ซ่อนผลจากบุคคลทั่วไป'
+    status.className = `rounded-lg bg-white px-3 py-2 text-sm font-bold ${enabled ? 'text-emerald-800' : 'text-slate-700'}`
+  }
+  setResultsVisibility(pageSettings?.show_results_after_close === true)
+  modal.querySelectorAll('[data-results-visibility]').forEach(button => button.addEventListener('click', () => setResultsVisibility(button.dataset.resultsVisibility === 'true')))
   PUBLIC_TEXT_FIELDS.forEach(([key]) => { form.elements[`text_${key}`].value = publicText(key) })
   modal.querySelector('#settings-close').addEventListener('click', () => { settingsAdminCode = ''; modal.remove() })
   form.addEventListener('submit', async event => {
@@ -415,6 +474,7 @@ function openSettings() {
         footer_text: form.elements.footer_text.value,
         thank_you_message: form.elements.thank_you_message.value,
         countdown_enabled: form.elements.countdown_enabled.value === 'true',
+        show_results_after_close: form.elements.show_results_after_close.value === 'true',
         public_texts: Object.fromEntries(PUBLIC_TEXT_FIELDS.map(([key]) => [key, form.elements[`text_${key}`].value])),
         positions: positions.map((position, i) => ({
           id: Number(form.elements[`position_${i}_id`].value),
@@ -427,7 +487,9 @@ function openSettings() {
       if (data?.ok !== true) throw new Error('บันทึกไม่สำเร็จ')
       pageSettings = data.settings
       settingsAdminCode = ''
+      await refreshElectionResults({ render: false })
       renderPageChrome(); renderCountdown(); modal.remove()
+      if (currentPage === 'landing') renderLanding()
       toast('บันทึกการตั้งค่าแล้ว')
     } catch (error) {
       errorEl.textContent = error.message || 'บันทึกไม่สำเร็จ'; errorEl.classList.remove('hidden')
@@ -987,6 +1049,7 @@ async function boot() {
     try { await navigator.serviceWorker?.register('/pp5online/sw.js', { scope: '/pp5online/' }) } catch {}
   }
   await Promise.all([loadPageSettings(), refreshTurnout()])
+  await refreshElectionResults({ render: false })
   renderLanding()
   const settingsButton = document.getElementById('council-election-settings')
   const installButton = document.getElementById('council-install-app')
@@ -1008,6 +1071,7 @@ async function boot() {
       }
     })
     setInterval(refreshTurnout, 10000)
+    setInterval(() => refreshElectionResults(), 5000)
     setInterval(renderCountdown, 30000)
     subscribeTurnoutRealtime()
   }
