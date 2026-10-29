@@ -43,6 +43,31 @@ async function authorize(request: Request, passcode: string): Promise<{ ok: true
   return { ok: true }
 }
 
+function constantTimeEquals(left: string, right: string) {
+  const length = Math.max(left.length, right.length)
+  let difference = left.length ^ right.length
+  for (let index = 0; index < length; index++) {
+    difference |= (left.charCodeAt(index) || 0) ^ (right.charCodeAt(index) || 0)
+  }
+  return difference === 0
+}
+
+async function authorizeRegistration(request: Request, passcode: string): Promise<{ ok: true } | { ok: false; error: string; status: number }> {
+  const clientKey = await requestKey(request)
+  const { data: allowedToTry, error: rateError } = await admin.rpc("council_election_settings_rate_gate", {
+    p_client_key: clientKey,
+    p_success: false,
+  })
+  if (rateError || allowedToTry !== true) return { ok: false, error: "ลองรหัสหลายครั้งเกินไป กรุณารอสักครู่", status: 429 }
+
+  const configuredCode = Deno.env.get("COUNCIL_ELECTION_REGISTRATION_CODE") || ""
+  if (!configuredCode || !constantTimeEquals(passcode, configuredCode)) {
+    return { ok: false, error: "รหัสยืนยันไม่ถูกต้อง", status: 401 }
+  }
+  await admin.rpc("council_election_settings_rate_gate", { p_client_key: clientKey, p_success: true })
+  return { ok: true }
+}
+
 Deno.serve(async (request) => {
   if (request.method === "OPTIONS") return new Response(null, { headers: corsHeaders })
   if (request.method !== "POST") return respond({ error: "Method not allowed" }, 405)
@@ -61,11 +86,55 @@ Deno.serve(async (request) => {
       action = String(body.action || "verify")
       passcode = String(body.passcode || "")
     }
+
+    if (action === "teacher_search") {
+      const query = String(body.query || "").replace(/[%_]/g, " ").trim().slice(0, 80)
+      if (query.length < 2) return respond({ teachers: [] })
+      const { data, error } = await admin
+        .from("teachers")
+        .select("id, full_name, dept")
+        .ilike("full_name", `%${query}%`)
+        .order("full_name")
+        .limit(20)
+      if (error) return respond({ error: "ค้นหารายชื่อครูไม่สำเร็จ" }, 400)
+      return respond({ teachers: data || [] })
+    }
+
     if (!passcode) return respond({ error: "กรอกรหัสผู้ดูแล" }, 400)
 
-    const authorization = await authorize(request, passcode)
+    const authorization = action === "teacher_code" || action === "personnel_register"
+      ? await authorizeRegistration(request, passcode)
+      : await authorize(request, passcode)
     if (!authorization.ok) return respond({ error: authorization.error }, authorization.status)
     if (action === "verify") return respond({ ok: true })
+
+    if (action === "teacher_code") {
+      const teacherId = Number(body.teacher_id)
+      if (!Number.isInteger(teacherId) || teacherId < 1) return respond({ error: "เลือกรายชื่อครูไม่ถูกต้อง" }, 400)
+      const { data, error } = await admin
+        .from("teachers")
+        .select("teacher_code")
+        .eq("id", teacherId)
+        .maybeSingle()
+      if (error || !data || !/^\d{4}$/.test(String(data.teacher_code || ""))) {
+        return respond({ error: "ไม่พบรหัสครู 4 หลัก กรุณาติดต่อผู้ดูแล" }, 404)
+      }
+      return respond({ teacher_code: String(data.teacher_code) })
+    }
+
+    if (action === "personnel_register") {
+      const fullName = String(body.full_name || "").trim()
+      const gender = String(body.gender || "")
+      if (fullName.length < 2 || fullName.length > 120 || !["M", "W"].includes(gender)) {
+        return respond({ error: "ตรวจสอบชื่อ-สกุลและเพศอีกครั้ง" }, 400)
+      }
+      const { data, error } = await admin.rpc("register_council_election_personnel", {
+        p_full_name: fullName,
+        p_gender: gender,
+      })
+      if (error) return respond({ error: error.message || "เพิ่มรายชื่อไม่สำเร็จ" }, 400)
+      return respond(data || { error: "เพิ่มรายชื่อไม่สำเร็จ" }, data?.ok ? 200 : 400)
+    }
 
     if (action === "reset") {
       const { data, error } = await admin.rpc("reset_current_council_election_votes_with_passcode", {

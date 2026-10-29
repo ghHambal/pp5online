@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1036'
+import { APP_VERSION } from './version.js?v=10.22.1037'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1037': [
+    'เพิ่มการค้นหาชื่อครูและกรอกรหัสครูหลังยืนยันรหัส ณ จุดลงทะเบียน',
+    'เพิ่มการลงทะเบียนบุคลากรที่ไม่มีชื่อในรายการ พร้อมยืนยันรหัส ณ จุดลงทะเบียน',
+  ],
   '10.22.1036': [
     'แก้การค้นหารหัสครู/บุคลากรเมื่อยังไม่มีบัตรเลือกตั้งเผยแพร่ ให้แสดงข้อความแจ้งสาเหตุแทนข้อผิดพลาดหน้าเว็บ',
   ],

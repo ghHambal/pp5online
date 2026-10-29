@@ -442,6 +442,7 @@ function openStudentCodeModal() {
       </form>
       <p id="student-code-error" class="hidden text-xs text-[var(--bad)] mt-2 text-center"></p>
       <div id="student-confirm-card" class="hidden mt-4"></div>
+      <button type="button" id="btn-lookup-teacher-code" class="w-full mt-3 text-sm font-bold text-emerald-800 underline underline-offset-2">จำรหัสสี่ตัวไม่ได้? ตรวจสอบรหัสครู</button>
       <p class="text-xs text-[var(--muted-2)] text-center mt-4">${esc(publicText('student_code_hint'))}</p>
     </div>`
   document.body.appendChild(modal)
@@ -451,6 +452,7 @@ function openStudentCodeModal() {
   const errorEl = modal.querySelector('#student-code-error')
   const cardEl = modal.querySelector('#student-confirm-card')
   modal.querySelector('#code-modal-close').addEventListener('click', () => modal.remove())
+  modal.querySelector('#btn-lookup-teacher-code').addEventListener('click', () => openTeacherCodeLookup(input, modal))
   input.focus()
 
   const lookup = async () => {
@@ -513,12 +515,91 @@ function openStudentCodeModal() {
   }
 }
 
-async function openPersonnelRoster() {
-  const { data, error } = await supabase.rpc('get_public_council_personnel_roster')
-  if (error || !Array.isArray(data) || !data.length) {
-    toast('ไม่พบรายชื่อบุคลากรในทะเบียนแจ้งไซซ์เสื้อ', 'error')
-    return
+function openTeacherCodeLookup(codeInput, sourceModal) {
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[90] bg-black/60 flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <section role="dialog" aria-modal="true" aria-labelledby="teacher-lookup-title" class="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[88vh] p-5 flex flex-col">
+      <div class="flex items-center justify-between gap-2 mb-3"><h2 id="teacher-lookup-title" class="font-extrabold text-lg">ตรวจสอบรหัสครู</h2><button type="button" data-close class="text-xl text-[var(--muted)]" aria-label="ปิด">✕</button></div>
+      <p class="text-xs text-[var(--muted)] mb-3">ค้นหาและเลือกชื่อของตนเอง เจ้าหน้าที่จะยืนยันรหัส ณ จุดลงทะเบียน</p>
+      <input data-search autocomplete="off" placeholder="พิมพ์ชื่อ-สกุลครู" class="w-full border rounded-xl px-3 py-3 mb-3" />
+      <p data-error class="hidden text-sm text-[var(--bad)] mb-2"></p>
+      <div data-list class="overflow-y-auto space-y-2"></div>
+      <div data-confirm class="hidden mt-3 border-t pt-3"></div>
+    </section>`
+  document.body.append(modal)
+  const search = modal.querySelector('[data-search]')
+  const list = modal.querySelector('[data-list]')
+  const confirm = modal.querySelector('[data-confirm]')
+  const error = modal.querySelector('[data-error]')
+  let timer = null
+  let requestId = 0
+  let selectedTeacher = null
+  const showError = message => { error.textContent = message; error.classList.remove('hidden') }
+  const renderSearch = async query => {
+    const currentRequest = ++requestId
+    confirm.classList.add('hidden')
+    confirm.innerHTML = ''
+    error.classList.add('hidden')
+    if (query.length < 2) {
+      list.innerHTML = '<p class="text-center text-sm text-gray-400 py-6">พิมพ์อย่างน้อย 2 ตัวอักษรเพื่อค้นหา</p>'
+      return
+    }
+    list.innerHTML = '<p class="text-center text-sm text-gray-400 py-6">กำลังค้นหา…</p>'
+    try {
+      const result = await callElectionAdmin({ action: 'teacher_search', query })
+      if (currentRequest !== requestId) return
+      const rows = Array.isArray(result.teachers) ? result.teachers : []
+      list.innerHTML = rows.map(teacher => `<button type="button" data-teacher="${Number(teacher.id)}" class="w-full text-left rounded-xl border p-3 font-semibold hover:bg-emerald-50">${esc(teacher.full_name)}${teacher.dept ? `<span class="block text-xs font-normal text-gray-500 mt-1">${esc(teacher.dept)}</span>` : ''}</button>`).join('') || '<p class="text-center text-sm text-gray-400 py-6">ไม่พบรายชื่อครู</p>'
+      list.querySelectorAll('[data-teacher]').forEach(button => button.addEventListener('click', () => {
+        selectedTeacher = rows.find(item => Number(item.id) === Number(button.dataset.teacher))
+        if (!selectedTeacher) return
+        confirm.innerHTML = `
+          <p class="text-sm text-center">ตรวจสอบว่าคุณเลือกชื่อของตนเอง: <b>${esc(selectedTeacher.full_name)}</b></p>
+          <label class="block text-sm font-bold mt-3">รหัสยืนยัน ณ จุดลงทะเบียน<input data-passcode type="password" autocomplete="off" class="mt-1 w-full border rounded-xl px-3 py-2.5 text-center tracking-widest" /></label>
+          <p data-confirm-error class="hidden text-sm text-[var(--bad)] mt-2"></p>
+          <div class="flex gap-2 mt-3"><button type="button" data-cancel class="flex-1 rounded-xl border py-2 font-bold">เลือกชื่อใหม่</button><button type="button" data-reveal class="flex-1 rounded-xl bg-[var(--primary)] text-white py-2 font-bold">ยืนยันและกรอกรหัสครู</button></div>`
+        confirm.classList.remove('hidden')
+        confirm.querySelector('[data-cancel]').addEventListener('click', () => confirm.classList.add('hidden'))
+        confirm.querySelector('[data-reveal]').addEventListener('click', async event => {
+          const button = event.currentTarget
+          const passcode = confirm.querySelector('[data-passcode]').value.trim()
+          const errorEl = confirm.querySelector('[data-confirm-error]')
+          if (!passcode) { errorEl.textContent = 'กรอกรหัสยืนยัน ณ จุดลงทะเบียน'; errorEl.classList.remove('hidden'); return }
+          button.disabled = true; button.textContent = 'กำลังตรวจสอบ…'
+          try {
+            const result = await callElectionAdmin({ action: 'teacher_code', teacher_id: Number(selectedTeacher.id), passcode })
+            if (!/^\d{4}$/.test(String(result.teacher_code || ''))) throw new Error('ไม่พบรหัสครู 4 หลัก กรุณาติดต่อผู้ดูแล')
+            codeInput.value = result.teacher_code
+            modal.remove()
+            sourceModal.remove()
+            toast('กรอกรหัสครูแล้ว โปรดตรวจสอบชื่อก่อนลงคะแนน')
+            codeInput.focus()
+          } catch (lookupError) {
+            errorEl.textContent = lookupError.message || 'ตรวจสอบรหัสไม่สำเร็จ'
+            errorEl.classList.remove('hidden')
+            button.disabled = false; button.textContent = 'ยืนยันและกรอกรหัสครู'
+          }
+        })
+        confirm.querySelector('[data-passcode]').focus()
+      }))
+    } catch (searchError) {
+      if (currentRequest === requestId) showError(searchError.message || 'ค้นหารายชื่อไม่สำเร็จ')
+    }
   }
+  modal.querySelector('[data-close]').addEventListener('click', () => modal.remove())
+  modal.addEventListener('click', event => { if (event.target === modal) modal.remove() })
+  search.addEventListener('input', () => {
+    clearTimeout(timer)
+    timer = setTimeout(() => renderSearch(search.value.trim()), 180)
+  })
+  search.focus()
+  renderSearch('')
+}
+
+async function openPersonnelRoster() {
+  const { data: rosterData, error: rosterError } = await supabase.rpc('get_public_council_personnel_roster')
+  const data = Array.isArray(rosterData) ? rosterData : []
   const modal = document.createElement('div')
   modal.className = 'fixed inset-0 z-[80] bg-black/55 flex items-center justify-center p-4'
   modal.innerHTML = `
@@ -528,29 +609,80 @@ async function openPersonnelRoster() {
       <input data-search placeholder="ค้นหาชื่อ-สกุล" class="w-full border rounded-xl px-3 py-2 mb-3" />
       <div data-list class="overflow-y-auto space-y-2"></div>
       <div data-confirm class="hidden mt-3 border-t pt-3"></div>
+      <button type="button" data-add-self class="w-full mt-3 rounded-xl border border-emerald-800/30 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-900">ไม่มีชื่อ? เพิ่มรายชื่อตัวเอง</button>
+      ${rosterError ? '<p class="text-xs text-rose-700 mt-2">โหลดรายชื่อเดิมไม่สำเร็จ แต่ยังส่งคำขอเพิ่มชื่อได้</p>' : ''}
     </div>`
   document.body.append(modal)
   const list = modal.querySelector('[data-list]')
   const confirm = modal.querySelector('[data-confirm]')
   const render = query => {
     const rows = data.filter(person => person.full_name.toLocaleLowerCase('th-TH').includes(query.toLocaleLowerCase('th-TH')))
-    list.innerHTML = rows.map(person => `<button data-person="${person.id}" class="w-full text-left rounded-xl border p-3 font-semibold hover:bg-emerald-50">${esc(person.full_name)}</button>`).join('') || '<p class="text-center text-sm text-gray-400 py-6">ไม่พบรายชื่อ</p>'
+    list.innerHTML = rows.map(person => `<button data-person="${esc(person.voter_code || `personnel:${person.id}`)}" class="w-full text-left rounded-xl border p-3 font-semibold hover:bg-emerald-50">${esc(person.full_name)}</button>`).join('') || '<p class="text-center text-sm text-gray-400 py-6">ไม่พบรายชื่อ</p>'
     list.querySelectorAll('[data-person]').forEach(button => button.addEventListener('click', () => {
-      const person = data.find(item => String(item.id) === button.dataset.person)
+      const person = data.find(item => String(item.voter_code || `personnel:${item.id}`) === button.dataset.person)
       confirm.innerHTML = `<p class="text-sm text-center">คุณคือ <b>${esc(person.full_name)}</b> ใช่หรือไม่?</p><div class="flex gap-2 mt-3"><button data-cancel class="flex-1 rounded-xl border py-2 font-bold">เลือกชื่อใหม่</button><button data-enter class="flex-1 rounded-xl bg-[var(--primary)] text-white py-2 font-bold">ใช่ เข้าสู่การเลือกตั้ง</button></div>`
       confirm.classList.remove('hidden')
       confirm.querySelector('[data-cancel]').addEventListener('click', () => confirm.classList.add('hidden'))
       confirm.querySelector('[data-enter]').addEventListener('click', async () => {
-        const { data: bundle, error: bundleError } = await supabase.rpc('get_public_council_election_bundle_v2', { p_code: `personnel:${person.id}` })
+        const voterCode = person.voter_code || `personnel:${person.id}`
+        const { data: bundle, error: bundleError } = await supabase.rpc('get_public_council_election_bundle_v2', { p_code: voterCode })
         if (bundleError || bundle?.error) { toast(bundleError?.message || 'ตรวจสอบรายชื่อไม่สำเร็จ', 'error'); return }
         modal.remove()
-        renderVotePage(bundle, `personnel:${person.id}`)
+        renderVotePage(bundle, voterCode)
       })
     }))
   }
+  modal.querySelector('[data-add-self]').addEventListener('click', () => openPersonnelRegistration(modal))
   modal.querySelector('[data-close]').addEventListener('click', () => modal.remove())
   modal.querySelector('[data-search]').addEventListener('input', event => render(event.target.value.trim()))
   render('')
+}
+
+function openPersonnelRegistration(rosterModal) {
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[95] bg-black/60 flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <form class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 space-y-3">
+      <div class="flex items-center justify-between gap-2"><h2 class="font-extrabold text-lg">เพิ่มรายชื่อบุคลากร</h2><button type="button" data-close class="text-xl text-[var(--muted)]" aria-label="ปิด">✕</button></div>
+      <p class="text-xs text-[var(--muted)]">กรอกข้อมูลของตนเอง เจ้าหน้าที่จะยืนยันและอนุมัติ ณ จุดลงทะเบียน</p>
+      <label class="block text-sm font-bold">ชื่อ-สกุล<input name="full_name" maxlength="120" required autocomplete="name" class="mt-1 w-full border rounded-xl px-3 py-2.5" /></label>
+      <label class="block text-sm font-bold">เพศ<select name="gender" required class="mt-1 w-full border rounded-xl px-3 py-2.5"><option value="">เลือกเพศ</option><option value="M">ชาย</option><option value="W">หญิง</option></select></label>
+      <label class="block text-sm font-bold">รหัสยืนยัน ณ จุดลงทะเบียน<input name="passcode" type="password" required autocomplete="off" class="mt-1 w-full border rounded-xl px-3 py-2.5 text-center tracking-widest" /></label>
+      <p data-error class="hidden text-sm text-[var(--bad)]"></p>
+      <div class="flex gap-2"><button type="button" data-cancel class="flex-1 py-2.5 rounded-xl border font-bold">ยกเลิก</button><button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-white font-bold">ยืนยันและเพิ่มชื่อ</button></div>
+    </form>`
+  document.body.append(modal)
+  const form = modal.querySelector('form')
+  const close = () => modal.remove()
+  modal.querySelector('[data-close]').addEventListener('click', close)
+  modal.querySelector('[data-cancel]').addEventListener('click', close)
+  modal.addEventListener('click', event => { if (event.target === modal) close() })
+  form.elements.full_name.focus()
+  form.addEventListener('submit', async event => {
+    event.preventDefault()
+    const button = form.querySelector('[type="submit"]')
+    const errorEl = form.querySelector('[data-error]')
+    errorEl.classList.add('hidden')
+    button.disabled = true; button.textContent = 'กำลังตรวจสอบ…'
+    try {
+      const result = await callElectionAdmin({
+        action: 'personnel_register',
+        full_name: form.elements.full_name.value.trim(),
+        gender: form.elements.gender.value,
+        passcode: form.elements.passcode.value.trim(),
+      })
+      if (!result?.voter_code) throw new Error('เพิ่มรายชื่อไม่สำเร็จ กรุณาติดต่อผู้ดูแล')
+      const { data: bundle, error: bundleError } = await supabase.rpc('get_public_council_election_bundle_v2', { p_code: result.voter_code })
+      if (bundleError || bundle?.error) throw new Error(bundleError?.message || 'เพิ่มชื่อแล้ว แต่โหลดบัตรเลือกตั้งไม่สำเร็จ กรุณาเลือกชื่อจากรายการอีกครั้ง')
+      modal.remove(); rosterModal.remove()
+      toast(result.existing ? 'พบชื่อในทะเบียนแล้ว กำลังเปิดบัตรเลือกตั้ง' : 'ยืนยันและเพิ่มรายชื่อแล้ว')
+      renderVotePage(bundle, result.voter_code)
+    } catch (registrationError) {
+      errorEl.textContent = registrationError.message || 'เพิ่มรายชื่อไม่สำเร็จ'
+      errorEl.classList.remove('hidden')
+      button.disabled = false; button.textContent = 'ยืนยันและเพิ่มชื่อ'
+    }
+  })
 }
 
 function openElectionResetConfirm(sourceModal = null) {
