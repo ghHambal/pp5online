@@ -37,6 +37,7 @@ import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
 import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
 import { initCouncilCampaignPopup } from './council-campaign-popup.js'
+import { initCouncilElectionResultsPopup } from './council-election-results-popup.js'
 
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
@@ -3832,7 +3833,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _loadAnnouncementBanners()
   _checkTerangganuSurveyNudge()
   initHeavyLoadBanner()
-  initCouncilCampaignPopup().catch(() => {})
+  initCouncilCampaignPopup().catch(() => {}).then(() => initCouncilElectionResultsPopup({ role: 'teacher' }).catch(() => {}))
   if (_teacher?.profile_id) injectFeedbackWidget({ profileId: _teacher.profile_id, role: 'teacher', name: _teacher.full_name })
   if (_teacher?.id) import('./teacher-views-donor-chat.js').then(m => { m.injectDonorChatWidget(_teacher); _toggleFloatingFabsForView(_currentView) })
   _initHomeFab()
