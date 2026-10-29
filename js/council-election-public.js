@@ -471,6 +471,19 @@ function openStudentCodeModal() {
       }
       if (bundle?.error === 'student_not_found' || bundle?.error === 'voter_not_found') { errorEl.textContent = 'ไม่พบรหัสนักเรียนหรือครูนี้ กรุณาตรวจสอบอีกครั้ง'; errorEl.classList.remove('hidden'); return }
       if (bundle?.error === 'gender_unknown') { errorEl.textContent = 'ไม่พบข้อมูลเพศของนักเรียน ติดต่อผู้ดูแลระบบ'; errorEl.classList.remove('hidden'); return }
+      // The teacher/personnel RPC may return election_not_found without a voter
+      // profile when no ballot has been published. Do not pass that response
+      // to studentCard(), which expects bundle.student and otherwise throws.
+      if (bundle?.error === 'election_not_found' && !bundle?.student) {
+        errorEl.textContent = 'ยังไม่มีบัตรเลือกตั้งที่เผยแพร่สำหรับครู/บุคลากร กรุณาแจ้งผู้ดูแลประจำจุด';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      if (!bundle?.student) {
+        errorEl.textContent = 'ระบบไม่พบข้อมูลผู้ใช้ กรุณาตรวจสอบรหัสหรือแจ้งผู้ดูแลประจำจุด';
+        errorEl.classList.remove('hidden');
+        return;
+      }
       renderConfirmCard(bundle, code, modal)
     } finally {
       searchButton.disabled = false

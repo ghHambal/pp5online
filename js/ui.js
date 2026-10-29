@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1035'
+import { APP_VERSION } from './version.js?v=10.22.1036'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1036': [
+    'แก้การค้นหารหัสครู/บุคลากรเมื่อยังไม่มีบัตรเลือกตั้งเผยแพร่ ให้แสดงข้อความแจ้งสาเหตุแทนข้อผิดพลาดหน้าเว็บ',
+  ],
   '10.22.1035': [
     'เพิ่มปุ่มค้นหาข้างช่องกรอกรหัสนักเรียน/ครูบนหน้าลงคะแนน เพื่อใช้ค้นหาได้แม้แป้นพิมพ์มือถือไม่มีปุ่ม Enter',
   ],
