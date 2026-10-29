@@ -105,7 +105,7 @@ function renderTurnout() {
   const male = breakdown.male || { total: 0, voted: 0, percent: 0 }
   const female = breakdown.female || { total: 0, voted: 0, percent: 0 }
   const staff = turnout.staff_breakdown || {}
-  const teachers = staff.teachers || { total: 0, voted: 0 }
+  const teachers = staff.teachers || { total: 0, voted: 0, male_total: 0, male_voted: 0, female_total: 0, female_voted: 0, unknown_total: 0, unknown_voted: 0 }
   const personnel = staff.personnel || { total: 0, voted: 0, male_total: 0, male_voted: 0, female_total: 0, female_voted: 0 }
   const malePosition = staffPositionTurnout.male || {}
   const femalePosition = staffPositionTurnout.female || {}
@@ -131,10 +131,16 @@ function renderTurnout() {
       </div>
       <div class="mt-5 border-t border-slate-200 pt-4">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-3"><h3 class="font-bold text-[var(--ink)]">ครูและบุคลากร</h3><span class="text-xs text-[var(--muted-2)]">แสดงจำนวนผู้ลงคะแนน ไม่เปิดเผยว่าเลือกใคร</span></div>
-        <div class="grid sm:grid-cols-3 gap-3">
-          <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p class="text-xs text-slate-500">ครู</p><p class="text-2xl font-extrabold text-slate-800 mt-1">${formatCount(teachers.voted)} <span class="text-sm font-medium text-slate-500">/ ${formatCount(teachers.total)}</span></p><p class="text-[11px] text-slate-500 mt-1">ฐานข้อมูลครูไม่มีข้อมูลเพศ จึงยังแยกชาย/หญิงไม่ได้</p></div>
-          ${staffGenderCard('บุคลากรชาย', personnel.male_voted, personnel.male_total, 'from-blue-50 to-cyan-50')}
-          ${staffGenderCard('บุคลากรหญิง', personnel.female_voted, personnel.female_total, 'from-fuchsia-50 to-rose-50')}
+        <div class="space-y-4">
+          <div><p class="text-xs font-bold text-slate-600 mb-2">ครู แยกตามคำนำหน้าชื่อ</p><div class="grid sm:grid-cols-3 gap-3">
+            ${staffGenderCard('ครูชาย · นาย / Mr.', teachers.male_voted, teachers.male_total, 'from-sky-50 to-cyan-50')}
+            ${staffGenderCard('ครูหญิง · นาง / นางสาว', teachers.female_voted, teachers.female_total, 'from-fuchsia-50 to-rose-50')}
+            ${staffGenderCard('คำนำหน้าอื่น / ไม่ระบุ', teachers.unknown_voted, teachers.unknown_total, 'from-slate-50 to-gray-50')}
+          </div></div>
+          <div><p class="text-xs font-bold text-slate-600 mb-2">บุคลากร แยกตามเพศในทะเบียน</p><div class="grid sm:grid-cols-2 gap-3">
+            ${staffGenderCard('บุคลากรชาย', personnel.male_voted, personnel.male_total, 'from-blue-50 to-cyan-50')}
+            ${staffGenderCard('บุคลากรหญิง', personnel.female_voted, personnel.female_total, 'from-fuchsia-50 to-rose-50')}
+          </div></div>
         </div>
         <div class="mt-4"><p class="text-xs font-bold text-slate-600 mb-2">บัตรครู/บุคลากร แยกตามตำแหน่งที่ลงคะแนน</p><div class="grid sm:grid-cols-2 gap-3">
           ${staffPositionCard(positionLabel('M'), malePosition, 'from-sky-50 to-cyan-50')}
