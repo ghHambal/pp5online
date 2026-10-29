@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1037'
+import { APP_VERSION } from './version.js?v=10.22.1038'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,7 +1015,8 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
-  '10.22.1037': [
+  '10.22.1038': [
+    'แก้สถิติผู้มาใช้สิทธิ์แยกเพศนักเรียน สถิติครูและบุคลากร และยอดรายห้องเรียน',
     'เพิ่มการค้นหาชื่อครูและกรอกรหัสครูหลังยืนยันรหัส ณ จุดลงทะเบียน',
     'เพิ่มการลงทะเบียนบุคลากรที่ไม่มีชื่อในรายการ พร้อมยืนยันรหัส ณ จุดลงทะเบียน',
   ],
