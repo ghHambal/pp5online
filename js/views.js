@@ -1250,6 +1250,124 @@ function _downloadMemo(cfg, tab, raw) {
 }
 
 // ─── View: Teachers ───────────────────────────────────────────────────────────
+function _showWenTeacherSyncPreview(preview) {
+  document.getElementById('wen-teacher-sync-modal')?.remove()
+  const items = Array.isArray(preview.items) ? preview.items : []
+  const conflicts = Array.isArray(preview.conflicts) ? preview.conflicts : []
+  const addCount = items.filter(item => item.action === 'add').length
+  const renameCount = items.filter(item => item.action === 'rename').length
+  const modal = document.createElement('div')
+  modal.id = 'wen-teacher-sync-modal'
+  modal.className = 'fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/60 p-3 sm:p-6'
+  modal.innerHTML = `
+    <section class="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl bg-white shadow-2xl">
+      <header class="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
+        <div><h2 class="font-bold text-gray-800">ตรวจรายชื่อก่อนอัปเดตระบบเวร</h2>
+          <p class="mt-1 text-xs text-gray-500">เพิ่มใหม่ ${addCount} ราย · เปลี่ยนชื่อ ${renameCount} ราย · ตรงกันแล้ว ${Number(preview.unchanged || 0)} ราย · ข้าม/ตรวจสอบ ${conflicts.length} ราย</p>
+        </div>
+        <button type="button" data-close class="text-2xl leading-none text-gray-400 hover:text-gray-700" aria-label="ปิด">×</button>
+      </header>
+      <div class="border-b border-amber-100 bg-amber-50 px-5 py-3 text-xs text-amber-900">
+        รายการที่เลือกจะเพิ่มบัญชีใหม่หรือแก้เฉพาะชื่อครูตามรหัสเดิม ระบบจะเก็บรหัสผ่าน บทบาท และข้อมูลเวร/รายงานเดิมไว้
+      </div>
+      <div class="flex items-center justify-between px-5 py-3 text-xs">
+        <span class="font-semibold text-gray-600">รายการที่เปลี่ยนแปลง</span>
+        <button type="button" data-select-all class="font-semibold text-indigo-600 hover:text-indigo-800">เลือกทั้งหมด</button>
+      </div>
+      <div class="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+        ${items.length ? `<div class="divide-y divide-gray-100 rounded-xl border border-gray-100">
+          ${items.map(item => `<label class="flex cursor-pointer items-start gap-3 p-3 hover:bg-gray-50">
+            <input type="checkbox" data-sync-code="${_esc(item.code)}" class="mt-1 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+            <span class="min-w-0 flex-1"><span class="font-mono text-xs text-indigo-600">${_esc(item.code)}</span>
+              <span class="ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${item.action === 'add' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}">${item.action === 'add' ? 'เพิ่มใหม่' : 'เปลี่ยนชื่อ'}</span>
+              <span class="mt-1 block text-sm font-semibold text-gray-800">${_esc(item.source_name)}</span>
+              ${item.action === 'rename' ? `<span class="mt-0.5 block text-xs text-gray-500">ชื่อเดิม: ${_esc(item.wen_name || '—')}</span>` : ''}
+            </span>
+          </label>`).join('')}
+        </div>` : '<p class="rounded-xl bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">ไม่มีรายการที่ต้องเพิ่มหรือแก้ชื่อ</p>'}
+        ${conflicts.length ? `<details class="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-3">
+          <summary class="cursor-pointer text-xs font-semibold text-amber-900">รายการที่ระบบข้าม (${conflicts.length})</summary>
+          <div class="mt-3 max-h-40 space-y-2 overflow-y-auto text-xs text-amber-900">
+            ${conflicts.map(row => `<p><span class="font-mono">${_esc(row.code)}</span> · ${_esc(row.name)} — ${_esc(row.reason)}</p>`).join('')}
+          </div>
+        </details>` : ''}
+      </div>
+      <footer class="flex flex-wrap justify-end gap-2 border-t border-gray-100 px-5 py-4">
+        <button type="button" data-close class="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50">ยกเลิก</button>
+        <button type="button" data-apply disabled class="rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40">อัปเดต 0 รายการที่เลือก</button>
+      </footer>
+    </section>`
+  document.body.appendChild(modal)
+
+  const updateApplyLabel = () => {
+    const selected = modal.querySelectorAll('[data-sync-code]:checked').length
+    const apply = modal.querySelector('[data-apply]')
+    apply.textContent = `อัปเดต ${selected} รายการที่เลือก`
+    apply.disabled = selected === 0
+  }
+  modal.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => modal.remove()))
+  modal.addEventListener('click', event => { if (event.target === modal) modal.remove() })
+  modal.querySelectorAll('[data-sync-code]').forEach(input => input.addEventListener('change', updateApplyLabel))
+  updateApplyLabel()
+  modal.querySelector('[data-select-all]')?.addEventListener('click', () => {
+    const checkboxes = [...modal.querySelectorAll('[data-sync-code]')]
+    const shouldCheck = checkboxes.some(input => !input.checked)
+    checkboxes.forEach(input => { input.checked = shouldCheck })
+    modal.querySelector('[data-select-all]').textContent = shouldCheck ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'
+    updateApplyLabel()
+  })
+  modal.querySelector('[data-apply]')?.addEventListener('click', async event => {
+    const button = event.currentTarget
+    const codes = [...modal.querySelectorAll('[data-sync-code]:checked')].map(input => input.dataset.syncCode)
+    if (!codes.length) return
+    button.disabled = true
+    button.textContent = 'กำลังอัปเดต…'
+    try {
+      const data = await _invokeWenTeacherSync({ action: 'apply', codes })
+      modal.remove()
+      const summary = `เพิ่ม ${data.added || 0} · เปลี่ยนชื่อ ${data.renamed || 0}`
+      if (data.failed) showToast(`อัปเดตบางส่วน: ${summary} · ล้มเหลว ${data.failed} ราย (${data.failures?.[0]?.code || ''})`, 'warning')
+      else showToast(`อัปเดตรายชื่อระบบเวรเรียบร้อย ${summary}`, 'success')
+    } catch (error) {
+      console.error('Wen teacher sync failed:', error)
+      showToast(error?.message || 'อัปเดตรายชื่อระบบเวรไม่สำเร็จ', 'error')
+      button.disabled = false
+      updateApplyLabel()
+    }
+  })
+}
+
+async function _previewWenTeacherSync(button) {
+  if (button.dataset.busy === 'true') return
+  button.dataset.busy = 'true'
+  button.disabled = true
+  const original = button.textContent
+  button.textContent = 'กำลังตรวจรายชื่อ…'
+  try {
+    const data = await _invokeWenTeacherSync({ action: 'preview' })
+    _showWenTeacherSyncPreview(data)
+  } catch (error) {
+    console.error('Wen teacher preview failed:', error)
+    showToast(error?.message || 'ตรวจรายชื่อระบบเวรไม่สำเร็จ', 'error')
+  } finally {
+    button.dataset.busy = 'false'
+    button.disabled = false
+    button.textContent = original
+  }
+}
+
+async function _invokeWenTeacherSync(body) {
+  const { data, error } = await supabase.functions.invoke('sync-wen-teachers', { body })
+  if (error) {
+    const response = error.context instanceof Response ? error.context : null
+    const details = await response?.clone().json().catch(() => null)
+    throw new Error(details?.error || error.message || 'เรียกบริการซิงก์ไม่สำเร็จ')
+  }
+  if (data?.error) throw new Error(data.error)
+  return data
+}
+
+
 export async function renderTeachers() {
   setActiveNav('teachers')
   document.getElementById('page-title').textContent = 'จัดการครู / บุคลากร'
@@ -1270,7 +1388,11 @@ export async function renderTeachers() {
         <div>
           <p class="text-xs text-gray-400 mt-0.5">จัดการบัญชีและแผนกของครูในระบบ</p>
         </div>
-        <div class="flex items-center gap-2">
+        <div class="flex flex-wrap items-center justify-end gap-2">
+          <button id="teacher-sync-wen"
+            class="text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-4 py-2.5 rounded-xl transition">
+            🔄 อัปเดตระบบเวร
+          </button>
           <button id="teacher-export-csv"
             class="text-xs font-medium text-emerald-600 bg-emerald-50 hover:bg-emerald-100 px-4 py-2.5 rounded-xl transition">
             ⬇️ ดาวน์โหลด CSV
@@ -1381,6 +1503,9 @@ export async function renderTeachers() {
       a.remove()
       URL.revokeObjectURL(url)
       showToast('ดาวน์โหลด CSV แล้ว ✅', 'success')
+    })
+    document.getElementById('teacher-sync-wen')?.addEventListener('click', event => {
+      _previewWenTeacherSync(event.currentTarget)
     })
 
   } catch {

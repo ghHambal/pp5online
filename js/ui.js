@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1041'
+import { APP_VERSION } from './version.js?v=10.22.1042'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1042': [
+    '🔄 จัดการครู: เพิ่มตัวอย่างและปุ่มอัปเดตรายชื่อไปยังระบบเวร โดยจับคู่ด้วยรหัสครูและเก็บข้อมูลเวรเดิม',
+  ],
   '10.22.1041': [
     'ปรับหน้าติดตามผลให้เรียงผู้สมัครตามคะแนน พร้อมแสดงรูปและอันดับ',
     'แยกคะแนนนักเรียนและครู/บุคลากร พร้อมคำนวณสัดส่วนเปอร์เซ็นต์จากคะแนนที่เลือกผู้สมัครโดยไม่รวมงดออกเสียง',
