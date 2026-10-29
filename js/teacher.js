@@ -22,7 +22,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1042'
+import { APP_VERSION } from './version.js?v=10.22.1044'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -383,6 +383,7 @@ const MOBILE_NAV_GROUPS = {
     items: [
       { selector: '[data-nav="announcements-view"]', icon: '📢', label: 'ประกาศ' },
       { selector: '[data-nav="work-calendar-view"]', icon: '📅', label: 'ปฏิทินปฏิบัติงาน' },
+      { selector: '#menu-wen-duty', icon: '🛡️', label: 'ระบบเวร' },
       { selector: '[data-nav="life-skill-score"]', icon: '🌱', label: 'คะแนนทักษะชีวิต' },
       { selector: '[data-nav="reading-score"]', icon: '📖', label: 'คะแนนอ่านคิดวิเคราะห์' },
       { selector: '[data-nav="prayer-score"]', icon: '🕌', label: 'คะแนนละหมาด' },
@@ -644,7 +645,7 @@ const SIDEBAR_GROUPS = [
   },
   {
     key: 'general', icon: '📢', title: 'ประกาศและกิจกรรม', defaultOpen: true,
-    selectors: ['[data-nav="announcements-view"]', '[data-nav="work-calendar-view"]', '#btn-sv-mode', '#menu-council', '#menu-terangganu', '#menu-regrade'],
+    selectors: ['[data-nav="announcements-view"]', '[data-nav="work-calendar-view"]', '#menu-wen-duty', '#btn-sv-mode', '#menu-council', '#menu-terangganu', '#menu-regrade'],
   },
   {
     key: 'tools', icon: '🧰', title: 'เครื่องมือและคู่มือ', defaultOpen: false,
@@ -687,6 +688,15 @@ function _wireSidebarGroupToggle(group) {
 function _initSidebarGroups() {
   const nav = document.querySelector('#sidebar nav')
   if (!nav) return
+
+  if (!nav.dataset.wenDutyClickBound) {
+    nav.dataset.wenDutyClickBound = '1'
+    nav.addEventListener('click', event => {
+      if (!event.target.closest('#menu-wen-duty')) return
+      event.preventDefault()
+      if (_teacher?.teacher_code) window._openWenDuty(_teacher.teacher_code)
+    })
+  }
 
   if (!nav.querySelector(':scope > .sidebar-menu-group')) {
     const groupedNodes = new Set()

@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1043'
+import { APP_VERSION } from './version.js?v=10.22.1044'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1044': [
+    'เพิ่มปุ่มเข้าใช้งานระบบเวรในเมนูด้านซ้ายของครูทั่วไป เปิดระบบด้วยรหัสครูของบัญชีที่ลงชื่อเข้าใช้',
+  ],
   '10.22.1043': [
     'เพิ่มป๊อบอัพผลเลือกตั้งหลังเข้าสู่ระบบ: นักเรียนเห็นบัตรตามเพศ ครูสลับชาย/หญิงได้ และบุคคลทั่วไปเห็นเฉพาะคะแนนรวมหลังเปิดเผยผล',
     'ซ่อนสัดส่วนนักเรียน/ครูและเลขห้องจากผลสาธารณะ โดยผู้ดูแลรหัส 1087 ยังติดตามคะแนนแยกกลุ่มได้',
