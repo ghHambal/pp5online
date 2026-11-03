@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1044'
+import { APP_VERSION } from './version.js?v=10.22.1045'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1045': [
+    'แก้สิทธิ์ผลเลือกตั้ง: ครูรหัส 1087 ดูผลเรียลไทม์ได้เฉพาะช่วงที่มีบัตรเปิดรับคะแนน เมื่อปิดหีบแล้วจะทำตามสวิตช์เผยแพร่ผลเหมือนผู้ใช้อื่น',
+  ],
   '10.22.1044': [
     'เพิ่มปุ่มเข้าใช้งานระบบเวรในเมนูด้านซ้ายของครูทั่วไป เปิดระบบด้วยรหัสครูของบัญชีที่ลงชื่อเข้าใช้',
   ],
