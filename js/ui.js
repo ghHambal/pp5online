@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1046'
+import { APP_VERSION } from './version.js?v=10.22.1047'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1047': [
+    'ปรับหน้าแก้ค้างเก่าให้แสดงคำร้องเป็นการ์ดรายวิชาที่คลี่ดูรายชื่อนักเรียนได้ แตะแถวนักเรียนเพื่อตอบรับรายคน และมีปุ่มตอบรับเป็นชุดที่หัวการ์ดรายวิชา',
+  ],
   '10.22.1046': [
     'เพิ่มการตอบรับคำร้องแก้ค้างเก่าเป็นชุดในรายวิชาเดียวกัน เลือกนักเรียนและกำหนดวันสอบหรือไฟล์งานร่วมกันได้ พร้อมพิมพ์ใบสั้นรายคนรวมครั้งเดียว โดยยังตอบรับแยกรายคนได้',
   ],

@@ -513,6 +513,7 @@ async function handleDeclare(btn) {
 // ============================================================================
 const teacher = {
   subView: 'overview', subjects: [], form: null, bulkForm: null, editingResponseId: null,
+  respondExpanded: new Set(), responseExpandedId: null,
   catalogExpanded: new Set(), catalogSemesterFilter: {},
   assignedExpanded: new Set(), assignedSemesterFilter: {},
   deptHeadExpanded: new Set(), unassigned: [], deptHeadTeacherOptions: null,
@@ -605,11 +606,8 @@ async function renderTeacher() {
         <button id="regrade-teacher-back" class="w-8 h-8 rounded-full bg-[var(--surface-2)] text-[var(--muted)] text-sm">←</button>
         <p class="text-sm font-bold text-[var(--ink)]">ตอบรับคำร้อง</p>
       </div>
-      ${responseGroups.length ? `
-      <div class="rg-card p-3 mb-3 text-xs text-[var(--muted-2)]">ตอบรับเป็นชุดได้โดยเลือกนักเรียนหลายคนในรายวิชาเดียวกัน ใช้วิธีแก้และกำหนดการร่วมกัน ส่วนปุ่มรายคนยังใช้ได้ด้านล่าง</div>
-      <div class="flex flex-col gap-3 mb-5">${responseGroups.map((g, i) => teacherBulkResponseCard(g, i)).join('')}</div>
-      <p class="text-xs font-bold text-[var(--ink-2)] mb-2">หรือดำเนินการทีละคน</p>` : ''}
-      <div class="flex flex-col gap-3">${respondList.length ? respondList.map(x => teacherRespondCard(x)).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ตอบรับครบหมดแล้ว 🎉</div>`}</div>`
+      ${responseGroups.length ? `<div class="rg-card p-3 mb-3 text-xs text-[var(--muted-2)]">แตะการ์ดรายวิชาเพื่อดูรายชื่อนักเรียน แตะแถวนักเรียนเพื่อตอบรับรายคน หรือใช้ปุ่มด้านบนของการ์ดเพื่อตอบรับเป็นชุด</div>
+      <div class="flex flex-col gap-3">${responseGroups.map((g, i) => teacherRespondGroupCard(g, i)).join('')}</div>` : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ตอบรับครบหมดแล้ว 🎉</div>`}`
   } else if (teacher.subView === 'depthead') {
     const allGroups = groupBySubject(teacher.unassigned)
     const deptCode = teacher.deptHeadDept?.dept_code
@@ -642,6 +640,7 @@ async function renderTeacher() {
   content.querySelectorAll('[data-edit-response]').forEach(btn => btn.addEventListener('click', () => {
     teacher.form = null
     teacher.editingResponseId = Number(btn.dataset.editResponse)
+    teacher.responseExpandedId = Number(btn.dataset.editResponse)
     renderTeacher()
   }))
   content.querySelectorAll('[data-close-edit-response]').forEach(btn => btn.addEventListener('click', () => {
@@ -663,6 +662,18 @@ async function renderTeacher() {
       key: group.key, ids: new Set(group.items.map(x => Number(x.id))), method: '',
       dueDate: '', dueTime: '', file: null, fileUrl: '', fileSource: 'none',
     }
+    teacher.respondExpanded.add(group.key)
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-toggle-response-group]').forEach(btn => btn.addEventListener('click', () => {
+    const key = btn.dataset.toggleResponseGroup
+    if (teacher.respondExpanded.has(key)) teacher.respondExpanded.delete(key)
+    else teacher.respondExpanded.add(key)
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-toggle-individual-response]').forEach(btn => btn.addEventListener('click', () => {
+    const id = Number(btn.dataset.toggleIndividualResponse)
+    teacher.responseExpandedId = teacher.responseExpandedId === id ? null : id
     renderTeacher()
   }))
   content.querySelectorAll('[data-bulk-student-select]').forEach(cb => cb.addEventListener('change', () => {
@@ -1078,14 +1089,14 @@ function statCardLink(value, label, color, gotoKey) {
   </button>`
 }
 
-function teacherRespondCard(x) {
+function teacherRespondCard(x, compact = false) {
   const studentName = x.students?.full_name || '-'
   const f = teacher.form
   const openExam = f && f.id === x.id && f.method === 'นัดสอบปรับ'
   const openWork = f && f.id === x.id && f.method === 'ให้งานแก้'
   return `
-  <div class="rg-card p-4">
-    <div class="flex gap-2">
+  <div class="${compact ? 'rounded-xl bg-[var(--surface)] p-3 border border-[var(--line-soft)]' : 'rg-card p-4'}">
+    ${compact ? `<p class="text-[10px] text-[var(--muted-2)] mb-2">ตอบรับรายคน · ${escHtml(studentName)}</p>` : `<div class="flex gap-2">
       ${personAvatarHtml(x.students, true)}
       <div class="min-w-0">
         <p class="font-bold text-xs text-[var(--ink)]">${escHtml(studentName)}</p>
@@ -1093,7 +1104,7 @@ function teacherRespondCard(x) {
         <p class="text-xs text-[var(--muted)] mt-0.5">${escHtml(x.subject_name)} (${escHtml(x.subject_code)})</p>
         <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(x.category)}">${escHtml(x.category)}</span>
       </div>
-    </div>
+    </div>`}
     ${teacherResponseActionsHtml(x)}
     ${openExam ? teacherResponseFormHtml(x, f, true) : ''}
     ${openWork ? teacherResponseFormHtml(x, f, false) : ''}
@@ -1107,11 +1118,43 @@ function groupPendingResponses(rows) {
     if (!groups.has(key)) groups.set(key, { key, subject_code: row.subject_code, subject_name: row.subject_name, semester: row.semester, category: row.category, items: [] })
     groups.get(key).items.push(row)
   }
-  return [...groups.values()].sort((a, b) => String(a.subject_name).localeCompare(String(b.subject_name), 'th'))
+  return [...groups.values()].sort((a, b) => b.items.length - a.items.length || String(a.subject_name).localeCompare(String(b.subject_name), 'th'))
 }
 
-function teacherBulkResponseCard(group, index) {
+function teacherRespondGroupCard(group, index) {
+  const isOpen = teacher.respondExpanded.has(group.key)
+  const isBatchOpen = teacher.bulkForm?.key === group.key
+  return `<section class="rg-card p-4">
+    <div class="flex items-start gap-2">
+      <button data-toggle-response-group="${escHtml(group.key)}" class="flex-1 min-w-0 flex items-start justify-between gap-2 text-left">
+        <span class="min-w-0"><span class="block font-bold text-sm text-[var(--ink)] truncate">${escHtml(group.subject_name || group.subject_code)}</span>
+        <span class="block text-[10px] text-[var(--muted-2)] mt-0.5">${escHtml(group.subject_code)} · ${escHtml(group.semester)} · ${escHtml(group.category)}</span></span>
+        <span class="flex items-center gap-2 shrink-0"><span class="px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap" style="background:var(--primary-soft);color:var(--primary-dark);border:1px solid var(--primary-soft-line)">รอตอบ ${group.items.length} คน</span><span class="text-[var(--muted-2)] text-sm transition-transform" style="transform:rotate(${isOpen ? '180deg' : '0deg'})">▾</span></span>
+      </button>
+      <button data-open-bulk-response="${index}" class="shrink-0 px-3 py-2 rounded-xl text-[10px] sm:text-xs font-bold" style="background:var(--info-soft);color:var(--info);border:1px solid var(--info-soft-line)">${isBatchOpen ? 'ปิดชุด' : 'ตอบรับเป็นชุด'}</button>
+    </div>
+    ${isBatchOpen ? teacherBulkResponsePanel(group, index) : ''}
+    ${isOpen ? `<div class="mt-3 pt-3 border-t border-dashed border-[var(--line-soft)] flex flex-col gap-2">${group.items.map(row => teacherRespondStudentRow(row)).join('')}</div>` : ''}
+  </section>`
+}
+
+function teacherRespondStudentRow(row) {
+  const id = Number(row.id)
+  const isOpen = teacher.responseExpandedId === id
+  return `<div class="rounded-xl bg-[var(--surface-2)] overflow-hidden">
+    <button data-toggle-individual-response="${id}" class="w-full flex items-center gap-2.5 p-2.5 text-left">
+      ${personAvatarHtml(row.students, false)}
+      <span class="min-w-0 flex-1"><span class="block text-xs font-bold text-[var(--ink)] truncate">${escHtml(row.students?.full_name || '-')}</span><span class="block text-[10px] text-[var(--muted-2)] truncate">${escHtml(row.students?.student_code || '')} · ${escHtml(row.students?.main_room || row.students?.religion_room || '')}</span></span>
+      <span class="px-2 py-0.5 rounded-full text-[9px] font-bold" style="${badgeStyle(row.status)}">รอตอบ</span>
+      <span class="text-[var(--muted-2)] text-xs transition-transform" style="transform:rotate(${isOpen ? '180deg' : '0deg'})">▾</span>
+    </button>
+    ${isOpen ? `<div class="px-2.5 pb-2.5">${teacherRespondCard(row, true)}</div>` : ''}
+  </div>`
+}
+
+function teacherBulkResponsePanel(group, index) {
   const f = teacher.bulkForm?.key === group.key ? teacher.bulkForm : null
+  if (!f) return ''
   const selectedCount = f?.ids.size ?? group.items.length
   const reusableFiles = [...new Set(group.items.map(x => x.file_url).filter(Boolean))]
   const studentRows = group.items.map(row => {
@@ -1122,13 +1165,9 @@ function teacherBulkResponseCard(group, index) {
       <span class="min-w-0 flex-1"><span class="block text-xs font-bold text-[var(--ink)]">${escHtml(row.students?.full_name || '-')}</span><span class="text-[10px] text-[var(--muted-2)]">${escHtml(row.students?.student_code || '')} · ${escHtml(row.students?.main_room || row.students?.religion_room || '')}</span></span>
     </label>`
   }).join('')
-  return `<section class="rg-card p-3">
-    <div class="flex items-start justify-between gap-2">
-      <div><p class="text-sm font-bold text-[var(--ink)]">${escHtml(group.subject_name || group.subject_code)}</p>
-      <p class="text-[10px] text-[var(--muted-2)]">${escHtml(group.subject_code)} · ${escHtml(group.semester)} · ${escHtml(group.category)} · รอตอบ ${group.items.length} คน</p></div>
-      <button data-open-bulk-response="${index}" class="shrink-0 px-3 py-2 rounded-xl text-xs font-bold" style="background:var(--info-soft);color:var(--info);border:1px solid var(--info-soft-line)">${f ? 'ปิดแบบฟอร์ม' : 'ตอบรับเป็นชุด'}</button>
-    </div>
-    ${f ? `<div class="mt-3">
+  return `<div class="mt-3 pt-3 border-t border-dashed border-[var(--line-soft)]">
+      <div class="text-[10px] text-[var(--muted-2)] mb-2">เลือกนักเรียนและกำหนดวิธี/วันนัดร่วมกันสำหรับวิชานี้</div>
+      <div>
       <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-[var(--ink-2)]">ผู้รับคำตอบ: <b data-bulk-selected-count>${selectedCount}</b> คน</span><span class="flex gap-3"><button data-bulk-select-all="${index}" class="text-[10px] font-bold text-[var(--info)]">เลือกทั้งหมด</button><button data-bulk-select-none="${index}" class="text-[10px] font-bold text-[var(--muted)]">ล้าง</button></span></div>
       <div class="max-h-48 overflow-auto">${studentRows}</div>
       <div class="grid grid-cols-2 gap-2 mt-3">
@@ -1142,10 +1181,10 @@ function teacherBulkResponseCard(group, index) {
       ${f.fileUrl ? `<div class="flex justify-between items-center p-2 rounded-lg bg-[var(--surface)] text-[10px]"><a href="${escHtml(/^https:\/\//i.test(f.fileUrl) ? f.fileUrl : '')}" target="_blank" rel="noopener" class="text-[var(--info)] font-bold">ไฟล์ที่เลือก ↗</a><button data-bulk-clear-work-file class="text-[var(--bad)] font-bold">เอาออก</button></div>` : ''}
       ${reusableFiles.length === 1 ? `<button data-bulk-reuse-file="${escHtml(reusableFiles[0])}" class="mt-2 w-full py-2 rounded-lg bg-[var(--surface)] text-[10px] font-bold text-[var(--info)]">ใช้ไฟล์เดิมที่ใช้ร่วมกันอยู่แล้ว</button>` : ''}
       <label class="mt-2 flex items-center justify-center gap-2 w-full py-2 rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] text-xs font-bold text-[var(--ink-2)] cursor-pointer"><span>เลือกไฟล์จากเครื่อง</span><input data-bulk-work-file type="file" class="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png"></label>
-      <p data-bulk-work-file-name class="mt-1 text-[10px] text-[var(--muted-2)] truncate">${escHtml(f.file?.name || (f.fileUrl ? 'ใช้ไฟล์ที่เลือกไว้' : 'ยังไม่ได้เลือกไฟล์'))}</p>`}
-      <div class="flex gap-2 mt-3"><button data-bulk-confirm="${index}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">ตอบรับ <span data-bulk-confirm-count>${selectedCount}</span> คน</button><button data-bulk-cancel class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface)] text-[var(--muted)]">ปิด</button></div>` : ''}
-    </div>` : ''}
-  </section>`
+      <p data-bulk-work-file-name class="mt-1 text-[10px] text-[var(--muted-2)] truncate">${escHtml(f.file?.name || (f.fileUrl ? 'ใช้ไฟล์ที่เลือกไว้' : 'ยังไม่ได้เลือกไฟล์'))}</p>`}` : ''}
+      <div class="flex gap-2 mt-3"><button data-bulk-confirm="${index}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">ตอบรับ <span data-bulk-confirm-count>${selectedCount}</span> คน</button><button data-bulk-cancel class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface)] text-[var(--muted)]">ปิด</button></div>
+      </div>
+    </div>`
 }
 
 async function handleBulkAssign(btn, group) {
