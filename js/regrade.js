@@ -514,8 +514,19 @@ function studentSubjectCard(x) {
         <p class="text-xs mt-1" style="color:var(--info)">กำหนด: ${escHtml(formatRegradeDue(x.due_text))}</p>
         ${studentTeacherNoteHtml(x)}
       </div>
-      ${normalizeWorkUrl(x.work_url) ? `<a href="${escHtml(normalizeWorkUrl(x.work_url))}" target="_blank" rel="noopener noreferrer" class="mt-2 block w-full py-2 rounded-xl border border-[var(--info-soft-line)] text-[var(--info)] text-xs font-bold text-center">🔗 เปิดลิงก์งาน / เอกสาร ↗</a>` : ''}
+      ${studentWorkResourcesHtml(x)}
       <button data-print-slip="${x.id}" class="mt-2 w-full py-2 rounded-xl border border-[var(--line)] text-[var(--ink-2)] text-xs font-bold">🖨️ ใบสั้น</button>` : ''}
+  </div>`
+}
+
+function studentWorkResourcesHtml(row) {
+  const fileUrl = normalizeWorkUrl(row.file_url)
+  const workUrl = normalizeWorkUrl(row.work_url)
+  if (!fileUrl && !workUrl) return ''
+  const columns = fileUrl && workUrl ? 'grid-cols-2' : 'grid-cols-1'
+  return `<div class="grid ${columns} gap-2 mt-2">
+    ${fileUrl ? `<a href="${escHtml(fileUrl)}" target="_blank" rel="noopener noreferrer" class="py-2 rounded-xl border border-[var(--info-soft-line)] text-[var(--info)] text-xs font-bold text-center">📎 เปิดไฟล์งานที่ครูแนบ ↗</a>` : ''}
+    ${workUrl ? `<a href="${escHtml(workUrl)}" target="_blank" rel="noopener noreferrer" class="py-2 rounded-xl border border-[var(--info-soft-line)] text-[var(--info)] text-xs font-bold text-center">🔗 เปิดลิงก์งาน / เอกสาร ↗</a>` : ''}
   </div>`
 }
 
