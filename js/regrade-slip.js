@@ -44,7 +44,7 @@ export async function openRegradeSlip(row, teacherNameOverride, config) {
       subject_name: row.subject_name ?? '', subject_code: row.subject_code ?? '', semester: row.semester ?? '',
       grade_failed_at: row.grade_failed_at ?? '',
       teacher_name: teacherNameOverride ?? row.teachers?.full_name ?? row.teacher_name_raw ?? '',
-      response_method: row.method ?? '', due_date: formatRegradeDue(row.due_text), file_url: row.file_url ?? '',
+      response_method: row.method ?? '', due_date: formatRegradeDue(row.due_text), file_url: row.file_url ?? '', teacher_note: row.teacher_note ?? '', teacher_note_image_url: row.teacher_note_image_url ?? '',
     },
     docTitle: `ใบแก้ค้างเก่า ${row.students?.full_name ?? ''}`,
   }, showToast)
@@ -71,7 +71,7 @@ export async function openRegradeSlipsBatch(rows, teacherNameOverride, config) {
         subject_name: row.subject_name ?? '', subject_code: row.subject_code ?? '', semester: row.semester ?? '',
         grade_failed_at: row.grade_failed_at ?? '',
         teacher_name: teacherNameOverride ?? row.teachers?.full_name ?? row.teacher_name_raw ?? '',
-        response_method: row.method ?? '', due_date: formatRegradeDue(row.due_text), file_url: row.file_url ?? '',
+        response_method: row.method ?? '', due_date: formatRegradeDue(row.due_text), file_url: row.file_url ?? '', teacher_note: row.teacher_note ?? '', teacher_note_image_url: row.teacher_note_image_url ?? '',
       },
       docTitle: `ใบแก้ค้างเก่า ${row.students?.full_name ?? ''}`,
     }

@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1047'
+import { APP_VERSION } from './version.js?v=10.22.1048'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1048': [
+    'เพิ่มหน้าต่างเขียนคำชี้แจงในระบบแก้ค้างเก่า ครูพิมพ์หรือเขียนด้วยลายมือ เลือกแบบอักษร สี และขนาดได้ ข้อความแสดงให้นักเรียนอ่านพร้อมภาพ JPG ขนาดเล็ก และใช้กับการตอบรับรายคนหรือเป็นชุดได้',
+  ],
   '10.22.1047': [
     'ปรับหน้าแก้ค้างเก่าให้แสดงคำร้องเป็นการ์ดรายวิชาที่คลี่ดูรายชื่อนักเรียนได้ แตะแถวนักเรียนเพื่อตอบรับรายคน และมีปุ่มตอบรับเป็นชุดที่หัวการ์ดรายวิชา',
   ],

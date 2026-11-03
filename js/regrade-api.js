@@ -152,7 +152,7 @@ export async function getMyTeachingRegradeSubjects(teacherId) {
   return data ?? []
 }
 
-export async function assignWork(subjectRowId, { method, dueText, fileUrl }) {
+export async function assignWork(subjectRowId, { method, dueText, fileUrl, teacherNote, teacherNoteStyle, teacherNoteImageUrl }) {
   if (!['นัดสอบปรับ', 'ให้งานแก้'].includes(method)) throw new Error('method ไม่ถูกต้อง')
   if (!dueText) throw new Error('กรุณาเลือกวันที่')
   // ใช้ RPC เพื่อให้ครูแก้คำตอบเดิมได้อย่างปลอดภัยโดยอัปเดตเฉพาะฟิลด์คำตอบ
@@ -162,12 +162,15 @@ export async function assignWork(subjectRowId, { method, dueText, fileUrl }) {
     p_method: method,
     p_due_text: dueText,
     p_file_url: fileUrl || null,
+    p_teacher_note: teacherNote || null,
+    p_teacher_note_style: teacherNoteStyle || null,
+    p_teacher_note_image_url: teacherNoteImageUrl || null,
   })
   if (error) throw error
   await notifyRegradeEvent(subjectRowId, 'regrade_student', 'response')
 }
 
-export async function assignWorkBatch(subjectRowIds, { method, dueText, fileUrl }) {
+export async function assignWorkBatch(subjectRowIds, { method, dueText, fileUrl, teacherNote, teacherNoteStyle, teacherNoteImageUrl }) {
   const ids = [...new Set((subjectRowIds ?? []).map(Number).filter(Number.isSafeInteger))]
   if (!ids.length) throw new Error('กรุณาเลือกรายชื่อนักเรียนอย่างน้อย 1 คน')
   if (!['นัดสอบปรับ', 'ให้งานแก้'].includes(method)) throw new Error('method ไม่ถูกต้อง')
@@ -177,6 +180,9 @@ export async function assignWorkBatch(subjectRowIds, { method, dueText, fileUrl 
     p_method: method,
     p_due_text: dueText,
     p_file_url: fileUrl || null,
+    p_teacher_note: teacherNote || null,
+    p_teacher_note_style: teacherNoteStyle || null,
+    p_teacher_note_image_url: teacherNoteImageUrl || null,
   })
   if (error) throw error
 

@@ -24,6 +24,7 @@ import { openCertificatePrint } from './certificate-engine.js'
 import { openCertificateLayoutEditor } from './certificate-editor.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import { uploadAssignmentFile } from './storage.js'
+import { openRegradeNoteComposer } from './regrade-note-composer.js'
 
 // ─── ใบสั้นแก้ค้างเก่า — ใช้เอนจิน/ตัวแก้ไขเทมเพลตเดียวกับระบบเกียรติบัตรกลาง (certificate-engine.js/
 // certificate-editor.js) แต่ไม่ผ่านตารางออกใบ (certificates) ของระบบนั้นเลย เพราะนี่เป็นเอกสารทำงาน
@@ -42,12 +43,14 @@ const REGRADE_SLIP_TOKENS = [
   { token: '{{response_method}}', label: 'วิธีตอบรับ/วิธีแก้' },
   { token: '{{due_date}}', label: 'วันนัดสอบ/กำหนดส่ง' },
   { token: '{{file_url}}', label: 'ลิงก์ไฟล์งานแก้' },
+  { token: '{{teacher_note}}', label: 'คำชี้แจงจากครู' },
+  { token: '{{teacher_note_image_url}}', label: 'ลิงก์ภาพคำชี้แจงจากครู' },
 ]
 const REGRADE_SLIP_PREVIEW_VARS = {
   student_name: 'ตัวอย่าง ชื่อ-สกุล นักเรียน', student_code: '00000', room: 'ม.6/1', class_level: 'ม.6',
   category: 'สามัญ', subject_name: 'วิชาตัวอย่าง', subject_code: 'ว00000', semester: '1/2569',
   grade_failed_at: 'ร', teacher_name: 'ครูตัวอย่าง', response_method: 'นัดสอบปรับ',
-  due_date: '12 ธ.ค. 2569 เวลา 09:00 น.', file_url: 'https://example.com/work',
+  due_date: '12 ธ.ค. 2569 เวลา 09:00 น.', file_url: 'https://example.com/work', teacher_note: 'อ่านคำชี้แจงและทำตามกำหนดส่ง', teacher_note_image_url: 'https://example.com/teacher-note.jpg',
 }
 const REGRADE_SLIP_DEFAULT_LAYOUT = {
   orientation: 'portrait',
@@ -134,6 +137,8 @@ function openTeacherResponseForm(row, method) {
     id: Number(row.id), method, dueDate: picked.date, dueTime: picked.time,
     fileUrl: method === 'ให้งานแก้' ? (row.file_url || '') : '', file: null,
     fileSource: row.file_url ? 'current' : 'none', editing: row.status === 'กำลังดำเนินการปรับแก้',
+    noteText: row.teacher_note || '', noteStyle: row.teacher_note_style || null,
+    noteImageUrl: row.teacher_note_image_url || '', noteImageBlob: null,
   }
 }
 
@@ -487,8 +492,24 @@ function studentSubjectCard(x) {
       <div class="mt-3 rounded-xl p-3" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
         <p class="text-xs font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
         <p class="text-xs mt-1" style="color:var(--info)">กำหนด: ${escHtml(formatRegradeDue(x.due_text))}</p>
+        ${studentTeacherNoteHtml(x)}
       </div>
       <button data-print-slip="${x.id}" class="mt-2 w-full py-2 rounded-xl border border-[var(--line)] text-[var(--ink-2)] text-xs font-bold">🖨️ ใบสั้น</button>` : ''}
+  </div>`
+}
+
+function studentTeacherNoteHtml(row) {
+  if (!row.teacher_note && !row.teacher_note_image_url) return ''
+  const style = row.teacher_note_style && typeof row.teacher_note_style === 'object' ? row.teacher_note_style : {}
+  const fonts = { Sarabun: "'Sarabun', 'Noto Sans Thai', sans-serif", Tahoma: "Tahoma, 'Noto Sans Thai', sans-serif", serif: "Georgia, 'Noto Serif Thai', serif", handwritten: "'Comic Sans MS', 'Noto Sans Thai', cursive" }
+  const fontFamily = fonts[style.fontFamily] || fonts.Sarabun
+  const fontSize = Math.max(12, Math.min(28, Number(style.fontSize) || 18))
+  const color = /^#[\da-f]{6}$/i.test(style.color || '') ? style.color : '#183b56'
+  const image = /^https:\/\//i.test(row.teacher_note_image_url || '') ? row.teacher_note_image_url : ''
+  return `<div class="mt-3 rounded-xl bg-white/80 p-3" style="border:1px solid var(--info-soft-line)">
+    <p class="text-[10px] font-bold text-[var(--info)] mb-1">✍️ คำชี้แจงจากครู</p>
+    ${row.teacher_note ? `<p class="whitespace-pre-wrap break-words leading-relaxed" style="font-family:${fontFamily};font-size:${fontSize}px;color:${color}">${escHtml(row.teacher_note)}</p>` : ''}
+    ${image ? `<a href="${escHtml(image)}" target="_blank" rel="noopener" class="block mt-2"><img src="${escHtml(image)}" alt="ภาพคำชี้แจงจากครู" loading="lazy" class="max-h-64 max-w-full rounded-lg border border-slate-200 object-contain"><span class="inline-block mt-1 text-[10px] font-bold text-sky-700">เปิดหรือดาวน์โหลดภาพคำชี้แจง ↗</span></a>` : ''}
   </div>`
 }
 
@@ -661,6 +682,7 @@ async function renderTeacher() {
     else teacher.bulkForm = {
       key: group.key, ids: new Set(group.items.map(x => Number(x.id))), method: '',
       dueDate: '', dueTime: '', file: null, fileUrl: '', fileSource: 'none',
+      noteText: '', noteStyle: null, noteImageUrl: '', noteImageBlob: null,
     }
     teacher.respondExpanded.add(group.key)
     renderTeacher()
@@ -746,6 +768,22 @@ async function renderTeacher() {
     const group = responseGroups[Number(btn.dataset.bulkConfirm)]
     if (group) handleBulkAssign(btn, group)
   }))
+  content.querySelectorAll('[data-bulk-edit-note]').forEach(btn => btn.addEventListener('click', async () => {
+    const f = teacher.bulkForm
+    if (!f) return
+    const result = await openRegradeNoteComposer({ text: f.noteText, style: f.noteStyle, imageUrl: f.noteImageUrl })
+    if (!result) return
+    f.noteText = result.text
+    f.noteStyle = result.clearImage ? null : result.style
+    f.noteImageBlob = result.imageBlob
+    if (result.clearImage) f.noteImageUrl = ''
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-clear-bulk-note]').forEach(btn => btn.addEventListener('click', () => {
+    if (!teacher.bulkForm) return
+    Object.assign(teacher.bulkForm, { noteText: '', noteStyle: null, noteImageUrl: '', noteImageBlob: null })
+    renderTeacher()
+  }))
   content.querySelectorAll('[data-bulk-cancel]').forEach(btn => btn.addEventListener('click', () => { teacher.bulkForm = null; renderTeacher() }))
   content.querySelectorAll('[data-cancel-form]').forEach(btn => btn.addEventListener('click', () => { teacher.form = null; renderTeacher() }))
   content.querySelectorAll('[data-due-date]').forEach(el => el.addEventListener('input', () => { teacher.form.dueDate = el.value }))
@@ -770,6 +808,22 @@ async function renderTeacher() {
     renderTeacher()
   }))
   content.querySelectorAll('[data-confirm-assign]').forEach(btn => btn.addEventListener('click', () => handleAssign(btn)))
+  content.querySelectorAll('[data-edit-regrade-note]').forEach(btn => btn.addEventListener('click', async () => {
+    const f = teacher.form
+    if (!f) return
+    const result = await openRegradeNoteComposer({ text: f.noteText, style: f.noteStyle, imageUrl: f.noteImageUrl })
+    if (!result) return
+    f.noteText = result.text
+    f.noteStyle = result.clearImage ? null : result.style
+    f.noteImageBlob = result.imageBlob
+    if (result.clearImage) f.noteImageUrl = ''
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-clear-regrade-note]').forEach(btn => btn.addEventListener('click', () => {
+    if (!teacher.form) return
+    Object.assign(teacher.form, { noteText: '', noteStyle: null, noteImageUrl: '', noteImageBlob: null })
+    renderTeacher()
+  }))
   content.querySelectorAll('[data-cancel-response]').forEach(btn => btn.addEventListener('click', () => handleCancelResponse(btn)))
   content.querySelectorAll('[data-print-slip]').forEach(btn => btn.addEventListener('click', () => {
     const row = all.find(x => x.id === Number(btn.dataset.printSlip))
@@ -899,6 +953,7 @@ function assignedStudentRow(x) {
     <div class="mt-2 rounded-lg p-2" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
       <p class="text-[11px] font-bold" style="color:var(--info)">${escHtml(x.method || '')}</p>
       <p class="text-[11px] mt-0.5" style="color:var(--info)">กำหนด: ${escHtml(formatRegradeDue(x.due_text))}</p>
+      ${studentTeacherNoteHtml(x)}
     </div>
     <div class="grid ${safeFileUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-2 mt-2">
       ${safeFileUrl ? `<a href="${escHtml(safeFileUrl)}" target="_blank" rel="noopener" class="py-2 rounded-xl border border-[var(--info-soft-line)] text-[var(--info)] text-xs font-bold text-center">📎 เปิดไฟล์งาน ↗</a>` : ''}
@@ -1152,6 +1207,25 @@ function teacherRespondStudentRow(row) {
   </div>`
 }
 
+function teacherNoteComposerControls(form, bulk = false) {
+  const editAttr = bulk ? 'data-bulk-edit-note' : 'data-edit-regrade-note'
+  const clearAttr = bulk ? 'data-clear-bulk-note' : 'data-clear-regrade-note'
+  const safeImage = /^https:\/\//i.test(form.noteImageUrl || '') ? form.noteImageUrl : ''
+  const hasContent = !!(form.noteText || safeImage || form.noteImageBlob)
+  return `<div class="mt-3 rounded-xl border border-sky-100 bg-sky-50 p-3">
+    <div class="flex items-start justify-between gap-2">
+      <div class="min-w-0"><p class="text-xs font-bold text-sky-900">✍️ คำชี้แจงจากครู (ถ้ามี)</p>
+        <p class="text-[10px] text-sky-800 mt-0.5">พิมพ์หรือเขียนด้วยลายมือได้ ระบบจะแสดงข้อความในหน้าของนักเรียนและสร้างภาพขนาดเล็กแนบให้</p>
+        ${form.noteText ? `<p class="mt-2 text-xs text-slate-700 whitespace-pre-wrap line-clamp-3">${escHtml(form.noteText)}</p>` : '<p class="mt-2 text-[10px] text-slate-500">ยังไม่มีคำชี้แจง</p>'}
+        ${safeImage ? `<a href="${escHtml(safeImage)}" target="_blank" rel="noopener" class="inline-block mt-1 text-[10px] font-bold text-sky-700 underline">เปิดภาพคำชี้แจงเดิม ↗</a>` : ''}
+        ${form.noteImageBlob ? `<span class="block mt-1 text-[10px] font-bold text-emerald-700">พร้อมแนบภาพ JPG ใหม่ · ${(form.noteImageBlob.size / 1024).toFixed(1)} KB</span>` : ''}
+      </div>
+      <div class="shrink-0 flex flex-col gap-1.5"><button type="button" ${editAttr} class="rounded-lg bg-white px-3 py-2 text-[10px] font-bold text-sky-800 border border-sky-200">${hasContent ? 'แก้คำชี้แจง' : 'เขียนคำชี้แจง'}</button>
+        ${hasContent ? `<button type="button" ${clearAttr} class="rounded-lg px-2 py-1 text-[10px] font-bold text-rose-600">ลบ</button>` : ''}</div>
+    </div>
+  </div>`
+}
+
 function teacherBulkResponsePanel(group, index) {
   const f = teacher.bulkForm?.key === group.key ? teacher.bulkForm : null
   if (!f) return ''
@@ -1181,7 +1255,7 @@ function teacherBulkResponsePanel(group, index) {
       ${f.fileUrl ? `<div class="flex justify-between items-center p-2 rounded-lg bg-[var(--surface)] text-[10px]"><a href="${escHtml(/^https:\/\//i.test(f.fileUrl) ? f.fileUrl : '')}" target="_blank" rel="noopener" class="text-[var(--info)] font-bold">ไฟล์ที่เลือก ↗</a><button data-bulk-clear-work-file class="text-[var(--bad)] font-bold">เอาออก</button></div>` : ''}
       ${reusableFiles.length === 1 ? `<button data-bulk-reuse-file="${escHtml(reusableFiles[0])}" class="mt-2 w-full py-2 rounded-lg bg-[var(--surface)] text-[10px] font-bold text-[var(--info)]">ใช้ไฟล์เดิมที่ใช้ร่วมกันอยู่แล้ว</button>` : ''}
       <label class="mt-2 flex items-center justify-center gap-2 w-full py-2 rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] text-xs font-bold text-[var(--ink-2)] cursor-pointer"><span>เลือกไฟล์จากเครื่อง</span><input data-bulk-work-file type="file" class="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png"></label>
-      <p data-bulk-work-file-name class="mt-1 text-[10px] text-[var(--muted-2)] truncate">${escHtml(f.file?.name || (f.fileUrl ? 'ใช้ไฟล์ที่เลือกไว้' : 'ยังไม่ได้เลือกไฟล์'))}</p>`}` : ''}
+      <p data-bulk-work-file-name class="mt-1 text-[10px] text-[var(--muted-2)] truncate">${escHtml(f.file?.name || (f.fileUrl ? 'ใช้ไฟล์ที่เลือกไว้' : 'ยังไม่ได้เลือกไฟล์'))}</p>`}${teacherNoteComposerControls(f, true)}` : ''}
       <div class="flex gap-2 mt-3"><button data-bulk-confirm="${index}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">ตอบรับ <span data-bulk-confirm-count>${selectedCount}</span> คน</button><button data-bulk-cancel class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface)] text-[var(--muted)]">ปิด</button></div>
       </div>
     </div>`
@@ -1199,7 +1273,7 @@ async function handleBulkAssign(btn, group) {
   const selected = group.items.filter(x => ids.includes(Number(x.id)))
   const ok = await showRegradeConfirm({
     title: f.method === 'นัดสอบปรับ' ? 'ยืนยันตอบรับและนัดสอบเป็นชุด' : 'ยืนยันมอบหมายงานเป็นชุด',
-    message: `${f.method === 'นัดสอบปรับ' ? 'นัดสอบปรับ' : 'มอบหมายงานแก้'}วิชา "${group.subject_name}" ให้ ${selected.length} คน วันที่ ${formatRegradeDue(dueText)} ใช่หรือไม่?`,
+    message: `${f.method === 'นัดสอบปรับ' ? 'นัดสอบปรับ' : 'มอบหมายงานแก้'}วิชา "${group.subject_name}" ให้ ${selected.length} คน วันที่ ${formatRegradeDue(dueText)}${f.noteText ? ' พร้อมคำชี้แจงจากครู' : ''} ใช่หรือไม่?`,
     confirmText: `ยืนยัน ${selected.length} คน`,
   })
   if (!ok) return
@@ -1211,8 +1285,11 @@ async function handleBulkAssign(btn, group) {
       const uploaded = await uploadAssignmentFile(f.file, `regrade/teacher-${ctx.teacherRow.id}/${safePart(group.subject_code)}/${safePart(group.semester)}`)
       fileUrl = uploaded.url
     }
-    await assignWorkBatch(ids, { method: f.method, dueText, fileUrl })
-    const slips = selected.map(row => ({ ...row, method: f.method, due_text: dueText, file_url: fileUrl || '' }))
+    const safePart = value => String(value || 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
+    let noteImageUrl = f.noteImageUrl || null
+    if (f.noteImageBlob) noteImageUrl = await uploadTeacherNoteImage(f.noteImageBlob, `regrade/teacher-${ctx.teacherRow.id}/${safePart(group.subject_code)}/${safePart(group.semester)}/notes`)
+    await assignWorkBatch(ids, { method: f.method, dueText, fileUrl, teacherNote: f.noteText, teacherNoteStyle: f.noteStyle, teacherNoteImageUrl: noteImageUrl })
+    const slips = selected.map(row => ({ ...row, method: f.method, due_text: dueText, file_url: fileUrl || '', teacher_note: f.noteText, teacher_note_style: f.noteStyle, teacher_note_image_url: noteImageUrl }))
     teacher.bulkForm = null
     await openRegradeSlipsBatch(slips, ctx.teacherRow.full_name, ctx.cfg)
     showToast(`บันทึกคำตอบและแจ้งนักเรียน ${selected.length} คนแล้ว`, 'success')
@@ -1259,6 +1336,7 @@ function teacherResponseFormHtml(x, f, isExam) {
         <input data-work-file type="file" class="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png">
       </label>
       <p data-work-file-name class="mt-1 text-[10px] text-[var(--muted-2)] truncate">${escHtml(f.file?.name || (hasExistingFile ? 'หากไม่เลือกไฟล์ใหม่ ระบบจะใช้ไฟล์ที่แสดงอยู่' : 'ยังไม่ได้เลือกไฟล์'))}</p>`}
+      ${teacherNoteComposerControls(f)}
       <div class="flex gap-2 mt-2">
         <button data-confirm-assign="${x.id}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">${f.editing ? 'บันทึกการแก้ไข' : (isExam ? 'ยืนยันนัดสอบ' : 'ยืนยันมอบหมายงาน')}</button>
         <button data-cancel-form class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface)] text-[var(--muted)]">ปิด</button>
@@ -1275,7 +1353,7 @@ async function handleAssign(btn) {
   const x = teacher.subjects.find(r => r.id === id)
   const msg = f.method === 'นัดสอบปรับ'
     ? `นัดสอบปรับวิชา "${x.subject_name}" ให้ ${x.students?.full_name || ''} วันที่ ${formatRegradeDue(dueText)} ใช่หรือไม่?`
-    : `มอบหมายงานแก้วิชา "${x.subject_name}" ให้ ${x.students?.full_name || ''} กำหนดส่ง ${formatRegradeDue(dueText)} ใช่หรือไม่?`
+    : `มอบหมายงานแก้วิชา "${x.subject_name}" ให้ ${x.students?.full_name || ''} กำหนดส่ง ${formatRegradeDue(dueText)}${f.noteText ? ' พร้อมคำชี้แจงจากครู' : ''} ใช่หรือไม่?`
   const ok = await showRegradeConfirm({ title: f.editing ? 'ยืนยันแก้ไขคำตอบ' : (f.method === 'นัดสอบปรับ' ? 'ยืนยันนัดสอบปรับ' : 'ยืนยันมอบหมายงานแก้'), message: msg, confirmText: f.editing ? 'บันทึกการแก้ไข' : 'ยืนยัน' })
   if (!ok) return
   try {
@@ -1286,7 +1364,10 @@ async function handleAssign(btn) {
       const uploaded = await uploadAssignmentFile(f.file, `regrade/teacher-${ctx.teacherRow.id}/${safePart(x.subject_code)}/${safePart(x.semester)}`)
       fileUrl = uploaded.url
     }
-    await assignWork(id, { method: f.method, dueText, fileUrl })
+    let noteImageUrl = f.noteImageUrl || null
+    const safePart = value => String(value || 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
+    if (f.noteImageBlob) noteImageUrl = await uploadTeacherNoteImage(f.noteImageBlob, `regrade/teacher-${ctx.teacherRow.id}/${safePart(x.subject_code)}/${safePart(x.semester)}/notes`)
+    await assignWork(id, { method: f.method, dueText, fileUrl, teacherNote: f.noteText, teacherNoteStyle: f.noteStyle, teacherNoteImageUrl: noteImageUrl })
     showToast(f.editing ? 'แก้ไขคำตอบแล้ว ใบสั้นจะใช้ข้อมูลล่าสุดอัตโนมัติ ✅' : 'บันทึกการมอบหมายเรียบร้อย ✅', 'success')
     teacher.form = null
     teacher.editingResponseId = null
@@ -1295,6 +1376,13 @@ async function handleAssign(btn) {
     btn.disabled = false
     showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error')
   }
+}
+
+async function uploadTeacherNoteImage(blob, prefix) {
+  const imageFile = new File([blob], 'teacher-note.jpg', { type: 'image/jpeg' })
+  if (imageFile.size > 5 * 1024 * 1024) throw new Error('ภาพคำชี้แจงมีขนาดเกิน 5 MB กรุณาลดเนื้อหาหรือลายมือ')
+  const uploaded = await uploadAssignmentFile(imageFile, prefix)
+  return uploaded.url
 }
 
 async function handleCancelResponse(btn) {
