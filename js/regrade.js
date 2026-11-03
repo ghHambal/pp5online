@@ -450,7 +450,17 @@ async function renderStudent() {
   content.querySelectorAll('[data-declare]').forEach(btn => btn.addEventListener('click', () => handleDeclare(btn)))
   content.querySelectorAll('[data-print-slip]').forEach(btn => btn.addEventListener('click', () => {
     const row = s.find(x => x.id === Number(btn.dataset.printSlip))
-    if (row) printRegradeSlip(row)
+    if (!row) return
+    const profile = ctx.studentRow || {}
+    const studentRoom = row.category === 'ศาสนา'
+      ? (profile.religion_room || profile.main_room || '')
+      : (profile.main_room || profile.religion_room || '')
+    const derivedLevel = studentRoom.match(/^(ม\.[0-9]+|ปวช\.[0-9]+)/)?.[1] || ''
+    printRegradeSlip({
+      ...row,
+      students: { ...profile, ...(row.students || {}) },
+      class_level: row.class_level || derivedLevel,
+    })
   }))
   content.querySelectorAll('[data-deadline-cta]').forEach(btn => btn.addEventListener('click', () => { student.subView = btn.dataset.deadlineCta; renderStudent() }))
   document.getElementById('regrade-student-fab')?.addEventListener('click', () => { student.subView = 'catalog'; renderStudent() })

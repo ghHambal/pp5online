@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1049'
+import { APP_VERSION } from './version.js?v=10.22.1050'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1050': [
+    'แก้ใบสั้นฝั่งนักเรียนให้แสดงชื่อ รหัสนักเรียน และห้องจากโปรไฟล์ที่ลงชื่อเข้าใช้ พร้อมเติมระดับชั้นจากข้อมูลห้องเมื่อรายการไม่มีค่าระดับชั้น',
+  ],
   '10.22.1049': [
     'เพิ่มช่องใส่ URL งานหรือเอกสารตอนครูมอบหมายงานแก้ ทั้งแบบรายคน ตอบรับเป็นชุด และแก้ไขเป็นชุด นักเรียนเปิดลิงก์ได้จากหน้ารายการ พร้อมรองรับไฟล์แนบควบคู่กัน',
     'เพิ่มการแก้ไขคำตอบงานแก้แบบเป็นชุด เลือกนักเรียนรายวิชาเดียวกันและแก้กำหนดส่ง ไฟล์ หรือลิงก์ร่วมกัน โดยเก็บข้อมูลเดิมรายคนไว้เมื่อไม่ได้แก้ส่วนนั้น',
