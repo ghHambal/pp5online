@@ -1,6 +1,6 @@
 import { getRegradeConfig } from './regrade-api.js'
 import { getCertificateTemplate } from './certificates-api.js'
-import { openCertificatePrint } from './certificate-engine.js'
+import { openCertificatePrint, openCertificatesPrint } from './certificate-engine.js'
 import { showToast } from './ui.js'
 
 const TH_MONTHS = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.']
@@ -48,5 +48,34 @@ export async function openRegradeSlip(row, teacherNameOverride, config) {
     },
     docTitle: `ใบแก้ค้างเก่า ${row.students?.full_name ?? ''}`,
   }, showToast)
+}
+
+export async function openRegradeSlipsBatch(rows, teacherNameOverride, config) {
+  if (!rows?.length) return
+  const cfg = config || await getRegradeConfig()
+  const categories = [...new Set(rows.map(row => row.category === 'ศาสนา' ? 'ศาสนา' : 'สามัญ'))]
+  const templateIds = [...new Set(categories.map(category => Number(cfg?.regrade_slip_template_ids?.[category])).filter(Boolean))]
+  if (templateIds.length !== 1 || categories.some(category => !cfg?.regrade_slip_template_ids?.[category])) {
+    showToast('การพิมพ์รวมต้องมีเทมเพลตใบสั้นที่ตั้งค่าไว้ครบและเป็นรูปแบบเดียวกัน', 'warning')
+    return
+  }
+  const template = await getCertificateTemplate(templateIds[0]).catch(() => null)
+  if (!template) { showToast('ไม่พบเทมเพลตที่ตั้งค่าไว้ อาจถูกลบไปแล้ว', 'error'); return }
+  const certificates = rows.map(row => {
+    const room = row.students?.main_room || row.students?.religion_room || ''
+    return {
+      layout: template.layout,
+      variables: {
+        student_name: row.students?.full_name ?? '', student_code: row.students?.student_code ?? '', room,
+        class_level: row.class_level ?? '', category: row.category ?? '',
+        subject_name: row.subject_name ?? '', subject_code: row.subject_code ?? '', semester: row.semester ?? '',
+        grade_failed_at: row.grade_failed_at ?? '',
+        teacher_name: teacherNameOverride ?? row.teachers?.full_name ?? row.teacher_name_raw ?? '',
+        response_method: row.method ?? '', due_date: formatRegradeDue(row.due_text), file_url: row.file_url ?? '',
+      },
+      docTitle: `ใบแก้ค้างเก่า ${row.students?.full_name ?? ''}`,
+    }
+  })
+  openCertificatesPrint({ certificates })
 }
 

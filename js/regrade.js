@@ -1,4 +1,4 @@
-import { openRegradeSlip } from './regrade-slip.js'
+import { openRegradeSlip, openRegradeSlipsBatch } from './regrade-slip.js'
 import { openRegradeNotification, pollRegradeEvents } from './regrade-notifications.js'
 import { testIntentSubjectIds, canDeclareTestSubject } from './regrade-intent.js'
 import { supabase } from './supabase.js'
@@ -7,7 +7,7 @@ import { parseCSV } from './import.js'
 import {
   getRegradeConfig, updateRegradeConfig, getMyStudentRow, getMyTeacherRow, checkMyRegradePermissions,
   getMyRegradeSubjects, declareIntent,
-  getMyTeachingRegradeSubjects, assignWork, cancelAssignedWork,
+  getMyTeachingRegradeSubjects, assignWork, assignWorkBatch, cancelAssignedWork,
   getPendingCloseOut, closeOutSubject, getGradeTrackingRows, markGradeEntered,
   getAllRegradeSubjectsForDashboard,
   getRegradeAdmins, getRegradeRegistrarStaff, addRegradeAdmin, removeRegradeAdmin,
@@ -512,7 +512,7 @@ async function handleDeclare(btn) {
 // ฝั่งครู
 // ============================================================================
 const teacher = {
-  subView: 'overview', subjects: [], form: null, editingResponseId: null,
+  subView: 'overview', subjects: [], form: null, bulkForm: null, editingResponseId: null,
   catalogExpanded: new Set(), catalogSemesterFilter: {},
   assignedExpanded: new Set(), assignedSemesterFilter: {},
   deptHeadExpanded: new Set(), unassigned: [], deptHeadTeacherOptions: null,
@@ -566,6 +566,7 @@ async function renderTeacher() {
   const respondList = all.filter(x => x.status === 'จำนงแล้ว')
   const assignedList = all.filter(x => x.status === 'กำลังดำเนินการปรับแก้')
   const doneCount = all.filter(x => x.status === 'ปรับแก้สำเร็จ').length
+  const responseGroups = teacher.subView === 'respond' ? groupPendingResponses(respondList) : []
 
   let inner = ''
   if (teacher.subView === 'catalog') {
@@ -604,6 +605,10 @@ async function renderTeacher() {
         <button id="regrade-teacher-back" class="w-8 h-8 rounded-full bg-[var(--surface-2)] text-[var(--muted)] text-sm">←</button>
         <p class="text-sm font-bold text-[var(--ink)]">ตอบรับคำร้อง</p>
       </div>
+      ${responseGroups.length ? `
+      <div class="rg-card p-3 mb-3 text-xs text-[var(--muted-2)]">ตอบรับเป็นชุดได้โดยเลือกนักเรียนหลายคนในรายวิชาเดียวกัน ใช้วิธีแก้และกำหนดการร่วมกัน ส่วนปุ่มรายคนยังใช้ได้ด้านล่าง</div>
+      <div class="flex flex-col gap-3 mb-5">${responseGroups.map((g, i) => teacherBulkResponseCard(g, i)).join('')}</div>
+      <p class="text-xs font-bold text-[var(--ink-2)] mb-2">หรือดำเนินการทีละคน</p>` : ''}
       <div class="flex flex-col gap-3">${respondList.length ? respondList.map(x => teacherRespondCard(x)).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ตอบรับครบหมดแล้ว 🎉</div>`}</div>`
   } else if (teacher.subView === 'depthead') {
     const allGroups = groupBySubject(teacher.unassigned)
@@ -650,6 +655,87 @@ async function renderTeacher() {
   content.querySelectorAll('[data-open-work]').forEach(btn => btn.addEventListener('click', () => {
     const row = all.find(x => x.id === Number(btn.dataset.openWork)); if (row) openTeacherWorkForm(row)
   }))
+  content.querySelectorAll('[data-open-bulk-response]').forEach(btn => btn.addEventListener('click', () => {
+    const group = responseGroups[Number(btn.dataset.openBulkResponse)]
+    if (!group) return
+    if (teacher.bulkForm?.key === group.key) teacher.bulkForm = null
+    else teacher.bulkForm = {
+      key: group.key, ids: new Set(group.items.map(x => Number(x.id))), method: '',
+      dueDate: '', dueTime: '', file: null, fileUrl: '', fileSource: 'none',
+    }
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-bulk-student-select]').forEach(cb => cb.addEventListener('change', () => {
+    const id = Number(cb.dataset.bulkStudentSelect)
+    if (cb.checked) teacher.bulkForm?.ids.add(id)
+    else teacher.bulkForm?.ids.delete(id)
+    const count = content.querySelector('[data-bulk-selected-count]')
+    if (count) count.textContent = String(teacher.bulkForm?.ids.size ?? 0)
+    const confirmCount = content.querySelector('[data-bulk-confirm-count]')
+    if (confirmCount) confirmCount.textContent = String(teacher.bulkForm?.ids.size ?? 0)
+  }))
+  content.querySelectorAll('[data-bulk-select-all]').forEach(btn => btn.addEventListener('click', () => {
+    const group = responseGroups[Number(btn.dataset.bulkSelectAll)]
+    if (group && teacher.bulkForm?.key === group.key) teacher.bulkForm.ids = new Set(group.items.map(x => Number(x.id)))
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-bulk-select-none]').forEach(btn => btn.addEventListener('click', () => {
+    const group = responseGroups[Number(btn.dataset.bulkSelectNone)]
+    if (group && teacher.bulkForm?.key === group.key) teacher.bulkForm.ids.clear()
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-bulk-method]').forEach(btn => btn.addEventListener('click', () => {
+    if (!teacher.bulkForm) return
+    teacher.bulkForm.method = btn.dataset.bulkMethod === 'exam' ? 'นัดสอบปรับ' : 'ให้งานแก้'
+    if (teacher.bulkForm.method === 'นัดสอบปรับ') {
+      teacher.bulkForm.file = null
+      teacher.bulkForm.fileUrl = ''
+      teacher.bulkForm.fileSource = 'none'
+    }
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-bulk-due-date]').forEach(el => el.addEventListener('input', () => { if (teacher.bulkForm) teacher.bulkForm.dueDate = el.value }))
+  content.querySelectorAll('[data-bulk-due-time]').forEach(el => el.addEventListener('input', () => { if (teacher.bulkForm) teacher.bulkForm.dueTime = el.value }))
+  content.querySelectorAll('[data-bulk-work-file]').forEach(el => el.addEventListener('change', () => {
+    const file = el.files?.[0] || null
+    if (file && file.size > 5 * 1024 * 1024) {
+      el.value = ''
+      showToast('ไฟล์ต้องมีขนาดไม่เกิน 5 MB', 'warning')
+      return
+    }
+    if (!teacher.bulkForm) return
+    teacher.bulkForm.file = file
+    teacher.bulkForm.fileUrl = ''
+    teacher.bulkForm.fileSource = file ? 'upload' : 'none'
+    const name = content.querySelector('[data-bulk-work-file-name]')
+    if (name) name.textContent = file ? file.name : 'ยังไม่ได้เลือกไฟล์'
+  }))
+  content.querySelectorAll('[data-bulk-reuse-file]').forEach(btn => btn.addEventListener('click', () => {
+    if (!teacher.bulkForm) return
+    teacher.bulkForm.file = null
+    teacher.bulkForm.fileUrl = btn.dataset.bulkReuseFile
+    teacher.bulkForm.fileSource = 'reuse'
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-bulk-no-file]').forEach(btn => btn.addEventListener('click', () => {
+    if (!teacher.bulkForm) return
+    teacher.bulkForm.file = null
+    teacher.bulkForm.fileUrl = ''
+    teacher.bulkForm.fileSource = 'none'
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-bulk-clear-work-file]').forEach(btn => btn.addEventListener('click', () => {
+    if (!teacher.bulkForm) return
+    teacher.bulkForm.file = null
+    teacher.bulkForm.fileUrl = ''
+    teacher.bulkForm.fileSource = 'none'
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-bulk-confirm]').forEach(btn => btn.addEventListener('click', () => {
+    const group = responseGroups[Number(btn.dataset.bulkConfirm)]
+    if (group) handleBulkAssign(btn, group)
+  }))
+  content.querySelectorAll('[data-bulk-cancel]').forEach(btn => btn.addEventListener('click', () => { teacher.bulkForm = null; renderTeacher() }))
   content.querySelectorAll('[data-cancel-form]').forEach(btn => btn.addEventListener('click', () => { teacher.form = null; renderTeacher() }))
   content.querySelectorAll('[data-due-date]').forEach(el => el.addEventListener('input', () => { teacher.form.dueDate = el.value }))
   content.querySelectorAll('[data-due-time]').forEach(el => el.addEventListener('input', () => { teacher.form.dueTime = el.value }))
@@ -1012,6 +1098,90 @@ function teacherRespondCard(x) {
     ${openExam ? teacherResponseFormHtml(x, f, true) : ''}
     ${openWork ? teacherResponseFormHtml(x, f, false) : ''}
   </div>`
+}
+
+function groupPendingResponses(rows) {
+  const groups = new Map()
+  for (const row of rows) {
+    const key = [row.subject_code, row.semester, row.category].join('|')
+    if (!groups.has(key)) groups.set(key, { key, subject_code: row.subject_code, subject_name: row.subject_name, semester: row.semester, category: row.category, items: [] })
+    groups.get(key).items.push(row)
+  }
+  return [...groups.values()].sort((a, b) => String(a.subject_name).localeCompare(String(b.subject_name), 'th'))
+}
+
+function teacherBulkResponseCard(group, index) {
+  const f = teacher.bulkForm?.key === group.key ? teacher.bulkForm : null
+  const selectedCount = f?.ids.size ?? group.items.length
+  const reusableFiles = [...new Set(group.items.map(x => x.file_url).filter(Boolean))]
+  const studentRows = group.items.map(row => {
+    const id = Number(row.id)
+    const checked = f ? f.ids.has(id) : true
+    return `<label class="flex items-center gap-2 py-2 border-t border-[var(--line)] cursor-pointer">
+      <input data-bulk-student-select="${id}" type="checkbox" ${checked ? 'checked' : ''} ${f ? '' : 'disabled'} class="accent-[var(--primary)]">
+      <span class="min-w-0 flex-1"><span class="block text-xs font-bold text-[var(--ink)]">${escHtml(row.students?.full_name || '-')}</span><span class="text-[10px] text-[var(--muted-2)]">${escHtml(row.students?.student_code || '')} · ${escHtml(row.students?.main_room || row.students?.religion_room || '')}</span></span>
+    </label>`
+  }).join('')
+  return `<section class="rg-card p-3">
+    <div class="flex items-start justify-between gap-2">
+      <div><p class="text-sm font-bold text-[var(--ink)]">${escHtml(group.subject_name || group.subject_code)}</p>
+      <p class="text-[10px] text-[var(--muted-2)]">${escHtml(group.subject_code)} · ${escHtml(group.semester)} · ${escHtml(group.category)} · รอตอบ ${group.items.length} คน</p></div>
+      <button data-open-bulk-response="${index}" class="shrink-0 px-3 py-2 rounded-xl text-xs font-bold" style="background:var(--info-soft);color:var(--info);border:1px solid var(--info-soft-line)">${f ? 'ปิดแบบฟอร์ม' : 'ตอบรับเป็นชุด'}</button>
+    </div>
+    ${f ? `<div class="mt-3">
+      <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-[var(--ink-2)]">ผู้รับคำตอบ: <b data-bulk-selected-count>${selectedCount}</b> คน</span><span class="flex gap-3"><button data-bulk-select-all="${index}" class="text-[10px] font-bold text-[var(--info)]">เลือกทั้งหมด</button><button data-bulk-select-none="${index}" class="text-[10px] font-bold text-[var(--muted)]">ล้าง</button></span></div>
+      <div class="max-h-48 overflow-auto">${studentRows}</div>
+      <div class="grid grid-cols-2 gap-2 mt-3">
+        <button data-bulk-method="exam" class="py-2 rounded-xl text-xs font-bold ${f.method === 'นัดสอบปรับ' ? 'ring-2 ring-[var(--info)]' : ''}" style="background:var(--info-soft);color:var(--info)">🗓 นัดสอบปรับ</button>
+        <button data-bulk-method="work" class="py-2 rounded-xl text-xs font-bold ${f.method === 'ให้งานแก้' ? 'ring-2 ring-[var(--gold-ink)]' : ''}" style="background:var(--gold-soft);color:var(--gold-ink)">📎 ให้งานแก้</button>
+      </div>
+      ${f.method ? `<label class="block text-[11px] font-bold text-[var(--ink-2)] mt-3 mb-1">${f.method === 'นัดสอบปรับ' ? 'วันที่นัดสอบ' : 'กำหนดส่งงาน'}</label>
+      <input data-bulk-due-date type="date" value="${escHtml(f.dueDate)}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
+      ${f.method === 'นัดสอบปรับ' ? `<label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">เวลานัดสอบ</label><input data-bulk-due-time type="time" value="${escHtml(f.dueTime)}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">` : `
+      <label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">ไฟล์งานร่วมกัน (ถ้ามี · ไม่เกิน 5 MB)</label>
+      ${f.fileUrl ? `<div class="flex justify-between items-center p-2 rounded-lg bg-[var(--surface)] text-[10px]"><a href="${escHtml(/^https:\/\//i.test(f.fileUrl) ? f.fileUrl : '')}" target="_blank" rel="noopener" class="text-[var(--info)] font-bold">ไฟล์ที่เลือก ↗</a><button data-bulk-clear-work-file class="text-[var(--bad)] font-bold">เอาออก</button></div>` : ''}
+      ${reusableFiles.length === 1 ? `<button data-bulk-reuse-file="${escHtml(reusableFiles[0])}" class="mt-2 w-full py-2 rounded-lg bg-[var(--surface)] text-[10px] font-bold text-[var(--info)]">ใช้ไฟล์เดิมที่ใช้ร่วมกันอยู่แล้ว</button>` : ''}
+      <label class="mt-2 flex items-center justify-center gap-2 w-full py-2 rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] text-xs font-bold text-[var(--ink-2)] cursor-pointer"><span>เลือกไฟล์จากเครื่อง</span><input data-bulk-work-file type="file" class="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png"></label>
+      <p data-bulk-work-file-name class="mt-1 text-[10px] text-[var(--muted-2)] truncate">${escHtml(f.file?.name || (f.fileUrl ? 'ใช้ไฟล์ที่เลือกไว้' : 'ยังไม่ได้เลือกไฟล์'))}</p>`}
+      <div class="flex gap-2 mt-3"><button data-bulk-confirm="${index}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">ตอบรับ <span data-bulk-confirm-count>${selectedCount}</span> คน</button><button data-bulk-cancel class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface)] text-[var(--muted)]">ปิด</button></div>` : ''}
+    </div>` : ''}
+  </section>`
+}
+
+async function handleBulkAssign(btn, group) {
+  const f = teacher.bulkForm
+  if (!f || f.key !== group.key) return
+  const ids = [...f.ids]
+  if (!ids.length) { showToast('กรุณาเลือกนักเรียนอย่างน้อย 1 คน', 'warning'); return }
+  if (!f.method) { showToast('กรุณาเลือกวิธีแก้ก่อน', 'warning'); return }
+  if (!f.dueDate) { showToast('กรุณาเลือกวันที่ก่อนยืนยัน', 'warning'); return }
+  if (f.method === 'นัดสอบปรับ' && !f.dueTime) { showToast('กรุณาเลือกเวลานัดสอบก่อนยืนยัน', 'warning'); return }
+  const dueText = f.method === 'นัดสอบปรับ' ? `${f.dueDate}T${f.dueTime}` : f.dueDate
+  const selected = group.items.filter(x => ids.includes(Number(x.id)))
+  const ok = await showRegradeConfirm({
+    title: f.method === 'นัดสอบปรับ' ? 'ยืนยันตอบรับและนัดสอบเป็นชุด' : 'ยืนยันมอบหมายงานเป็นชุด',
+    message: `${f.method === 'นัดสอบปรับ' ? 'นัดสอบปรับ' : 'มอบหมายงานแก้'}วิชา "${group.subject_name}" ให้ ${selected.length} คน วันที่ ${formatRegradeDue(dueText)} ใช่หรือไม่?`,
+    confirmText: `ยืนยัน ${selected.length} คน`,
+  })
+  if (!ok) return
+  try {
+    btn.disabled = true
+    let fileUrl = f.fileUrl || null
+    if (f.method === 'ให้งานแก้' && f.file) {
+      const safePart = value => String(value || 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
+      const uploaded = await uploadAssignmentFile(f.file, `regrade/teacher-${ctx.teacherRow.id}/${safePart(group.subject_code)}/${safePart(group.semester)}`)
+      fileUrl = uploaded.url
+    }
+    await assignWorkBatch(ids, { method: f.method, dueText, fileUrl })
+    const slips = selected.map(row => ({ ...row, method: f.method, due_text: dueText, file_url: fileUrl || '' }))
+    teacher.bulkForm = null
+    await openRegradeSlipsBatch(slips, ctx.teacherRow.full_name, ctx.cfg)
+    showToast(`บันทึกคำตอบและแจ้งนักเรียน ${selected.length} คนแล้ว`, 'success')
+    renderTeacher()
+  } catch (err) {
+    btn.disabled = false
+    showToast('บันทึกเป็นชุดไม่สำเร็จ: ' + err.message, 'error')
+  }
 }
 
 function teacherResponseActionsHtml(x) {

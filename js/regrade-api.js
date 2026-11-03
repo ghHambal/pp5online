@@ -167,6 +167,26 @@ export async function assignWork(subjectRowId, { method, dueText, fileUrl }) {
   await notifyRegradeEvent(subjectRowId, 'regrade_student', 'response')
 }
 
+export async function assignWorkBatch(subjectRowIds, { method, dueText, fileUrl }) {
+  const ids = [...new Set((subjectRowIds ?? []).map(Number).filter(Number.isSafeInteger))]
+  if (!ids.length) throw new Error('กรุณาเลือกรายชื่อนักเรียนอย่างน้อย 1 คน')
+  if (!['นัดสอบปรับ', 'ให้งานแก้'].includes(method)) throw new Error('method ไม่ถูกต้อง')
+  if (!dueText) throw new Error('กรุณาเลือกวันที่')
+  const { data, error } = await supabase.rpc('regrade_teacher_save_responses', {
+    p_subject_ids: ids,
+    p_method: method,
+    p_due_text: dueText,
+    p_file_url: fileUrl || null,
+  })
+  if (error) throw error
+
+  // บันทึกฐานข้อมูลเป็นธุรกรรมเดียว แล้วค่อยส่ง push แยกให้แต่ละคนแบบจำกัด concurrency
+  for (let i = 0; i < ids.length; i += 8) {
+    await Promise.all(ids.slice(i, i + 8).map(id => notifyRegradeEvent(id, 'regrade_student', 'response')))
+  }
+  return Number(data) || ids.length
+}
+
 export async function cancelAssignedWork(subjectRowId) {
   const { error } = await supabase.rpc('regrade_teacher_cancel_response', { p_subject_id: subjectRowId })
   if (error) throw error
