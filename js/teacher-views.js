@@ -19,6 +19,7 @@ import {
 } from './teacher-views-utils.js'
 import { getTodayDuty, getTodayDutyGrade } from './wen-duty.js'
 import { renderRegradeMenuCta, startRegradeMenuCountdowns } from './regrade-menu-window.js'
+import { renderRegradeOverviewNotice, startRegradeNoticeCountdowns } from './regrade-overview-notice.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 export { renderScoreColumns } from './teacher-score-columns.js'
 
@@ -291,6 +292,9 @@ async function renderExecutiveOverview(teacher) {
   const execIconGridHtml = execSystemTiles.map(t => renderIconTile(t, cfg.iconTileStyle)).join('')
   const execRegradeSystem = window._teacherOverviewSystems?.find(s => s.key === 'regrade')
   const regradeCtaHtml = renderRegradeMenuCta(execRegradeSystem?.config, 'teacher', { badge: execRegradeSystem?.badge, forceOpen: execRegradeSystem?.forceOpen })
+  const regradeNoticeHtml = renderRegradeOverviewNotice(execRegradeSystem?.config, 'teacher', {
+    pendingCount: execRegradeSystem?.badge, forceOpen: execRegradeSystem?.forceOpen,
+  })
 
   // ปุ่มลัดจอมอนิเตอร์ — ทุกหน้าเป็น standalone HTML ใส่รหัสผ่านเข้าดูเอง ไม่ผูกกับบัญชีล็อกอิน
   const MONITOR_LINKS = [
@@ -318,6 +322,7 @@ async function renderExecutiveOverview(teacher) {
       <p class="text-lg font-bold text-gray-800">👔 ${_htmlEsc(teacher?.full_name ?? 'ผู้บริหาร')}</p>
     </div>
 
+    ${regradeNoticeHtml}
     ${regradeCtaHtml ? `<div class="mb-4">${regradeCtaHtml}</div>` : ''}
 
     <div class="grid grid-cols-2 gap-3 mb-1" id="exec-stat-cards">
@@ -340,6 +345,7 @@ async function renderExecutiveOverview(teacher) {
     </div>
   </div>`)
   startRegradeMenuCountdowns()
+  startRegradeNoticeCountdowns()
 
   function _wireExecStatCards() {
     document.querySelectorAll('[data-exec-stat]').forEach(b => {
@@ -693,6 +699,9 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   const iconGridHtml = iconTiles.map(t => renderIconTile(t, cfg.iconTileStyle)).join('')
   const regradeSystem = window._teacherOverviewSystems?.find(s => s.key === 'regrade')
   const regradeCtaHtml = renderRegradeMenuCta(regradeSystem?.config, 'teacher', { badge: regradeSystem?.badge, forceOpen: regradeSystem?.forceOpen })
+  const regradeNoticeHtml = renderRegradeOverviewNotice(regradeSystem?.config, 'teacher', {
+    pendingCount: regradeSystem?.badge, forceOpen: regradeSystem?.forceOpen,
+  })
 
   // ปุ่ม "ปรับหน้าภาพรวมแบบรวดเร็ว" — เปิดโมดัลซ่อน/แสดง+เรียงลำดับไอคอนกริดด้านบน บันทึกเข้าบัญชีครู
   window._openOverviewCustomizer = () => _openOverviewCustomizerModal(teacher, allTiles, homeroomRooms)
@@ -716,6 +725,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   setContent(`<div class="animate-fade">
     ${overviewTermBar}
 
+    ${regradeNoticeHtml}
     ${regradeCtaHtml ? `<div class="mb-4">${regradeCtaHtml}</div>` : ''}
 
     <!-- ส่วนเร่งด่วน: แจ้งเตือนจากหัวหน้า + กำลังสอนอยู่ (ย้ายมาไว้บนสุด เพราะเป็นสิ่งเดียวที่เปลี่ยนตามสถานะจริงเดี๋ยวนั้น) -->
@@ -962,6 +972,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     </div>
   </div>`)
   startRegradeMenuCountdowns()
+  startRegradeNoticeCountdowns()
 
   // donor sticker → features popup
   document.getElementById('donor-sticker-btn')?.addEventListener('click', () => {

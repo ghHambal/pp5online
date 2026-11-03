@@ -135,10 +135,12 @@ async function notifyRegradeEvent(subjectRowId, target, event) {
 }
 
 export async function declareIntent(subjectRowId) {
-  const { error } = await supabase.from('regrade_subjects')
+  const { data, error } = await supabase.from('regrade_subjects')
     .update({ status: 'จำนงแล้ว', declared_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq('id', subjectRowId).eq('status', 'ยังไม่แจ้ง')
+    .eq('id', subjectRowId).eq('status', 'ยังไม่แจ้ง').not('teacher_id', 'is', null)
+    .select('id').maybeSingle()
   if (error) throw error
+  if (!data) throw new Error('ยังแจ้งความจำนงไม่ได้ เพราะรายวิชายังไม่มีครูผู้สอน กรุณาติดต่อหัวหน้ากลุ่มสาระ')
   await notifyRegradeEvent(subjectRowId, 'regrade_teacher', 'intent')
 }
 

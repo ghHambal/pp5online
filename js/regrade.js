@@ -25,6 +25,8 @@ import { openCertificateLayoutEditor } from './certificate-editor.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import { uploadAssignmentFile } from './storage.js'
 import { openRegradeNoteComposer } from './regrade-note-composer.js'
+import { getDepartments } from './api.js'
+import { regradeHeadNameForSubject } from './regrade-overview-notice.js'
 
 // ─── ใบสั้นแก้ค้างเก่า — ใช้เอนจิน/ตัวแก้ไขเทมเพลตเดียวกับระบบเกียรติบัตรกลาง (certificate-engine.js/
 // certificate-editor.js) แต่ไม่ผ่านตารางออกใบ (certificates) ของระบบนั้นเลย เพราะนี่เป็นเอกสารทำงาน
@@ -364,10 +366,13 @@ function renderSidebarNav(sections, active, onPick) {
 // ============================================================================
 // ฝั่งนักเรียน
 // ============================================================================
-const student = { subView: 'catalog', categoryTab: 'สามัญ', subjects: [] }
+const student = { subView: 'catalog', categoryTab: 'สามัญ', subjects: [], departments: [] }
 
 async function loadStudentSubjects() {
   student.subjects = await getMyRegradeSubjects(ctx.studentRow.id)
+  if (student.subjects.some(row => row.status === 'ยังไม่แจ้ง' && row.teacher_id == null) && !student.departments.length) {
+    student.departments = await getDepartments().catch(() => [])
+  }
 }
 
 function studentFabVisible() {
@@ -448,6 +453,10 @@ async function renderStudent() {
 
   content.querySelectorAll('[data-tab]').forEach(btn => btn.addEventListener('click', () => { student.categoryTab = btn.dataset.tab; renderStudent() }))
   content.querySelectorAll('[data-declare]').forEach(btn => btn.addEventListener('click', () => handleDeclare(btn)))
+  content.querySelectorAll('[data-declare-blocked]').forEach(btn => btn.addEventListener('click', () => {
+    const row = student.subjects.find(x => Number(x.id) === Number(btn.dataset.declareBlocked))
+    showMissingTeacherNotice(row)
+  }))
   content.querySelectorAll('[data-print-slip]').forEach(btn => btn.addEventListener('click', () => {
     const row = s.find(x => x.id === Number(btn.dataset.printSlip))
     if (!row) return
@@ -487,8 +496,11 @@ function statCard(value, label, color) {
 
 function studentSubjectCard(x) {
   const teacherName = x.teachers?.full_name || '-'
-  const canDeclare = (!!ctx.cfg.intent_open && isLevelOpen(x.category))
+  const hasAssignedTeacher = x.teacher_id != null && Number.isFinite(Number(x.teacher_id))
+  const canDeclare = hasAssignedTeacher && ((!!ctx.cfg.intent_open && isLevelOpen(x.category))
     || canDeclareTestSubject(ctx.cfg, ctx.studentRow?.id, x.id)
+  )
+  const headName = !hasAssignedTeacher ? regradeHeadNameForSubject(x, student.departments) : ''
   return `
   <div class="rg-card p-4 shadow-sm">
     <div class="flex justify-between gap-2 items-start">
@@ -502,11 +514,17 @@ function studentSubjectCard(x) {
       ${personAvatarHtml(x.teachers, true)}
       <div><p class="text-[10px] text-[var(--muted-2)]">ครูผู้สอน</p><p class="text-xs font-bold text-[var(--ink-2)]">${escHtml(teacherName)}</p></div>
     </div>
-    ${x.status === 'ยังไม่แจ้ง' && canDeclare ? `
+    ${x.status === 'ยังไม่แจ้ง' && !hasAssignedTeacher ? `
+      <button data-declare-blocked="${x.id}"
+        class="mt-3 w-full rounded-xl border border-amber-300 bg-amber-50 py-2.5 text-xs font-bold text-amber-900">
+        ⏳ ยังแจ้งไม่ได้ · รอมอบหมายครูผู้สอน
+      </button>
+      <p class="mt-1.5 text-center text-[10px] leading-relaxed text-amber-800">โปรดรอหรือแจ้งหัวหน้ากลุ่มสาระ${headName ? ` ${escHtml(headName)}` : 'ที่รับผิดชอบ'} ให้มอบหมายครูผู้สอน</p>` : ''}
+    ${x.status === 'ยังไม่แจ้ง' && hasAssignedTeacher && canDeclare ? `
       <button data-declare="${x.id}" data-subject="${escHtml(x.subject_name)}"
         class="mt-3 w-full py-2.5 rounded-xl text-white font-bold text-xs"
         style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">แจ้งความจำนง</button>` : ''}
-    ${x.status === 'ยังไม่แจ้ง' && !canDeclare ? `
+    ${x.status === 'ยังไม่แจ้ง' && hasAssignedTeacher && !canDeclare ? `
       <p class="mt-3 text-center text-[10px] text-[var(--muted-2)]">ยังไม่เปิดให้แจ้งความจำนงในขณะนี้</p>` : ''}
     ${x.status === 'กำลังดำเนินการปรับแก้' ? `
       <div class="mt-3 rounded-xl p-3" style="background:var(--info-soft);border:1px solid var(--info-soft-line)">
@@ -517,6 +535,12 @@ function studentSubjectCard(x) {
       ${studentWorkResourcesHtml(x)}
       <button data-print-slip="${x.id}" class="mt-2 w-full py-2 rounded-xl border border-[var(--line)] text-[var(--ink-2)] text-xs font-bold">🖨️ ใบสั้น</button>` : ''}
   </div>`
+}
+
+function showMissingTeacherNotice(row) {
+  const headName = row ? regradeHeadNameForSubject(row, student.departments) : ''
+  const contact = headName ? `หัวหน้ากลุ่มสาระ ${escHtml(headName)}` : 'หัวหน้ากลุ่มสาระที่รับผิดชอบ'
+  showToast(`ยังแจ้งความจำนงไม่ได้ เพราะรายวิชายังไม่มีครูผู้สอน โปรดรอหรือรีบติดต่อ${contact} ให้มอบหมายครู`, 'warning')
 }
 
 function studentWorkResourcesHtml(row) {
@@ -547,6 +571,11 @@ function studentTeacherNoteHtml(row) {
 
 async function handleDeclare(btn) {
   const id = Number(btn.dataset.declare)
+  const row = student.subjects.find(x => Number(x.id) === id)
+  if (!row || row.teacher_id == null) {
+    showMissingTeacherNotice(row)
+    return
+  }
   const ok = await showRegradeConfirm({
     title: 'ยืนยันแจ้งความจำนง',
     message: `ยืนยันแจ้งความจำนงขอปรับแก้วิชา "${btn.dataset.subject}" ใช่หรือไม่? เมื่อกดยืนยัน ครูผู้สอนจะได้รับแจ้งเตือนทันที`,
@@ -558,7 +587,10 @@ async function handleDeclare(btn) {
     showToast('แจ้งความจำนงเรียบร้อย ครูผู้สอนจะได้รับแจ้งเตือนทันที ✅', 'success')
     await loadStudentSubjects()
     renderStudent()
-  } catch (err) { showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error') }
+  } catch (err) {
+    if (err?.code === '23514' || String(err?.message ?? '').includes('ยังไม่มีครูผู้สอน')) showMissingTeacherNotice(row)
+    else showToast('บันทึกไม่สำเร็จ: ' + err.message, 'error')
+  }
 }
 
 // ============================================================================
@@ -2226,6 +2258,19 @@ async function renderSettings() {
           <input id="regrade-set-menu-end" type="datetime-local" value="${escHtml(c.regrade_menu_end_at || '')}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm">
           <p class="mt-2 text-[10px] text-[var(--muted-2)]">ครูและนักเรียนจะเห็นเวลานับถอยหลังบนปุ่มหน้า “ภาพรวม” เมื่อถึงกำหนด ปุ่มเมนูจะซ่อนอัตโนมัติ หากเว้นว่าง เมนูที่เปิดไว้จะไม่มีกำหนดปิดอัตโนมัติ</p>
         </div>
+
+        <div class="rg-card p-5">
+          <p class="text-sm font-bold text-[var(--ink)] mb-1">การ์ดแจ้งเตือนหลังลงชื่อเข้าใช้</p>
+          <p class="text-xs text-[var(--muted-2)] mb-3">การ์ดจะแสดงด้านบนของหน้าภาพรวม พร้อมกำหนดเวลาและสิ่งที่ควรทำตามสถานะจริงของแต่ละคน ใช้วันสิ้นสุดจากช่วงแจ้งความจำนงและช่วงตอบรับที่ตั้งไว้ด้านล่าง</p>
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm text-[var(--ink-2)]">แสดงการ์ดเตือนในหน้าภาพรวมนักเรียน</span>
+            ${actionToggleHtml('regrade-set-notice-student', c.overview_notice?.student !== false)}
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="text-sm text-[var(--ink-2)]">แสดงการ์ดเตือนในหน้าภาพรวมครู</span>
+            ${actionToggleHtml('regrade-set-notice-teacher', c.overview_notice?.teacher !== false)}
+          </div>
+        </div>
       </div>
 
       <div data-settings-group="intent" class="flex flex-col gap-4">
@@ -2572,6 +2617,10 @@ async function renderSettings() {
           student_menu: isToggleOn(content, 'regrade-set-vis-student'),
           teacher_menu: isToggleOn(content, 'regrade-set-vis-teacher'),
         },
+        overview_notice: {
+          student: isToggleOn(content, 'regrade-set-notice-student'),
+          teacher: isToggleOn(content, 'regrade-set-notice-teacher'),
+        },
         regrade_menu_end_at: regradeMenuEndAt,
         primary_color: document.getElementById('regrade-set-primary').value,
         secondary_color: document.getElementById('regrade-set-secondary').value,
@@ -2625,7 +2674,7 @@ async function renderSettings() {
     })
   })
 
-  wireActionToggles(content, ['regrade-set-intent', 'regrade-set-vis-student', 'regrade-set-vis-teacher', 'regrade-set-show-deadline'])
+  wireActionToggles(content, ['regrade-set-intent', 'regrade-set-vis-student', 'regrade-set-vis-teacher', 'regrade-set-notice-student', 'regrade-set-notice-teacher', 'regrade-set-show-deadline'])
   wireCsvImport(content)
   wireThemePicker(content)
 }

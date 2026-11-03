@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1052'
+import { APP_VERSION } from './version.js?v=10.22.1053'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1053': [
+    'เพิ่มการ์ดแจ้งเตือนหลังเข้าสู่ระบบแก้ค้างเก่า แยกเปิด/ปิดสำหรับครูและนักเรียน แสดงกำหนดเวลาและคำแนะนำตามสถานะ พร้อมนับถอยหลัง',
+    'ป้องกันการแจ้งความจำนงในรายวิชาที่ยังไม่มีครูผู้สอน ทั้งที่ปุ่มและฐานข้อมูล พร้อมแนะนำให้ติดตามหัวหน้ากลุ่มสาระและแสดงชื่อเมื่อข้อมูลระบุได้ชัดเจน',
+  ],
   '10.22.1052': [
     'เพิ่มการเปิด/ปิดเมนูแก้ค้างเก่าแยกฝั่งครูและนักเรียน ตั้งเวลาปิด พร้อมปุ่มทางลัดเด่นและนับถอยหลังในหน้าภาพรวมของทั้งสองฝ่าย',
   ],
