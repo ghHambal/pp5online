@@ -152,7 +152,7 @@ export async function getMyTeachingRegradeSubjects(teacherId) {
   return data ?? []
 }
 
-export async function assignWork(subjectRowId, { method, dueText, fileUrl, teacherNote, teacherNoteStyle, teacherNoteImageUrl }) {
+export async function assignWork(subjectRowId, { method, dueText, fileUrl, workUrl, teacherNote, teacherNoteStyle, teacherNoteImageUrl }) {
   if (!['นัดสอบปรับ', 'ให้งานแก้'].includes(method)) throw new Error('method ไม่ถูกต้อง')
   if (!dueText) throw new Error('กรุณาเลือกวันที่')
   // ใช้ RPC เพื่อให้ครูแก้คำตอบเดิมได้อย่างปลอดภัยโดยอัปเดตเฉพาะฟิลด์คำตอบ
@@ -165,12 +165,13 @@ export async function assignWork(subjectRowId, { method, dueText, fileUrl, teach
     p_teacher_note: teacherNote || null,
     p_teacher_note_style: teacherNoteStyle || null,
     p_teacher_note_image_url: teacherNoteImageUrl || null,
+    p_work_url: workUrl || null,
   })
   if (error) throw error
   await notifyRegradeEvent(subjectRowId, 'regrade_student', 'response')
 }
 
-export async function assignWorkBatch(subjectRowIds, { method, dueText, fileUrl, teacherNote, teacherNoteStyle, teacherNoteImageUrl }) {
+export async function assignWorkBatch(subjectRowIds, { method, dueText, fileUrl, workUrl, teacherNote, teacherNoteStyle, teacherNoteImageUrl }) {
   const ids = [...new Set((subjectRowIds ?? []).map(Number).filter(Number.isSafeInteger))]
   if (!ids.length) throw new Error('กรุณาเลือกรายชื่อนักเรียนอย่างน้อย 1 คน')
   if (!['นัดสอบปรับ', 'ให้งานแก้'].includes(method)) throw new Error('method ไม่ถูกต้อง')
@@ -183,10 +184,36 @@ export async function assignWorkBatch(subjectRowIds, { method, dueText, fileUrl,
     p_teacher_note: teacherNote || null,
     p_teacher_note_style: teacherNoteStyle || null,
     p_teacher_note_image_url: teacherNoteImageUrl || null,
+    p_work_url: workUrl || null,
   })
   if (error) throw error
 
   // บันทึกฐานข้อมูลเป็นธุรกรรมเดียว แล้วค่อยส่ง push แยกให้แต่ละคนแบบจำกัด concurrency
+  for (let i = 0; i < ids.length; i += 8) {
+    await Promise.all(ids.slice(i, i + 8).map(id => notifyRegradeEvent(id, 'regrade_student', 'response')))
+  }
+  return Number(data) || ids.length
+}
+
+export async function updateWorkBatch(subjectRowIds, { method, dueText, fileUrl, workUrl, teacherNote, teacherNoteStyle, teacherNoteImageUrl, preserveFileIfEmpty = true, preserveNoteIfUntouched = true, preserveWorkUrlIfEmpty = true }) {
+  const ids = [...new Set((subjectRowIds ?? []).map(Number).filter(Number.isSafeInteger))]
+  if (!ids.length) throw new Error('กรุณาเลือกรายชื่อนักเรียนอย่างน้อย 1 คน')
+  if (!['นัดสอบปรับ', 'ให้งานแก้'].includes(method)) throw new Error('method ไม่ถูกต้อง')
+  if (!dueText) throw new Error('กรุณาเลือกวันที่')
+  const { data, error } = await supabase.rpc('regrade_teacher_update_responses', {
+    p_subject_ids: ids,
+    p_method: method,
+    p_due_text: dueText,
+    p_file_url: fileUrl || null,
+    p_teacher_note: teacherNote || null,
+    p_teacher_note_style: teacherNoteStyle || null,
+    p_teacher_note_image_url: teacherNoteImageUrl || null,
+    p_work_url: workUrl || null,
+    p_preserve_file_if_empty: preserveFileIfEmpty,
+    p_preserve_note_if_untouched: preserveNoteIfUntouched,
+    p_preserve_work_url_if_empty: preserveWorkUrlIfEmpty,
+  })
+  if (error) throw error
   for (let i = 0; i < ids.length; i += 8) {
     await Promise.all(ids.slice(i, i + 8).map(id => notifyRegradeEvent(id, 'regrade_student', 'response')))
   }

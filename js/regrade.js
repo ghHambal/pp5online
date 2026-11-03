@@ -7,7 +7,7 @@ import { parseCSV } from './import.js'
 import {
   getRegradeConfig, updateRegradeConfig, getMyStudentRow, getMyTeacherRow, checkMyRegradePermissions,
   getMyRegradeSubjects, declareIntent,
-  getMyTeachingRegradeSubjects, assignWork, assignWorkBatch, cancelAssignedWork,
+  getMyTeachingRegradeSubjects, assignWork, assignWorkBatch, updateWorkBatch, cancelAssignedWork,
   getPendingCloseOut, closeOutSubject, getGradeTrackingRows, markGradeEntered,
   getAllRegradeSubjectsForDashboard,
   getRegradeAdmins, getRegradeRegistrarStaff, addRegradeAdmin, removeRegradeAdmin,
@@ -43,6 +43,7 @@ const REGRADE_SLIP_TOKENS = [
   { token: '{{response_method}}', label: 'วิธีตอบรับ/วิธีแก้' },
   { token: '{{due_date}}', label: 'วันนัดสอบ/กำหนดส่ง' },
   { token: '{{file_url}}', label: 'ลิงก์ไฟล์งานแก้' },
+  { token: '{{work_url}}', label: 'ลิงก์งาน / เอกสาร' },
   { token: '{{teacher_note}}', label: 'คำชี้แจงจากครู' },
   { token: '{{teacher_note_image_url}}', label: 'ลิงก์ภาพคำชี้แจงจากครู' },
 ]
@@ -50,7 +51,7 @@ const REGRADE_SLIP_PREVIEW_VARS = {
   student_name: 'ตัวอย่าง ชื่อ-สกุล นักเรียน', student_code: '00000', room: 'ม.6/1', class_level: 'ม.6',
   category: 'สามัญ', subject_name: 'วิชาตัวอย่าง', subject_code: 'ว00000', semester: '1/2569',
   grade_failed_at: 'ร', teacher_name: 'ครูตัวอย่าง', response_method: 'นัดสอบปรับ',
-  due_date: '12 ธ.ค. 2569 เวลา 09:00 น.', file_url: 'https://example.com/work', teacher_note: 'อ่านคำชี้แจงและทำตามกำหนดส่ง', teacher_note_image_url: 'https://example.com/teacher-note.jpg',
+  due_date: '12 ธ.ค. 2569 เวลา 09:00 น.', file_url: 'https://example.com/work.pdf', work_url: 'https://example.com/work', teacher_note: 'อ่านคำชี้แจงและทำตามกำหนดส่ง', teacher_note_image_url: 'https://example.com/teacher-note.jpg',
 }
 const REGRADE_SLIP_DEFAULT_LAYOUT = {
   orientation: 'portrait',
@@ -131,11 +132,20 @@ function formatRegradeDue(value) {
   return picked.time ? `${dateText} เวลา ${picked.time} น.` : dateText
 }
 
+function normalizeWorkUrl(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  try {
+    const url = new URL(text)
+    return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password && text.length <= 2000 ? url.href : null
+  } catch { return null }
+}
+
 function openTeacherResponseForm(row, method) {
   const picked = duePickerValue(row.due_text)
   teacher.form = {
     id: Number(row.id), method, dueDate: picked.date, dueTime: picked.time,
-    fileUrl: method === 'ให้งานแก้' ? (row.file_url || '') : '', file: null,
+    fileUrl: method === 'ให้งานแก้' ? (row.file_url || '') : '', workUrl: method === 'ให้งานแก้' ? (row.work_url || '') : '', file: null,
     fileSource: row.file_url ? 'current' : 'none', editing: row.status === 'กำลังดำเนินการปรับแก้',
     noteText: row.teacher_note || '', noteStyle: row.teacher_note_style || null,
     noteImageUrl: row.teacher_note_image_url || '', noteImageBlob: null,
@@ -494,6 +504,7 @@ function studentSubjectCard(x) {
         <p class="text-xs mt-1" style="color:var(--info)">กำหนด: ${escHtml(formatRegradeDue(x.due_text))}</p>
         ${studentTeacherNoteHtml(x)}
       </div>
+      ${normalizeWorkUrl(x.work_url) ? `<a href="${escHtml(normalizeWorkUrl(x.work_url))}" target="_blank" rel="noopener noreferrer" class="mt-2 block w-full py-2 rounded-xl border border-[var(--info-soft-line)] text-[var(--info)] text-xs font-bold text-center">🔗 เปิดลิงก์งาน / เอกสาร ↗</a>` : ''}
       <button data-print-slip="${x.id}" class="mt-2 w-full py-2 rounded-xl border border-[var(--line)] text-[var(--ink-2)] text-xs font-bold">🖨️ ใบสั้น</button>` : ''}
   </div>`
 }
@@ -589,6 +600,7 @@ async function renderTeacher() {
   const assignedList = all.filter(x => x.status === 'กำลังดำเนินการปรับแก้')
   const doneCount = all.filter(x => x.status === 'ปรับแก้สำเร็จ').length
   const responseGroups = teacher.subView === 'respond' ? groupPendingResponses(respondList) : []
+  const assignedGroups = teacher.subView === 'assigned' ? groupPendingResponses(assignedList) : []
 
   let inner = ''
   if (teacher.subView === 'catalog') {
@@ -617,10 +629,7 @@ async function renderTeacher() {
         </div>
       </div>`
   } else if (teacher.subView === 'assigned') {
-    const groups = groupBySubject(assignedList)
-    inner = `<div class="flex flex-col gap-3">${groups.length ? groups.map(g => subjectGroupCard(g, {
-      scope: 'assigned', expandedSet: teacher.assignedExpanded, semesterFilterMap: teacher.assignedSemesterFilter, renderRow: assignedStudentRow,
-    })).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ยังไม่มีงานที่มอบหมายอยู่</div>`}</div>`
+    inner = `<div class="flex flex-col gap-3">${assignedGroups.length ? assignedGroups.map((g, i) => teacherAssignedGroupCard(g, i)).join('') : `<div class="text-center py-12 text-[var(--muted-2)] text-sm">ยังไม่มีงานที่มอบหมายอยู่</div>`}</div>`
   } else if (teacher.subView === 'respond') {
     inner = `
       <div class="flex items-center gap-2 mb-3">
@@ -678,13 +687,27 @@ async function renderTeacher() {
   content.querySelectorAll('[data-open-bulk-response]').forEach(btn => btn.addEventListener('click', () => {
     const group = responseGroups[Number(btn.dataset.openBulkResponse)]
     if (!group) return
-    if (teacher.bulkForm?.key === group.key) teacher.bulkForm = null
+    if (teacher.bulkForm?.scope === 'respond' && teacher.bulkForm.key === group.key) teacher.bulkForm = null
     else teacher.bulkForm = {
-      key: group.key, ids: new Set(group.items.map(x => Number(x.id))), method: '',
+      scope: 'respond', key: group.key, ids: new Set(group.items.map(x => Number(x.id))), method: '',
       dueDate: '', dueTime: '', file: null, fileUrl: '', fileSource: 'none',
-      noteText: '', noteStyle: null, noteImageUrl: '', noteImageBlob: null,
+      noteText: '', noteStyle: null, noteImageUrl: '', noteImageBlob: null, workUrl: '',
     }
     teacher.respondExpanded.add(group.key)
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-open-bulk-update]').forEach(btn => btn.addEventListener('click', () => {
+    const group = assignedGroups[Number(btn.dataset.openBulkUpdate)]
+    if (!group) return
+    if (teacher.bulkForm?.scope === 'assigned' && teacher.bulkForm.key === group.key) teacher.bulkForm = null
+    else teacher.bulkForm = createAssignedBulkForm(group)
+    teacher.assignedExpanded.add(group.key)
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-toggle-assigned-group]').forEach(btn => btn.addEventListener('click', () => {
+    const key = btn.dataset.toggleAssignedGroup
+    if (teacher.assignedExpanded.has(key)) teacher.assignedExpanded.delete(key)
+    else teacher.assignedExpanded.add(key)
     renderTeacher()
   }))
   content.querySelectorAll('[data-toggle-response-group]').forEach(btn => btn.addEventListener('click', () => {
@@ -717,18 +740,28 @@ async function renderTeacher() {
     if (group && teacher.bulkForm?.key === group.key) teacher.bulkForm.ids.clear()
     renderTeacher()
   }))
+  content.querySelectorAll('[data-bulk-select-all-assigned]').forEach(btn => btn.addEventListener('click', () => {
+    const group = assignedGroups[Number(btn.dataset.bulkSelectAllAssigned)]
+    if (group && teacher.bulkForm?.scope === 'assigned' && teacher.bulkForm.key === group.key) teacher.bulkForm.ids = new Set(group.items.map(row => Number(row.id)))
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-bulk-select-none-assigned]').forEach(btn => btn.addEventListener('click', () => {
+    const group = assignedGroups[Number(btn.dataset.bulkSelectNoneAssigned)]
+    if (group && teacher.bulkForm?.scope === 'assigned' && teacher.bulkForm.key === group.key) teacher.bulkForm.ids.clear()
+    renderTeacher()
+  }))
   content.querySelectorAll('[data-bulk-method]').forEach(btn => btn.addEventListener('click', () => {
     if (!teacher.bulkForm) return
     teacher.bulkForm.method = btn.dataset.bulkMethod === 'exam' ? 'นัดสอบปรับ' : 'ให้งานแก้'
-    if (teacher.bulkForm.method === 'นัดสอบปรับ') {
-      teacher.bulkForm.file = null
-      teacher.bulkForm.fileUrl = ''
-      teacher.bulkForm.fileSource = 'none'
-    }
     renderTeacher()
   }))
   content.querySelectorAll('[data-bulk-due-date]').forEach(el => el.addEventListener('input', () => { if (teacher.bulkForm) teacher.bulkForm.dueDate = el.value }))
   content.querySelectorAll('[data-bulk-due-time]').forEach(el => el.addEventListener('input', () => { if (teacher.bulkForm) teacher.bulkForm.dueTime = el.value }))
+  content.querySelectorAll('[data-bulk-work-url]').forEach(el => el.addEventListener('input', () => {
+    if (!teacher.bulkForm) return
+    teacher.bulkForm.workUrl = el.value
+    if (teacher.bulkForm.scope === 'assigned') teacher.bulkForm.preserveWorkUrlIfEmpty = false
+  }))
   content.querySelectorAll('[data-bulk-work-file]').forEach(el => el.addEventListener('change', () => {
     const file = el.files?.[0] || null
     if (file && file.size > 5 * 1024 * 1024) {
@@ -740,6 +773,7 @@ async function renderTeacher() {
     teacher.bulkForm.file = file
     teacher.bulkForm.fileUrl = ''
     teacher.bulkForm.fileSource = file ? 'upload' : 'none'
+    if (teacher.bulkForm.scope === 'assigned') teacher.bulkForm.preserveFileIfEmpty = false
     const name = content.querySelector('[data-bulk-work-file-name]')
     if (name) name.textContent = file ? file.name : 'ยังไม่ได้เลือกไฟล์'
   }))
@@ -748,6 +782,7 @@ async function renderTeacher() {
     teacher.bulkForm.file = null
     teacher.bulkForm.fileUrl = btn.dataset.bulkReuseFile
     teacher.bulkForm.fileSource = 'reuse'
+    if (teacher.bulkForm.scope === 'assigned') teacher.bulkForm.preserveFileIfEmpty = false
     renderTeacher()
   }))
   content.querySelectorAll('[data-bulk-no-file]').forEach(btn => btn.addEventListener('click', () => {
@@ -755,6 +790,13 @@ async function renderTeacher() {
     teacher.bulkForm.file = null
     teacher.bulkForm.fileUrl = ''
     teacher.bulkForm.fileSource = 'none'
+    if (teacher.bulkForm.scope === 'assigned') teacher.bulkForm.preserveFileIfEmpty = false
+    renderTeacher()
+  }))
+  content.querySelectorAll('[data-bulk-clear-work-url]').forEach(btn => btn.addEventListener('click', () => {
+    if (!teacher.bulkForm) return
+    teacher.bulkForm.workUrl = ''
+    teacher.bulkForm.preserveWorkUrlIfEmpty = false
     renderTeacher()
   }))
   content.querySelectorAll('[data-bulk-clear-work-file]').forEach(btn => btn.addEventListener('click', () => {
@@ -762,11 +804,16 @@ async function renderTeacher() {
     teacher.bulkForm.file = null
     teacher.bulkForm.fileUrl = ''
     teacher.bulkForm.fileSource = 'none'
+    if (teacher.bulkForm.scope === 'assigned') teacher.bulkForm.preserveFileIfEmpty = false
     renderTeacher()
   }))
   content.querySelectorAll('[data-bulk-confirm]').forEach(btn => btn.addEventListener('click', () => {
     const group = responseGroups[Number(btn.dataset.bulkConfirm)]
     if (group) handleBulkAssign(btn, group)
+  }))
+  content.querySelectorAll('[data-bulk-update]').forEach(btn => btn.addEventListener('click', () => {
+    const group = assignedGroups[Number(btn.dataset.bulkUpdate)]
+    if (group) handleBulkUpdate(btn, group)
   }))
   content.querySelectorAll('[data-bulk-edit-note]').forEach(btn => btn.addEventListener('click', async () => {
     const f = teacher.bulkForm
@@ -776,18 +823,21 @@ async function renderTeacher() {
     f.noteText = result.text
     f.noteStyle = result.clearImage ? null : result.style
     f.noteImageBlob = result.imageBlob
+    if (f.scope === 'assigned') f.preserveNoteIfUntouched = false
     if (result.clearImage) f.noteImageUrl = ''
     renderTeacher()
   }))
   content.querySelectorAll('[data-clear-bulk-note]').forEach(btn => btn.addEventListener('click', () => {
     if (!teacher.bulkForm) return
     Object.assign(teacher.bulkForm, { noteText: '', noteStyle: null, noteImageUrl: '', noteImageBlob: null })
+    if (teacher.bulkForm.scope === 'assigned') teacher.bulkForm.preserveNoteIfUntouched = false
     renderTeacher()
   }))
   content.querySelectorAll('[data-bulk-cancel]').forEach(btn => btn.addEventListener('click', () => { teacher.bulkForm = null; renderTeacher() }))
   content.querySelectorAll('[data-cancel-form]').forEach(btn => btn.addEventListener('click', () => { teacher.form = null; renderTeacher() }))
   content.querySelectorAll('[data-due-date]').forEach(el => el.addEventListener('input', () => { teacher.form.dueDate = el.value }))
   content.querySelectorAll('[data-due-time]').forEach(el => el.addEventListener('input', () => { teacher.form.dueTime = el.value }))
+  content.querySelectorAll('[data-work-url]').forEach(el => el.addEventListener('input', () => { teacher.form.workUrl = el.value }))
   content.querySelectorAll('[data-work-file]').forEach(el => el.addEventListener('change', () => {
     const file = el.files?.[0] || null
     if (file && file.size > 5 * 1024 * 1024) {
@@ -940,6 +990,7 @@ function assignedStudentRow(x) {
   const openExam = f && Number(f.id) === Number(x.id) && f.method === 'นัดสอบปรับ'
   const openWork = f && Number(f.id) === Number(x.id) && f.method === 'ให้งานแก้'
   const safeFileUrl = /^https:\/\//i.test(x.file_url || '') ? x.file_url : ''
+  const safeWorkUrl = normalizeWorkUrl(x.work_url)
   return `
   <div class="p-2.5 rounded-xl bg-[var(--surface-2)]">
     <div class="flex items-center gap-2.5">
@@ -955,8 +1006,9 @@ function assignedStudentRow(x) {
       <p class="text-[11px] mt-0.5" style="color:var(--info)">กำหนด: ${escHtml(formatRegradeDue(x.due_text))}</p>
       ${studentTeacherNoteHtml(x)}
     </div>
-    <div class="grid ${safeFileUrl ? 'grid-cols-2' : 'grid-cols-1'} gap-2 mt-2">
+    <div class="grid ${(safeFileUrl || safeWorkUrl) ? 'grid-cols-2' : 'grid-cols-1'} gap-2 mt-2">
       ${safeFileUrl ? `<a href="${escHtml(safeFileUrl)}" target="_blank" rel="noopener" class="py-2 rounded-xl border border-[var(--info-soft-line)] text-[var(--info)] text-xs font-bold text-center">📎 เปิดไฟล์งาน ↗</a>` : ''}
+      ${safeWorkUrl ? `<a href="${escHtml(safeWorkUrl)}" target="_blank" rel="noopener noreferrer" class="py-2 rounded-xl border border-[var(--info-soft-line)] text-[var(--info)] text-xs font-bold text-center">🔗 เปิดลิงก์งาน ↗</a>` : ''}
       <button data-print-slip="${x.id}" class="py-2 rounded-xl border border-[var(--line)] text-[var(--ink-2)] text-xs font-bold">🖨️ ใบสั้น</button>
     </div>
     ${!isEditing ? `
@@ -1176,9 +1228,32 @@ function groupPendingResponses(rows) {
   return [...groups.values()].sort((a, b) => b.items.length - a.items.length || String(a.subject_name).localeCompare(String(b.subject_name), 'th'))
 }
 
+function createAssignedBulkForm(group) {
+  const first = group.items[0] || {}
+  const same = key => group.items.every(row => JSON.stringify(row[key] ?? null) === JSON.stringify(first[key] ?? null))
+  const sameMethod = same('method')
+  const sameDue = same('due_text')
+  const [dueDate = '', dueTime = ''] = sameDue ? String(first.due_text || '').split('T') : []
+  const sameFile = same('file_url')
+  const sameWorkUrl = same('work_url')
+  const sameNote = same('teacher_note') && same('teacher_note_style') && same('teacher_note_image_url')
+  return {
+    scope: 'assigned', key: group.key, ids: new Set(group.items.map(row => Number(row.id))),
+    method: sameMethod ? first.method || '' : '', dueDate, dueTime,
+    file: null, fileUrl: sameMethod && first.method === 'ให้งานแก้' && sameFile ? first.file_url || '' : '',
+    fileSource: sameFile && first.file_url ? 'current' : 'none',
+    workUrl: sameMethod && first.method === 'ให้งานแก้' && sameWorkUrl ? first.work_url || '' : '',
+    preserveFileIfEmpty: true, preserveNoteIfUntouched: true,
+    preserveWorkUrlIfEmpty: true,
+    noteText: sameNote ? first.teacher_note || '' : '',
+    noteStyle: sameNote ? first.teacher_note_style || null : null,
+    noteImageUrl: sameNote ? first.teacher_note_image_url || '' : '', noteImageBlob: null,
+  }
+}
+
 function teacherRespondGroupCard(group, index) {
   const isOpen = teacher.respondExpanded.has(group.key)
-  const isBatchOpen = teacher.bulkForm?.key === group.key
+  const isBatchOpen = teacher.bulkForm?.scope === 'respond' && teacher.bulkForm.key === group.key
   return `<section class="rg-card p-4">
     <div class="flex items-start gap-2">
       <button data-toggle-response-group="${escHtml(group.key)}" class="flex-1 min-w-0 flex items-start justify-between gap-2 text-left">
@@ -1190,6 +1265,23 @@ function teacherRespondGroupCard(group, index) {
     </div>
     ${isBatchOpen ? teacherBulkResponsePanel(group, index) : ''}
     ${isOpen ? `<div class="mt-3 pt-3 border-t border-dashed border-[var(--line-soft)] flex flex-col gap-2">${group.items.map(row => teacherRespondStudentRow(row)).join('')}</div>` : ''}
+  </section>`
+}
+
+function teacherAssignedGroupCard(group, index) {
+  const isOpen = teacher.assignedExpanded.has(group.key)
+  const isBatchOpen = teacher.bulkForm?.scope === 'assigned' && teacher.bulkForm.key === group.key
+  return `<section class="rg-card p-4">
+    <div class="flex items-start gap-2">
+      <button data-toggle-assigned-group="${escHtml(group.key)}" class="flex-1 min-w-0 flex items-start justify-between gap-2 text-left">
+        <span class="min-w-0"><span class="block font-bold text-sm text-[var(--ink)] truncate">${escHtml(group.subject_name || group.subject_code)}</span>
+        <span class="block text-[10px] text-[var(--muted-2)] mt-0.5">${escHtml(group.subject_code)} · ${escHtml(group.semester)} · ${escHtml(group.category)}</span></span>
+        <span class="flex items-center gap-2 shrink-0"><span class="px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap" style="background:var(--primary-soft);color:var(--primary-dark);border:1px solid var(--primary-soft-line)">ตอบรับแล้ว ${group.items.length} คน</span><span class="text-[var(--muted-2)] text-sm transition-transform" style="transform:rotate(${isOpen ? '180deg' : '0deg'})">▾</span></span>
+      </button>
+      <button data-open-bulk-update="${index}" class="shrink-0 px-3 py-2 rounded-xl text-[10px] sm:text-xs font-bold" style="background:var(--primary-soft);color:var(--primary-dark);border:1px solid var(--primary-soft-line)">${isBatchOpen ? 'ปิดชุดแก้ไข' : 'แก้ไขเป็นชุด'}</button>
+    </div>
+    ${isBatchOpen ? teacherBulkResponsePanel(group, index, true) : ''}
+    ${isOpen ? `<div class="mt-3 pt-3 border-t border-dashed border-[var(--line-soft)] flex flex-col gap-2">${group.items.map(row => assignedStudentRow(row)).join('')}</div>` : ''}
   </section>`
 }
 
@@ -1212,6 +1304,7 @@ function teacherNoteComposerControls(form, bulk = false) {
   const clearAttr = bulk ? 'data-clear-bulk-note' : 'data-clear-regrade-note'
   const safeImage = /^https:\/\//i.test(form.noteImageUrl || '') ? form.noteImageUrl : ''
   const hasContent = !!(form.noteText || safeImage || form.noteImageBlob)
+  const canClear = hasContent || (bulk && form.scope === 'assigned' && form.preserveNoteIfUntouched)
   return `<div class="mt-3 rounded-xl border border-sky-100 bg-sky-50 p-3">
     <div class="flex items-start justify-between gap-2">
       <div class="min-w-0"><p class="text-xs font-bold text-sky-900">✍️ คำชี้แจงจากครู (ถ้ามี)</p>
@@ -1221,13 +1314,14 @@ function teacherNoteComposerControls(form, bulk = false) {
         ${form.noteImageBlob ? `<span class="block mt-1 text-[10px] font-bold text-emerald-700">พร้อมแนบภาพ JPG ใหม่ · ${(form.noteImageBlob.size / 1024).toFixed(1)} KB</span>` : ''}
       </div>
       <div class="shrink-0 flex flex-col gap-1.5"><button type="button" ${editAttr} class="rounded-lg bg-white px-3 py-2 text-[10px] font-bold text-sky-800 border border-sky-200">${hasContent ? 'แก้คำชี้แจง' : 'เขียนคำชี้แจง'}</button>
-        ${hasContent ? `<button type="button" ${clearAttr} class="rounded-lg px-2 py-1 text-[10px] font-bold text-rose-600">ลบ</button>` : ''}</div>
+        ${canClear ? `<button type="button" ${clearAttr} class="rounded-lg px-2 py-1 text-[10px] font-bold text-rose-600">${hasContent ? 'ลบ' : 'ล้างคำชี้แจงเดิม'}</button>` : ''}</div>
     </div>
   </div>`
 }
 
-function teacherBulkResponsePanel(group, index) {
-  const f = teacher.bulkForm?.key === group.key ? teacher.bulkForm : null
+function teacherBulkResponsePanel(group, index, editing = false) {
+  const expectedScope = editing ? 'assigned' : 'respond'
+  const f = teacher.bulkForm?.scope === expectedScope && teacher.bulkForm.key === group.key ? teacher.bulkForm : null
   if (!f) return ''
   const selectedCount = f?.ids.size ?? group.items.length
   const reusableFiles = [...new Set(group.items.map(x => x.file_url).filter(Boolean))]
@@ -1240,9 +1334,9 @@ function teacherBulkResponsePanel(group, index) {
     </label>`
   }).join('')
   return `<div class="mt-3 pt-3 border-t border-dashed border-[var(--line-soft)]">
-      <div class="text-[10px] text-[var(--muted-2)] mb-2">เลือกนักเรียนและกำหนดวิธี/วันนัดร่วมกันสำหรับวิชานี้</div>
+      <div class="text-[10px] text-[var(--muted-2)] mb-2">${editing ? 'เลือกนักเรียนที่ต้องการ แล้วกำหนดวิธี/วันนัด/ไฟล์/คำชี้แจงใหม่ร่วมกัน' : 'เลือกนักเรียนและกำหนดวิธี/วันนัดร่วมกันสำหรับวิชานี้'}</div>
       <div>
-      <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-[var(--ink-2)]">ผู้รับคำตอบ: <b data-bulk-selected-count>${selectedCount}</b> คน</span><span class="flex gap-3"><button data-bulk-select-all="${index}" class="text-[10px] font-bold text-[var(--info)]">เลือกทั้งหมด</button><button data-bulk-select-none="${index}" class="text-[10px] font-bold text-[var(--muted)]">ล้าง</button></span></div>
+      <div class="flex justify-between items-center mb-1"><span class="text-xs font-bold text-[var(--ink-2)]">${editing ? 'แก้ไขคำตอบให้' : 'ผู้รับคำตอบ'}: <b data-bulk-selected-count>${selectedCount}</b> คน</span><span class="flex gap-3"><button ${editing ? `data-bulk-select-all-assigned="${index}"` : `data-bulk-select-all="${index}"`} class="text-[10px] font-bold text-[var(--info)]">เลือกทั้งหมด</button><button ${editing ? `data-bulk-select-none-assigned="${index}"` : `data-bulk-select-none="${index}"`} class="text-[10px] font-bold text-[var(--muted)]">ล้าง</button></span></div>
       <div class="max-h-48 overflow-auto">${studentRows}</div>
       <div class="grid grid-cols-2 gap-2 mt-3">
         <button data-bulk-method="exam" class="py-2 rounded-xl text-xs font-bold ${f.method === 'นัดสอบปรับ' ? 'ring-2 ring-[var(--info)]' : ''}" style="background:var(--info-soft);color:var(--info)">🗓 นัดสอบปรับ</button>
@@ -1251,12 +1345,16 @@ function teacherBulkResponsePanel(group, index) {
       ${f.method ? `<label class="block text-[11px] font-bold text-[var(--ink-2)] mt-3 mb-1">${f.method === 'นัดสอบปรับ' ? 'วันที่นัดสอบ' : 'กำหนดส่งงาน'}</label>
       <input data-bulk-due-date type="date" value="${escHtml(f.dueDate)}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
       ${f.method === 'นัดสอบปรับ' ? `<label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">เวลานัดสอบ</label><input data-bulk-due-time type="time" value="${escHtml(f.dueTime)}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">` : `
+      <label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">ลิงก์งาน / เอกสาร (ถ้ามี)</label>
+      <input data-bulk-work-url type="url" maxlength="2000" value="${escHtml(f.workUrl || '')}" placeholder="https://..." class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
+      ${editing && f.preserveWorkUrlIfEmpty ? `<p class="mt-1 text-[10px] text-[var(--muted-2)]">หากไม่แก้ช่องนี้ ระบบจะเก็บลิงก์เดิมของแต่ละคนไว้</p>` : ''}
+      ${editing ? `<button data-bulk-clear-work-url class="mt-1 text-[10px] font-bold text-[var(--bad)]">ล้างลิงก์เดิมของคนที่เลือก</button>` : ''}
       <label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">ไฟล์งานร่วมกัน (ถ้ามี · ไม่เกิน 5 MB)</label>
       ${f.fileUrl ? `<div class="flex justify-between items-center p-2 rounded-lg bg-[var(--surface)] text-[10px]"><a href="${escHtml(/^https:\/\//i.test(f.fileUrl) ? f.fileUrl : '')}" target="_blank" rel="noopener" class="text-[var(--info)] font-bold">ไฟล์ที่เลือก ↗</a><button data-bulk-clear-work-file class="text-[var(--bad)] font-bold">เอาออก</button></div>` : ''}
       ${reusableFiles.length === 1 ? `<button data-bulk-reuse-file="${escHtml(reusableFiles[0])}" class="mt-2 w-full py-2 rounded-lg bg-[var(--surface)] text-[10px] font-bold text-[var(--info)]">ใช้ไฟล์เดิมที่ใช้ร่วมกันอยู่แล้ว</button>` : ''}
       <label class="mt-2 flex items-center justify-center gap-2 w-full py-2 rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] text-xs font-bold text-[var(--ink-2)] cursor-pointer"><span>เลือกไฟล์จากเครื่อง</span><input data-bulk-work-file type="file" class="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png"></label>
-      <p data-bulk-work-file-name class="mt-1 text-[10px] text-[var(--muted-2)] truncate">${escHtml(f.file?.name || (f.fileUrl ? 'ใช้ไฟล์ที่เลือกไว้' : 'ยังไม่ได้เลือกไฟล์'))}</p>`}${teacherNoteComposerControls(f, true)}` : ''}
-      <div class="flex gap-2 mt-3"><button data-bulk-confirm="${index}" class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">ตอบรับ <span data-bulk-confirm-count>${selectedCount}</span> คน</button><button data-bulk-cancel class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface)] text-[var(--muted)]">ปิด</button></div>
+      <p data-bulk-work-file-name class="mt-1 text-[10px] text-[var(--muted-2)] truncate">${escHtml(f.file?.name || (f.fileUrl ? 'ใช้ไฟล์ที่เลือกไว้' : 'ยังไม่ได้เลือกไฟล์'))}</p>`}${editing && f.method === 'ให้งานแก้' ? `<p class="mt-1 text-[10px] text-[var(--muted-2)]">${f.preserveFileIfEmpty ? 'หากไม่เลือกไฟล์ใหม่ จะเก็บไฟล์เดิมของแต่ละคนไว้' : 'การบันทึกจะใช้ไฟล์ที่เลือก หรือเอาไฟล์เดิมออก'}</p><button data-bulk-no-file class="mt-1 text-[10px] font-bold text-[var(--bad)]">เอาไฟล์เดิมออกจากคนที่เลือก</button>` : ''}${teacherNoteComposerControls(f, true)}${editing && f.preserveNoteIfUntouched ? `<p class="mt-1 text-[10px] text-[var(--muted-2)]">หากไม่แก้คำชี้แจง ระบบจะเก็บคำชี้แจงเดิมของแต่ละคนไว้</p>` : ''}` : ''}
+      <div class="flex gap-2 mt-3"><button ${editing ? `data-bulk-update="${index}"` : `data-bulk-confirm="${index}"`} class="flex-1 py-2 rounded-xl text-white text-xs font-bold" style="background:linear-gradient(135deg,var(--primary),var(--primary-dark))">${editing ? 'บันทึกการแก้ไข' : 'ตอบรับ'} <span data-bulk-confirm-count>${selectedCount}</span> คน</button><button data-bulk-cancel class="px-4 py-2 rounded-xl text-xs font-bold bg-[var(--surface)] text-[var(--muted)]">ปิด</button></div>
       </div>
     </div>`
 }
@@ -1269,6 +1367,8 @@ async function handleBulkAssign(btn, group) {
   if (!f.method) { showToast('กรุณาเลือกวิธีแก้ก่อน', 'warning'); return }
   if (!f.dueDate) { showToast('กรุณาเลือกวันที่ก่อนยืนยัน', 'warning'); return }
   if (f.method === 'นัดสอบปรับ' && !f.dueTime) { showToast('กรุณาเลือกเวลานัดสอบก่อนยืนยัน', 'warning'); return }
+  const workUrl = f.method === 'ให้งานแก้' ? normalizeWorkUrl(f.workUrl) : ''
+  if (f.method === 'ให้งานแก้' && f.workUrl && !workUrl) { showToast('ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https:// และไม่เกิน 2,000 ตัวอักษร', 'warning'); return }
   const dueText = f.method === 'นัดสอบปรับ' ? `${f.dueDate}T${f.dueTime}` : f.dueDate
   const selected = group.items.filter(x => ids.includes(Number(x.id)))
   const ok = await showRegradeConfirm({
@@ -1288,8 +1388,8 @@ async function handleBulkAssign(btn, group) {
     const safePart = value => String(value || 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
     let noteImageUrl = f.noteImageUrl || null
     if (f.noteImageBlob) noteImageUrl = await uploadTeacherNoteImage(f.noteImageBlob, `regrade/teacher-${ctx.teacherRow.id}/${safePart(group.subject_code)}/${safePart(group.semester)}/notes`)
-    await assignWorkBatch(ids, { method: f.method, dueText, fileUrl, teacherNote: f.noteText, teacherNoteStyle: f.noteStyle, teacherNoteImageUrl: noteImageUrl })
-    const slips = selected.map(row => ({ ...row, method: f.method, due_text: dueText, file_url: fileUrl || '', teacher_note: f.noteText, teacher_note_style: f.noteStyle, teacher_note_image_url: noteImageUrl }))
+    await assignWorkBatch(ids, { method: f.method, dueText, fileUrl, workUrl, teacherNote: f.noteText, teacherNoteStyle: f.noteStyle, teacherNoteImageUrl: noteImageUrl })
+    const slips = selected.map(row => ({ ...row, method: f.method, due_text: dueText, file_url: fileUrl || '', work_url: workUrl || '', teacher_note: f.noteText, teacher_note_style: f.noteStyle, teacher_note_image_url: noteImageUrl }))
     teacher.bulkForm = null
     await openRegradeSlipsBatch(slips, ctx.teacherRow.full_name, ctx.cfg)
     showToast(`บันทึกคำตอบและแจ้งนักเรียน ${selected.length} คนแล้ว`, 'success')
@@ -1297,6 +1397,52 @@ async function handleBulkAssign(btn, group) {
   } catch (err) {
     btn.disabled = false
     showToast('บันทึกเป็นชุดไม่สำเร็จ: ' + err.message, 'error')
+  }
+}
+
+async function handleBulkUpdate(btn, group) {
+  const f = teacher.bulkForm
+  if (!f || f.scope !== 'assigned' || f.key !== group.key) return
+  const ids = [...f.ids]
+  if (!ids.length) { showToast('กรุณาเลือกนักเรียนอย่างน้อย 1 คน', 'warning'); return }
+  if (!f.method) { showToast('กรุณาเลือกวิธีแก้ก่อน', 'warning'); return }
+  if (!f.dueDate) { showToast('กรุณาเลือกวันที่ก่อนยืนยัน', 'warning'); return }
+  if (f.method === 'นัดสอบปรับ' && !f.dueTime) { showToast('กรุณาเลือกเวลานัดสอบก่อนยืนยัน', 'warning'); return }
+  const workUrl = f.method === 'ให้งานแก้' ? normalizeWorkUrl(f.workUrl) : ''
+  if (f.method === 'ให้งานแก้' && f.workUrl && !workUrl) { showToast('ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https:// และไม่เกิน 2,000 ตัวอักษร', 'warning'); return }
+  const dueText = f.method === 'นัดสอบปรับ' ? `${f.dueDate}T${f.dueTime}` : f.dueDate
+  const selected = group.items.filter(row => ids.includes(Number(row.id)))
+  const ok = await showRegradeConfirm({
+    title: 'ยืนยันแก้ไขคำตอบเป็นชุด',
+    message: `ปรับคำตอบวิชา "${group.subject_name}" ให้ ${selected.length} คนเป็น${f.method} กำหนด ${formatRegradeDue(dueText)}${f.noteText ? ' พร้อมคำชี้แจงจากครู' : ''} ใช่หรือไม่?`,
+    confirmText: `บันทึก ${selected.length} คน`,
+  })
+  if (!ok) return
+  try {
+    btn.disabled = true
+    let fileUrl = f.fileUrl || null
+    if (f.method === 'ให้งานแก้' && f.file) {
+      const safePart = value => String(value || 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
+      const uploaded = await uploadAssignmentFile(f.file, `regrade/teacher-${ctx.teacherRow.id}/${safePart(group.subject_code)}/${safePart(group.semester)}`)
+      fileUrl = uploaded.url
+    }
+    let noteImageUrl = f.noteImageUrl || null
+    const safePart = value => String(value || 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
+    if (f.noteImageBlob) noteImageUrl = await uploadTeacherNoteImage(f.noteImageBlob, `regrade/teacher-${ctx.teacherRow.id}/${safePart(group.subject_code)}/${safePart(group.semester)}/notes`)
+    await updateWorkBatch(ids, {
+      method: f.method, dueText, fileUrl,
+      workUrl,
+      teacherNote: f.noteText, teacherNoteStyle: f.noteStyle, teacherNoteImageUrl: noteImageUrl,
+      preserveFileIfEmpty: f.method === 'ให้งานแก้' && f.preserveFileIfEmpty,
+      preserveNoteIfUntouched: f.preserveNoteIfUntouched,
+      preserveWorkUrlIfEmpty: f.method === 'ให้งานแก้' && f.preserveWorkUrlIfEmpty,
+    })
+    teacher.bulkForm = null
+    showToast(`บันทึกการแก้ไขให้นักเรียน ${selected.length} คนแล้ว`, 'success')
+    renderTeacher()
+  } catch (err) {
+    btn.disabled = false
+    showToast('แก้ไขเป็นชุดไม่สำเร็จ: ' + err.message, 'error')
   }
 }
 
@@ -1322,6 +1468,8 @@ function teacherResponseFormHtml(x, f, isExam) {
       <input data-due-date type="date" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]" value="${escHtml(f.dueDate)}">
       ${isExam ? `<label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">เวลานัดสอบ</label>
       <input data-due-time type="time" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]" value="${escHtml(f.dueTime)}">` : `
+      <label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">ลิงก์งาน / เอกสาร (ถ้ามี)</label>
+      <input data-work-url type="url" maxlength="2000" value="${escHtml(f.workUrl || '')}" placeholder="https://..." class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-xs bg-[var(--surface)]">
       <label class="block text-[11px] font-bold text-[var(--ink-2)] mt-2 mb-1">ไฟล์ชี้แจงงานแก้ (ถ้ามี · ไม่เกิน 5 MB)</label>
       ${hasExistingFile ? `
         <div class="p-3 rounded-xl bg-[var(--surface)] border border-[var(--line)]">
@@ -1349,6 +1497,8 @@ async function handleAssign(btn) {
   const f = teacher.form
   if (!f?.dueDate) { showToast('กรุณาเลือกวันที่จากปฏิทินก่อนยืนยัน', 'warning'); return }
   if (f.method === 'นัดสอบปรับ' && !f.dueTime) { showToast('กรุณาเลือกเวลานัดสอบก่อนยืนยัน', 'warning'); return }
+  const workUrl = f.method === 'ให้งานแก้' ? normalizeWorkUrl(f.workUrl) : ''
+  if (f.method === 'ให้งานแก้' && f.workUrl && !workUrl) { showToast('ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https:// และไม่เกิน 2,000 ตัวอักษร', 'warning'); return }
   const dueText = f.method === 'นัดสอบปรับ' ? `${f.dueDate}T${f.dueTime}` : f.dueDate
   const x = teacher.subjects.find(r => r.id === id)
   const msg = f.method === 'นัดสอบปรับ'
@@ -1367,7 +1517,7 @@ async function handleAssign(btn) {
     let noteImageUrl = f.noteImageUrl || null
     const safePart = value => String(value || 'unknown').replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown'
     if (f.noteImageBlob) noteImageUrl = await uploadTeacherNoteImage(f.noteImageBlob, `regrade/teacher-${ctx.teacherRow.id}/${safePart(x.subject_code)}/${safePart(x.semester)}/notes`)
-    await assignWork(id, { method: f.method, dueText, fileUrl, teacherNote: f.noteText, teacherNoteStyle: f.noteStyle, teacherNoteImageUrl: noteImageUrl })
+    await assignWork(id, { method: f.method, dueText, fileUrl, workUrl, teacherNote: f.noteText, teacherNoteStyle: f.noteStyle, teacherNoteImageUrl: noteImageUrl })
     showToast(f.editing ? 'แก้ไขคำตอบแล้ว ใบสั้นจะใช้ข้อมูลล่าสุดอัตโนมัติ ✅' : 'บันทึกการมอบหมายเรียบร้อย ✅', 'success')
     teacher.form = null
     teacher.editingResponseId = null
