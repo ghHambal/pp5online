@@ -25,12 +25,13 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1044'
+import { APP_VERSION } from './version.js?v=10.22.1052'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
 import { openMyCertificatesModal } from './student-certificates-modal.js'
 import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
+import { renderRegradeMenuCta, startRegradeMenuCountdowns } from './regrade-menu-window.js'
 
 const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
 
@@ -472,20 +473,20 @@ export async function renderStudentOverview(student) {
     terangganuVisible = false
   }
 
-  let regradeVisible = false
   let regradeWorkCount = 0
+  let regradeCfg = {}
   try {
-    const [regradeCfg, regradeCountRes] = await Promise.all([
+    const [loadedRegradeCfg, regradeCountRes] = await Promise.all([
       getRegradeConfig(),
       Promise.resolve(supabase.from('regrade_subjects').select('id', { count: 'exact', head: true })
         .eq('student_id', student.id).eq('status', 'กำลังดำเนินการปรับแก้')).catch(() => ({ count: 0 })),
     ])
-    regradeVisible = regradeCfg.visibility?.student_menu === true
+    regradeCfg = loadedRegradeCfg || {}
     regradeWorkCount = Number(regradeCountRes?.count) || 0
   } catch (_) {
-    regradeVisible = false
     regradeWorkCount = 0
   }
+  const regradeCtaHtml = renderRegradeMenuCta(regradeCfg, 'student', { badge: regradeWorkCount })
 
   // ปุ่มกีฬาสี — เดิมอยู่แถบเมนูล่างถาวร (student.js _loadSportsVisibility/_sportsVisibility ถูกลบไปแล้ว
   // เพราะไม่มีจุดใช้อื่นเหลืออยู่) ย้ายมารวมกับกลุ่ม "ระบบอื่น ๆ" แทน เช็ค settings key เดียวกันตรงๆ ที่นี่
@@ -567,13 +568,15 @@ export async function renderStudentOverview(student) {
       </div>
     </div>
 
+    ${regradeCtaHtml ? `<div class="mb-4">${regradeCtaHtml}</div>` : ''}
+
     <!-- ระบบอื่น ๆ — กริดไอคอนแอปเลื่อนแนวนอนได้ถ้ามีมากกว่าที่จอแสดงพอดี (sportsVisible/councilVisible/
-         terangganuVisible/regradeVisible/can_scan_prayer ล้วนเปิด-ปิดแยกอิสระ รวมกันอาจเกิน 4 ช่องได้)
+         terangganuVisible/can_scan_prayer ล้วนเปิด-ปิดแยกอิสระ รวมกันอาจเกิน 4 ช่องได้)
          — เกียรติบัตรแสดงเสมอ ส่วนที่เหลือ conditional เหมือนเดิมทุกประการ แค่เปลี่ยนรูปแบบจากแบนเนอร์
          เต็มแถว/แถบเมนูล่างถาวร (กีฬาสี) มาเป็นไอคอน -->
     <div class="mb-4">
       <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">ระบบอื่น ๆ</p>
-      ${[sportsVisible, futsalVisible, councilVisible, terangganuVisible, regradeVisible, student.can_scan_prayer, attendanceDelegateVisible].filter(Boolean).length + 1 > 5
+      ${[sportsVisible, futsalVisible, councilVisible, terangganuVisible, student.can_scan_prayer, attendanceDelegateVisible].filter(Boolean).length + 1 > 5
         ? `<p class="text-[10px] text-gray-400 mb-1.5 px-0.5">👉 เลื่อนซ้าย-ขวาเพื่อดูระบบทั้งหมด</p>` : ''}
       <div class="flex gap-3 overflow-x-auto pb-1">
         ${renderIconTile({ id:'btn-stu-my-certificates', emoji:'🎖️', label:'เกียรติบัตร<br>ของฉัน', from:'#FCE7A8', to:'#E3B657' }, cfg.iconTileStyle)}
@@ -581,7 +584,6 @@ export async function renderStudentOverview(student) {
         ${futsalVisible ? renderIconTile({ emoji:'⚽', label:'ฟุตซอล', from:'#C6E6FA', to:'#4F9BD6', onclick:`window._stuNav('futsal')` }, cfg.iconTileStyle) : ''}
         ${councilVisible ? renderIconTile({ emoji:'🏛️', label:'สภา<br>นักเรียน', from:'#E2D3F5', to:'#9663D1', onclick:`window.location.href='council.html'` }, cfg.iconTileStyle) : ''}
         ${terangganuVisible ? renderIconTile({ emoji:'⚜️', label:'ค่าย<br>TERANGGANU', from:'#B7ECDB', to:'#3F9C7E', onclick:`window.location.href='terangganu.html'` }, cfg.iconTileStyle) : ''}
-        ${regradeVisible ? renderIconTile({ id:'student-regrade-tile', emoji:'📋', label:'แก้ค้างเก่า', from:'#FBD0D6', to:'#E0616F', badge:regradeWorkCount, onclick:`window.location.href='regrade.html'` }, cfg.iconTileStyle) : ''}
         ${student.can_scan_prayer ? renderIconTile({ emoji:'🗂️', label:'ประวัติ<br>การสแกน', from:'#B7ECDB', to:'#5FBFA3', onclick:`window._stuNav('prayer_scan_history')` }, cfg.iconTileStyle) : ''}
         ${attendanceDelegateVisible ? renderIconTile({ id:'student-attendance-delegate-tile', emoji:'✅', label:'เช็คชื่อ<br>แทนครู', from:'#CDEBD6', to:'#4CA778', onclick:`window._stuNav('attendance_delegate')` }, cfg.iconTileStyle) : ''}
       </div>
@@ -813,6 +815,7 @@ export async function renderStudentOverview(student) {
       <p class="text-sm">ยังไม่มีคำร้อง</p>
     </div>`}
   `)
+  startRegradeMenuCountdowns()
 
   // ── live clock ───────────────────────────────────────────────────────────
   const _clockEl = document.getElementById('stu-live-clock')

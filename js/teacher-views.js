@@ -18,6 +18,7 @@ import {
   _currentWeek, _teacherPositionList, _teacherPositionLabel, renderIconTile, renderConfiguredVisual,
 } from './teacher-views-utils.js'
 import { getTodayDuty, getTodayDutyGrade } from './wen-duty.js'
+import { renderRegradeMenuCta, startRegradeMenuCountdowns } from './regrade-menu-window.js'
 export { renderClassForm, renderClassEditForm } from './teacher-class-forms.js'
 export { renderScoreColumns } from './teacher-score-columns.js'
 
@@ -278,7 +279,7 @@ async function renderExecutiveOverview(teacher) {
     { key: 'announcements', emoji: '📢', label: 'ประกาศ', from: '#CDD3F8', to: '#8F9AE8', onclick: `window._navTo('announcements-view')` },
     { key: 'work-calendar', emoji: '📅', label: 'ปฏิทิน<br>ปฏิบัติงาน', from: '#FCE7A8', to: '#E3B657', onclick: `window._navTo('work-calendar-view')` },
     ...(window._teacherOverviewSystems || [])
-      .filter(s => s.show && ['council', 'terangganu', 'regrade'].includes(s.key))
+      .filter(s => s.show && ['council', 'terangganu'].includes(s.key))
       .map(s => {
         const [from, to] = sidebarTileColors[s.key] || ['#E4E4E7', '#9C9CA3']
         return { key: s.key, id: s.id, emoji: s.emoji, label: s.label, from, to, badge: s.badge, onclick: s.href ? `window.location.href='${s.href}'` : `window._navTo('${s.nav}')` }
@@ -288,6 +289,8 @@ async function renderExecutiveOverview(teacher) {
     { key: 'wen-duty', emoji: '🛡️', label: 'ระบบเวร', from: '#FBD0D6', to: '#EC93A1', onclick: `window.location.href='https://ghhambal.github.io/wen/tv.html'` },
   ]
   const execIconGridHtml = execSystemTiles.map(t => renderIconTile(t, cfg.iconTileStyle)).join('')
+  const execRegradeSystem = window._teacherOverviewSystems?.find(s => s.key === 'regrade')
+  const regradeCtaHtml = renderRegradeMenuCta(execRegradeSystem?.config, 'teacher', { badge: execRegradeSystem?.badge, forceOpen: execRegradeSystem?.forceOpen })
 
   // ปุ่มลัดจอมอนิเตอร์ — ทุกหน้าเป็น standalone HTML ใส่รหัสผ่านเข้าดูเอง ไม่ผูกกับบัญชีล็อกอิน
   const MONITOR_LINKS = [
@@ -315,6 +318,8 @@ async function renderExecutiveOverview(teacher) {
       <p class="text-lg font-bold text-gray-800">👔 ${_htmlEsc(teacher?.full_name ?? 'ผู้บริหาร')}</p>
     </div>
 
+    ${regradeCtaHtml ? `<div class="mb-4">${regradeCtaHtml}</div>` : ''}
+
     <div class="grid grid-cols-2 gap-3 mb-1" id="exec-stat-cards">
       ${renderStatCards()}
     </div>
@@ -334,6 +339,7 @@ async function renderExecutiveOverview(teacher) {
       </div>
     </div>
   </div>`)
+  startRegradeMenuCountdowns()
 
   function _wireExecStatCards() {
     document.querySelectorAll('[data-exec-stat]').forEach(b => {
@@ -661,7 +667,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
     'qr-print': ['#C6E6FA', '#4F9BD6'], 'prayer-score': ['#B7ECDB', '#3F9C7E'],
   }
   const sidebarTiles = (window._teacherOverviewSystems || [])
-    .filter(s => s.show)
+    .filter(s => s.show && s.key !== 'regrade')
     .map(s => {
       const [from, to] = sidebarTileColors[s.key] || ['#E4E4E7', '#9C9CA3']
       return {
@@ -685,6 +691,8 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         })
     : allTiles
   const iconGridHtml = iconTiles.map(t => renderIconTile(t, cfg.iconTileStyle)).join('')
+  const regradeSystem = window._teacherOverviewSystems?.find(s => s.key === 'regrade')
+  const regradeCtaHtml = renderRegradeMenuCta(regradeSystem?.config, 'teacher', { badge: regradeSystem?.badge, forceOpen: regradeSystem?.forceOpen })
 
   // ปุ่ม "ปรับหน้าภาพรวมแบบรวดเร็ว" — เปิดโมดัลซ่อน/แสดง+เรียงลำดับไอคอนกริดด้านบน บันทึกเข้าบัญชีครู
   window._openOverviewCustomizer = () => _openOverviewCustomizerModal(teacher, allTiles, homeroomRooms)
@@ -707,6 +715,8 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
 
   setContent(`<div class="animate-fade">
     ${overviewTermBar}
+
+    ${regradeCtaHtml ? `<div class="mb-4">${regradeCtaHtml}</div>` : ''}
 
     <!-- ส่วนเร่งด่วน: แจ้งเตือนจากหัวหน้า + กำลังสอนอยู่ (ย้ายมาไว้บนสุด เพราะเป็นสิ่งเดียวที่เปลี่ยนตามสถานะจริงเดี๋ยวนั้น) -->
     ${svNotifs.length ? (() => {
@@ -951,6 +961,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         </div>`}
     </div>
   </div>`)
+  startRegradeMenuCountdowns()
 
   // donor sticker → features popup
   document.getElementById('donor-sticker-btn')?.addEventListener('click', () => {

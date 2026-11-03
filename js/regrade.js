@@ -2213,15 +2213,18 @@ async function renderSettings() {
         </div>
 
         <div class="rg-card p-5">
-          <p class="text-sm font-bold text-[var(--ink)] mb-3">การมองเห็นเมนู</p>
+          <p class="text-sm font-bold text-[var(--ink)] mb-3">การเปิด/ปิดเมนูระบบแก้ค้างเก่า</p>
           <div class="flex items-center justify-between mb-3">
             <span class="text-sm text-[var(--ink-2)]">แสดงปุ่มเมนูในหน้านักเรียน</span>
             ${actionToggleHtml('regrade-set-vis-student', c.visibility?.student_menu)}
           </div>
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between mb-4">
             <span class="text-sm text-[var(--ink-2)]">แสดงปุ่มเมนูในหน้าครู</span>
             ${actionToggleHtml('regrade-set-vis-teacher', c.visibility?.teacher_menu)}
           </div>
+          <label for="regrade-set-menu-end" class="block text-[11px] font-bold text-[var(--ink-2)] mb-1">กำหนดเวลาปิดเมนู</label>
+          <input id="regrade-set-menu-end" type="datetime-local" value="${escHtml(c.regrade_menu_end_at || '')}" class="w-full px-3 py-2 rounded-lg border border-[var(--line)] text-sm">
+          <p class="mt-2 text-[10px] text-[var(--muted-2)]">ครูและนักเรียนจะเห็นเวลานับถอยหลังบนปุ่มหน้า “ภาพรวม” เมื่อถึงกำหนด ปุ่มเมนูจะซ่อนอัตโนมัติ หากเว้นว่าง เมนูที่เปิดไว้จะไม่มีกำหนดปิดอัตโนมัติ</p>
         </div>
       </div>
 
@@ -2543,6 +2546,11 @@ async function renderSettings() {
   document.getElementById('regrade-set-save').addEventListener('click', async () => {
     const liveSubmitStart = document.getElementById('regrade-set-live-submit-date').value
     const liveSubmitEnd = document.getElementById('regrade-set-live-submit-end').value
+    const regradeMenuEndAt = document.getElementById('regrade-set-menu-end').value
+    if (regradeMenuEndAt && new Date(regradeMenuEndAt).getTime() <= Date.now()) {
+      showToast('เวลาปิดเมนูต้องเป็นเวลาในอนาคต', 'warning')
+      return
+    }
     if (liveSubmitStart && liveSubmitEnd && liveSubmitEnd < liveSubmitStart) {
       showToast('วันสิ้นสุดการแสดงปุ่มส่งเกรดต้องไม่ก่อนวันเริ่มต้น', 'warning')
       return
@@ -2564,6 +2572,7 @@ async function renderSettings() {
           student_menu: isToggleOn(content, 'regrade-set-vis-student'),
           teacher_menu: isToggleOn(content, 'regrade-set-vis-teacher'),
         },
+        regrade_menu_end_at: regradeMenuEndAt,
         primary_color: document.getElementById('regrade-set-primary').value,
         secondary_color: document.getElementById('regrade-set-secondary').value,
         gold_color: document.getElementById('regrade-set-gold').value,

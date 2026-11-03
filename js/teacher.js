@@ -22,7 +22,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1044'
+import { APP_VERSION } from './version.js?v=10.22.1052'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -35,6 +35,7 @@ import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, rende
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
+import { isRegradeMenuOpen, regradeMenuDeadlineMs } from './regrade-menu-window.js'
 import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
 import { initCouncilCampaignPopup } from './council-campaign-popup.js'
 import { initCouncilElectionResultsPopup } from './council-election-results-popup.js'
@@ -1149,7 +1150,8 @@ async function _applyRoleMenus() {
 
   const campAccess = campAccessRes?.data
   toggle('menu-terangganu', campAccess?.is_manager === true || campAccess?.teacher_participant === true)
-  toggle('menu-regrade', regradeCfg.visibility?.teacher_menu === true || _isAlsoAdmin)
+  const regradeTeacherMenuVisible = isRegradeMenuOpen(regradeCfg, 'teacher') || _isAlsoAdmin
+  toggle('menu-regrade', regradeTeacherMenuVisible)
   const regradePendingCount = Number(regradePendingRes?.count) || 0
   _renderLiveRegradeBadge(regradePendingCount)
 
@@ -1191,7 +1193,7 @@ async function _applyRoleMenus() {
   window._teacherOverviewSystems = [
     { key: 'council',            show: cfg.council_visible_to_all !== 'false' || _isAlsoAdmin || isExecutive, emoji: '🏛️', label: 'สภา<br>นักเรียน',       href: 'council.html' },
     { key: 'terangganu',         show: campAccess?.is_manager === true || campAccess?.teacher_participant === true, emoji: '⚜️', label: 'ค่าย<br>TERANGGANU', href: 'terangganu.html' },
-    { key: 'regrade', id: 'teacher-regrade-overview-tile', show: regradeCfg.visibility?.teacher_menu === true || _isAlsoAdmin, emoji: '📋', label: 'แก้ค้าง<br>เก่า', href: 'regrade.html', badge: regradePendingCount },
+    { key: 'regrade', id: 'teacher-regrade-overview-tile', show: regradeTeacherMenuVisible, emoji: '📋', label: 'แก้ค้าง<br>เก่า', href: 'regrade.html', badge: regradePendingCount, deadlineMs: regradeMenuDeadlineMs(regradeCfg), config: regradeCfg, forceOpen: _isAlsoAdmin },
     { key: 'sports',             show: canSeeSports,                          emoji: '🏆', label: 'กีฬาสี',                nav: 'sports' },
     { key: 'certificates',       show: true,                                  emoji: '🏅', label: 'เกียรติ<br>บัตร',          nav: 'certificates' },
     { key: 'advisor-students',   show: hasAdvisorRoom,                        emoji: '👥', label: 'นักเรียน<br>ที่ปรึกษา',      nav: 'advisor-students' },

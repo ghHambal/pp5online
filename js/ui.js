@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1050'
+import { APP_VERSION } from './version.js?v=10.22.1052'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1052': [
+    'เพิ่มการเปิด/ปิดเมนูแก้ค้างเก่าแยกฝั่งครูและนักเรียน ตั้งเวลาปิด พร้อมปุ่มทางลัดเด่นและนับถอยหลังในหน้าภาพรวมของทั้งสองฝ่าย',
+  ],
   '10.22.1051': [
     'ปรับหน้าภาระงานแก้ฝั่งนักเรียนให้เปิดได้ครบทั้งไฟล์ที่ครูแนบ ลิงก์งาน/เอกสาร และคำชี้แจงแบบข้อความหรือภาพ',
   ],
