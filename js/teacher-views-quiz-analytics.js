@@ -72,16 +72,65 @@ export async function openQuizAnalytics(quiz) {
     const choiceCounts = new Array(q.choices.length).fill(0)
     attempts.forEach((a, i) => {
       if (!questionSetByAttempt[i].has(q.id)) return
+      attempted++ // completed attempt with this item; blank is scored incorrect
       const chosen = a.answers?.[q.id]
-      if (chosen === undefined || chosen === null) return
-      attempted++
       if (chosen === q.correct_choice_index) correct++
-      if (chosen >= 0 && chosen < choiceCounts.length) choiceCounts[chosen]++
+      if (Number.isInteger(chosen) && chosen >= 0 && chosen < choiceCounts.length) choiceCounts[chosen]++
     })
     const pctCorrect = attempted > 0 ? Math.round(correct / attempted * 100) : null
     const flag = pctCorrect == null ? null : pctCorrect < 30 ? 'hard' : pctCorrect > 90 ? 'easy' : null
     return { question: q, attempted, correct, pctCorrect, choiceCounts, flag }
   })
+
+  // Rank finished attempts by percent correct on the questions each student
+  // actually received. Item discrimination is the upper/lower 27% correct-rate
+  // difference among students who saw that item.
+  const latestAttemptByStudent = new Map()
+  attempts.forEach(a => {
+    const previous = latestAttemptByStudent.get(a.student_id)
+    if (!previous || a.attempt_number > previous.attempt_number) latestAttemptByStudent.set(a.student_id, a)
+  })
+  const attemptIndexById = new Map(attempts.map((attempt, index) => [attempt.id, index]))
+  const psychometricAttempts = [...latestAttemptByStudent.values()]
+  const scored = psychometricAttempts.map(a => {
+    const i = attemptIndexById.get(a.id)
+    const received = [...(questionSetByAttempt[i] ?? [])].filter(id => questionById[id])
+    const correct = received.filter(id => a.answers?.[id] === questionById[id].correct_choice_index).length
+    return { attempt: a, itemIds: received, pct: received.length ? correct / received.length : 0 }
+  }).filter(row => row.itemIds.length)
+  const sortedScored = [...scored].sort((a, b) => b.pct - a.pct)
+  const groupSize = Math.max(1, Math.ceil(sortedScored.length * 0.27))
+  const upperIds = new Set(sortedScored.slice(0, groupSize).map(row => row.attempt.id))
+  const lowerIds = new Set(sortedScored.slice(-groupSize).map(row => row.attempt.id))
+  itemStats.forEach(stat => {
+    const inItem = scored.filter(row => row.itemIds.includes(stat.question.id))
+    const rate = group => {
+      const rows = inItem.filter(row => group.has(row.attempt.id))
+      return rows.length ? rows.filter(row => row.attempt.answers?.[stat.question.id] === stat.question.correct_choice_index).length / rows.length : null
+    }
+    const high = scored.length >= 4 ? rate(upperIds) : null
+    const low = scored.length >= 4 ? rate(lowerIds) : null
+    stat.discrimination = high == null || low == null ? null : high - low
+    stat.discriminationN = inItem.length
+  })
+
+  // KR-20 is meaningful only when all analyzed students took the same items.
+  // Randomized subsets are deliberately reported as unavailable rather than
+  // presenting a misleading reliability coefficient.
+  const itemSetKey = row => [...row.itemIds].sort().join('|')
+  const sameQuestionSet = scored.length >= 2 && scored.every(row => itemSetKey(row) === itemSetKey(scored[0]))
+  const reliabilityItems = sameQuestionSet ? scored[0].itemIds : []
+  let kr20 = null
+  if (reliabilityItems.length >= 2 && scored.length >= 2) {
+    const totals = scored.map(row => reliabilityItems.filter(id => row.attempt.answers?.[id] === questionById[id].correct_choice_index).length)
+    const mean = totals.reduce((sum, value) => sum + value, 0) / totals.length
+    const variance = totals.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (totals.length - 1)
+    const pq = reliabilityItems.reduce((sum, id) => {
+      const p = scored.filter(row => row.attempt.answers?.[id] === questionById[id].correct_choice_index).length / scored.length
+      return sum + p * (1 - p)
+    }, 0)
+    if (variance > 0) kr20 = (reliabilityItems.length / (reliabilityItems.length - 1)) * (1 - pq / variance)
+  }
 
   // ── Violation log ──
   const violationsByAttempt = {}
@@ -124,6 +173,13 @@ export async function openQuizAnalytics(quiz) {
         </div>
       </div>
 
+      <div class="bg-indigo-50 rounded-2xl border border-indigo-100 shadow-sm p-4">
+        <h3 class="font-bold text-indigo-900 text-sm mb-2">📐 คุณภาพข้อสอบ</h3>
+        <p class="text-sm text-indigo-900">ความเที่ยง KR-20: <strong>${kr20 == null ? 'ยังคำนวณไม่ได้' : kr20.toFixed(2)}</strong></p>
+        <p class="text-[11px] text-indigo-700 mt-1">${kr20 == null ? 'ต้องมีผู้เข้าสอบที่ทำข้อสอบชุดเดียวกันอย่างน้อย 2 คน และมีอย่างน้อย 2 ข้อ หากสุ่มคนละชุดระบบจะไม่แสดงค่าเพื่อป้องกันการตีความคลาดเคลื่อน' : `คำนวณจากผู้เรียน ${scored.length} คน (ใช้รอบล่าสุดต่อคน) ที่ทำชุดเดียวกัน ${reliabilityItems.length} ข้อ; ควรตีความร่วมกับจำนวนผู้เข้าสอบและบริบทของข้อสอบ`}</p>
+        <p class="text-[11px] text-indigo-700 mt-1">D = อัตราตอบถูกของกลุ่มคะแนนสูง 27% ลบกลุ่มคะแนนต่ำ 27%; ค่าใกล้ศูนย์หรือติดลบควรกลับไปทบทวนข้อและเฉลย ${scored.length < 4 ? 'ต้องมีผู้สอบอย่างน้อย 4 คนจึงจะแสดงค่า D' : ''}</p>
+      </div>
+
       ${leaderboard.length > 0 ? `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
         <h3 class="font-bold text-gray-700 text-sm mb-3">🏆 อันดับคะแนน</h3>
@@ -148,7 +204,7 @@ export async function openQuizAnalytics(quiz) {
                 ${s.flag === 'hard' ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-50 text-red-600 flex-shrink-0">⚠️ ยากผิดปกติ</span>' : ''}
                 ${s.flag === 'easy' ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 flex-shrink-0">⚠️ ง่ายเกินไป</span>' : ''}
               </div>
-              <p class="text-xs text-gray-400 mb-2">${s.pctCorrect != null ? `ตอบถูก ${s.pctCorrect}% (${s.correct}/${s.attempted})` : 'ยังไม่มีใครตอบ'}</p>
+              <p class="text-xs text-gray-400 mb-2">${s.pctCorrect != null ? `ตอบถูก ${s.pctCorrect}% (${s.correct}/${s.attempted})` : 'ยังไม่มีใครตอบ'} · อำนาจจำแนก D: ${s.discrimination == null ? '—' : `${s.discrimination >= 0 ? '+' : ''}${s.discrimination.toFixed(2)}`} (${s.discriminationN} คน)</p>
               ${s.attempted > 0 ? `<div class="space-y-1">
                 ${s.question.choices.map((c, ci) => {
                   const pct = Math.round((s.choiceCounts[ci] ?? 0) / s.attempted * 100)

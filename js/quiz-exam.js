@@ -313,10 +313,19 @@ function _renderQuestion() {
   const locked = _lockMode && selectedOriginal !== undefined && !_unlockedForEdit.has(q.question_id)
   const elimSet = new Set(_eliminatedChoices[q.question_id] ?? [])
   const correctness = _bonusMode ? _answerCorrectness[q.question_id] : undefined // true/false/undefined
+  const labelSets = {
+    numeric: '12345', upper: 'ABCDE', lower: 'abcde', thai: 'กขคงจ', arabic: 'أبجد هـ'.replace(/\s/g, ''),
+  }
+  const choiceLabels = _attempt?.quizzes?.choice_label_style === 'custom'
+    ? (_attempt.quizzes.choice_labels_custom ?? '').split(',').map(label => label.trim()).filter(Boolean)
+    : Array.from(labelSets[_attempt?.quizzes?.choice_label_style] ?? labelSets.numeric)
+  const quizLanguage = _attempt?.quizzes?.quiz_language
+  const customLanguage = _attempt?.quizzes?.quiz_language_custom
+  const rtl = quizLanguage === 'ar' || quizLanguage === 'jawi' || /العربية|جawi|جاوي|اردو|urdu/i.test(customLanguage ?? '')
 
   area.innerHTML = `
     <p class="text-xs text-gray-400 mb-2">ข้อ ${_currentIdx + 1} จาก ${_questions.length}</p>
-    <p class="font-semibold text-gray-800 mb-4">${_htmlEsc(q.question_text)}</p>
+    <p class="font-semibold text-gray-800 mb-4" dir="auto">${_htmlEsc(q.question_text)}</p>
     ${correctness === true ? `<p class="text-xs font-bold text-emerald-600 mb-3">✓ ตอบถูก</p>`
       : correctness === false ? `<p class="text-xs font-bold text-red-600 mb-3">✗ ตอบผิด</p>` : ''}
     <div class="space-y-2">
@@ -335,7 +344,8 @@ function _renderQuestion() {
         return `
         <label class="flex items-center gap-3 p-3 rounded-xl border ${cls}">
           <input type="radio" name="quiz-choice" class="quiz-choice-input flex-shrink-0" data-pos="${pos}" ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
-          <span class="text-sm">${_htmlEsc(c)}</span>
+          <span class="flex-shrink-0 w-7 h-7 rounded-full bg-gray-100 text-gray-600 text-xs font-bold flex items-center justify-center" aria-hidden="true">${_htmlEsc(choiceLabels[pos] ?? String(pos + 1))}</span>
+          <span class="text-sm flex-1" dir="${rtl ? 'rtl' : 'auto'}">${_htmlEsc(c)}</span>
         </label>`
       }).join('')}
     </div>

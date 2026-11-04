@@ -8,7 +8,6 @@ import { showToast, showDangerConfirm, setButtonLoading, getFriendlyErrorMessage
 import { createAIPromptCopyGate } from './ai-prompt-gate.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc, SELECT_CLS, INPUT_CLS } from './teacher-views-utils.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
-import { supabase } from './supabase.js'
 
 const CSV_HEADERS = ['คำถาม', 'ตัวเลือก1', 'ตัวเลือก2', 'ตัวเลือก3', 'ตัวเลือก4', 'ตัวเลือก5', 'ตัวเลือกที่ถูก', 'คำอธิบายเฉลย', 'ระดับความยาก', 'หมวดหมู่']
 
@@ -148,8 +147,8 @@ export async function _renderBankQuestions(teacher, bank, preferredClassId = nul
             <input type="file" id="csv-file-input" accept=".csv" class="sr-only" />
           </label>
           <button id="btn-add-question" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-sm">＋ เพิ่มคำถาม</button>
-          <button id="btn-ai-generate" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-sm">✨ AI ช่วยคิดข้อสอบ</button>
-          <button id="btn-go-quizzes" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm">🎯 แบบทดสอบจากคลังนี้</button>
+          <button id="btn-ai-generate" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-sm">✨ สร้าง Prompt ให้ AI ภายนอก</button>
+          <button id="btn-go-quizzes" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm">🎯 สร้างแบบทดสอบและเลือกห้องเรียน</button>
           <button id="btn-manage-questions" class="px-4 py-2 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold ${questions.length ? '' : 'hidden'}">🗑️ จัดการข้อสอบ</button>
         </div>
       </div>
@@ -512,35 +511,16 @@ function _stripCodeFence(text) {
   return t
 }
 
-// In-app Gemini call: always JSON, never wrapped in markdown (our own
-// edge function parses raw text directly, no copy-paste step involved).
-function _buildAIPrompt({ topic, count, choicesCount, difficulty }) {
-  return [
-    `Generate a JSON array of exactly ${count} Thai multiple-choice quiz questions about: "${topic}".`,
-    difficulty ? `All questions should be "${difficulty}" difficulty.` : 'Mix of difficulty levels is fine.',
-    'Reply with exactly one JSON array wrapped in a single fenced Markdown code block using ```json and ``` so the AI response shows a clear copy-code button. No text before or after the code block.',
-    '',
-    'Each object must have:',
-    '1. "question_text" — the question, in Thai',
-    `2. "choices" — array of exactly ${choicesCount} plausible answer strings (exactly one correct)`,
-    '3. "correct_choice_index" — 0-based index into choices of the correct answer',
-    '4. "explanation" — short Thai explanation of why that answer is correct',
-    '5. "difficulty" — one of "ง่าย", "ปานกลาง", "ยาก"',
-    '',
-    'Math/Science: use LaTeX in $ signs e.g. $x^2$, $\\frac{a}{b}$',
-    '',
-    `Example: [{"question_text":"...","choices":[${Array(choicesCount).fill('"..."').join(',')}],"correct_choice_index":0,"explanation":"...","difficulty":"ปานกลาง"}]`
-  ].join('\n')
-}
-
 // Copy-to-external-AI mode: no count cap (an external chatbot has no token
 // budget tied to our own edge function), and explicitly asks for the whole
 // answer inside a SINGLE fenced code block — most chat UIs (ChatGPT, Gemini,
 // Claude) render a one-click "copy" button on a fenced block, so the teacher
 // never has to manually select text.
-function _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, format }) {
+function _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, format, language }) {
+  const languageRule = `Write every question, answer choice, and explanation entirely in ${language}. Do not switch to Thai unless the selected language is Thai. Keep JSON/CSV field names and difficulty values exactly as specified so this system can import them.`
   const shared = [
-    `Generate exactly ${count} Thai multiple-choice quiz questions about: "${topic}".`,
+    `Generate exactly ${count} multiple-choice quiz questions about: "${topic}".`,
+    languageRule,
     difficulty ? `All questions should be "${difficulty}" difficulty.` : 'Mix of difficulty levels is fine.',
     'Math/Science: use LaTeX in $ signs e.g. $x^2$, $\\frac{a}{b}$',
   ]
@@ -563,10 +543,10 @@ function _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, format
     ...shared,
     '',
     'Reply as a JSON array. Each object must have:',
-    '1. "question_text" — the question, in Thai',
-    `2. "choices" — array of exactly ${choicesCount} plausible answer strings (exactly one correct)`,
+    `1. "question_text" — the question, entirely in ${language}`,
+    `2. "choices" — array of exactly ${choicesCount} plausible answer strings (exactly one correct), in ${language}`,
     '3. "correct_choice_index" — 0-based index into choices of the correct answer',
-    '4. "explanation" — short Thai explanation of why that answer is correct',
+    `4. "explanation" — a short explanation of why the answer is correct, entirely in ${language}`,
     '5. "difficulty" — one of "ง่าย", "ปานกลาง", "ยาก"',
     '',
     `Example: [{"question_text":"...","choices":[${Array(choicesCount).fill('"..."').join(',')}],"correct_choice_index":0,"explanation":"...","difficulty":"ปานกลาง"}]`,
@@ -621,27 +601,22 @@ function _renderAIGenerator(teacher, bank) {
   modal.className = 'fixed inset-0 z-[95] bg-white flex flex-col'
   modal.innerHTML = `
     <div class="flex items-center justify-between px-5 py-4 border-b border-gray-100 shadow-sm flex-shrink-0">
-      <h3 class="font-bold text-gray-800 text-lg">✨ AI ช่วยคิดข้อสอบ</h3>
+      <h3 class="font-bold text-gray-800 text-lg">✨ สร้างข้อสอบด้วย AI ภายนอก</h3>
       <button id="ai-close" class="text-gray-400 hover:text-gray-700 text-2xl leading-none">×</button>
     </div>
 
     <div class="flex-1 overflow-y-auto p-5">
       <div class="max-w-3xl mx-auto space-y-4">
-        <p class="text-xs text-gray-400">AI จะร่างคำถามให้เป็นแบบร่าง — <strong>ครูต้องตรวจสอบความถูกต้องก่อนยืนยันและบันทึกเข้าคลังจริงเสมอ</strong> (ไม่ว่าจะสร้างด้วยวิธีไหนก็ตาม)</p>
-
-        <div class="flex gap-2">
-          <button id="ai-mode-inapp" class="ai-mode-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-purple-600 bg-purple-600 text-white">🤖 ให้ AI ในระบบสร้างให้เลย</button>
-          <button id="ai-mode-copy" class="ai-mode-btn flex-1 py-2 rounded-xl text-xs font-bold border-2 border-gray-200 text-gray-500">📋 คัดลอกคำสั่งไปใช้ AI อื่น</button>
-        </div>
+        <p class="text-xs text-gray-400">หน้านี้สร้างคำสั่งให้ครูนำไปใช้กับ ChatGPT, Gemini หรือ AI ภายนอก แล้วนำผลกลับมาตรวจสอบ — <strong>ระบบ ปพ.5 ไม่ส่งคำขอไปยัง AI API</strong> และครูต้องตรวจสอบก่อนบันทึกเข้าคลังเสมอ</p>
 
         <div class="bg-purple-50 border border-purple-100 rounded-2xl p-4 space-y-3">
           <div>
             <label class="text-xs font-semibold text-gray-600 mb-1 block">หัวข้อ/เนื้อหาที่ต้องการให้ออกข้อสอบ</label>
             <input id="ai-topic" class="${INPUT_CLS}" placeholder="เช่น สมการเชิงเส้นตัวแปรเดียว, การสังเคราะห์แสง, หลักธรรมอริยสัจ 4" />
           </div>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label id="ai-count-label" class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อ (สูงสุด 25/ครั้ง)</label>
+              <label class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อ</label>
               <input id="ai-count" type="number" min="1" value="5" class="${INPUT_CLS}" />
             </div>
             <div>
@@ -657,11 +632,21 @@ function _renderAIGenerator(teacher, bank) {
                 <option value="ยาก">ยาก</option>
               </select>
             </div>
+            <div>
+              <label class="text-xs font-semibold text-gray-600 mb-1 block">ภาษาข้อสอบ</label>
+              <select id="ai-language" class="${SELECT_CLS}">
+                <option value="ภาษาไทย">🇹🇭 ภาษาไทย</option>
+                <option value="formal English">🇬🇧 English</option>
+                <option value="اللغة العربية الفصحى">🇸🇦 العربية</option>
+                <option value="bahasa Melayu tulisan Jawi (جاوي)">يَاوِي</option>
+                <option value="Bahasa Melayu tulisan Rumi">Bahasa Melayu (Rumi)</option>
+                <option value="custom">ภาษาอื่น…</option>
+              </select>
+            </div>
           </div>
+          <input id="ai-language-custom" class="${INPUT_CLS} hidden" placeholder="ระบุภาษา เช่น Bahasa Indonesia, Français, اردو" />
 
-          <button id="btn-ai-run" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm">สร้างข้อสอบด้วย AI</button>
-
-          <div id="ai-copy-panel" class="hidden space-y-3 pt-1">
+          <div id="ai-copy-panel" class="space-y-3 pt-1">
             <div>
               <label class="text-xs font-semibold text-gray-600 mb-1 block">รูปแบบคำตอบที่จะขอจาก AI</label>
               <div class="flex gap-2">
@@ -698,43 +683,24 @@ function _renderAIGenerator(teacher, bank) {
 
   const listEl = modal.querySelector('#ai-draft-list')
   const saveBtn = modal.querySelector('#ai-save')
-  const runBtn = modal.querySelector('#btn-ai-run')
-  const copyPanel = modal.querySelector('#ai-copy-panel')
-  const modeInappBtn = modal.querySelector('#ai-mode-inapp')
-  const modeCopyBtn = modal.querySelector('#ai-mode-copy')
-  const countLabel = modal.querySelector('#ai-count-label')
   const formatJsonBtn = modal.querySelector('#ai-format-json')
   const formatCsvBtn = modal.querySelector('#ai-format-csv')
   const promptWrap = modal.querySelector('#ai-prompt-wrap')
   const promptGate = createAIPromptCopyGate({
     copyButton: modal.querySelector('#btn-ai-copy-prompt'),
     watchRoot: modal,
-    watchSelector: '#ai-topic, #ai-count, #ai-choices-count, #ai-difficulty',
+    watchSelector: '#ai-topic, #ai-count, #ai-choices-count, #ai-difficulty, #ai-language, #ai-language-custom',
   })
 
-  let currentMode = 'inapp' // 'inapp' | 'copy' — controls whether the 25-question cap (our own edge function's token budget) applies
   let responseFormat = 'json' // 'json' | 'csv' — only relevant in 'copy' mode
-
-  const setMode = (mode) => {
-    if (currentMode !== mode) promptGate.invalidate()
-    currentMode = mode
-    const isInapp = mode === 'inapp'
-    runBtn.classList.toggle('hidden', !isInapp)
-    copyPanel.classList.toggle('hidden', isInapp)
-    modeInappBtn.classList.toggle('border-purple-600', isInapp)
-    modeInappBtn.classList.toggle('bg-purple-600', isInapp)
-    modeInappBtn.classList.toggle('text-white', isInapp)
-    modeInappBtn.classList.toggle('border-gray-200', !isInapp)
-    modeInappBtn.classList.toggle('text-gray-500', !isInapp)
-    modeCopyBtn.classList.toggle('border-purple-600', !isInapp)
-    modeCopyBtn.classList.toggle('bg-purple-600', !isInapp)
-    modeCopyBtn.classList.toggle('text-white', !isInapp)
-    modeCopyBtn.classList.toggle('border-gray-200', isInapp)
-    modeCopyBtn.classList.toggle('text-gray-500', isInapp)
-    countLabel.textContent = isInapp ? 'จำนวนข้อ (สูงสุด 25/ครั้ง)' : 'จำนวนข้อ (ไม่จำกัด — สร้างที่ AI ภายนอก)'
-  }
-  modeInappBtn.addEventListener('click', () => setMode('inapp'))
-  modeCopyBtn.addEventListener('click', () => setMode('copy'))
+  const languageSelect = modal.querySelector('#ai-language')
+  const customLanguage = modal.querySelector('#ai-language-custom')
+  const readLanguage = () => languageSelect.value === 'custom' ? customLanguage.value.trim() : languageSelect.value
+  languageSelect.addEventListener('change', () => {
+    customLanguage.classList.toggle('hidden', languageSelect.value !== 'custom')
+    promptGate.invalidate()
+    promptWrap.classList.add('hidden')
+  })
 
   const setFormat = (format) => {
     responseFormat = format
@@ -758,22 +724,20 @@ function _renderAIGenerator(teacher, bank) {
   const _readGenParams = () => {
     const topic = modal.querySelector('#ai-topic').value.trim()
     const rawCount = parseInt(modal.querySelector('#ai-count').value, 10) || 5
-    // 25-cap only applies to the in-app call (our gemini-proxy edge function's
-    // token budget) — an external AI the teacher copies the prompt to has no
-    // such constraint, so let them ask for as many as they want there.
-    const count = currentMode === 'inapp' ? Math.min(25, Math.max(1, rawCount)) : Math.max(1, rawCount)
+    const count = Math.max(1, rawCount)
     modal.querySelector('#ai-count').value = count
     const rawChoicesCount = parseInt(modal.querySelector('#ai-choices-count').value, 10) || 4
     const choicesCount = Math.min(5, Math.max(2, rawChoicesCount))
     modal.querySelector('#ai-choices-count').value = choicesCount
     const difficulty = modal.querySelector('#ai-difficulty').value
-    return { topic, count, rawCount, choicesCount, difficulty }
+    return { topic, count, rawCount, choicesCount, difficulty, language: readLanguage() }
   }
 
   modal.querySelector('#btn-ai-build-prompt').addEventListener('click', () => {
-    const { topic, count, choicesCount, difficulty } = _readGenParams()
+    const { topic, count, choicesCount, difficulty, language } = _readGenParams()
     if (!topic) { showToast('กรุณาระบุหัวข้อที่ต้องการให้ AI ออกข้อสอบ', 'warning'); return }
-    const prompt = _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, format: responseFormat })
+    if (!language) { showToast('กรุณาระบุภาษาที่ต้องการ', 'warning'); return }
+    const prompt = _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, language, format: responseFormat })
     modal.querySelector('#ai-prompt-text').value = prompt
     promptGate.markGenerated()
     promptWrap.classList.remove('hidden')
@@ -904,44 +868,6 @@ function _renderAIGenerator(teacher, bank) {
     _updateSaveButton()
   }
 
-  modal.querySelector('#btn-ai-run').addEventListener('click', async (e) => {
-    const { topic, count, rawCount, choicesCount, difficulty } = _readGenParams()
-
-    if (!topic) { showToast('กรุณาระบุหัวข้อที่ต้องการให้ AI ออกข้อสอบ', 'warning'); return }
-    if (rawCount > 25) showToast('จำนวนข้อเกินเพดานที่รองรับต่อครั้ง ปรับให้เป็น 25 ข้อแล้ว', 'warning')
-
-    setButtonLoading(e.target, true)
-    try {
-      const prompt = _buildAIPrompt({ topic, count, choicesCount, difficulty })
-
-      // Thai text tokenizes heavier than English, and each question carries a
-      // question+choices+explanation — budget generously per question instead
-      // of a flat cap, or large counts get silently truncated mid-JSON.
-      const maxTokens = Math.min(8000, 600 + count * 300)
-
-      const { data: json, error: fnErr } = await supabase.functions.invoke('gemini-proxy', {
-        body: { prompt, maxTokens }
-      })
-      if (fnErr || !json) throw new Error(fnErr?.message ?? 'AI Response is empty')
-
-      let text = ''
-      if (json.candidates?.[0]?.content?.parts) {
-        text = json.candidates[0].content.parts[0].text ?? ''
-      } else if (json.text) {
-        text = json.text
-      }
-
-      const generated = _parseAIJsonArray(text)
-
-      drafts.push(...generated.map(_normalizeAIQuestion))
-      _renderDrafts()
-      showToast(`AI ร่างข้อสอบมาแล้ว ${generated.length} ข้อ — กรุณาตรวจสอบก่อนยืนยัน`, 'success')
-    } catch (err) {
-      showToast('AI ไม่สามารถร่างข้อสอบได้: ' + (getFriendlyErrorMessage(err)), 'error')
-    } finally {
-      setButtonLoading(e.target, false, 'สร้างข้อสอบด้วย AI')
-    }
-  })
 
   saveBtn.addEventListener('click', async () => {
     const toSave = []

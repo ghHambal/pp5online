@@ -368,7 +368,7 @@ export async function getQuizAttemptsForMonitor(quizId) {
 export async function getQuizAnalytics(quizId) {
   const { data: attempts, error } = await supabase
     .from('quiz_attempts')
-    .select('id, student_id, status, score_pct, question_order, answers, violation_count')
+    .select('id, student_id, attempt_number, status, score_pct, question_order, answers, violation_count')
     .eq('quiz_id', quizId)
     .in('status', ['submitted', 'terminated_violation'])
   if (error) throw error

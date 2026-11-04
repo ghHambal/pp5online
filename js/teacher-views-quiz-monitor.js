@@ -98,28 +98,41 @@ async function _refresh(quiz, students, questionsById = {}) {
   const attemptByStudent = {}
   attempts.forEach(a => { attemptByStudent[a.student_id] = a }) // ascending order → latest wins
 
-  const entered = new Set(attempts.map(a => a.student_id)).size
-  const finishedScores = attempts.filter(a => a.score_pct != null).map(a => a.score_pct)
+  const latestAttempts = Object.values(attemptByStudent)
+  const entered = latestAttempts.length
+  const warned = latestAttempts.filter(a => a.status === 'in_progress' && (a.violation_count ?? 0) > 0).length
+  const locked = latestAttempts.filter(a => a.status === 'terminated_violation').length
+  const finishedScores = latestAttempts.filter(a => a.score_pct != null).map(a => a.score_pct)
   const avgScore = finishedScores.length ? (finishedScores.reduce((s, v) => s + v, 0) / finishedScores.length) : null
 
   const questionTallyHtml = _renderQuestionTally(attempts, questionsById)
 
   body.innerHTML = `
     <div class="max-w-3xl mx-auto space-y-4">
-      <div class="grid grid-cols-3 gap-3">
+      <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
           <p class="text-2xl font-extrabold text-gray-800">${entered}/${students.length}</p>
           <p class="text-xs text-gray-400 mt-0.5">เข้าสอบแล้ว</p>
         </div>
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
-          <p class="text-2xl font-extrabold text-gray-800">${attempts.filter(a => a.status === 'in_progress').length}</p>
+          <p class="text-2xl font-extrabold text-gray-800">${latestAttempts.filter(a => a.status === 'in_progress').length}</p>
           <p class="text-xs text-gray-400 mt-0.5">กำลังทำอยู่</p>
+        </div>
+        <div class="bg-amber-50 rounded-2xl border border-amber-100 shadow-sm p-4 text-center">
+          <p class="text-2xl font-extrabold text-amber-700">${warned}</p>
+          <p class="text-xs text-amber-700 mt-0.5">เตือนแล้ว (1/2)</p>
+        </div>
+        <div class="bg-red-50 rounded-2xl border border-red-100 shadow-sm p-4 text-center">
+          <p class="text-2xl font-extrabold text-red-700">${locked}</p>
+          <p class="text-xs text-red-700 mt-0.5">ถูกล็อก (2/2)</p>
         </div>
         <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 text-center">
           <p class="text-2xl font-extrabold text-gray-800">${avgScore != null ? avgScore.toFixed(1) + '%' : '—'}</p>
-          <p class="text-xs text-gray-400 mt-0.5">คะแนนเฉลี่ยล่าสุด</p>
+          <p class="text-xs text-gray-400 mt-0.5">คะแนนเฉลี่ยรอบล่าสุด</p>
         </div>
       </div>
+
+      <p class="text-[11px] leading-relaxed text-gray-400">ระบบบันทึกการเปลี่ยนแท็บ การเสียโฟกัส และการออกจากเต็มหน้าจอเมื่อเบราว์เซอร์แจ้งเหตุการณ์ให้หน้าเว็บทราบ โดยเตือนครั้งแรกและล็อกเมื่อเกิดครั้งที่สอง การแบ่งหน้าจอหรือใช้อุปกรณ์อื่นไม่สามารถป้องกันหรือตรวจจับได้ครบถ้วนด้วยเว็บเบราว์เซอร์</p>
 
       ${questionTallyHtml}
 
@@ -129,7 +142,9 @@ async function _refresh(quiz, students, questionsById = {}) {
           const total = a?.question_order?.length ?? quiz.num_questions
           const answered = a ? Object.keys(a.answers ?? {}).length : 0
           const pct = total > 0 ? Math.round(answered / total * 100) : 0
-          const st = a ? (STATUS_LABEL[a.status] ?? STATUS_LABEL.in_progress) : { label: 'ยังไม่เข้าสอบ', cls: 'bg-gray-100 text-gray-400' }
+          const st = a?.status === 'in_progress' && (a.violation_count ?? 0) > 0
+            ? { label: `⚠️ เตือนแล้ว ${a.violation_count}/2`, cls: 'bg-amber-100 text-amber-800' }
+            : a ? (STATUS_LABEL[a.status] ?? STATUS_LABEL.in_progress) : { label: 'ยังไม่เข้าสอบ', cls: 'bg-gray-100 text-gray-400' }
           return `
           <div class="flex items-center gap-3 p-3">
             ${_avatarHtml(s)}
