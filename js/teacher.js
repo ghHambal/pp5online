@@ -22,7 +22,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1053'
+import { APP_VERSION } from './version.js?v=10.22.1054'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -3820,6 +3820,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!isImpersonating) {
     const session = await requireAuth()
     if (!session) return
+    window._pp5AuthLoginKey = `${session.user?.id ?? 'teacher'}-${session.user?.last_sign_in_at ?? ''}`
 
     await loadTeacherInfo(session.user.id)
     _homeroomRooms = _teacher ? await getMyHomeroomRooms(_teacher.id).catch(()=>[]) : []
@@ -4002,5 +4003,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     navigate(deepLinkView)
   } else {
     navigate('overview')
+  }
+  if (!isImpersonating) {
+    const regradeSystem = window._teacherOverviewSystems?.find(system => system.key === 'regrade')
+    if (regradeSystem?.config) {
+      import('./regrade-overview-notice.js').then(({ showRegradeOverviewPopup }) => {
+        showRegradeOverviewPopup(regradeSystem.config, 'teacher', {
+          pendingCount: regradeSystem.badge,
+          forceOpen: regradeSystem.forceOpen,
+          loginKey: window._pp5AuthLoginKey || _teacher?.profile_id || _teacher?.id,
+        })
+      }).catch(() => {})
+    }
   }
 })

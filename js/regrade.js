@@ -2260,14 +2260,14 @@ async function renderSettings() {
         </div>
 
         <div class="rg-card p-5">
-          <p class="text-sm font-bold text-[var(--ink)] mb-1">การ์ดแจ้งเตือนหลังลงชื่อเข้าใช้</p>
-          <p class="text-xs text-[var(--muted-2)] mb-3">การ์ดจะแสดงด้านบนของหน้าภาพรวม พร้อมกำหนดเวลาและสิ่งที่ควรทำตามสถานะจริงของแต่ละคน ใช้วันสิ้นสุดจากช่วงแจ้งความจำนงและช่วงตอบรับที่ตั้งไว้ด้านล่าง</p>
+          <p class="text-sm font-bold text-[var(--ink)] mb-1">ป๊อปอัพเตือนหลังลงชื่อเข้าใช้</p>
+          <p class="text-xs text-[var(--muted-2)] mb-3">ป๊อปอัพจะแสดงอัตโนมัติหลังเข้าสู่ระบบแต่ละครั้ง ปิดได้ และสรุปกำหนดเวลากับสิ่งที่ควรทำตามสถานะจริง ใช้กำหนดสิ้นสุดช่วงแจ้งความจำนงหรือช่วงตอบรับที่ตั้งไว้ด้านล่าง</p>
           <div class="flex items-center justify-between mb-3">
-            <span class="text-sm text-[var(--ink-2)]">แสดงการ์ดเตือนในหน้าภาพรวมนักเรียน</span>
+            <span class="text-sm text-[var(--ink-2)]">แสดงป๊อปอัพเตือนนักเรียน</span>
             ${actionToggleHtml('regrade-set-notice-student', c.overview_notice?.student !== false)}
           </div>
           <div class="flex items-center justify-between">
-            <span class="text-sm text-[var(--ink-2)]">แสดงการ์ดเตือนในหน้าภาพรวมครู</span>
+            <span class="text-sm text-[var(--ink-2)]">แสดงป๊อปอัพเตือนครู</span>
             ${actionToggleHtml('regrade-set-notice-teacher', c.overview_notice?.teacher !== false)}
           </div>
         </div>

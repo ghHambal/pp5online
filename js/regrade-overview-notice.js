@@ -1,4 +1,6 @@
-import { isRegradeMenuOpen } from './regrade-menu-window.js'
+import { isRegradeMenuOpen, regradeCountdownDeadlineMs } from './regrade-menu-window.js'
+
+const shownInMemory = new Set()
 
 const STANDARD_SUBJECT_DEPARTMENTS = {
   'ว': 'SC', 'อ': 'ENG', 'จ': 'ENG', 'ค': 'MATH', 'ท': 'THAI',
@@ -58,10 +60,12 @@ export function regradeHeadNameForSubject(subject, departments = []) {
 }
 
 function deadlineBlock(config, key, label) {
-  const value = String(config?.[key] ?? '').trim()
+  const value = String(key === 'regrade_menu_end_at'
+    ? (config?.regrade_menu_end_at ?? '')
+    : (config?.[key] ?? '')).trim()
   const deadline = deadlineValue(value)
-  const startKey = key === 'intent_window_end' ? 'intent_window_start' : 'response_window_start'
-  const startValue = String(config?.[startKey] ?? '').trim()
+  const startKey = key === 'intent_window_end' ? 'intent_window_start' : key === 'response_window_end' ? 'response_window_start' : null
+  const startValue = startKey ? String(config?.[startKey] ?? '').trim() : ''
   return `<div class="mt-3 rounded-xl border border-white/50 bg-white/70 px-3 py-2">
     ${startValue ? `<p class="text-[11px]">เริ่มตั้งแต่ ${esc(deadlineLabel(startValue).replace(/^ภายในวันที่ /, ''))}</p>` : ''}
     <p class="text-[11px] font-bold">${label}: ${esc(deadlineLabel(value))}</p>
@@ -69,10 +73,15 @@ function deadlineBlock(config, key, label) {
   </div>`
 }
 
-export function renderRegradeOverviewNotice(config, audience, {
+export function showRegradeOverviewPopup(config, audience, {
   rows = [], departments = [], pendingCount = 0, forceOpen = false, student = null,
+  loginKey = '',
 } = {}) {
-  if (!['student', 'teacher'].includes(audience) || config?.overview_notice?.[audience] === false) return ''
+  if (!['student', 'teacher'].includes(audience) || config?.overview_notice?.[audience] === false || typeof document === 'undefined') return false
+  const storageKey = `pp5_regrade_popup_seen_${audience}_${String(loginKey || 'current-session').replace(/[^a-zA-Z0-9_-]/g, '_')}`
+  if (shownInMemory.has(storageKey)) return false
+  try { if (sessionStorage.getItem(storageKey) === '1') return false } catch {}
+  if (document.getElementById('regrade-overview-popup')) return false
 
   const teacherAudience = audience === 'teacher'
   let title, message, detail = ''
@@ -81,7 +90,7 @@ export function renderRegradeOverviewNotice(config, audience, {
     message = Number(pendingCount) > 0
       ? `มีคำร้องรอการตอบรับ ${Number(pendingCount)} รายการ กรุณารีบตรวจสอบและนัดสอบปรับหรือมอบหมายงานแก้ให้ทันกำหนด`
       : 'โปรดติดตามคำร้องใหม่ของนักเรียน และดำเนินการตอบรับภายในช่วงเวลาที่กำหนด'
-    detail = deadlineBlock(config, 'response_window_end', 'กำหนดตอบรับให้เสร็จ')
+    detail = deadlineBlock(config, deadlineValue(config?.response_window_end) === null ? 'regrade_menu_end_at' : 'response_window_end', deadlineValue(config?.response_window_end) === null ? 'กำหนดปิดเมนูระบบ' : 'กำหนดตอบรับให้เสร็จ')
   } else {
     const unassigned = rows.filter(row => row.status === 'ยังไม่แจ้ง' && row.teacher_id == null)
     const toDeclare = rows.filter(row => row.status === 'ยังไม่แจ้ง' && row.teacher_id != null)
@@ -105,21 +114,56 @@ export function renderRegradeOverviewNotice(config, audience, {
     if (awaiting.length) reminders.push(`แจ้งความจำนงแล้ว ${awaiting.length} วิชา โปรดติดตามการตอบรับจากครูผู้สอน`)
     if (assigned.length) reminders.push(`ครูตอบรับแล้ว ${assigned.length} วิชา โปรดเปิดดูงานหรือวันนัด และรีบดำเนินการก่อนกำหนดส่ง`)
     message = reminders.length ? reminders.join(' · ') : 'ตรวจสอบรายวิชาค้างและติดตามกำหนดการในระบบเป็นระยะ'
-    detail = deadlineBlock(config, 'intent_window_end', 'กำหนดแจ้งความจำนง')
+    detail = deadlineBlock(config, deadlineValue(config?.intent_window_end) === null ? 'regrade_menu_end_at' : 'intent_window_end', deadlineValue(config?.intent_window_end) === null ? 'กำหนดปิดเมนูระบบ' : 'กำหนดแจ้งความจำนง')
   }
 
   const canOpen = forceOpen || isRegradeMenuOpen(config, audience)
-  return `<section class="mb-4 rounded-2xl border ${teacherAudience ? 'border-violet-200 bg-gradient-to-r from-violet-50 to-white text-violet-950' : 'border-amber-200 bg-gradient-to-r from-amber-50 to-white text-amber-950'} p-4 shadow-sm" aria-live="polite">
+  const deadline = regradeCountdownDeadlineMs(config, audience)
+  shownInMemory.add(storageKey)
+  try { sessionStorage.setItem(storageKey, '1') } catch {}
+  const modal = document.createElement('div')
+  modal.id = 'regrade-overview-popup'
+  modal.className = 'fixed inset-0 z-[100000] flex items-center justify-center bg-slate-950/65 backdrop-blur-sm p-4'
+  modal.setAttribute('role', 'presentation')
+  modal.innerHTML = `<section role="dialog" aria-modal="true" aria-labelledby="regrade-overview-popup-title" class="w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-3xl border ${teacherAudience ? 'border-violet-200 bg-gradient-to-br from-violet-50 to-white text-violet-950' : 'border-amber-200 bg-gradient-to-br from-amber-50 to-white text-amber-950'} p-5 shadow-2xl">
     <div class="flex items-start gap-3">
-      <span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white text-xl shadow-sm">${teacherAudience ? '⏰' : '🔔'}</span>
+      <span class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-white text-2xl shadow-sm">${teacherAudience ? '⏰' : '🔔'}</span>
       <div class="min-w-0 flex-1">
-        <h2 class="text-sm font-extrabold">${title}</h2>
-        <p class="mt-1 text-xs leading-relaxed">${esc(message)}</p>
-        ${detail}
+        <h2 id="regrade-overview-popup-title" class="text-base font-extrabold">${title}</h2>
+        <p class="mt-2 text-sm leading-relaxed">${esc(message)}</p>
       </div>
+      <button type="button" data-regrade-popup-close aria-label="ปิด" class="rounded-full px-2 py-1 text-xl text-slate-500 hover:bg-white/80">×</button>
     </div>
-    ${canOpen ? `<a href="regrade.html" class="mt-3 inline-flex rounded-xl bg-white px-3 py-2 text-xs font-extrabold shadow-sm ring-1 ring-black/5">เปิดระบบแก้ค้างเก่า →</a>` : ''}
+    ${detail}
+    <div class="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <button type="button" data-regrade-popup-close class="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700">ปิด</button>
+      ${canOpen ? `<a href="regrade.html" class="rounded-xl bg-gradient-to-r ${teacherAudience ? 'from-violet-700 to-indigo-700' : 'from-amber-600 to-orange-600'} px-4 py-3 text-center text-sm font-extrabold text-white shadow-md">เปิดระบบแก้ค้างเก่า →</a>` : ''}
+    </div>
   </section>`
+  document.body.append(modal)
+  const onKeydown = event => {
+    if (event.key === 'Escape' && document.getElementById(modal.id)) {
+      close()
+    }
+  }
+  const close = () => {
+    modal.remove()
+    document.removeEventListener('keydown', onKeydown)
+    if (window._regradeNoticeCountdownTimer) {
+      clearInterval(window._regradeNoticeCountdownTimer)
+      window._regradeNoticeCountdownTimer = null
+    }
+  }
+  modal.querySelectorAll('[data-regrade-popup-close]').forEach(button => button.addEventListener('click', close))
+  modal.addEventListener('click', event => { if (event.target === modal) close() })
+  document.addEventListener('keydown', onKeydown)
+  modal.querySelector('[data-regrade-popup-close]')?.focus()
+  if (deadline !== null) {
+    const node = modal.querySelector('[data-regrade-notice-countdown]')
+    if (node) node.dataset.deadlineMs = String(deadline)
+  }
+  startRegradeNoticeCountdowns()
+  return true
 }
 
 export function startRegradeNoticeCountdowns() {

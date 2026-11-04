@@ -19,20 +19,19 @@ import {
 } from './student-api.js'
 import { getFriendlyErrorMessage } from './ui.js'
 import { getThemeConfig } from './theme.js'
-import { getSystemConfig, getAcademicTerms, getDepartments, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
+import { getSystemConfig, getAcademicTerms, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
 import { isLifeSkillGroup } from './skill-groups.js'
 import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputValue, renderIconTile } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1053'
+import { APP_VERSION } from './version.js?v=10.22.1054'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
-import { getRegradeConfig, getMyRegradeSubjects } from './regrade-api.js'
+import { getRegradeConfig } from './regrade-api.js'
 import { openMyCertificatesModal } from './student-certificates-modal.js'
 import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
 import { renderRegradeMenuCta, startRegradeMenuCountdowns } from './regrade-menu-window.js'
-import { renderRegradeOverviewNotice, startRegradeNoticeCountdowns } from './regrade-overview-notice.js'
 
 const _roomDisplay = (name) => (name ?? '').replace(/\/\d+/, '').trim()
 
@@ -476,25 +475,18 @@ export async function renderStudentOverview(student) {
 
   let regradeWorkCount = 0
   let regradeCfg = {}
-  let regradeRows = []
-  let regradeDepartments = []
   try {
-    const [loadedRegradeCfg, regradeCountRes, loadedRegradeRows, loadedDepartments] = await Promise.all([
+    const [loadedRegradeCfg, regradeCountRes] = await Promise.all([
       getRegradeConfig(),
       Promise.resolve(supabase.from('regrade_subjects').select('id', { count: 'exact', head: true })
         .eq('student_id', student.id).eq('status', 'กำลังดำเนินการปรับแก้')).catch(() => ({ count: 0 })),
-      getMyRegradeSubjects(student.id).catch(() => []),
-      getDepartments().catch(() => []),
     ])
     regradeCfg = loadedRegradeCfg || {}
     regradeWorkCount = Number(regradeCountRes?.count) || 0
-    regradeRows = loadedRegradeRows || []
-    regradeDepartments = loadedDepartments || []
   } catch (_) {
     regradeWorkCount = 0
   }
   const regradeCtaHtml = renderRegradeMenuCta(regradeCfg, 'student', { badge: regradeWorkCount })
-  const regradeNoticeHtml = renderRegradeOverviewNotice(regradeCfg, 'student', { rows: regradeRows, departments: regradeDepartments, student })
 
   // ปุ่มกีฬาสี — เดิมอยู่แถบเมนูล่างถาวร (student.js _loadSportsVisibility/_sportsVisibility ถูกลบไปแล้ว
   // เพราะไม่มีจุดใช้อื่นเหลืออยู่) ย้ายมารวมกับกลุ่ม "ระบบอื่น ๆ" แทน เช็ค settings key เดียวกันตรงๆ ที่นี่
@@ -550,7 +542,6 @@ export async function renderStudentOverview(student) {
 
   setContent(`
     ${overviewTermBar}
-    ${regradeNoticeHtml}
     <!-- Profile card -->
     <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 sm:p-6 mb-4 flex items-center gap-4 sm:gap-6">
       <div class="w-14 h-20 rounded-t-2xl rounded-b-lg overflow-hidden flex-shrink-0 bg-gradient-to-tr from-emerald-400 to-teal-400
@@ -825,7 +816,6 @@ export async function renderStudentOverview(student) {
     </div>`}
   `)
   startRegradeMenuCountdowns()
-  startRegradeNoticeCountdowns()
 
   // ── live clock ───────────────────────────────────────────────────────────
   const _clockEl = document.getElementById('stu-live-clock')

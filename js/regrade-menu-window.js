@@ -5,6 +5,18 @@ export function regradeMenuDeadlineMs(config) {
   return Number.isFinite(timestamp) ? timestamp : null
 }
 
+export function regradeCountdownDeadlineMs(config, audience) {
+  const operationalEnd = audience === 'teacher'
+    ? config?.response_window_end
+    : audience === 'student' ? config?.intent_window_end : null
+  const raw = String(operationalEnd ?? '').trim()
+  if (raw) {
+    const timestamp = new Date(raw).getTime()
+    if (Number.isFinite(timestamp)) return timestamp
+  }
+  return regradeMenuDeadlineMs(config)
+}
+
 export function isRegradeMenuOpen(config, audience, now = Date.now()) {
   if (!['teacher', 'student'].includes(audience)) return false
   if (config?.visibility?.[`${audience}_menu`] !== true) return false
@@ -23,11 +35,13 @@ function countdownText(deadline, now = Date.now()) {
 }
 
 export function renderRegradeMenuCta(config, audience, { description = 'ดูรายวิชาค้าง งานแก้ และกำหนดส่ง', badge = 0, forceOpen = false } = {}) {
-  const deadline = regradeMenuDeadlineMs(config)
+  const menuDeadline = regradeMenuDeadlineMs(config)
+  const deadline = regradeCountdownDeadlineMs(config, audience)
+  if (typeof window !== 'undefined') window._regradeMenuCloseAt = menuDeadline
   const visibilityAllowed = forceOpen || config?.visibility?.[`${audience}_menu`] === true
-  if (!['teacher', 'student'].includes(audience) || !visibilityAllowed || (deadline !== null && deadline <= Date.now())) return ''
+  if (!['teacher', 'student'].includes(audience) || !visibilityAllowed || (menuDeadline !== null && menuDeadline <= Date.now())) return ''
   return `
-    <a href="regrade.html" data-regrade-window-cta class="flex w-full items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-gradient-to-r from-rose-700 via-pink-700 to-rose-800 px-4 py-4 text-white shadow-lg transition hover:brightness-105 active:scale-[.99]">
+    <a href="regrade.html" data-regrade-window-cta data-menu-close-at="${menuDeadline ?? ''}" class="flex w-full items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-gradient-to-r from-rose-700 via-pink-700 to-rose-800 px-4 py-4 text-white shadow-lg transition hover:brightness-105 active:scale-[.99]">
       <span class="flex min-w-0 items-center gap-3">
         <span class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-white/15 text-2xl">📋</span>
         <span class="min-w-0 text-left">
@@ -48,19 +62,19 @@ export function startRegradeMenuCountdowns() {
   if (window._regradeMenuCountdownTimer) clearInterval(window._regradeMenuCountdownTimer)
   const update = () => {
     const now = Date.now()
-    let expired = false
     document.querySelectorAll('[data-regrade-countdown]').forEach(node => {
       const rawDeadline = node.dataset.deadlineMs
       if (!rawDeadline) return
       const deadline = Number(rawDeadline)
       if (!Number.isFinite(deadline)) return
       node.textContent = countdownText(deadline, now)
-      if (deadline <= now) expired = true
     })
-    if (expired) {
-      document.querySelectorAll('[data-regrade-window-cta]').forEach(node => { node.hidden = true })
-      document.getElementById('menu-regrade')?.classList.add('hidden')
-    }
+    document.querySelectorAll('[data-regrade-window-cta]').forEach(node => {
+      const menuDeadline = Number(node.dataset.menuCloseAt)
+      if (Number.isFinite(menuDeadline) && menuDeadline > 0 && menuDeadline <= now) node.hidden = true
+    })
+    const menuDeadline = Number(window._regradeMenuCloseAt)
+    if (Number.isFinite(menuDeadline) && menuDeadline > 0 && menuDeadline <= now) document.getElementById('menu-regrade')?.classList.add('hidden')
   }
   update()
   window._regradeMenuCountdownTimer = setInterval(update, 30_000)

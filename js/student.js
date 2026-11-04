@@ -15,8 +15,10 @@ import {
   openEmailLinkPrompt,
   completeGoogleEmailLink,
 } from './student-views.js'
-import { getSystemConfig, getAcademicTerms, updateLastSeen, logLogin, getActiveAnnouncements } from './api.js'
+import { getSystemConfig, getAcademicTerms, updateLastSeen, logLogin, getActiveAnnouncements, getDepartments } from './api.js'
 import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
+import { getRegradeConfig, getMyRegradeSubjects } from './regrade-api.js'
+import { showRegradeOverviewPopup } from './regrade-overview-notice.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { applyThemeForRole } from './theme.js'
 import { injectFeedbackWidget, showToast, showAnnouncementPopups, showTerangganuUrgentModal, initHeavyLoadBanner } from './ui.js'
@@ -205,6 +207,7 @@ async function init() {
 
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) { window.location.replace('student-login.html'); return }
+  window._pp5AuthLoginKey = `${session.user?.id ?? 'student'}-${session.user?.last_sign_in_at ?? ''}`
 
   const { data: profile } = await supabase
     .from('profiles').select('role').eq('id', session.user.id).single()
@@ -213,6 +216,16 @@ async function init() {
   await applyThemeForRole('student')
 
   _student = await getMyStudentProfile()
+  if (_student?.id) {
+    Promise.all([
+      getRegradeConfig(),
+      getMyRegradeSubjects(_student.id),
+      getDepartments().catch(() => []),
+    ]).then(([config, rows, departments]) => showRegradeOverviewPopup(config, 'student', {
+      rows, departments, student: _student,
+      loginKey: window._pp5AuthLoginKey || _student.profile_id || _student.id,
+    })).catch(() => {})
+  }
   await _loadFutsalVisibility()
   updateLastSeen('students').catch(() => {})
   logLogin('student').catch(() => {})
