@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1055'
+import { APP_VERSION } from './version.js?v=10.22.1056'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1056': [
+    'ย้ายการตั้งค่าภาษาและรูปแบบป้ายตัวเลือกไปไว้ในหน้าสร้าง Prompt โดยตั้งจำนวนข้อเริ่มต้นเป็น 50 และนำค่าที่เลือกไปใช้เป็นค่าเริ่มต้นของแบบทดสอบจากคลัง; หน้าตั้งค่ารายห้องกลับเป็นแบบเดิม',
+  ],
   '10.22.1055': [
     'ปรับคลังข้อสอบให้สร้าง Prompt สำหรับ AI ภายนอกเท่านั้น ไม่มีการเรียก AI API ในระบบ; ตั้งค่าภาษาข้อสอบและป้ายตัวเลือกได้ รวมถึงกำหนดป้ายเอง และตั้งจำนวนข้อเริ่มต้น 50 ข้อ',
     'เปลี่ยนชื่อปุ่มสร้างแบบทดสอบให้สื่อว่าขั้นตอนถัดไปคือเลือกห้องเรียน พร้อมเพิ่มค่าอำนาจจำแนกรายข้อและ KR-20 โดยแจ้งเมื่อข้อมูลยังไม่พอ',

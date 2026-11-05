@@ -516,11 +516,13 @@ function _stripCodeFence(text) {
 // answer inside a SINGLE fenced code block — most chat UIs (ChatGPT, Gemini,
 // Claude) render a one-click "copy" button on a fenced block, so the teacher
 // never has to manually select text.
-function _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, format, language }) {
+function _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, format, language, choiceLabels }) {
   const languageRule = `Write every question, answer choice, and explanation entirely in ${language}. Do not switch to Thai unless the selected language is Thai. Keep JSON/CSV field names and difficulty values exactly as specified so this system can import them.`
+  const displayLabels = choiceLabels.join(', ')
   const shared = [
     `Generate exactly ${count} multiple-choice quiz questions about: "${topic}".`,
     languageRule,
+    `The quiz interface will label the ${choicesCount} choices in this order: ${displayLabels}. Do not include these labels in the answer text; return each choice as answer text only.`,
     difficulty ? `All questions should be "${difficulty}" difficulty.` : 'Mix of difficulty levels is fine.',
     'Math/Science: use LaTeX in $ signs e.g. $x^2$, $\\frac{a}{b}$',
   ]
@@ -614,10 +616,10 @@ function _renderAIGenerator(teacher, bank) {
             <label class="text-xs font-semibold text-gray-600 mb-1 block">หัวข้อ/เนื้อหาที่ต้องการให้ออกข้อสอบ</label>
             <input id="ai-topic" class="${INPUT_CLS}" placeholder="เช่น สมการเชิงเส้นตัวแปรเดียว, การสังเคราะห์แสง, หลักธรรมอริยสัจ 4" />
           </div>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             <div>
               <label class="text-xs font-semibold text-gray-600 mb-1 block">จำนวนข้อ</label>
-              <input id="ai-count" type="number" min="1" value="5" class="${INPUT_CLS}" />
+              <input id="ai-count" type="number" min="1" value="50" class="${INPUT_CLS}" />
             </div>
             <div>
               <label class="text-xs font-semibold text-gray-600 mb-1 block">ตัวเลือกต่อข้อ</label>
@@ -635,16 +637,28 @@ function _renderAIGenerator(teacher, bank) {
             <div>
               <label class="text-xs font-semibold text-gray-600 mb-1 block">ภาษาข้อสอบ</label>
               <select id="ai-language" class="${SELECT_CLS}">
-                <option value="ภาษาไทย">🇹🇭 ภาษาไทย</option>
-                <option value="formal English">🇬🇧 English</option>
-                <option value="اللغة العربية الفصحى">🇸🇦 العربية</option>
-                <option value="bahasa Melayu tulisan Jawi (جاوي)">يَاوِي</option>
-                <option value="Bahasa Melayu tulisan Rumi">Bahasa Melayu (Rumi)</option>
+                <option value="th">🇹🇭 ภาษาไทย</option>
+                <option value="en">🇬🇧 English</option>
+                <option value="ar">🇸🇦 العربية</option>
+                <option value="jawi">يَاوِي</option>
+                <option value="rumi">Bahasa Melayu (Rumi)</option>
                 <option value="custom">ภาษาอื่น…</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-xs font-semibold text-gray-600 mb-1 block">รูปแบบป้ายตัวเลือก</label>
+              <select id="ai-choice-label" class="${SELECT_CLS}">
+                <option value="numeric">1, 2, 3, 4…</option>
+                <option value="upper">A, B, C, D…</option>
+                <option value="lower">a, b, c, d…</option>
+                <option value="thai">ก, ข, ค, ง…</option>
+                <option value="arabic">أ, ب, ج, د…</option>
+                <option value="custom">กำหนดป้ายเอง…</option>
               </select>
             </div>
           </div>
           <input id="ai-language-custom" class="${INPUT_CLS} hidden" placeholder="ระบุภาษา เช่น Bahasa Indonesia, Français, اردو" />
+          <input id="ai-choice-label-custom" class="${INPUT_CLS} hidden" placeholder="ระบุป้ายคั่นด้วยจุลภาค เช่น أ, ب, ج, د" />
 
           <div id="ai-copy-panel" class="space-y-3 pt-1">
             <div>
@@ -689,15 +703,29 @@ function _renderAIGenerator(teacher, bank) {
   const promptGate = createAIPromptCopyGate({
     copyButton: modal.querySelector('#btn-ai-copy-prompt'),
     watchRoot: modal,
-    watchSelector: '#ai-topic, #ai-count, #ai-choices-count, #ai-difficulty, #ai-language, #ai-language-custom',
+    watchSelector: '#ai-topic, #ai-count, #ai-choices-count, #ai-difficulty, #ai-language, #ai-language-custom, #ai-choice-label, #ai-choice-label-custom',
   })
 
   let responseFormat = 'json' // 'json' | 'csv' — only relevant in 'copy' mode
   const languageSelect = modal.querySelector('#ai-language')
   const customLanguage = modal.querySelector('#ai-language-custom')
-  const readLanguage = () => languageSelect.value === 'custom' ? customLanguage.value.trim() : languageSelect.value
+  const choiceLabelSelect = modal.querySelector('#ai-choice-label')
+  const customChoiceLabels = modal.querySelector('#ai-choice-label-custom')
+  const LANGUAGE_PROMPT_NAMES = {
+    th: 'ภาษาไทย', en: 'formal English', ar: 'اللغة العربية الفصحى',
+    jawi: 'bahasa Melayu tulisan Jawi (جاوي)', rumi: 'Bahasa Melayu tulisan Rumi',
+  }
+  const CHOICE_LABEL_SETS = { numeric: '12345', upper: 'ABCDE', lower: 'abcde', thai: 'กขคงจ', arabic: 'أبجد هـ'.replace(/\s/g, '') }
+  const readLanguage = () => languageSelect.value === 'custom'
+    ? customLanguage.value.trim()
+    : LANGUAGE_PROMPT_NAMES[languageSelect.value]
   languageSelect.addEventListener('change', () => {
     customLanguage.classList.toggle('hidden', languageSelect.value !== 'custom')
+    promptGate.invalidate()
+    promptWrap.classList.add('hidden')
+  })
+  choiceLabelSelect.addEventListener('change', () => {
+    customChoiceLabels.classList.toggle('hidden', choiceLabelSelect.value !== 'custom')
     promptGate.invalidate()
     promptWrap.classList.add('hidden')
   })
@@ -723,21 +751,44 @@ function _renderAIGenerator(teacher, bank) {
 
   const _readGenParams = () => {
     const topic = modal.querySelector('#ai-topic').value.trim()
-    const rawCount = parseInt(modal.querySelector('#ai-count').value, 10) || 5
+    const rawCount = parseInt(modal.querySelector('#ai-count').value, 10) || 50
     const count = Math.max(1, rawCount)
     modal.querySelector('#ai-count').value = count
     const rawChoicesCount = parseInt(modal.querySelector('#ai-choices-count').value, 10) || 4
     const choicesCount = Math.min(5, Math.max(2, rawChoicesCount))
     modal.querySelector('#ai-choices-count').value = choicesCount
     const difficulty = modal.querySelector('#ai-difficulty').value
-    return { topic, count, rawCount, choicesCount, difficulty, language: readLanguage() }
+    const choiceLabelStyle = choiceLabelSelect.value
+    const customLabels = customChoiceLabels.value.split(',').map(label => label.trim()).filter(Boolean)
+    const presetLabels = [...(CHOICE_LABEL_SETS[choiceLabelStyle] ?? CHOICE_LABEL_SETS.numeric)]
+    const choiceLabels = choiceLabelStyle === 'custom' ? customLabels : presetLabels
+    return {
+      topic, count, rawCount, choicesCount, difficulty, language: readLanguage(),
+      quizLanguage: languageSelect.value,
+      quizLanguageCustom: languageSelect.value === 'custom' ? customLanguage.value.trim() : null,
+      choiceLabelStyle,
+      choiceLabelsCustom: choiceLabelStyle === 'custom' ? customLabels.join(',') : null,
+      choiceLabels,
+    }
   }
 
   modal.querySelector('#btn-ai-build-prompt').addEventListener('click', () => {
-    const { topic, count, choicesCount, difficulty, language } = _readGenParams()
+    const { topic, count, choicesCount, difficulty, language, choiceLabelStyle, choiceLabels, quizLanguage, quizLanguageCustom, choiceLabelsCustom } = _readGenParams()
     if (!topic) { showToast('กรุณาระบุหัวข้อที่ต้องการให้ AI ออกข้อสอบ', 'warning'); return }
     if (!language) { showToast('กรุณาระบุภาษาที่ต้องการ', 'warning'); return }
-    const prompt = _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, language, format: responseFormat })
+    if (choiceLabelStyle === 'custom' && choiceLabels.length < choicesCount) {
+      showToast(`กรุณาระบุป้ายตัวเลือกอย่างน้อย ${choicesCount} ป้าย โดยคั่นแต่ละป้ายด้วยจุลภาค`, 'warning')
+      return
+    }
+    const prompt = _buildExternalAIPrompt({ topic, count, choicesCount, difficulty, language, format: responseFormat, choiceLabels: choiceLabels.slice(0, choicesCount) })
+    try {
+      localStorage.setItem(`quiz-prompt-settings:${bank.id}`, JSON.stringify({
+        choice_label_style: choiceLabelStyle,
+        choice_labels_custom: choiceLabelsCustom,
+        quiz_language: quizLanguage,
+        quiz_language_custom: quizLanguageCustom,
+      }))
+    } catch { /* storage may be unavailable; quiz config falls back to defaults */ }
     modal.querySelector('#ai-prompt-text').value = prompt
     promptGate.markGenerated()
     promptWrap.classList.remove('hidden')

@@ -19,8 +19,6 @@ const WRITE_MODE_LABEL = {
   overwrite: { label: 'ทับคะแนนเก่า', hint: 'เขียนทับคะแนนเดิมในคอลัมน์นี้เสมอ ไม่ว่าเดิมจะมีค่าเท่าไหร่' },
   add: { label: 'บวกเพิ่มจากคะแนนเดิม', hint: 'บวกคะแนนที่ได้จากควิซนี้เข้ากับคะแนนที่มีอยู่แล้วในคอลัมน์ เหมาะกับคอลัมน์สะสมคะแนนจากหลายควิซ' },
 }
-const QUIZ_LANGUAGE = { th: 'ภาษาไทย', en: 'English', ar: 'العربية الفصحى', jawi: 'Bahasa Melayu tulisan Jawi', rumi: 'Bahasa Melayu tulisan Rumi', custom: 'ภาษาอื่น' }
-const CHOICE_LABEL_STYLE = { numeric: '1, 2, 3, 4…', upper: 'A, B, C, D…', lower: 'a, b, c, d…', thai: 'ก, ข, ค, ง…', arabic: 'أ, ب, ج, د…', custom: 'กำหนดเอง…' }
 
 export async function renderBankQuizzes(teacher, bank, preferredClassId = null) {
   if (!bank) return
@@ -192,6 +190,8 @@ export async function renderBankQuizzes(teacher, bank, preferredClassId = null) 
 }
 
 async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, preferredClassId = null) {
+  let promptDefaults = {}
+  try { promptDefaults = JSON.parse(localStorage.getItem(`quiz-prompt-settings:${bank.id}`) ?? '{}') } catch { /* ignore invalid local preference */ }
   const modal = document.createElement('div')
   modal.className = 'fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4 overflow-y-auto'
   modal.innerHTML = `
@@ -212,30 +212,13 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-xs font-semibold text-gray-500 mb-1 block">จำนวนข้อที่สุ่ม</label>
-            <input id="qz-num" type="number" min="1" class="${INPUT_CLS}" value="${quiz?.num_questions ?? 50}" />
-            <p class="text-[11px] text-gray-400 mt-1">ค่าเริ่มต้น 50 ข้อ — จำนวนข้อในคลังต้องเพียงพอกับที่กำหนด</p>
+            <input id="qz-num" type="number" min="1" class="${INPUT_CLS}" value="${quiz?.num_questions ?? Math.min(10, bankQuestionCount || 10)}" />
           </div>
           <div>
             <label class="text-xs font-semibold text-gray-500 mb-1 block">เวลาสอบ (นาที)</label>
             <input id="qz-time" type="number" min="1" class="${INPUT_CLS}" value="${quiz?.time_limit_minutes ?? 30}" />
           </div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <label class="text-xs font-semibold text-gray-500 mb-1 block">รูปแบบตัวเลือก</label>
-            <select id="qz-choice-label" class="${SELECT_CLS}">
-              ${Object.entries(CHOICE_LABEL_STYLE).map(([v, label]) => `<option value="${v}" ${(quiz?.choice_label_style ?? 'numeric') === v ? 'selected' : ''}>${label}</option>`).join('')}
-            </select>
-          </div>
-          <div>
-            <label class="text-xs font-semibold text-gray-500 mb-1 block">ภาษาข้อสอบ</label>
-            <select id="qz-language" class="${SELECT_CLS}">
-              ${Object.entries(QUIZ_LANGUAGE).map(([v, label]) => `<option value="${v}" ${(quiz?.quiz_language ?? 'th') === v ? 'selected' : ''}>${label}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <input id="qz-choice-custom" class="${INPUT_CLS} ${(quiz?.choice_label_style ?? 'numeric') === 'custom' ? '' : 'hidden'}" value="${_htmlEsc(quiz?.choice_labels_custom ?? '')}" placeholder="ป้ายคั่นด้วยจุลภาค เช่น ก, ข, ค, ง หรือ أ, ب, ج, د" />
-        <input id="qz-language-custom" class="${INPUT_CLS} ${(quiz?.quiz_language ?? 'th') === 'custom' ? '' : 'hidden'}" value="${_htmlEsc(quiz?.quiz_language_custom ?? '')}" placeholder="ระบุภาษา เช่น Bahasa Indonesia, Français, اردو" />
         <div class="flex gap-4">
           <label class="flex items-center gap-2 text-xs font-semibold text-gray-600">
             <input type="checkbox" id="qz-shuffle-q" ${quiz ? (quiz.shuffle_questions ? 'checked' : '') : 'checked'} /> สลับลำดับคำถาม
@@ -316,12 +299,6 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
   document.body.appendChild(modal)
 
   const classSelect = modal.querySelector('#qz-class')
-  const quizLanguageSelect = modal.querySelector('#qz-language')
-  const quizLanguageCustom = modal.querySelector('#qz-language-custom')
-  const choiceLabelSelect = modal.querySelector('#qz-choice-label')
-  const choiceLabelCustom = modal.querySelector('#qz-choice-custom')
-  quizLanguageSelect.addEventListener('change', () => quizLanguageCustom.classList.toggle('hidden', quizLanguageSelect.value !== 'custom'))
-  choiceLabelSelect.addEventListener('change', () => choiceLabelCustom.classList.toggle('hidden', choiceLabelSelect.value !== 'custom'))
   const scoreColSelect = modal.querySelector('#qz-score-col')
   const loadScoreColumns = async () => {
     const classId = classSelect.value
@@ -367,15 +344,6 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
       showToast(`คลังมีแค่ ${bankQuestionCount} ข้อ แต่ตั้งค่าให้สุ่ม ${numQuestions} ข้อ — เพิ่มคำถามในคลังก่อนบันทึก`, 'warning')
       return
     }
-    if (quizLanguageSelect.value === 'custom' && !quizLanguageCustom.value.trim()) {
-      showToast('กรุณาระบุภาษาของแบบทดสอบ', 'warning')
-      return
-    }
-    if (choiceLabelSelect.value === 'custom' && choiceLabelCustom.value.split(',').map(s => s.trim()).filter(Boolean).length < 2) {
-      showToast('กรุณาระบุป้ายตัวเลือกอย่างน้อย 2 ค่า คั่นด้วยจุลภาค', 'warning')
-      return
-    }
-
     const openAt = modal.querySelector('#qz-open').value
     const closeAt = modal.querySelector('#qz-close').value
 
@@ -384,10 +352,10 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
       class_id: classSelect.value,
       title,
       num_questions: numQuestions,
-      choice_label_style: modal.querySelector('#qz-choice-label').value,
-      choice_labels_custom: choiceLabelSelect.value === 'custom' ? choiceLabelCustom.value.split(',').map(s => s.trim()).filter(Boolean).join(',') : null,
-      quiz_language: quizLanguageSelect.value,
-      quiz_language_custom: quizLanguageSelect.value === 'custom' ? quizLanguageCustom.value.trim() : null,
+      choice_label_style: quiz?.choice_label_style ?? promptDefaults.choice_label_style ?? 'numeric',
+      choice_labels_custom: quiz?.choice_labels_custom ?? promptDefaults.choice_labels_custom ?? null,
+      quiz_language: quiz?.quiz_language ?? promptDefaults.quiz_language ?? 'th',
+      quiz_language_custom: quiz?.quiz_language_custom ?? promptDefaults.quiz_language_custom ?? null,
       shuffle_questions: modal.querySelector('#qz-shuffle-q').checked,
       shuffle_choices: modal.querySelector('#qz-shuffle-c').checked,
       lock_on_answer: modal.querySelector('#qz-instant-bonus').checked || modal.querySelector('#qz-lock-answer').checked,
