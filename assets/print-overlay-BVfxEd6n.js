@@ -1,0 +1,6 @@
+function s(d,{autoprint:l=!1}={}){var r;(r=document.getElementById("html-print-overlay"))==null||r.remove();const e=document.createElement("div");e.id="html-print-overlay",e.style.cssText="position:fixed;inset:0;z-index:9999;background:#e5e7eb;display:flex;flex-direction:column;",e.innerHTML=`
+    <div style="flex-shrink:0;display:flex;gap:8px;justify-content:center;padding:10px;background:#fff;border-bottom:1px solid #ddd;">
+      <button id="html-print-close-btn" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">← ปิด</button>
+      <button id="html-print-go-btn" style="padding:8px 24px;font-size:13px;font-family:Sarabun,sans-serif;border-radius:8px;border:1px solid #999;background:#fff;cursor:pointer;">🖨️ พิมพ์ / บันทึกเป็น PDF</button>
+    </div>
+    <iframe id="html-print-iframe" style="flex:1;border:0;width:100%;background:#e5e7eb;"></iframe>`,document.body.appendChild(e);const t=e.querySelector("#html-print-iframe"),n=()=>{var o,i;(o=t.contentWindow)==null||o.focus(),(i=t.contentWindow)==null||i.print()};return e.querySelector("#html-print-close-btn").addEventListener("click",()=>e.remove()),e.querySelector("#html-print-go-btn").addEventListener("click",n),l&&t.addEventListener("load",()=>setTimeout(n,300),{once:!0}),t.srcdoc=d,e}export{s as o};
