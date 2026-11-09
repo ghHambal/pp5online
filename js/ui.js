@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1056'
+import { APP_VERSION } from './version.js?v=10.22.1057'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -328,8 +328,8 @@ export function injectFeedbackWidget({ profileId, role, name }) {
     fab.addEventListener('click', () => _openFeedbackModal({ profileId, role, name }))
   }
 
-  window._openFeedbackWidget = (prefillMessage, prefillCategory) => {
-    _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCategory })
+  window._openFeedbackWidget = (prefillMessage, prefillCategory, initialTab = 'send') => {
+    _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCategory, initialTab })
   }
   window._openPasswordResetRequest = () => {
     _openFeedbackModal({ profileId, role, name, prefillCategory: 'password_reset' })
@@ -383,7 +383,7 @@ const _FB_CAT_ICON = { compliment:'😊', suggestion:'💡', problem:'🐞', pas
 // หมวดในแท็บ "ประวัติของฉัน" กันโชว์เป็น raw category string ตรงๆ
 const _FB_EXTRA_LABELS = { qr_card_request: 'ขอทำบัตร QR Code' }
 
-function _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCategory }) {
+function _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCategory, initialTab = 'send' }) {
   document.getElementById('feedback-modal')?.remove()
 
   const m = document.createElement('div')
@@ -633,7 +633,7 @@ function _openFeedbackModal({ profileId, role, name, prefillMessage, prefillCate
     }
   }
 
-  setTab('send')
+  setTab(initialTab === 'history' ? 'history' : 'send')
 }
 
 // ─── Searchable Teacher Select ────────────────────────────────────────────────
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1057': [
+    '🔒 ป้องกันคำขอทำบัตร QR Code ซ้ำที่ฐานข้อมูล พร้อมสร้างคำขอและข้อความในธุรกรรมเดียวกัน',
+  ],
   '10.22.1056': [
     'ย้ายการตั้งค่าภาษาและรูปแบบป้ายตัวเลือกไปไว้ในหน้าสร้าง Prompt โดยตั้งจำนวนข้อเริ่มต้นเป็น 50 และนำค่าที่เลือกไปใช้เป็นค่าเริ่มต้นของแบบทดสอบจากคลัง; หน้าตั้งค่ารายห้องกลับเป็นแบบเดิม',
   ],

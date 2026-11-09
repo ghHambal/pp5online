@@ -1287,12 +1287,32 @@ async function _notifyProfiles(profileIds, { title, body, url }) {
 // ของตัวเองในแท็บ "ประวัติของฉัน" ของวิดเจ็ต Feedback ได้ (qr_reissue_requests เองไม่มีหน้าให้นักเรียน
 // ดูย้อนหลัง) ผูกกันไว้ผ่าน feedback_id เพื่อให้ตอบกลับเข้าเธรดเดิมได้ตอนทำเสร็จ (ดู markQrReissueRequestPrinted)
 export async function submitQrReissueRequest({ studentId, profileId, senderName }) {
-  const feedbackId = await submitAppFeedback({
-    profileId, senderRole: 'student', senderName,
-    category: 'qr_card_request', message: 'แจ้งขอทำบัตร QR Code ใหม่',
+  const { used, limit } = await getMyFeedbackQuota(profileId, 'student')
+  if (used >= limit) {
+    const error = new Error(`ส่งความคิดเห็นครบโควต้าของเดือนนี้ (${limit} ครั้ง/เดือน)`)
+    error.code = 'FEEDBACK_LIMIT_REACHED'
+    error.limit = limit
+    throw error
+  }
+
+  const { error } = await supabase.rpc('submit_qr_reissue_request', {
+    p_student_id: studentId,
+    p_sender_name: senderName,
   })
-  const { error } = await supabase.from('qr_reissue_requests').insert({ student_id: studentId, feedback_id: feedbackId })
   if (error) throw error
+}
+
+// คำขอที่ยังเปิดอยู่ = ยังไม่รับบัตรจริง นักเรียนจึงยังไม่ควรส่งคำขอซ้ำ
+export async function getMyOpenQrReissueRequest(studentId) {
+  const { data, error } = await supabase.from('qr_reissue_requests')
+    .select('id, requested_at, printed_at, picked_up_at')
+    .eq('student_id', studentId)
+    .is('picked_up_at', null)
+    .order('requested_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data ?? null
 }
 
 export async function getQrReissueRequests({ limit = 200 } = {}) {

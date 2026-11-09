@@ -19,13 +19,13 @@ import {
 } from './student-api.js'
 import { getFriendlyErrorMessage } from './ui.js'
 import { getThemeConfig } from './theme.js'
-import { getSystemConfig, getAcademicTerms, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
+import { getSystemConfig, getAcademicTerms, getMyOpenQrReissueRequest, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
 import { isLifeSkillGroup } from './skill-groups.js'
 import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputValue, renderIconTile } from './teacher-views-utils.js'
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1056'
+import { APP_VERSION } from './version.js?v=10.22.1057'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -3310,7 +3310,41 @@ export async function renderStudentProfile(student, onLogout) {
 
   // แจ้งขอทำบัตร QR Code ใหม่ — ป๊อบอัพยืนยันครั้งเดียวไม่ต้องพิมพ์อะไร เข้าคิวในหน้า "พิมพ์ QR Code
   // นักเรียน" ของแอดมิน/ครูที่ได้รับสิทธิ์ (แท็บ "คำขอใหม่") พร้อมส่ง push แจ้งทันที
-  document.getElementById('btn-request-qr-card').addEventListener('click', () => {
+  const showExistingQrRequestNotice = () => {
+    document.getElementById('qr-request-confirm')?.remove()
+    document.getElementById('qr-request-existing')?.remove()
+    const notice = document.createElement('div')
+    notice.id = 'qr-request-existing'
+    notice.className = 'fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/50'
+    notice.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4 animate-fade">
+        <div class="text-4xl">🎫</div>
+        <h3 class="text-base font-bold text-gray-800">คุณเคยแจ้งขอทำบัตรแล้ว</h3>
+        <p class="text-sm text-gray-600 leading-relaxed">กรุณารอแอดมินดำเนินการ และติดตามข้อความตอบกลับในหน้าข้อความเพื่อมารับ QR Code</p>
+        <div class="flex gap-2">
+          <button id="qr-request-existing-close" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-600 hover:bg-gray-50">ปิด</button>
+          <button id="qr-request-existing-messages" class="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold bg-pink-600 hover:bg-pink-700">ไปที่ข้อความ</button>
+        </div>
+      </div>`
+    document.body.appendChild(notice)
+    notice.addEventListener('click', e => { if (e.target === notice) notice.remove() })
+    notice.querySelector('#qr-request-existing-close').addEventListener('click', () => notice.remove())
+    notice.querySelector('#qr-request-existing-messages').addEventListener('click', () => {
+      notice.remove()
+      window._openFeedbackWidget?.(undefined, undefined, 'history')
+    })
+  }
+
+  document.getElementById('btn-request-qr-card').addEventListener('click', async () => {
+    try {
+      if (await getMyOpenQrReissueRequest(student.id)) {
+        showExistingQrRequestNotice()
+        return
+      }
+    } catch (err) {
+      showToast('ตรวจสอบคำขอเดิมไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      return
+    }
     document.getElementById('qr-request-confirm')?.remove()
     const c = document.createElement('div')
     c.id = 'qr-request-confirm'
@@ -3331,6 +3365,10 @@ export async function renderStudentProfile(student, onLogout) {
       const okBtn = c.querySelector('#qr-request-ok')
       okBtn.disabled = true; okBtn.textContent = 'กำลังส่ง...'
       try {
+        if (await getMyOpenQrReissueRequest(student.id)) {
+          showExistingQrRequestNotice()
+          return
+        }
         await submitQrReissueRequest({ studentId: student.id, profileId: student.profile_id, senderName: student.full_name })
         notifyQrReissueManagers({
           title: '🎫 มีคำขอทำบัตร QR Code ใหม่',
@@ -3340,6 +3378,10 @@ export async function renderStudentProfile(student, onLogout) {
         c.remove()
         showToast('แจ้งขอทำบัตรแล้ว รอแอดมิน/ครูดำเนินการนะครับ 🙏', 'success')
       } catch (err) {
+        if (err?.code === '23505' || String(err?.message ?? '').includes('QR_REISSUE_REQUEST_ALREADY_OPEN')) {
+          showExistingQrRequestNotice()
+          return
+        }
         okBtn.disabled = false; okBtn.textContent = 'ยืนยัน'
         showToast('ส่งไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
       }
