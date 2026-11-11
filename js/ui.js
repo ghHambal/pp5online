@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1062'
+import { APP_VERSION } from './version.js?v=10.22.1063'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1063': [
+    'เพิ่มตัวเลือกพิมพ์ใบลงทะเบียนกิจกรรม YLA ได้ทั้งรายชื่อทั้งหมดหรือแยกชาย/หญิง และตัดบรรทัดวาระกับจำนวนผู้เข้าร่วมออกจากใบพิมพ์',
+  ],
   '10.22.1062': [
     'แก้ปุ่มเพิ่มสมาชิกสภาในกิจกรรม YLA ให้ตรวจรายชื่อจากฐานข้อมูลตามวาระจริง เพิ่มสมาชิกที่ยังขาดโดยไม่ซ้ำ และแสดงข้อผิดพลาดให้เห็นเมื่อทำรายการไม่สำเร็จ',
     'จัดรายชื่อผู้เข้าร่วม YLA เป็นแท็บเพศ ตารางแถวรายชื่อ และคลี่รายละเอียดเมื่อเลือกนักเรียน',
