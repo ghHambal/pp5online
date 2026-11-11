@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1064'
+import { APP_VERSION } from './version.js?v=10.22.1065'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,7 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
-  '10.22.1064': [
+  '10.22.1065': [
+    'ปรับชื่อและชั้น/ห้องให้ตัดบรรทัดและขยายความสูงแถวตามเนื้อหา ป้องกันข้อความตกหรือถูกตัดในตัวอย่างและใบพิมพ์',
+    'ยกเลิกขั้นต่ำขนาดฟอนต์ 12 pt สำหรับใบรายชื่อ YLA ให้ตั้งขนาดเล็กลงได้ เช่น 8 pt',
     'เพิ่มตัวเลือกฟอนต์ของรายชื่อและชื่อกิจกรรม พร้อมปรับตัวหนาชื่อกิจกรรมได้แยกตามงาน',
     'ปรับตัวอย่างใบรายชื่อให้แบ่งหน้า A4 ตามพื้นที่พิมพ์จริง รอโหลดฟอนต์และโลโก้ก่อนพิมพ์ และใช้รูปแบบเดียวกันระหว่างตัวอย่างกับเอกสาร',
   ],

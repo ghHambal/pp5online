@@ -1253,7 +1253,7 @@ export async function updateCouncilYlaRosterSettings(eventId, { rosterTitle, ros
     roster_title: rosterTitle?.trim() || null,
     roster_subtitle: rosterSubtitle?.trim() || null,
     roster_logo_url: rosterLogoUrl?.trim() || null,
-    roster_font_size: Math.min(18, Math.max(12, Number(rosterFontSize) || 14)),
+    roster_font_size: Math.min(18, Math.max(1, Number(rosterFontSize) || 14)),
     roster_font_family: fontFamilies.has(rosterFontFamily) ? rosterFontFamily : 'tahoma',
     roster_title_font_family: fontFamilies.has(rosterTitleFontFamily) ? rosterTitleFontFamily : 'tahoma',
     roster_title_weight: titleWeight,
