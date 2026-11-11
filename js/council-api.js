@@ -1190,7 +1190,7 @@ const DEFAULT_YLA_CRITERIA = [
 
 export async function getCouncilYlaEvents(academicYear, termId) {
   let q = supabase.from('council_yla_events')
-    .select('id, academic_year, event_code, title, description, status, start_date, end_date, location, capacity, created_by_teacher_id, created_at, updated_at')
+    .select('id, term_id, academic_year, event_code, title, description, status, start_date, end_date, location, capacity, roster_title, roster_subtitle, roster_logo_url, roster_font_size, roster_row_height, roster_page_size, roster_columns, created_by_teacher_id, created_at, updated_at')
   if (academicYear) q = q.eq('academic_year', academicYear)
   if (termId) q = q.eq('term_id', termId)
   const { data, error } = await q.order('start_date', { ascending: false }).order('created_at', { ascending: false })
@@ -1227,6 +1227,20 @@ export async function updateCouncilYlaEventStatus(eventId, status) {
   if (error) throw error
 }
 
+export async function updateCouncilYlaRosterSettings(eventId, { rosterTitle, rosterSubtitle, rosterLogoUrl, rosterFontSize, rosterRowHeight, rosterPageSize, rosterColumns }) {
+  const { error } = await supabase.from('council_yla_events').update({
+    roster_title: rosterTitle?.trim() || null,
+    roster_subtitle: rosterSubtitle?.trim() || null,
+    roster_logo_url: rosterLogoUrl?.trim() || null,
+    roster_font_size: Math.min(18, Math.max(12, Number(rosterFontSize) || 14)),
+    roster_row_height: Math.min(90, Math.max(24, Number(rosterRowHeight) || 34)),
+    roster_page_size: rosterPageSize === 'landscape' ? 'landscape' : 'portrait',
+    roster_columns: Array.isArray(rosterColumns) ? rosterColumns : undefined,
+    updated_at: new Date().toISOString(),
+  }).eq('id', eventId)
+  if (error) throw error
+}
+
 export async function getCouncilYlaEventDetail(eventId) {
   const [participants, attendance, criteria, scores, results] = await Promise.all([
     supabase.from('council_yla_participants')
@@ -1257,6 +1271,17 @@ export async function addCouncilYlaParticipant({ eventId, studentId, application
     event_id: eventId, student_id: studentId, application_id: applicationId || null, status: 'registered',
   })
   if (error) throw error
+}
+
+export async function addCouncilYlaParticipants({ eventId, participants }) {
+  if (!participants?.length) return 0
+  const rows = participants.map(({ studentId, applicationId }) => ({
+    event_id: eventId, student_id: studentId, application_id: applicationId || null, status: 'registered',
+  }))
+  const { data, error } = await supabase.from('council_yla_participants')
+    .upsert(rows, { onConflict: 'event_id,student_id', ignoreDuplicates: true }).select('id')
+  if (error) throw error
+  return data?.length ?? 0
 }
 
 export async function updateCouncilYlaParticipantStatus(participantId, status) {

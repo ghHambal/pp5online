@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1057'
+import { APP_VERSION } from './version.js?v=10.22.1058'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1058': [
+    'เพิ่มหน้าตัวอย่างก่อนพิมพ์ใบลงทะเบียนกิจกรรมสภานักเรียน ปรับหัวเรื่อง รายละเอียด โลโก้ ขนาดตัวอักษร ความสูงแถว และกระดาษแนวตั้ง/แนวนอนได้ทันที',
+    'เพิ่มการเพิ่ม ลบ เปลี่ยนชนิด/ชื่อ และจัดลำดับคอลัมน์ พร้อมบันทึกรูปแบบแยกตามกิจกรรม',
+  ],
   '10.22.1057': [
     '🔒 ป้องกันคำขอทำบัตร QR Code ซ้ำที่ฐานข้อมูล พร้อมสร้างคำขอและข้อความในธุรกรรมเดียวกัน',
   ],
