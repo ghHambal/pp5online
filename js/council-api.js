@@ -1199,7 +1199,7 @@ const DEFAULT_YLA_CRITERIA = [
 
 export async function getCouncilYlaEvents(academicYear, termId) {
   let q = supabase.from('council_yla_events')
-    .select('id, term_id, academic_year, event_code, title, description, status, start_date, end_date, location, capacity, roster_title, roster_subtitle, roster_logo_url, roster_font_size, roster_font_family, roster_title_font_family, roster_title_weight, roster_row_height, roster_page_size, roster_columns, created_by_teacher_id, created_at, updated_at')
+    .select('id, term_id, academic_year, event_code, title, description, status, start_date, end_date, location, capacity, checkin_enabled, checkin_opens_at, checkin_closes_at, checkin_latitude, checkin_longitude, checkin_radius_meters, roster_title, roster_subtitle, roster_logo_url, roster_font_size, roster_font_family, roster_title_font_family, roster_title_weight, roster_row_height, roster_page_size, roster_columns, created_by_teacher_id, created_at, updated_at')
   if (academicYear) q = q.eq('academic_year', academicYear)
   if (termId) q = q.eq('term_id', termId)
   const { data, error } = await q.order('start_date', { ascending: false }).order('created_at', { ascending: false })
@@ -1236,11 +1236,17 @@ export async function updateCouncilYlaEventStatus(eventId, status) {
   if (error) throw error
 }
 
-export async function updateCouncilYlaEventDetails(eventId, { title, description, startDate, endDate, location, capacity }) {
+export async function updateCouncilYlaEventDetails(eventId, { title, description, startDate, endDate, location, capacity, checkinEnabled, checkinOpensAt, checkinClosesAt, checkinLatitude, checkinLongitude, checkinRadiusMeters }) {
   const { error } = await supabase.from('council_yla_events').update({
     title: title.trim(), description: description?.trim() || null,
     start_date: startDate || null, end_date: endDate || null,
     location: location?.trim() || null, capacity: capacity || null,
+    checkin_enabled: !!checkinEnabled,
+    checkin_opens_at: checkinOpensAt || null,
+    checkin_closes_at: checkinClosesAt || null,
+    checkin_latitude: checkinLatitude === '' || checkinLatitude == null ? null : Number(checkinLatitude),
+    checkin_longitude: checkinLongitude === '' || checkinLongitude == null ? null : Number(checkinLongitude),
+    checkin_radius_meters: Number(checkinRadiusMeters) || 100,
     updated_at: new Date().toISOString(),
   }).eq('id', eventId)
   if (error) throw error
@@ -1294,7 +1300,7 @@ export async function getCouncilYlaEventDetail(eventId) {
       .select('id, event_id, student_id, application_id, status, registered_at, updated_at, students(id, full_name, student_code, main_room, gender, image_url, photo_url, profile_id)')
       .eq('event_id', eventId).order('registered_at'),
     supabase.from('council_yla_attendance')
-      .select('id, event_id, student_id, session_label, attendance_state, checked_in_at, note, recorded_by_teacher_id, updated_at')
+      .select('id, event_id, student_id, session_label, attendance_state, checked_in_at, note, recorded_by_teacher_id, checkin_latitude, checkin_longitude, checkin_accuracy_m, checkin_source, updated_at')
       .eq('event_id', eventId).order('session_label').order('student_id'),
     supabase.from('council_yla_criteria')
       .select('id, event_id, name, weight, sort_order, is_active').eq('event_id', eventId).eq('is_active', true).order('sort_order'),
@@ -1348,6 +1354,20 @@ export async function saveCouncilYlaAttendance({ eventId, studentId, sessionLabe
     recorded_by_teacher_id: recordedByTeacherId || null,
     updated_at: new Date().toISOString(),
   }, { onConflict: 'event_id,student_id,session_label' })
+  if (error) throw error
+}
+
+export async function checkInCouncilYlaEvent({ eventId, studentId, latitude, longitude, accuracy }) {
+  const { error } = await supabase.from('council_yla_attendance').insert({
+    event_id: Number(eventId),
+    student_id: Number(studentId),
+    session_label: 'เช็คอินกิจกรรม',
+    attendance_state: 'present',
+    checkin_latitude: Number(latitude),
+    checkin_longitude: Number(longitude),
+    checkin_accuracy_m: Number(accuracy),
+    checkin_source: 'gps',
+  })
   if (error) throw error
 }
 

@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1065'
+import { APP_VERSION } from './version.js?v=10.22.1066'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,11 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1066': [
+    'เพิ่มเช็คอินเข้าร่วมกิจกรรม YLA ด้วยพิกัด GPS ภายในเวลาที่ผู้ดูแลกำหนด พร้อมบันทึกสถานะ “มา” เวลา และพิกัดให้อัตโนมัติ',
+    'ตรวจสอบสิทธิ์ผู้เข้าร่วม ช่วงเวลา รัศมี และความแม่นยำของ GPS ที่ฐานข้อมูลก่อนบันทึกการเช็คอิน',
+    'เพิ่มหน้าตั้งค่าเปิด/ปิดเช็คอิน กำหนดเวลา พิกัด และรัศมีสำหรับผู้ดูแลกิจกรรม',
+  ],
   '10.22.1065': [
     'ปรับชื่อและชั้น/ห้องให้ตัดบรรทัดและขยายความสูงแถวตามเนื้อหา ป้องกันข้อความตกหรือถูกตัดในตัวอย่างและใบพิมพ์',
     'ยกเลิกขั้นต่ำขนาดฟอนต์ 12 pt สำหรับใบรายชื่อ YLA ให้ตั้งขนาดเล็กลงได้ เช่น 8 pt',
