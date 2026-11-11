@@ -221,7 +221,7 @@ export async function removeEndorsementPhrase(id) {
 // ─── รายชื่อสภาปัจจุบัน (public roster) ───────────────────────────────────────
 export async function getCouncilMembers(academicYear, termId) {
   let q = supabase.from('council_members')
-    .select('id, term_id, position_id, student_id, academic_year, status, source, appointment_method, appointment_order_ref, appointment_reason, appointment_evidence_url, term_start_date, term_end_date, can_create_activities, council_positions(gender, position_name, sort_order, is_elected), students(full_name, student_code, main_room, image_url, photo_url)')
+    .select('id, term_id, position_id, student_id, academic_year, status, source, appointment_method, appointment_order_ref, appointment_reason, appointment_evidence_url, term_start_date, term_end_date, can_create_activities, council_positions(gender, position_name, sort_order, is_elected), students(id, full_name, student_code, main_room, gender, image_url, photo_url)')
     .in('status', ['active', 'designate', 'ended'])
   if (termId) q = q.eq('term_id', termId)
   if (academicYear) q = q.eq('academic_year', academicYear)
@@ -1286,7 +1286,7 @@ export async function removeCouncilYlaParticipant(participantId) {
 export async function getCouncilYlaEventDetail(eventId) {
   const [participants, attendance, criteria, scores, results] = await Promise.all([
     supabase.from('council_yla_participants')
-      .select('id, event_id, student_id, application_id, status, registered_at, updated_at, students(id, full_name, student_code, main_room, image_url, photo_url, profile_id)')
+      .select('id, event_id, student_id, application_id, status, registered_at, updated_at, students(id, full_name, student_code, main_room, gender, image_url, photo_url, profile_id)')
       .eq('event_id', eventId).order('registered_at'),
     supabase.from('council_yla_attendance')
       .select('id, event_id, student_id, session_label, attendance_state, checked_in_at, note, recorded_by_teacher_id, updated_at')
