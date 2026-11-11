@@ -1260,6 +1260,29 @@ export async function updateCouncilYlaRosterSettings(eventId, { rosterTitle, ros
   if (error) throw error
 }
 
+export async function uploadCouncilYlaRosterLogo(file) {
+  if (!(file instanceof File) || !['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+    throw new Error('เลือกไฟล์โลโก้ PNG, JPG หรือ WebP')
+  }
+  if (file.size > 3 * 1024 * 1024) throw new Error('ไฟล์โลโก้ต้องมีขนาดไม่เกิน 3 MB')
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) throw authError || new Error('กรุณาเข้าสู่ระบบใหม่')
+  const ext = file.type === 'image/jpeg' ? 'jpg' : file.type === 'image/webp' ? 'webp' : 'png'
+  const path = `roster-logos/${user.id}/${crypto.randomUUID()}.${ext}`
+  const { error } = await supabase.storage.from('council-election-assets').upload(path, file, {
+    contentType: file.type, cacheControl: '3600', upsert: false,
+  })
+  if (error) throw error
+  return supabase.storage.from('council-election-assets').getPublicUrl(path).data.publicUrl
+}
+
+export async function removeCouncilYlaParticipant(participantId) {
+  const { error } = await supabase.rpc('remove_council_yla_participant', {
+    p_participant_id: participantId,
+  })
+  if (error) throw error
+}
+
 export async function getCouncilYlaEventDetail(eventId) {
   const [participants, attendance, criteria, scores, results] = await Promise.all([
     supabase.from('council_yla_participants')

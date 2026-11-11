@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1059'
+import { APP_VERSION } from './version.js?v=10.22.1060'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,7 +1015,8 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
-  '10.22.1059': [
+  '10.22.1060': [
+    'ปรับปรุงใบรายชื่อกิจกรรม YLA: เลือกโลโก้ระบบหรืออัปโหลดเอง, เพิ่มสมาชิกสภาวาระปัจจุบันเป็นชุด และลบผู้เข้าร่วมพร้อมข้อมูลกิจกรรมรายคนได้',
     'ปรับค่าเริ่มต้นศูนย์พิมพ์ใบรายชื่อเป็นรวมรายชื่อเดียว ใบลงชื่อ ตัวอักษร 16 pt และ A4 แนวตั้ง พร้อมตั้งแนวจัดข้อความของแต่ละคอลัมน์ได้อย่างอิสระ',
     'เพิ่มการแก้ไขชื่อ วันที่ สถานที่ และรายละเอียดกิจกรรมทั่วไปและกิจกรรม YLA; กิจกรรม YLA แสดงในหน้ากิจกรรม/การเข้าร่วมและเพิ่มสมาชิกสภาที่ปฏิบัติหน้าที่ในวาระปัจจุบันเป็นผู้เข้าร่วมอัตโนมัติ',
   ],
