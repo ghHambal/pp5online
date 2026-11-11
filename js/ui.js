@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1063'
+import { APP_VERSION } from './version.js?v=10.22.1064'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1064': [
+    'เพิ่มตัวเลือกฟอนต์ของรายชื่อและชื่อกิจกรรม พร้อมปรับตัวหนาชื่อกิจกรรมได้แยกตามงาน',
+    'ปรับตัวอย่างใบรายชื่อให้แบ่งหน้า A4 ตามพื้นที่พิมพ์จริง รอโหลดฟอนต์และโลโก้ก่อนพิมพ์ และใช้รูปแบบเดียวกันระหว่างตัวอย่างกับเอกสาร',
+  ],
   '10.22.1063': [
     'เพิ่มตัวเลือกพิมพ์ใบลงทะเบียนกิจกรรม YLA ได้ทั้งรายชื่อทั้งหมดหรือแยกชาย/หญิง และตัดบรรทัดวาระกับจำนวนผู้เข้าร่วมออกจากใบพิมพ์',
   ],

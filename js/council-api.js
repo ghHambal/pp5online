@@ -1199,7 +1199,7 @@ const DEFAULT_YLA_CRITERIA = [
 
 export async function getCouncilYlaEvents(academicYear, termId) {
   let q = supabase.from('council_yla_events')
-    .select('id, term_id, academic_year, event_code, title, description, status, start_date, end_date, location, capacity, roster_title, roster_subtitle, roster_logo_url, roster_font_size, roster_row_height, roster_page_size, roster_columns, created_by_teacher_id, created_at, updated_at')
+    .select('id, term_id, academic_year, event_code, title, description, status, start_date, end_date, location, capacity, roster_title, roster_subtitle, roster_logo_url, roster_font_size, roster_font_family, roster_title_font_family, roster_title_weight, roster_row_height, roster_page_size, roster_columns, created_by_teacher_id, created_at, updated_at')
   if (academicYear) q = q.eq('academic_year', academicYear)
   if (termId) q = q.eq('term_id', termId)
   const { data, error } = await q.order('start_date', { ascending: false }).order('created_at', { ascending: false })
@@ -1246,12 +1246,17 @@ export async function updateCouncilYlaEventDetails(eventId, { title, description
   if (error) throw error
 }
 
-export async function updateCouncilYlaRosterSettings(eventId, { rosterTitle, rosterSubtitle, rosterLogoUrl, rosterFontSize, rosterRowHeight, rosterPageSize, rosterColumns }) {
+export async function updateCouncilYlaRosterSettings(eventId, { rosterTitle, rosterSubtitle, rosterLogoUrl, rosterFontSize, rosterFontFamily, rosterTitleFontFamily, rosterTitleWeight, rosterRowHeight, rosterPageSize, rosterColumns }) {
+  const fontFamilies = new Set(['tahoma', 'sarabun', 'noto_sans_thai', 'arial', 'th_sarabun_new'])
+  const titleWeight = [400, 500, 600, 700, 800, 900].includes(Number(rosterTitleWeight)) ? Number(rosterTitleWeight) : 700
   const { error } = await supabase.from('council_yla_events').update({
     roster_title: rosterTitle?.trim() || null,
     roster_subtitle: rosterSubtitle?.trim() || null,
     roster_logo_url: rosterLogoUrl?.trim() || null,
     roster_font_size: Math.min(18, Math.max(12, Number(rosterFontSize) || 14)),
+    roster_font_family: fontFamilies.has(rosterFontFamily) ? rosterFontFamily : 'tahoma',
+    roster_title_font_family: fontFamilies.has(rosterTitleFontFamily) ? rosterTitleFontFamily : 'tahoma',
+    roster_title_weight: titleWeight,
     roster_row_height: Math.min(90, Math.max(24, Number(rosterRowHeight) || 34)),
     roster_page_size: rosterPageSize === 'landscape' ? 'landscape' : 'portrait',
     roster_columns: Array.isArray(rosterColumns) ? rosterColumns : undefined,
