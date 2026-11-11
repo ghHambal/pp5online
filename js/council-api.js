@@ -719,13 +719,22 @@ export async function getCouncilActivities(academicYear, termId) {
   return data ?? []
 }
 
-export async function createActivity({ title, detail, gender, activityDate, budget, ownerText, academicYear, termId, openToGeneral, ownerMemberId, countsForEvaluation }) {
+export async function createActivity({ title, detail, gender, activityDate, location, budget, ownerText, academicYear, termId, openToGeneral, ownerMemberId, countsForEvaluation }) {
   const { error } = await supabase.from('council_activities').insert({
-    title, detail, gender: gender || null, activity_date: activityDate || null,
+    title, detail, gender: gender || null, activity_date: activityDate || null, location: location || null,
     budget: budget || null, owner_text: ownerText || null, academic_year: academicYear, term_id: termId,
     open_to_general: !!openToGeneral, owner_member_id: ownerMemberId || null,
     counts_for_evaluation: countsForEvaluation !== false,
   })
+  if (error) throw error
+}
+
+export async function updateActivityDetails(activityId, { title, detail, activityDate, location }) {
+  const { error } = await supabase.from('council_activities').update({
+    title: title.trim(), detail: detail?.trim() || null,
+    activity_date: activityDate || null, location: location?.trim() || null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', activityId)
   if (error) throw error
 }
 
@@ -1224,6 +1233,16 @@ export async function createCouncilYlaEvent({ academicYear, termId, title, descr
 export async function updateCouncilYlaEventStatus(eventId, status) {
   const { error } = await supabase.from('council_yla_events')
     .update({ status, updated_at: new Date().toISOString() }).eq('id', eventId)
+  if (error) throw error
+}
+
+export async function updateCouncilYlaEventDetails(eventId, { title, description, startDate, endDate, location, capacity }) {
+  const { error } = await supabase.from('council_yla_events').update({
+    title: title.trim(), description: description?.trim() || null,
+    start_date: startDate || null, end_date: endDate || null,
+    location: location?.trim() || null, capacity: capacity || null,
+    updated_at: new Date().toISOString(),
+  }).eq('id', eventId)
   if (error) throw error
 }
 

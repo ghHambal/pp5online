@@ -32,7 +32,7 @@ import {
   publishElectionResults, updateCandidateProfile, getEligibleVoterCount, getVoteTally,
   getMyCouncilCampaign, saveMyCouncilCampaign, uploadCouncilCampaignVideo,
   getCouncilCampaignReviews, reviewCouncilCampaign,
-  getCouncilActivities, createActivity, updateActivityStatus, updateActivityOwnership,
+  getCouncilActivities, createActivity, updateActivityDetails, updateActivityStatus, updateActivityOwnership,
   getActivityAttendance, getActivityAttendanceDetailed, checkInAttendance,
   getCertificateRule, upsertCertificateRule,
   getActivityCertificateOverrides, setCertificateOverride,
@@ -43,7 +43,7 @@ import {
   getMyAssignments, getAssignmentsForGender, createAssignment, updateAssignmentStatus, deleteAssignment,
   getEvaluationCriteria, addCriterion, removeCriterion, getCouncilEvaluations, saveEvaluation, issueCertificate,
   getInterviewCriteria, addInterviewCriterion, removeInterviewCriterion,
-  getCouncilYlaEvents, createCouncilYlaEvent, updateCouncilYlaEventStatus, updateCouncilYlaRosterSettings, getCouncilYlaEventDetail,
+  getCouncilYlaEvents, createCouncilYlaEvent, updateCouncilYlaEventStatus, updateCouncilYlaEventDetails, updateCouncilYlaRosterSettings, getCouncilYlaEventDetail,
   addCouncilYlaParticipant, addCouncilYlaParticipants, updateCouncilYlaParticipantStatus, saveCouncilYlaAttendance,
   saveCouncilYlaScores, saveCouncilYlaResult,
   getCouncilDocuments, createDocument, updateDocumentDraft, createDocumentRevision, submitDocument,
@@ -214,10 +214,12 @@ let campaignVideoBusy = false
 let activities = null // null = ยังไม่โหลด
 const attendanceByActivity = {} // { [activityId]: Set<studentId> }
 let ylaEvents = null
+let ylaEventsLoading = false
 let ylaSelectedEventId = null
 let ylaDetail = null
 let ylaDetailLoadingId = null
 let ylaShowEventForm = false
+let ylaEditingEventId = null
 let ylaAdminAppsLoading = false
 let certTemplates = null // null = ยังไม่โหลด — เทมเพลตเกียรติบัตร (ใช้ร่วมกันทุกกิจกรรม)
 let certManageActivityId = null // id กิจกรรมที่กำลังเปิดแผงจัดการเกียรติบัตรอยู่ — null = ปิดอยู่
@@ -1558,7 +1560,13 @@ function ylaDateRange(event) {
 }
 
 async function loadYlaEvents() {
-  ylaEvents = await getCouncilYlaEvents(electionYear, selectedCouncilTermId).catch(() => [])
+  if (ylaEventsLoading) return
+  ylaEventsLoading = true
+  try {
+    ylaEvents = await getCouncilYlaEvents(electionYear, selectedCouncilTermId).catch(() => [])
+  } finally {
+    ylaEventsLoading = false
+  }
   if (ylaSelectedEventId == null && ylaEvents.length) ylaSelectedEventId = ylaEvents[0].id
   if (ylaSelectedEventId != null && !ylaEvents.some(e => e.id === ylaSelectedEventId)) {
     ylaSelectedEventId = ylaEvents[0]?.id ?? null
@@ -1674,7 +1682,8 @@ function renderYlaView() {
   const statusBadge = status => status === 'active' ? 'bg-[var(--ok-soft)] text-[var(--ok)]' : status === 'completed' ? 'bg-[var(--primary-soft)] text-[var(--primary)]' : status === 'cancelled' ? 'bg-[var(--bad-soft)] text-[var(--bad)]' : 'bg-[var(--bg-2)] text-[var(--muted)]'
   const eventCards = ylaEvents.length ? ylaEvents.map(row => `<button type="button" class="yla-event-select text-left rounded-2xl border p-4 space-y-2 ${Number(row.id) === Number(ylaSelectedEventId) ? 'border-[var(--primary)] bg-[var(--primary-soft)]' : 'border-[var(--line-soft)] bg-[var(--surface)]'}" data-event-id="${row.id}"><div class="flex items-start gap-2"><span class="flex-1 text-sm font-bold text-[var(--ink)]">${esc(row.title)}</span><span class="text-[0.6875rem] font-bold rounded-full px-2 py-1 ${statusBadge(row.status)}">${esc(YLA_STATUS_LABEL[row.status] ?? row.status)}</span></div><p class="text-xs text-[var(--muted)]">${esc(ylaDateRange(row))}${row.location ? ` · ${esc(row.location)}` : ''}</p></button>`).join('') : '<div class="rounded-2xl border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">ยังไม่มีกิจกรรม YLA ในปีการศึกษานี้</div>'
   const eventForm = ylaShowEventForm ? `<form id="yla-event-form" class="rounded-2xl border border-[var(--primary-45)] bg-[var(--primary-soft)] p-4 space-y-3"><div class="flex items-center justify-between"><h2 class="font-bold text-[var(--ink)]">สร้างกิจกรรม YLA</h2><button type="button" id="yla-event-cancel" class="text-xs font-bold text-[var(--muted)]">ยกเลิก</button></div><input name="title" required placeholder="ชื่อกิจกรรม เช่น YLA รุ่นที่ 1" class="w-full border border-[var(--line)] rounded-[10px] px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]"><textarea name="description" rows="2" placeholder="วัตถุประสงค์หรือรายละเอียดกิจกรรม" class="w-full border border-[var(--line)] rounded-[10px] px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]"></textarea><div class="grid grid-cols-2 gap-2"><input type="date" name="start_date" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="date" name="end_date" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div><div class="grid grid-cols-2 gap-2"><input name="location" placeholder="สถานที่" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="number" min="1" name="capacity" placeholder="จำนวนรับ (ไม่บังคับ)" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div><button type="submit" class="w-full py-2.5 rounded-[10px] bg-[var(--primary)] text-white text-sm font-bold">สร้างกิจกรรมและเกณฑ์ประเมินเริ่มต้น</button></form>` : ''
-  const detailBlock = event ? `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 space-y-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold text-[var(--primary)]">🌱 YLA · ปีการศึกษา ${electionYear}</p><h2 class="text-xl font-bold text-[var(--ink)] mt-1">${esc(event.title)}</h2><p class="text-sm text-[var(--muted)] mt-1">${esc(event.description ?? 'กิจกรรมพัฒนาภาวะผู้นำและทักษะการทำงานของนักเรียน')}</p><p class="text-xs text-[var(--muted)] mt-2">${esc(ylaDateRange(event))}${event.location ? ` · ${esc(event.location)}` : ''}</p></div><div class="flex flex-wrap gap-2 items-center"><span class="text-xs font-bold rounded-full px-3 py-1.5 ${statusBadge(event.status)}">${esc(YLA_STATUS_LABEL[event.status] ?? event.status)}</span><button type="button" id="yla-print-event" class="text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)]">🖨️ พิมพ์สรุป</button></div></div>${isYlaManager() ? `<form id="yla-event-status-form" class="flex flex-wrap gap-2 items-center border-t border-[var(--line-soft)] pt-3" data-event-id="${event.id}"><span class="text-xs text-[var(--muted)]">สถานะกิจกรรม</span><select name="status" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">${Object.entries(YLA_STATUS_LABEL).map(([value, label]) => `<option value="${value}" ${event.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button type="submit" class="px-3 py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกสถานะ</button></form>` : ''}${ylaDetailLoadingId === event.id ? '<p class="text-sm text-[var(--muted)] text-center py-8">กำลังโหลด...</p>' : ylaDetail?.error ? '<p class="text-sm text-[var(--bad)] text-center py-8">โหลดข้อมูล YLA ไม่สำเร็จ</p>' : isYlaManager() ? renderYlaParticipantManager({ event, detail: ylaDetail }) : renderYlaStudentProgress({ event, detail: ylaDetail })}</section>` : '<div class="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center text-sm text-[var(--muted)]">เลือกกิจกรรมเพื่อดูรายละเอียดและติดตามผล</div>'
+  const ylaEditForm = event && isYlaManager() && Number(ylaEditingEventId) === Number(event.id) ? `<form id="yla-event-edit-form" data-event-id="${event.id}" class="rounded-xl border border-[var(--primary-45)] bg-[var(--primary-soft)] p-4 space-y-2"><div class="flex items-center justify-between"><h3 class="text-sm font-bold text-[var(--ink)]">แก้ไขรายละเอียดกิจกรรม YLA</h3><button type="button" id="yla-event-edit-cancel" class="text-xs font-bold text-[var(--muted)]">ปิด</button></div><input name="title" required value="${esc(event.title)}" placeholder="ชื่อกิจกรรม" class="w-full border border-[var(--line)] rounded-[10px] px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]"><textarea name="description" rows="2" placeholder="รายละเอียด" class="w-full border border-[var(--line)] rounded-[10px] px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]">${esc(event.description || '')}</textarea><div class="grid grid-cols-2 gap-2"><input type="date" name="start_date" value="${esc(event.start_date || '')}" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="date" name="end_date" value="${esc(event.end_date || '')}" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div><div class="grid grid-cols-2 gap-2"><input name="location" value="${esc(event.location || '')}" placeholder="สถานที่" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="number" min="1" name="capacity" value="${esc(event.capacity || '')}" placeholder="จำนวนรับ (ไม่บังคับ)" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div><button type="submit" class="w-full py-2.5 rounded-[10px] bg-[var(--primary)] text-white text-sm font-bold">บันทึกรายละเอียดกิจกรรม</button></form>` : ''
+  const detailBlock = event ? `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 space-y-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold text-[var(--primary)]">🌱 YLA · ปีการศึกษา ${electionYear}</p><h2 class="text-xl font-bold text-[var(--ink)] mt-1">${esc(event.title)}</h2><p class="text-sm text-[var(--muted)] mt-1">${esc(event.description ?? 'กิจกรรมพัฒนาภาวะผู้นำและทักษะการทำงานของนักเรียน')}</p><p class="text-xs text-[var(--muted)] mt-2">${esc(ylaDateRange(event))}${event.location ? ` · ${esc(event.location)}` : ''}</p></div><div class="flex flex-wrap gap-2 items-center"><span class="text-xs font-bold rounded-full px-3 py-1.5 ${statusBadge(event.status)}">${esc(YLA_STATUS_LABEL[event.status] ?? event.status)}</span>${isYlaManager() ? '<button type="button" id="yla-event-edit-open" class="text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)]">✏️ แก้ไขกิจกรรม</button>' : ''}<button type="button" id="yla-print-event" class="text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)]">🖨️ พิมพ์สรุป</button></div></div>${isYlaManager() ? `<form id="yla-event-status-form" class="flex flex-wrap gap-2 items-center border-t border-[var(--line-soft)] pt-3" data-event-id="${event.id}"><span class="text-xs text-[var(--muted)]">สถานะกิจกรรม</span><select name="status" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">${Object.entries(YLA_STATUS_LABEL).map(([value, label]) => `<option value="${value}" ${event.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button type="submit" class="px-3 py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกสถานะ</button></form>` : ''}${ylaEditForm}${ylaDetailLoadingId === event.id ? '<p class="text-sm text-[var(--muted)] text-center py-8">กำลังโหลด...</p>' : ylaDetail?.error ? '<p class="text-sm text-[var(--bad)] text-center py-8">โหลดข้อมูล YLA ไม่สำเร็จ</p>' : isYlaManager() ? renderYlaParticipantManager({ event, detail: ylaDetail }) : renderYlaStudentProgress({ event, detail: ylaDetail })}</section>` : '<div class="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center text-sm text-[var(--muted)]">เลือกกิจกรรมเพื่อดูรายละเอียดและติดตามผล</div>'
   return `<div class="space-y-4"><section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold text-[var(--primary)]">🌱 กิจกรรม YLA · Youth Leadership For Azizstan</p><h1 class="text-xl font-bold text-[var(--ink)] mt-1">ติดตามกิจกรรมและพัฒนาการรายบุคคล</h1><p class="text-sm text-[var(--muted)] mt-2 leading-6">นักเรียนดูสถานะ การเข้าร่วม คะแนน และผลสรุปของตนเองได้ ส่วนผู้ดูแลจัดกิจกรรม เพิ่มผู้เข้าร่วม เช็กชื่อ และบันทึกผลได้ในหน้าเดียว</p></div>${isYlaManager() ? '<button type="button" id="yla-event-open" class="px-4 py-2.5 rounded-xl bg-[var(--primary)] text-white text-sm font-bold">＋ สร้างกิจกรรม YLA</button>' : ''}</div><div class="flex flex-wrap gap-2 mt-4 text-xs"><a href="https://docs.google.com/document/d/1lX7v3BkGBID-xRBDB0MFDDqPvT5YAVmaF540MUGY7RI/edit?tab=t.gq6dk28nkqg8" target="_blank" rel="noopener" class="px-3 py-2 rounded-[10px] border border-[var(--line)] font-bold text-[var(--primary)]">🔗 เปิดชุดเอกสาร YLA ต้นฉบับ</a><span class="px-3 py-2 rounded-[10px] bg-[var(--bg-2)] text-[var(--muted)]">เก็บข้อมูลตามกิจกรรม ไม่ปะปนกับสารบัญเอกสาร</span></div></section>${eventForm}<section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">${eventCards}</section>${detailBlock}<details class="mt-2"><summary class="cursor-pointer text-sm font-bold text-[var(--primary)]">📚 ดูสารบัญเอกสาร YLA YLA-00 ถึง YLA-10</summary><div class="mt-4">${renderCouncilResourceCenter({ kind: 'yla', esc })}</div></details></div>`
 }
 
@@ -1686,6 +1695,27 @@ function wireYlaEvents() {
   }))
   document.getElementById('yla-event-open')?.addEventListener('click', () => { ylaShowEventForm = true; render() })
   document.getElementById('yla-event-cancel')?.addEventListener('click', () => { ylaShowEventForm = false; render() })
+  document.getElementById('yla-event-edit-open')?.addEventListener('click', () => { ylaEditingEventId = ylaSelectedEventId; render() })
+  document.getElementById('yla-event-edit-cancel')?.addEventListener('click', () => { ylaEditingEventId = null; render() })
+  document.getElementById('yla-event-edit-form')?.addEventListener('submit', async event => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const btn = form.querySelector('button[type="submit"]')
+    btn.disabled = true; btn.textContent = 'กำลังบันทึก...'
+    try {
+      await updateCouncilYlaEventDetails(Number(form.dataset.eventId), {
+        title: form.title.value, description: form.description.value,
+        startDate: form.start_date.value, endDate: form.end_date.value,
+        location: form.location.value, capacity: form.capacity.value ? Number(form.capacity.value) : null,
+      })
+      ylaEditingEventId = null; ylaEvents = null
+      showToast('บันทึกรายละเอียดกิจกรรม YLA แล้ว ✅', 'success')
+      render()
+    } catch (err) {
+      showToast('บันทึกกิจกรรม YLA ไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      btn.disabled = false; btn.textContent = 'บันทึกรายละเอียดกิจกรรม'
+    }
+  })
   document.getElementById('yla-event-form')?.addEventListener('submit', async event => {
     event.preventDefault()
     const form = event.currentTarget
@@ -1698,7 +1728,15 @@ function wireYlaEvents() {
         location: form.location.value.trim(), capacity: form.capacity.value ? Number(form.capacity.value) : null,
         createdByTeacherId: ctx.teacher?.id,
       })
-      showToast('สร้างกิจกรรม YLA และเกณฑ์ประเมินแล้ว ✅', 'success')
+      const currentTermMembers = (ctx.members ?? []).filter(member => member.status === 'active' && Number(member.term_id) === Number(created.term_id) && member.students?.id)
+      let addedCount = 0
+      let participantSyncError = null
+      try {
+        addedCount = await addCouncilYlaParticipants({ eventId: Number(created.id), participants: currentTermMembers.map(member => ({ studentId: Number(member.students.id) })) })
+      } catch (err) { participantSyncError = err }
+      showToast(participantSyncError
+        ? 'สร้างกิจกรรมแล้ว แต่เพิ่มรายชื่อสภาอัตโนมัติไม่สำเร็จ: ' + getFriendlyErrorMessage(participantSyncError)
+        : `สร้างกิจกรรม YLA แล้ว พร้อมเพิ่มสมาชิกสภาปัจจุบัน ${addedCount} คนอัตโนมัติ ✅`, participantSyncError ? 'warning' : 'success')
       ylaShowEventForm = false; ylaEvents = null; ylaSelectedEventId = created.id; ylaDetail = null; render()
     } catch (err) {
       showToast('สร้างกิจกรรมไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
@@ -1808,13 +1846,13 @@ function eventForPrint() {
 
 function printYlaAttendanceRoster(event, detail) {
   const defaultColumns = [
-    { key: 'row_no', label: 'ลำดับ' }, { key: 'student_code', label: 'เลขประจำตัว' },
-    { key: 'full_name', label: 'ชื่อ–สกุล' }, { key: 'main_room', label: 'ชั้น/ห้อง' },
-    { key: 'signature', label: 'ลงชื่อ' }, { key: 'time', label: 'เวลา' }, { key: 'note', label: 'หมายเหตุ' },
+    { key: 'row_no', label: 'ลำดับ', align: 'center' }, { key: 'student_code', label: 'เลขประจำตัว', align: 'center' },
+    { key: 'full_name', label: 'ชื่อ–สกุล', align: 'left' }, { key: 'main_room', label: 'ชั้น/ห้อง', align: 'center' },
+    { key: 'signature', label: 'ลงชื่อ', align: 'center' }, { key: 'time', label: 'เวลา', align: 'center' }, { key: 'note', label: 'หมายเหตุ', align: 'left' },
   ]
   const allowedKeys = new Set(['row_no', 'student_code', 'full_name', 'main_room', 'signature', 'time', 'note', 'blank'])
   let columns = Array.isArray(event.roster_columns) && event.roster_columns.length
-    ? event.roster_columns.filter(column => allowedKeys.has(column?.key)).map(column => ({ key: column.key, label: String(column.label || '').slice(0, 60) }))
+    ? event.roster_columns.filter(column => allowedKeys.has(column?.key)).map(column => ({ key: column.key, label: String(column.label || '').slice(0, 60), align: ['left', 'center', 'right'].includes(column.align) ? column.align : (['full_name', 'note'].includes(column.key) ? 'left' : 'center') }))
     : defaultColumns.map(column => ({ ...column }))
   if (!columns.length) columns = defaultColumns.map(column => ({ ...column }))
   let fontSize = Math.min(18, Math.max(12, Number(event.roster_font_size) || 14))
@@ -1833,7 +1871,7 @@ function printYlaAttendanceRoster(event, detail) {
   const columnsList = overlay.querySelector('[data-columns-list]')
   const iframe = overlay.querySelector('iframe')
   const renderColumns = () => {
-    columnsList.innerHTML = columns.map((column, index) => `<div style="border:1px solid #e2e8f0;border-radius:9px;padding:8px;display:grid;grid-template-columns:1fr 92px;gap:6px"><input data-column-label="${index}" value="${esc(column.label)}" aria-label="ชื่อคอลัมน์" style="min-width:0;padding:7px;border:1px solid #cbd5e1;border-radius:7px;font:inherit"><select data-column-key="${index}" aria-label="ข้อมูลคอลัมน์" style="min-width:0;padding:6px;border:1px solid #cbd5e1;border-radius:7px;font:inherit">${Object.entries(keyLabels).map(([key, label]) => `<option value="${key}" ${column.key === key ? 'selected' : ''}>${label}</option>`).join('')}</select><div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:5px"><button type="button" data-move-column="${index}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="เลื่อนคอลัมน์ขึ้น" style="border:1px solid #cbd5e1;border-radius:6px;padding:4px 8px">↑</button><button type="button" data-move-column="${index}" data-dir="1" ${index === columns.length - 1 ? 'disabled' : ''} aria-label="เลื่อนคอลัมน์ลง" style="border:1px solid #cbd5e1;border-radius:6px;padding:4px 8px">↓</button><button type="button" data-remove-column="${index}" ${columns.length === 1 ? 'disabled title="ต้องมีอย่างน้อยหนึ่งคอลัมน์"' : ''} aria-label="ลบคอลัมน์" style="border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:6px;padding:4px 8px">ลบ</button></div></div>`).join('')
+    columnsList.innerHTML = columns.map((column, index) => `<div style="border:1px solid #e2e8f0;border-radius:9px;padding:8px;display:grid;grid-template-columns:minmax(0,1fr) 92px;gap:6px"><input data-column-label="${index}" value="${esc(column.label)}" aria-label="ชื่อคอลัมน์" style="min-width:0;padding:7px;border:1px solid #cbd5e1;border-radius:7px;font:inherit"><select data-column-key="${index}" aria-label="ข้อมูลคอลัมน์" style="min-width:0;padding:6px;border:1px solid #cbd5e1;border-radius:7px;font:inherit">${Object.entries(keyLabels).map(([key, label]) => `<option value="${key}" ${column.key === key ? 'selected' : ''}>${label}</option>`).join('')}</select><label style="grid-column:1/-1;font-size:11px;font-weight:700;color:#475569">จัดแนวคอลัมน์<select data-column-align="${index}" aria-label="จัดแนวคอลัมน์" style="display:block;width:100%;margin-top:4px;padding:6px;border:1px solid #cbd5e1;border-radius:7px;font:inherit"><option value="left" ${column.align === 'left' ? 'selected' : ''}>ชิดซ้าย</option><option value="center" ${column.align === 'center' ? 'selected' : ''}>กึ่งกลาง</option><option value="right" ${column.align === 'right' ? 'selected' : ''}>ชิดขวา</option></select></label><div style="grid-column:1/-1;display:flex;justify-content:flex-end;gap:5px"><button type="button" data-move-column="${index}" data-dir="-1" ${index === 0 ? 'disabled' : ''} aria-label="เลื่อนคอลัมน์ขึ้น" style="border:1px solid #cbd5e1;border-radius:6px;padding:4px 8px">↑</button><button type="button" data-move-column="${index}" data-dir="1" ${index === columns.length - 1 ? 'disabled' : ''} aria-label="เลื่อนคอลัมน์ลง" style="border:1px solid #cbd5e1;border-radius:6px;padding:4px 8px">↓</button><button type="button" data-remove-column="${index}" ${columns.length === 1 ? 'disabled title="ต้องมีอย่างน้อยหนึ่งคอลัมน์"' : ''} aria-label="ลบคอลัมน์" style="border:1px solid #fecaca;background:#fef2f2;color:#b91c1c;border-radius:6px;padding:4px 8px">ลบ</button></div></div>`).join('')
   }
   const currentSettings = () => {
     fontSize = Math.min(18, Math.max(12, Number(overlay.querySelector('[data-field="font-size"]').value) || 14))
@@ -1845,12 +1883,12 @@ function printYlaAttendanceRoster(event, detail) {
   }
   const renderPreview = () => {
     currentSettings()
-    const head = columns.map(column => `<th>${esc(column.label)}</th>`).join('')
+    const head = columns.map(column => `<th style="text-align:${column.align || 'center'}">${esc(column.label)}</th>`).join('')
     const bodyRows = members.map((participant, index) => {
       const student = participant.students ?? {}
       const cells = columns.map(column => {
         const value = column.key === 'row_no' ? index + 1 : column.key === 'student_code' ? student.student_code || '' : column.key === 'full_name' ? student.full_name || '' : column.key === 'main_room' ? student.main_room || '' : ''
-        return `<td>${esc(value)}</td>`
+        return `<td style="text-align:${column.align || 'center'}">${esc(value)}</td>`
       }).join('')
       return `<tr>${cells}</tr>`
     }).join('')
@@ -1866,6 +1904,11 @@ function printYlaAttendanceRoster(event, detail) {
   columnsList.addEventListener('change', e => {
     const index = Number(e.target.dataset.columnKey)
     if (Number.isInteger(index)) { columns[index].key = e.target.value; renderPreview() }
+    const alignIndex = Number(e.target.dataset.columnAlign)
+    if (Number.isInteger(alignIndex) && ['left', 'center', 'right'].includes(e.target.value)) {
+      columns[alignIndex].align = e.target.value
+      renderPreview()
+    }
   })
   columnsList.addEventListener('click', e => {
     const move = e.target.closest('[data-move-column]')
@@ -1884,7 +1927,7 @@ function printYlaAttendanceRoster(event, detail) {
   overlay.addEventListener('click', async e => {
     const action = e.target.closest('[data-action]')?.dataset.action
     if (action === 'close') overlay.remove()
-    if (action === 'add-column') { columns.push({ key: 'blank', label: `ช่องใหม่ ${columns.length + 1}` }); renderColumns(); renderPreview() }
+    if (action === 'add-column') { columns.push({ key: 'blank', label: `ช่องใหม่ ${columns.length + 1}`, align: 'center' }); renderColumns(); renderPreview() }
     if (action === 'print') { iframe.contentWindow?.focus(); iframe.contentWindow?.print() }
     if (action === 'save') {
       const button = e.target.closest('[data-action="save"]')
@@ -2849,6 +2892,7 @@ function computeCertEligibility({ rule, override, attendanceRows }) {
 
 function renderActivitiesView() {
   if (activities === null) { loadActivities(); return `<p class="text-sm text-[var(--muted-2)] text-center py-16">⏳ กำลังโหลด...</p>` }
+  if (ylaEvents === null) loadYlaEvents()
   const canCreate = ctx.canCreateActivities
   // สมาชิกที่ได้รับมอบหมาย (ไม่ใช่แอดมิน/ประธาน) สร้างได้เอง แต่ owner_member_id ของกิจกรรมที่
   // สร้างต้องเป็นตัวเองเสมอ (RLS บังคับไว้แล้วฝั่ง DB) — ล็อกเฉพาะจุดนี้ให้ตรงกับสิทธิ์จริง
@@ -2877,7 +2921,8 @@ function renderActivitiesView() {
         <textarea name="detail" rows="2" placeholder="รายละเอียด (ถ้ามี)" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm resize-none"></textarea>
         <div class="grid grid-cols-2 gap-2">
           <input name="activity_date" type="date" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
-          <input name="budget" type="number" step="0.01" placeholder="งบประมาณ (บาท)" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
+          <input name="location" placeholder="สถานที่จัดกิจกรรม" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
+          <input name="budget" type="number" step="0.01" placeholder="งบประมาณ (บาท)" class="col-span-2 border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm" />
         </div>
         <div class="grid grid-cols-2 gap-2">
           <select name="gender" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">
@@ -2911,8 +2956,6 @@ function renderActivitiesView() {
       </form>
     </div>` : ''
 
-  if (!activities.length) return `${summary}${createForm}<p class="text-sm text-[var(--muted-2)] text-center py-10">ยังไม่มีกิจกรรม</p>`
-
   const card = a => {
     const [label, fg, bg, border] = ACT_STATUS_BADGE[a.status] ?? ['—', 'text-[var(--muted)]', 'bg-[var(--bg-2)]', 'border-[var(--line)]']
     const members = ctx.members.filter(m => !a.gender || m.council_positions?.gender === a.gender)
@@ -2924,13 +2967,23 @@ function renderActivitiesView() {
         <div class="flex items-start gap-2">
           <div class="min-w-0 flex-1">
             <p class="text-sm font-bold text-[var(--ink)]">${esc(a.title)}</p>
-            <p class="text-xs text-[var(--muted-2)] mt-0.5">${a.activity_date ? new Date(a.activity_date).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ยังไม่กำหนดวัน'} ${a.gender ? '· สภา' + GENDER_LABEL[a.gender] : ''} ${a.owner_text ? '· ' + esc(a.owner_text) : ''} ${ownerName ? '· ผู้รับผิดชอบ ' + esc(ownerName) : ''}</p>
+            <p class="text-xs text-[var(--muted-2)] mt-0.5">${a.activity_date ? new Date(a.activity_date).toLocaleDateString('th-TH', { dateStyle: 'medium' }) : 'ยังไม่กำหนดวัน'} ${a.location ? '· ' + esc(a.location) : ''} ${a.gender ? '· สภา' + GENDER_LABEL[a.gender] : ''} ${a.owner_text ? '· ' + esc(a.owner_text) : ''} ${ownerName ? '· ผู้รับผิดชอบ ' + esc(ownerName) : ''}</p>
             ${a.open_to_general ? `<span class="inline-block text-[0.625rem] font-bold px-2 py-0.5 rounded-full bg-[var(--primary-soft)] text-[var(--primary)] mt-1">🙋 เปิดให้นักเรียนทั่วไปเข้าร่วม</span>` : ''}
           </div>
           <span class="flex-shrink-0 text-[0.6875rem] font-bold px-2.5 py-1 rounded-full border ${border} ${bg} ${fg}">${label}</span>
         </div>
         ${a.detail ? `<p class="text-xs text-[var(--ink-2)]">${esc(a.detail)}</p>` : ''}
         ${manageable ? `
+          <details class="rounded-xl border border-[var(--line-soft)] bg-[var(--bg-2)] p-3">
+            <summary class="cursor-pointer text-xs font-bold text-[var(--primary)]">✏️ แก้ไขชื่อกิจกรรม วันที่ สถานที่ และรายละเอียด</summary>
+            <form class="activity-details-form grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3" data-activity-id="${a.id}">
+              <input name="title" required value="${esc(a.title)}" placeholder="ชื่อกิจกรรม" class="sm:col-span-2 border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]" />
+              <input name="activity_date" type="date" value="${esc(a.activity_date || '')}" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]" />
+              <input name="location" value="${esc(a.location || '')}" placeholder="สถานที่จัดกิจกรรม" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]" />
+              <textarea name="detail" rows="3" placeholder="รายละเอียดกิจกรรม" class="sm:col-span-2 border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] resize-y">${esc(a.detail || '')}</textarea>
+              <button type="submit" class="sm:col-span-2 py-2.5 rounded-xl bg-[var(--primary)] text-white text-sm font-bold">บันทึกรายละเอียดกิจกรรม</button>
+            </form>
+          </details>
           <div class="flex flex-wrap gap-2 pt-1 border-t border-[var(--line-soft)]">
             <!-- เดิมจำกัดแค่ admin/chair เปลี่ยนสถานะได้ — แต่กิจกรรมที่ค้างสถานะ "planned" ตลอดไป
                  จะไม่ถูกนับใน % เช็คชื่อสำหรับประเมินเลย (นับเฉพาะ ongoing/completed) ผู้รับผิดชอบ
@@ -2958,7 +3011,9 @@ function renderActivitiesView() {
       </div>`
   }
 
-  return `${summary}${createForm}<div class="space-y-3">${activities.map(card).join('')}</div>`
+  const ylaActivityCards = (ylaEvents ?? []).map(event => `<button type="button" class="btn-open-yla-from-activities w-full text-left rounded-xl border border-emerald-200 bg-emerald-50 p-3 space-y-1" data-event-id="${event.id}"><p class="text-sm font-bold text-emerald-900">🌱 ${esc(event.title)} <span class="text-xs font-medium text-emerald-700">· YLA</span></p><p class="text-xs text-emerald-800">${esc(ylaDateRange(event))}${event.location ? ` · ${esc(event.location)}` : ''}</p><span class="inline-block text-xs font-bold text-emerald-700">เปิดรายละเอียดและผู้เข้าร่วม →</span></button>`).join('')
+  const ylaSection = (ylaEvents ?? []).length ? `<section class="rounded-2xl border border-emerald-200 bg-[var(--surface)] p-4 space-y-3"><div><h2 class="font-bold text-[var(--ink)]">กิจกรรม YLA</h2><p class="text-xs text-[var(--muted)] mt-1">กิจกรรมที่สร้างในเมนู YLA จะแสดงที่นี่ด้วย และใช้รายชื่อผู้เข้าร่วมชุดเดียวกัน</p></div><div class="grid grid-cols-1 lg:grid-cols-2 gap-2">${ylaActivityCards}</div></section>` : ''
+  return `${summary}${createForm}${ylaEvents === null ? '<p class="text-xs text-[var(--muted)]">กำลังโหลดกิจกรรม YLA...</p>' : ylaSection}<div class="space-y-3">${activities.map(card).join('') || (!ylaSection ? '<p class="text-sm text-[var(--muted-2)] text-center py-10">ยังไม่มีกิจกรรม</p>' : '')}</div>`
 }
 
 const ELIGIBILITY_BADGE = {
@@ -4760,9 +4815,9 @@ function printCandidateRoster(gender) {
   openHtmlPrintOverlay(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายชื่อผู้สมัครประธานสภานักเรียน</title><style>@page{size:A4;margin:12mm}body{font-family:Tahoma,sans-serif;color:#111}h1,p{text-align:center}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #444;padding:7px;font-size:12px}th{background:#eee}td:first-child,td:nth-child(2){text-align:center}</style></head><body><h1>บัญชีรายชื่อผู้สมัครประธานสภานักเรียน${GENDER_LABEL[gender]}</h1><p>${esc(term?.term_label || '')} · จำนวน ${list.length} คน</p><table><thead><tr><th>ลำดับ</th><th>หมายเลข</th><th>รหัส</th><th>ชื่อ–สกุล</th><th>ห้อง</th><th>สถานะ</th><th>หมายเหตุ</th></tr></thead><tbody>${rows}</tbody></table></body></html>`)
 }
 
-function printMemberRoster({ gender = '', positionId = '', status = '', room = '', groupBy = 'gender_position', format = 'register', fontSize = 12, pageSize = 'landscape' } = {}) {
-  fontSize = Math.min(18, Math.max(11, Number(fontSize) || 12))
-  pageSize = pageSize === 'portrait' ? 'portrait' : 'landscape'
+function printMemberRoster({ gender = '', positionId = '', status = '', room = '', groupBy = 'none', format = 'attendance', fontSize = 16, pageSize = 'portrait' } = {}) {
+  fontSize = Math.min(18, Math.max(11, Number(fontSize) || 16))
+  pageSize = pageSize === 'landscape' ? 'landscape' : 'portrait'
   const term = selectedCouncilTerm()
   const statusText = value => value === 'designate' ? 'ว่าที่สมาชิก' : value === 'ended' ? 'หมดวาระ' : value === 'active' ? 'ปฏิบัติหน้าที่' : value
   const methodText = { direct: 'แต่งตั้งตรง', interview: 'ผ่านสัมภาษณ์', election: 'เลือกตั้ง', external_import: 'นำเข้ารายชื่อ', chair_nomination: 'ประธานเสนอ', legacy: 'ข้อมูลเดิม' }
@@ -4799,10 +4854,10 @@ function renderPrintCenterView() {
     <select id="print-member-position" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกฝ่าย/ตำแหน่ง</option>${ctx.positions.map(p => `<option value="${p.id}">${esc(GENDER_LABEL[p.gender])} — ${esc(p.position_name)}</option>`).join('')}</select>
     <select id="print-member-status" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกสถานะ</option><option value="active">ปฏิบัติหน้าที่</option><option value="designate">ว่าที่สมาชิก</option><option value="ended">หมดวาระ</option></select>
     <select id="print-member-room" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกห้อง</option>${rooms.map(room => `<option value="${esc(room)}">${esc(room)}</option>`).join('')}</select>
-    <select id="print-member-group" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="gender_position">แยกเพศและฝ่าย</option><option value="gender">แยกตามเพศ</option><option value="position">แยกตามฝ่าย</option><option value="room">แยกตามห้อง</option><option value="none">รวมรายชื่อเดียว</option></select>
-    <select id="print-member-format" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="register">ทะเบียนสมาชิก/ข้อมูลแต่งตั้ง</option><option value="attendance">ใบลงชื่อ/บันทึกการเข้าร่วม</option></select>
-    <select id="print-member-font-size" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="11">ตัวอักษร 11 pt</option><option value="12" selected>ตัวอักษร 12 pt</option><option value="14">ตัวอักษร 14 pt</option><option value="16">ตัวอักษร 16 pt</option><option value="18">ตัวอักษร 18 pt</option></select>
-    <select id="print-member-page-size" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="landscape" selected>A4 แนวนอน</option><option value="portrait">A4 แนวตั้ง</option></select>
+    <select id="print-member-group" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="gender_position">แยกเพศและฝ่าย</option><option value="gender">แยกตามเพศ</option><option value="position">แยกตามฝ่าย</option><option value="room">แยกตามห้อง</option><option value="none" selected>รวมรายชื่อเดียว</option></select>
+    <select id="print-member-format" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="register">ทะเบียนสมาชิก/ข้อมูลแต่งตั้ง</option><option value="attendance" selected>ใบลงชื่อ/บันทึกการเข้าร่วม</option></select>
+    <select id="print-member-font-size" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="11">ตัวอักษร 11 pt</option><option value="12">ตัวอักษร 12 pt</option><option value="14">ตัวอักษร 14 pt</option><option value="16" selected>ตัวอักษร 16 pt</option><option value="18">ตัวอักษร 18 pt</option></select>
+    <select id="print-member-page-size" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="landscape">A4 แนวนอน</option><option value="portrait" selected>A4 แนวตั้ง</option></select>
   </div><button type="button" id="btn-print-members" class="w-full mt-3 rounded-xl bg-[var(--primary)] text-white px-4 py-3 text-sm font-bold">🖨️ พิมพ์รายชื่อสมาชิกตามตัวกรอง</button></div>
   <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><h3 class="text-sm font-bold text-[var(--ink)]">ใบรายชื่อผู้สมัครประธานสภา</h3><div class="grid sm:grid-cols-2 gap-3 mt-3">${['M','W'].map(g => `<button type="button" class="btn-print-candidates rounded-xl border border-[var(--primary-45)] p-4 text-left" data-gender="${g}"><span class="text-2xl">🗳️</span><p class="text-sm font-bold mt-2">ผู้สมัครประธาน${GENDER_LABEL[g]}</p><p class="text-xs text-[var(--muted)]">หมายเลข ชื่อ ห้อง และสถานะ</p></button>`).join('')}</div></div></div>`
 }
@@ -5032,10 +5087,10 @@ function wireContentEvents() {
     positionId: document.getElementById('print-member-position')?.value || '',
     status: document.getElementById('print-member-status')?.value || '',
     room: document.getElementById('print-member-room')?.value || '',
-    groupBy: document.getElementById('print-member-group')?.value || 'gender_position',
-    format: document.getElementById('print-member-format')?.value || 'register',
-    fontSize: document.getElementById('print-member-font-size')?.value || 12,
-    pageSize: document.getElementById('print-member-page-size')?.value || 'landscape',
+    groupBy: document.getElementById('print-member-group')?.value || 'none',
+    format: document.getElementById('print-member-format')?.value || 'attendance',
+    fontSize: document.getElementById('print-member-font-size')?.value || 16,
+    pageSize: document.getElementById('print-member-page-size')?.value || 'portrait',
   }))
 
   wireCouncilRegulationEvents(ctx, render)
@@ -6090,7 +6145,7 @@ function wireActivitiesEvents() {
     try {
       await createActivity({
         title, detail: f.detail.value.trim(), gender: f.gender.value || null,
-        activityDate: f.activity_date.value || null, budget: f.budget.value ? Number(f.budget.value) : null,
+        activityDate: f.activity_date.value || null, location: f.location.value.trim(), budget: f.budget.value ? Number(f.budget.value) : null,
         ownerText: f.owner_text.value.trim(), academicYear: electionYear, termId: selectedCouncilTermId,
         openToGeneral: f.open_to_general.checked, ownerMemberId: f.owner_member_id.value ? Number(f.owner_member_id.value) : null,
         countsForEvaluation: f.counts_for_evaluation.checked,
@@ -6103,6 +6158,30 @@ function wireActivitiesEvents() {
       btn.disabled = false; btn.textContent = 'สร้างกิจกรรม'
     }
   })
+
+  document.querySelectorAll('.activity-details-form').forEach(form => form.addEventListener('submit', async e => {
+    e.preventDefault()
+    const button = form.querySelector('button[type="submit"]')
+    button.disabled = true; button.textContent = 'กำลังบันทึก...'
+    try {
+      await updateActivityDetails(Number(form.dataset.activityId), {
+        title: form.title.value, detail: form.detail.value,
+        activityDate: form.activity_date.value, location: form.location.value,
+      })
+      showToast('บันทึกรายละเอียดกิจกรรมแล้ว ✅', 'success')
+      activities = null; render()
+    } catch (err) {
+      showToast('บันทึกกิจกรรมไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      button.disabled = false; button.textContent = 'บันทึกรายละเอียดกิจกรรม'
+    }
+  }))
+
+  document.querySelectorAll('.btn-open-yla-from-activities').forEach(button => button.addEventListener('click', () => {
+    ylaSelectedEventId = Number(button.dataset.eventId)
+    ylaDetail = null
+    setActiveView('yla')
+    render()
+  }))
 
   document.querySelectorAll('.btn-activity-next').forEach(btn => {
     btn.addEventListener('click', async () => {
