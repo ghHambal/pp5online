@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1068'
+import { APP_VERSION } from './version.js?v=10.22.1069'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,7 +1015,7 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
-  '10.22.1068': [
+  '10.22.1069': [
     'เพิ่มการลบรายชื่อออกจากฉบับพิมพ์ โดยไม่ลบสมาชิกจากข้อมูลสภาจริง และจัดเลขลำดับใหม่อัตโนมัติ',
     'เพิ่มตัวเลือกเรียงรายชื่อด้วยชื่อ รหัสนักเรียน ห้อง หรือคงลำดับเดิม พร้อมบันทึกค่าการเรียงเป็นค่าตั้งต้นในหน้าพิมพ์ใบลงชื่อ',
   ],
