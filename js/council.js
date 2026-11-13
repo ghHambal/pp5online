@@ -366,7 +366,6 @@ async function init() {
   const isChair = role === 'student' && membership.some(m => m.status === 'active' && m.council_positions?.is_elected)
   // สิทธิ์สร้างกิจกรรม/การประชุมเองได้ทันที (ไม่ใช่แค่จัดการกิจกรรมที่มีอยู่แล้วผ่าน owner_member_id)
   // — ประธานสภาได้เสมอ + สมาชิกที่แอดมิน/ประธานมอบสิทธิ์ can_create_activities ไว้ล่วงหน้า
-  const canCreateActivities = isChair || membership.some(m => m.status === 'active' && m.can_create_activities)
   // เพศของสภาที่ตัวเองเป็นประธานอยู่ — ใช้จำกัดขอบเขตตอนมอบสิทธิ์สร้างกิจกรรมให้สมาชิกคนอื่น
   // (ประธานสภาชาย มอบสิทธิ์ให้ได้เฉพาะสมาชิกสภาชายเท่านั้น ไม่ข้ามไปฝั่งหญิง)
   const chairGender = membership.find(m => m.status === 'active' && m.council_positions?.is_elected)?.council_positions?.gender ?? null
@@ -376,6 +375,10 @@ async function init() {
   // (เดี่ยว) และ teacher.positions (array) เพราะข้อมูลจริงมีทั้งสองแบบปนกัน (ดู feedback_supervisor_position_rls_column)
   const isCouncilAdvisor = role === 'teacher' && !!teacher &&
     (teacher.position === 'council_advisor' || (teacher.positions ?? []).includes('council_advisor'))
+  // แอดมินและครูที่ปรึกษาสภาสร้างกิจกรรมได้เหมือนผู้ดูแล ส่วนสมาชิกนักเรียน
+  // ต้องเป็นประธานหรือได้รับมอบสิทธิ์ can_create_activities ในสมาชิกภาพที่ active
+  const canCreateActivities = isAdmin || isCouncilAdvisor || isChair ||
+    membership.some(m => m.status === 'active' && m.can_create_activities)
   // หัวหน้าฝ่ายกิจการนักเรียน/ผู้อำนวยการ — ตำแหน่งใหม่ที่ผู้ใช้ขอเพิ่มสำหรับอนุมัติเอกสาร
   // โครงการ (2026-08-16) ตรวจแบบเดียวกับ isCouncilAdvisor ทุกจุด
   const isStudentAffairsHead = role === 'teacher' && !!teacher &&
@@ -3258,8 +3261,9 @@ function renderActivitiesView() {
   // (ไม่โชว์ตัวเลือกที่กดแล้วจะโดน RLS ปฏิเสธ) ส่วนเพศของกิจกรรม (ชาย/หญิง/ทั้งหมด) เลือกได้
   // อิสระเหมือนแอดมิน/ประธานเสมอ — แค่ preselect เพศฝั่งตัวเองไว้เป็นค่าเริ่มต้นให้สะดวก
   // เพราะบางกิจกรรมที่สมาชิกได้รับมอบหมายจัดเป็นงานร่วมสองฝั่งจริง ไม่ควรบังคับ
-  const isDelegatedCreator = canCreate && !ctx.isAdmin && !ctx.isChair
-  const myMember = ctx.membership[0]
+  const isDelegatedCreator = canCreate && !ctx.isAdmin && !ctx.isCouncilAdvisor && !ctx.isChair
+  const myMember = ctx.membership.find(m => m.status === 'active' && m.can_create_activities)
+    ?? ctx.membership.find(m => m.status === 'active')
   const counts = {}
   activities.forEach(a => { counts[a.status] = (counts[a.status] ?? 0) + 1 })
 
@@ -4607,6 +4611,7 @@ function renderChairTeamView() {
         entries.forEach(entry => { const key = entry.position_id ?? entry.council_positions?.position_name; if (!groups.has(key)) groups.set(key, { name: entry.council_positions?.position_name ?? 'ฝ่าย', people: [] }); groups.get(key).people.push(entry) })
         return `<article class="rounded-xl border border-[var(--line-soft)] bg-[var(--surface-2)] p-4" data-team-proposal-card="${proposal.id}"><div class="flex items-center justify-between gap-2 mb-3"><h3 class="font-bold text-[var(--ink)]">คณะทำงานสภา${GENDER_LABEL[proposal.gender]}</h3><span class="text-xs text-[var(--muted)]">${entries.length} คน</span></div><div class="space-y-3">${[...groups.values()].map(group => `<div><p class="text-xs font-bold text-[var(--primary)]">${esc(group.name)}</p><div class="mt-1 space-y-1">${group.people.map(entry => `<div class="flex items-center gap-2 text-xs text-[var(--ink-2)]">${studentPhoto(entry.council_applications?.students, 'w-7 h-9')}<span class="font-bold">${entry.position_role === 'head' ? 'หัวหน้า' : 'สมาชิก'}:</span><span>${esc(entry.council_applications?.students?.full_name ?? '—')} · ${esc(entry.council_applications?.students?.main_room ?? '')}</span></div>`).join('')}</div></div>`).join('')}</div><textarea class="team-proposal-comment mt-3 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--ink)]" rows="2" placeholder="ความเห็น (ถ้าไม่อนุมัติ กรุณาระบุเหตุผล)"></textarea><div class="mt-2 flex flex-wrap gap-2"><button type="button" class="btn-decide-team flex-1 rounded-lg bg-[var(--ok)] px-3 py-2 text-xs font-bold text-white" data-id="${proposal.id}" data-approve="true">อนุมัติทั้งชุดและแต่งตั้ง</button><button type="button" class="btn-decide-team flex-1 rounded-lg border border-[var(--bad-soft-line)] px-3 py-2 text-xs font-bold text-[var(--bad)]" data-id="${proposal.id}" data-approve="false">ส่งกลับแก้ไข</button></div></article>`
       }).join('')}</div></section>`
+      else html += `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 mb-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-bold text-[var(--ink)]">ตรวจสอบข้อเสนอคณะทำงาน</h2><p class="text-xs text-[var(--muted)] mt-1">หน้านี้ใช้ตรวจและอนุมัติข้อเสนอจากประธานสภา ปุ่มอนุมัติหรือส่งกลับจะแสดงเมื่อมีข้อเสนอเข้ามา</p></div><span class="rounded-full bg-[var(--surface-2)] px-3 py-1 text-xs font-bold text-[var(--muted)]">ไม่มีรายการรอตรวจ</span></div><p class="mt-4 rounded-xl border border-[var(--line-soft)] bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--ink-2)]">ขณะนี้ยังไม่มีข้อเสนอคณะทำงานในวาระนี้ ให้ประธานสภาส่งรายชื่อหัวหน้าฝ่ายและสมาชิกให้ครบทุกฝ่ายก่อน</p><div class="mt-3 flex flex-wrap gap-2"><button type="button" class="goto-view rounded-xl border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-view="interview">ดูผลสัมภาษณ์ผู้สมัคร</button><button type="button" class="goto-view rounded-xl border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-view="apps">ดูใบสมัคร</button></div></section>`
     }
     html += ['M', 'W'].map(gender => {
       if (pendingNomsByGender[gender] === undefined) { loadChairTeamData(gender); return loading }

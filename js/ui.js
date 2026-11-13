@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1071'
+import { APP_VERSION } from './version.js?v=10.22.1072'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1072': [
+    'แสดงฟอร์มสร้างกิจกรรมให้แอดมินและครูที่ปรึกษาสภา และผูกสิทธิ์หัวหน้าฝ่ายกับสมาชิกที่ได้รับมอบหมายอย่างถูกต้อง',
+    'เพิ่มคำอธิบายและทางลัดไปหน้าสัมภาษณ์/ใบสมัคร เมื่อครูเปิดหน้าตรวจข้อเสนอคณะทำงานแล้วยังไม่มีรายการรออนุมัติ',
+  ],
   '10.22.1071': [
     'ให้ครูที่ปรึกษาสภาแก้ไขข้อมูลสภาได้ตามบทบาท และเห็น/พิมพ์รายชื่อเฉพาะฝ่ายที่ได้รับมอบหมาย',
     'เพิ่มการเสนอคณะทำงานครบทุกฝ่าย แยกหัวหน้าฝ่ายกับสมาชิก และอนุมัติแต่งตั้งทั้งชุดในขั้นตอนเดียว',
