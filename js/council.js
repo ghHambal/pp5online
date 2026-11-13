@@ -2046,7 +2046,7 @@ const YLA_ROSTER_FONTS = {
 }
 const YLA_ROSTER_TITLE_WEIGHTS = [[400, 'ปกติ'], [500, 'ปานกลาง'], [600, 'กึ่งหนา'], [700, 'หนา'], [800, 'หนามาก'], [900, 'หนาที่สุด']]
 
-function printYlaAttendanceRoster(event, detail) {
+function printYlaAttendanceRoster(event, detail, { persistSettings = true, settingsKey = '' } = {}) {
   const defaultColumns = [
     { key: 'row_no', label: 'ลำดับ', align: 'center' }, { key: 'student_code', label: 'เลขประจำตัว', align: 'center' },
     { key: 'full_name', label: 'ชื่อ–สกุล', align: 'left' }, { key: 'main_room', label: 'ชั้น/ห้อง', align: 'center' },
@@ -2073,7 +2073,7 @@ function printYlaAttendanceRoster(event, detail) {
   const overlay = document.createElement('div')
   overlay.id = 'yla-roster-preview-overlay'
   overlay.style.cssText = 'position:fixed;inset:0;z-index:10050;background:#e5e7eb;display:flex;flex-direction:column;font-family:Sarabun,Tahoma,sans-serif;color:#17202a'
-  overlay.innerHTML = `<header style="flex-shrink:0;background:#fff;border-bottom:1px solid #d1d5db;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px"><strong style="font-size:16px">🖨️ ตัวอย่างและปรับแต่งใบลงทะเบียน</strong><div style="display:flex;gap:8px"><button type="button" data-action="save" style="border:1px solid #2563eb;background:#eff6ff;color:#1d4ed8;border-radius:9px;padding:8px 12px;font-weight:700">บันทึกแบบนี้ให้กิจกรรม</button><button type="button" data-action="print" style="border:0;background:#047857;color:#fff;border-radius:9px;padding:8px 14px;font-weight:700">พิมพ์ / PDF</button><button type="button" data-action="close" style="border:1px solid #9ca3af;background:#fff;border-radius:9px;padding:8px 12px">ปิด</button></div></header><div class="yla-editor-layout" style="display:grid;grid-template-columns:minmax(280px,360px) minmax(0,1fr);gap:12px;padding:12px;min-height:0;flex:1"><aside style="overflow:auto;background:#fff;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px"><label style="font-size:12px;font-weight:700">หัวเรื่อง<input data-field="title" value="${esc(title)}" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"></label><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label style="font-size:12px;font-weight:700">ฟอนต์รายชื่อ<select data-field="font-family" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">${Object.entries(YLA_ROSTER_FONTS).map(([key, font]) => `<option value="${key}" ${fontFamily === key ? 'selected' : ''}>${font.label}</option>`).join('')}</select></label><label style="font-size:12px;font-weight:700">ฟอนต์ชื่อกิจกรรม<select data-field="title-font-family" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">${Object.entries(YLA_ROSTER_FONTS).map(([key, font]) => `<option value="${key}" ${titleFontFamily === key ? 'selected' : ''}>${font.label}</option>`).join('')}</select></label><label style="font-size:12px;font-weight:700">ความหนาชื่อกิจกรรม<select data-field="title-weight" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">${YLA_ROSTER_TITLE_WEIGHTS.map(([weight, label]) => `<option value="${weight}" ${titleWeight === weight ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div><label style="font-size:12px;font-weight:700">บรรทัดรายละเอียด<textarea data-field="subtitle" rows="2" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">${esc(subtitle)}</textarea></label><label style="font-size:12px;font-weight:700">แสดงรายชื่อ<select data-roster-gender style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"><option value="all">ทั้งหมด</option><option value="M">ชาย</option><option value="W">หญิง</option></select></label><label style="font-size:12px;font-weight:700">เลือกโลโก้จากระบบ<select data-logo-choice style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">${ylaRosterLogoChoices(logo)}</select></label><label style="font-size:12px;font-weight:700">อัปโหลดโลโก้ของกิจกรรม<input data-logo-upload type="file" accept="image/png,image/jpeg,image/webp" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;font:inherit"></label><label style="font-size:12px;font-weight:700">หรือใส่ URL โลโก้<input data-field="logo" value="${esc(logo)}" placeholder="เว้นว่างเพื่อใช้โลโก้ระบบที่เลือก" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"></label><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label style="font-size:12px;font-weight:700">ขนาดฟอนต์ (pt)<input data-field="font-size" type="number" min="1" max="18" value="${fontSize}" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"></label><label style="font-size:12px;font-weight:700">ความสูงแถว (px)<input data-field="row-height" type="number" min="24" max="90" value="${rowHeight}" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"></label><label style="grid-column:1/-1;font-size:12px;font-weight:700">กระดาษ<select data-field="page-size" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"><option value="portrait" ${pageSize === 'landscape' ? '' : 'selected'}>A4 แนวตั้ง</option><option value="landscape" ${pageSize === 'landscape' ? 'selected' : ''}>A4 แนวนอน</option></select></label></div><div><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><strong style="font-size:13px">คอลัมน์ในใบรายชื่อ</strong><button type="button" data-action="add-column" style="border:1px solid #a7f3d0;background:#ecfdf5;color:#047857;border-radius:8px;padding:6px 9px;font-weight:700">＋ เพิ่มคอลัมน์</button></div><div data-columns-list style="display:flex;flex-direction:column;gap:8px;margin-top:9px"></div></div><p style="font-size:11px;color:#64748b;line-height:1.5;margin:0">เลือกได้ว่าจะใส่ข้อมูลนักเรียนหรือเว้นเป็นช่องให้เขียนเอง การปรับในหน้านี้แสดงผลทันทีในตัวอย่างด้านขวา</p></aside><iframe title="ตัวอย่างใบลงทะเบียน" style="min-width:0;width:100%;height:100%;border:0;border-radius:12px;background:#fff"></iframe></div><style>@media(max-width:760px){#yla-roster-preview-overlay .yla-editor-layout{grid-template-columns:1fr!important;grid-template-rows:minmax(280px,42vh) minmax(320px,1fr)!important;overflow:auto}#yla-roster-preview-overlay iframe{min-height:360px}#yla-roster-preview-overlay header{align-items:flex-start;flex-wrap:wrap}#yla-roster-preview-overlay header strong{width:100%}}</style>`
+  overlay.innerHTML = `<header style="flex-shrink:0;background:#fff;border-bottom:1px solid #d1d5db;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:10px"><strong style="font-size:16px">🖨️ ตัวอย่างและปรับแต่งใบลงทะเบียน</strong><div style="display:flex;gap:8px">${persistSettings ? '<button type="button" data-action="save" style="border:1px solid #2563eb;background:#eff6ff;color:#1d4ed8;border-radius:9px;padding:8px 12px;font-weight:700">บันทึกแบบนี้ให้กิจกรรม</button>' : '<button type="button" data-action="save" style="border:1px solid #2563eb;background:#eff6ff;color:#1d4ed8;border-radius:9px;padding:8px 12px;font-weight:700">บันทึกค่าตั้งต้น</button>'}<button type="button" data-action="print" style="border:0;background:#047857;color:#fff;border-radius:9px;padding:8px 14px;font-weight:700">พิมพ์ / PDF</button><button type="button" data-action="close" style="border:1px solid #9ca3af;background:#fff;border-radius:9px;padding:8px 12px">ปิด</button></div></header><div class="yla-editor-layout" style="display:grid;grid-template-columns:minmax(280px,360px) minmax(0,1fr);gap:12px;padding:12px;min-height:0;flex:1"><aside style="overflow:auto;background:#fff;border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:12px"><label style="font-size:12px;font-weight:700">หัวเรื่อง<input data-field="title" value="${esc(title)}" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"></label><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label style="font-size:12px;font-weight:700">ฟอนต์รายชื่อ<select data-field="font-family" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">${Object.entries(YLA_ROSTER_FONTS).map(([key, font]) => `<option value="${key}" ${fontFamily === key ? 'selected' : ''}>${font.label}</option>`).join('')}</select></label><label style="font-size:12px;font-weight:700">ฟอนต์ชื่อกิจกรรม<select data-field="title-font-family" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">${Object.entries(YLA_ROSTER_FONTS).map(([key, font]) => `<option value="${key}" ${titleFontFamily === key ? 'selected' : ''}>${font.label}</option>`).join('')}</select></label><label style="font-size:12px;font-weight:700">ความหนาชื่อกิจกรรม<select data-field="title-weight" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">${YLA_ROSTER_TITLE_WEIGHTS.map(([weight, label]) => `<option value="${weight}" ${titleWeight === weight ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div><label style="font-size:12px;font-weight:700">บรรทัดรายละเอียด<textarea data-field="subtitle" rows="2" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">${esc(subtitle)}</textarea></label><label style="font-size:12px;font-weight:700">แสดงรายชื่อ<select data-roster-gender style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"><option value="all">ทั้งหมด</option><option value="M">ชาย</option><option value="W">หญิง</option></select></label><label style="font-size:12px;font-weight:700">เลือกโลโก้จากระบบ<select data-logo-choice style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit">${ylaRosterLogoChoices(logo)}</select></label><label style="font-size:12px;font-weight:700">อัปโหลดโลโก้ของกิจกรรม<input data-logo-upload type="file" accept="image/png,image/jpeg,image/webp" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;font:inherit"></label><label style="font-size:12px;font-weight:700">หรือใส่ URL โลโก้<input data-field="logo" value="${esc(logo)}" placeholder="เว้นว่างเพื่อใช้โลโก้ระบบที่เลือก" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:9px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"></label><div style="display:grid;grid-template-columns:1fr 1fr;gap:8px"><label style="font-size:12px;font-weight:700">ขนาดฟอนต์ (pt)<input data-field="font-size" type="number" min="1" max="18" value="${fontSize}" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"></label><label style="font-size:12px;font-weight:700">ความสูงแถว (px)<input data-field="row-height" type="number" min="24" max="90" value="${rowHeight}" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"></label><label style="grid-column:1/-1;font-size:12px;font-weight:700">กระดาษ<select data-field="page-size" style="display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"><option value="portrait" ${pageSize === 'landscape' ? '' : 'selected'}>A4 แนวตั้ง</option><option value="landscape" ${pageSize === 'landscape' ? 'selected' : ''}>A4 แนวนอน</option></select></label></div><div><div style="display:flex;justify-content:space-between;align-items:center;gap:6px"><strong style="font-size:13px">คอลัมน์ในใบรายชื่อ</strong><button type="button" data-action="add-column" style="border:1px solid #a7f3d0;background:#ecfdf5;color:#047857;border-radius:8px;padding:6px 9px;font-weight:700">＋ เพิ่มคอลัมน์</button></div><div data-columns-list style="display:flex;flex-direction:column;gap:8px;margin-top:9px"></div></div><p style="font-size:11px;color:#64748b;line-height:1.5;margin:0">เลือกได้ว่าจะใส่ข้อมูลนักเรียนหรือเว้นเป็นช่องให้เขียนเอง การปรับในหน้านี้แสดงผลทันทีในตัวอย่างด้านขวา</p></aside><iframe title="ตัวอย่างใบลงทะเบียน" style="min-width:0;width:100%;height:100%;border:0;border-radius:12px;background:#fff"></iframe></div><style>@media(max-width:760px){#yla-roster-preview-overlay .yla-editor-layout{grid-template-columns:1fr!important;grid-template-rows:minmax(280px,42vh) minmax(320px,1fr)!important;overflow:auto}#yla-roster-preview-overlay iframe{min-height:360px}#yla-roster-preview-overlay header{align-items:flex-start;flex-wrap:wrap}#yla-roster-preview-overlay header strong{width:100%}}</style>`
   document.body.appendChild(overlay)
   const columnsList = overlay.querySelector('[data-columns-list]')
   const iframe = overlay.querySelector('iframe')
@@ -2229,11 +2229,17 @@ function printYlaAttendanceRoster(event, detail) {
       const button = e.target.closest('[data-action="save"]')
       currentSettings(); button.disabled = true; button.textContent = 'กำลังบันทึก...'
       try {
-        await updateCouncilYlaRosterSettings(event.id, { rosterTitle: title, rosterSubtitle: subtitle, rosterLogoUrl: logo, rosterFontSize: fontSize, rosterFontFamily: fontFamily, rosterTitleFontFamily: titleFontFamily, rosterTitleWeight: titleWeight, rosterRowHeight: rowHeight, rosterPageSize: pageSize, rosterColumns: columns })
-        Object.assign(event, { roster_title: title, roster_subtitle: subtitle, roster_logo_url: logo, roster_font_size: fontSize, roster_font_family: fontFamily, roster_title_font_family: titleFontFamily, roster_title_weight: titleWeight, roster_row_height: rowHeight, roster_page_size: pageSize, roster_columns: columns })
-        showToast('บันทึกรูปแบบใบรายชื่อให้กิจกรรมนี้แล้ว ✅', 'success')
+        const settings = { roster_title: title, roster_subtitle: subtitle, roster_logo_url: logo, roster_font_size: fontSize, roster_font_family: fontFamily, roster_title_font_family: titleFontFamily, roster_title_weight: titleWeight, roster_row_height: rowHeight, roster_page_size: pageSize, roster_columns: columns }
+        if (persistSettings) {
+          await updateCouncilYlaRosterSettings(event.id, { rosterTitle: title, rosterSubtitle: subtitle, rosterLogoUrl: logo, rosterFontSize: fontSize, rosterFontFamily: fontFamily, rosterTitleFontFamily: titleFontFamily, rosterTitleWeight: titleWeight, rosterRowHeight: rowHeight, rosterPageSize: pageSize, rosterColumns: columns })
+          Object.assign(event, settings)
+          showToast('บันทึกรูปแบบใบรายชื่อให้กิจกรรมนี้แล้ว ✅', 'success')
+        } else {
+          localStorage.setItem(settingsKey, JSON.stringify(settings))
+          showToast('บันทึกค่าตั้งต้นใบรายชื่อเข้าร่วมกิจกรรมแล้ว ✅', 'success')
+        }
         button.textContent = 'บันทึกแล้ว'
-      } catch (err) { showToast('บันทึกรูปแบบไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); button.disabled = false; button.textContent = 'บันทึกแบบนี้ให้กิจกรรม' }
+      } catch (err) { showToast('บันทึกรูปแบบไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); button.disabled = false; button.textContent = persistSettings ? 'บันทึกแบบนี้ให้กิจกรรม' : 'บันทึกค่าตั้งต้น' }
     }
   })
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove() })
@@ -5111,17 +5117,16 @@ function printCandidateRoster(gender) {
   openHtmlPrintOverlay(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>รายชื่อผู้สมัครประธานสภานักเรียน</title><style>@page{size:A4;margin:12mm}body{font-family:Tahoma,sans-serif;color:#111}h1,p{text-align:center}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{border:1px solid #444;padding:7px;font-size:12px}th{background:#eee}td:first-child,td:nth-child(2){text-align:center}</style></head><body><h1>บัญชีรายชื่อผู้สมัครประธานสภานักเรียน${GENDER_LABEL[gender]}</h1><p>${esc(term?.term_label || '')} · จำนวน ${list.length} คน</p><table><thead><tr><th>ลำดับ</th><th>หมายเลข</th><th>รหัส</th><th>ชื่อ–สกุล</th><th>ห้อง</th><th>สถานะ</th><th>หมายเหตุ</th></tr></thead><tbody>${rows}</tbody></table></body></html>`)
 }
 
-function printMemberRoster({ gender = '', positionId = '', status = '', room = '', groupBy = 'none', format = 'attendance', fontSize = 16, pageSize = 'portrait' } = {}) {
+function printMemberRoster({ gender = '', positionId = '', status = '', room = '', groupBy = 'none', format = 'attendance', fontSize = 16, pageSize = 'portrait', members: sourceMembers = ctx.members, term = selectedCouncilTerm() } = {}) {
   fontSize = Math.min(18, Math.max(11, Number(fontSize) || 16))
   pageSize = pageSize === 'landscape' ? 'landscape' : 'portrait'
-  const term = selectedCouncilTerm()
   const statusText = value => value === 'designate' ? 'ว่าที่สมาชิก' : value === 'ended' ? 'หมดวาระ' : value === 'active' ? 'ปฏิบัติหน้าที่' : value
   const methodText = { direct: 'แต่งตั้งตรง', interview: 'ผ่านสัมภาษณ์', election: 'เลือกตั้ง', external_import: 'นำเข้ารายชื่อ', chair_nomination: 'ประธานเสนอ', legacy: 'ข้อมูลเดิม' }
-  const list = ctx.members.filter(m =>
-    (!gender || m.council_positions?.gender === gender) &&
+  const list = sourceMembers.filter(m =>
+    (!gender || normalizeGender(m.council_positions?.gender) === gender || normalizeGender(m.students?.gender) === gender) &&
     (!positionId || String(m.position_id) === String(positionId)) &&
     (!status || m.status === status) &&
-    (!room || m.students?.main_room === room)
+    (!room || String(m.students?.main_room || '').toLocaleLowerCase('th').includes(room.toLocaleLowerCase('th')))
   ).sort((a,b) => (a.council_positions?.gender || '').localeCompare(b.council_positions?.gender || '') || (a.council_positions?.sort_order || 99) - (b.council_positions?.sort_order || 99) || (a.students?.full_name || '').localeCompare(b.students?.full_name || '', 'th'))
   const groupKey = member => groupBy === 'gender' ? (member.council_positions?.gender || '')
     : groupBy === 'position' ? String(member.position_id)
@@ -5144,18 +5149,42 @@ function printMemberRoster({ gender = '', positionId = '', status = '', room = '
 }
 
 function renderPrintCenterView() {
-  const rooms = [...new Set(ctx.members.map(m => m.students?.main_room).filter(Boolean))].sort((a,b) => a.localeCompare(b, 'th', { numeric: true }))
   return `<div class="space-y-4"><div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><h2 class="font-bold text-[var(--ink)]">ศูนย์พิมพ์ใบรายชื่อสมาชิกสภานักเรียน</h2><p class="text-xs text-[var(--muted)] mt-1">เลือกวาระ เพศ ฝ่าย สถานะ ห้อง รูปแบบการจัดกลุ่ม และชนิดเอกสารก่อนพิมพ์</p><div class="grid grid-cols-2 lg:grid-cols-3 gap-2 mt-4">
+    <select id="print-member-term" class="col-span-2 lg:col-span-3 border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]">${councilTerms.map(term => `<option value="${term.id}" ${String(term.id) === String(selectedCouncilTermId) ? 'selected' : ''}>${esc(term.term_label)}${term.status === 'active' ? ' — วาระปัจจุบัน' : ''}</option>`).join('')}</select>
     <select id="print-member-gender" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกเพศ</option><option value="M">นักเรียนชาย</option><option value="W">นักเรียนหญิง</option></select>
     <select id="print-member-position" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกฝ่าย/ตำแหน่ง</option>${ctx.positions.map(p => `<option value="${p.id}">${esc(GENDER_LABEL[p.gender])} — ${esc(p.position_name)}</option>`).join('')}</select>
     <select id="print-member-status" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกสถานะ</option><option value="active">ปฏิบัติหน้าที่</option><option value="designate">ว่าที่สมาชิก</option><option value="ended">หมดวาระ</option></select>
-    <select id="print-member-room" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="">ทุกห้อง</option>${rooms.map(room => `<option value="${esc(room)}">${esc(room)}</option>`).join('')}</select>
+    <input id="print-member-room" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]" placeholder="ทุกห้อง หรือพิมพ์ชื่อห้อง">
     <select id="print-member-group" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="gender_position">แยกเพศและฝ่าย</option><option value="gender">แยกตามเพศ</option><option value="position">แยกตามฝ่าย</option><option value="room">แยกตามห้อง</option><option value="none" selected>รวมรายชื่อเดียว</option></select>
     <select id="print-member-format" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="register">ทะเบียนสมาชิก/ข้อมูลแต่งตั้ง</option><option value="attendance" selected>ใบลงชื่อ/บันทึกการเข้าร่วม</option></select>
     <select id="print-member-font-size" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="11">ตัวอักษร 11 pt</option><option value="12">ตัวอักษร 12 pt</option><option value="14">ตัวอักษร 14 pt</option><option value="16" selected>ตัวอักษร 16 pt</option><option value="18">ตัวอักษร 18 pt</option></select>
     <select id="print-member-page-size" class="border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)]"><option value="landscape">A4 แนวนอน</option><option value="portrait" selected>A4 แนวตั้ง</option></select>
-  </div><button type="button" id="btn-print-members" class="w-full mt-3 rounded-xl bg-[var(--primary)] text-white px-4 py-3 text-sm font-bold">🖨️ พิมพ์รายชื่อสมาชิกตามตัวกรอง</button></div>
+  </div><p id="print-member-format-help" class="text-xs text-[var(--muted)] mt-3">ใบลงชื่อ/บันทึกการเข้าร่วมจะเปิดหน้าจัดการหัวใบรายชื่อแบบเดียวกับกิจกรรม YLA ก่อนพิมพ์</p><button type="button" id="btn-print-members" class="w-full mt-3 rounded-xl bg-[var(--primary)] text-white px-4 py-3 text-sm font-bold">🖨️ สร้างใบลงชื่อจากรายชื่อวาระที่เลือก</button></div>
   <div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5"><h3 class="text-sm font-bold text-[var(--ink)]">ใบรายชื่อผู้สมัครประธานสภา</h3><div class="grid sm:grid-cols-2 gap-3 mt-3">${['M','W'].map(g => `<button type="button" class="btn-print-candidates rounded-xl border border-[var(--primary-45)] p-4 text-left" data-gender="${g}"><span class="text-2xl">🗳️</span><p class="text-sm font-bold mt-2">ผู้สมัครประธาน${GENDER_LABEL[g]}</p><p class="text-xs text-[var(--muted)]">หมายเลข ชื่อ ห้อง และสถานะ</p></button>`).join('')}</div></div></div>`
+}
+
+const COUNCIL_ATTENDANCE_ROSTER_SETTINGS_KEY = 'pp5-council-attendance-roster-settings-v1'
+
+function openHistoricalCouncilAttendanceEditor(term, members) {
+  let saved = {}
+  try { saved = JSON.parse(localStorage.getItem(COUNCIL_ATTENDANCE_ROSTER_SETTINGS_KEY) || '{}') || {} } catch { saved = {} }
+  const event = {
+    id: null,
+    title: 'กิจกรรมที่ผ่านมา',
+    location: '',
+    roster_title: saved.roster_title || `รายชื่อสมาชิกสภานักเรียน${term?.term_label ? ` ${term.term_label}` : ''} ที่เข้าร่วมกิจกรรม`,
+    roster_subtitle: saved.roster_subtitle || `กิจกรรมที่ผ่านมา · ${term?.term_label || ''}`,
+    roster_logo_url: saved.roster_logo_url || ctx.cfg?.council_logo_url || '',
+    roster_font_size: saved.roster_font_size || 14,
+    roster_font_family: saved.roster_font_family || 'tahoma',
+    roster_title_font_family: saved.roster_title_font_family || 'tahoma',
+    roster_title_weight: saved.roster_title_weight || 700,
+    roster_row_height: saved.roster_row_height || 34,
+    roster_page_size: saved.roster_page_size || 'portrait',
+    roster_columns: saved.roster_columns || null,
+  }
+  const participants = members.map(member => ({ student_id: member.student_id, students: member.students }))
+  printYlaAttendanceRoster(event, { participants }, { persistSettings: false, settingsKey: COUNCIL_ATTENDANCE_ROSTER_SETTINGS_KEY })
 }
 
 const VIEW_RENDERERS = {
@@ -5378,16 +5407,50 @@ function wireContentEvents() {
     if (election && adminCandidatesByGender[gender] === null) adminCandidatesByGender[gender] = await getCandidatesForElectionAdmin(election.id).catch(() => [])
     printCandidateRoster(gender)
   }))
-  document.getElementById('btn-print-members')?.addEventListener('click', () => printMemberRoster({
-    gender: document.getElementById('print-member-gender')?.value || '',
-    positionId: document.getElementById('print-member-position')?.value || '',
-    status: document.getElementById('print-member-status')?.value || '',
-    room: document.getElementById('print-member-room')?.value || '',
-    groupBy: document.getElementById('print-member-group')?.value || 'none',
-    format: document.getElementById('print-member-format')?.value || 'attendance',
-    fontSize: document.getElementById('print-member-font-size')?.value || 16,
-    pageSize: document.getElementById('print-member-page-size')?.value || 'portrait',
-  }))
+  const printFormat = document.getElementById('print-member-format')
+  const printButton = document.getElementById('btn-print-members')
+  const updatePrintFormatHint = () => {
+    const attendance = printFormat?.value !== 'register'
+    const help = document.getElementById('print-member-format-help')
+    if (help) help.textContent = attendance
+      ? 'ใบลงชื่อจะดึงสมาชิกจากวาระที่เลือก แล้วเปิดตัวจัดการหัวใบแบบเดียวกับกิจกรรม YLA'
+      : 'ทะเบียนสมาชิกจะแสดงข้อมูลของวาระที่เลือกตามตัวกรอง'
+    if (printButton) printButton.textContent = attendance ? '🖨️ สร้างใบลงชื่อจากรายชื่อวาระที่เลือก' : '🖨️ พิมพ์ทะเบียนสมาชิกตามตัวกรอง'
+  }
+  printFormat?.addEventListener('change', updatePrintFormatHint)
+  printButton?.addEventListener('click', async () => {
+    if (printButton.disabled) return
+    const term = councilTerms.find(item => String(item.id) === String(document.getElementById('print-member-term')?.value))
+    if (!term) { showToast('ไม่พบวาระที่เลือก กรุณาโหลดหน้าใหม่แล้วลองอีกครั้ง', 'warning'); return }
+    const filters = {
+      gender: document.getElementById('print-member-gender')?.value || '',
+      positionId: document.getElementById('print-member-position')?.value || '',
+      status: document.getElementById('print-member-status')?.value || '',
+      room: document.getElementById('print-member-room')?.value?.trim() || '',
+      groupBy: document.getElementById('print-member-group')?.value || 'none',
+      format: printFormat?.value || 'attendance',
+      fontSize: document.getElementById('print-member-font-size')?.value || 16,
+      pageSize: document.getElementById('print-member-page-size')?.value || 'portrait',
+    }
+    printButton.disabled = true
+    printButton.textContent = 'กำลังโหลดรายชื่อวาระที่เลือก…'
+    try {
+      const members = await getCouncilMembers(null, Number(term.id))
+      const filteredMembers = members.filter(member =>
+        (!filters.gender || normalizeGender(member.council_positions?.gender) === filters.gender || normalizeGender(member.students?.gender) === filters.gender) &&
+        (!filters.positionId || String(member.position_id) === String(filters.positionId)) &&
+        (!filters.status || member.status === filters.status) &&
+        (!filters.room || String(member.students?.main_room || '').toLocaleLowerCase('th').includes(filters.room.toLocaleLowerCase('th')))
+      )
+      if (filters.format === 'attendance') openHistoricalCouncilAttendanceEditor(term, filteredMembers)
+      else printMemberRoster({ ...filters, members: filteredMembers, term })
+    } catch (err) {
+      showToast('โหลดรายชื่อสมาชิกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+    } finally {
+      printButton.disabled = false
+      updatePrintFormatHint()
+    }
+  })
 
   wireCouncilRegulationEvents(ctx, render)
   wireCouncilResourceEvents({

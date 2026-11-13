@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1066'
+import { APP_VERSION } from './version.js?v=10.22.1067'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1067': [
+    'เพิ่มการสร้างใบลงชื่อกิจกรรมจากรายชื่อสมาชิกสภาวาระที่เลือก รวมถึงวาระที่ผ่านมา โดยเปิดตัวจัดการหัวใบแบบเดียวกับกิจกรรม YLA',
+    'บันทึกรูปแบบหัวใบลงชื่อกิจกรรมเป็นค่าตั้งต้นแยกจากการตั้งค่าของกิจกรรม YLA',
+  ],
   '10.22.1066': [
     'เพิ่มเช็คอินเข้าร่วมกิจกรรม YLA ด้วยพิกัด GPS ภายในเวลาที่ผู้ดูแลกำหนด พร้อมบันทึกสถานะ “มา” เวลา และพิกัดให้อัตโนมัติ',
     'ตรวจสอบสิทธิ์ผู้เข้าร่วม ช่วงเวลา รัศมี และความแม่นยำของ GPS ที่ฐานข้อมูลก่อนบันทึกการเช็คอิน',
