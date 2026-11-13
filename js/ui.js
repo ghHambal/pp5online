@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1070'
+import { APP_VERSION } from './version.js?v=10.22.1071'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,11 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1071': [
+    'ให้ครูที่ปรึกษาสภาแก้ไขข้อมูลสภาได้ตามบทบาท และเห็น/พิมพ์รายชื่อเฉพาะฝ่ายที่ได้รับมอบหมาย',
+    'เพิ่มการเสนอคณะทำงานครบทุกฝ่าย แยกหัวหน้าฝ่ายกับสมาชิก และอนุมัติแต่งตั้งทั้งชุดในขั้นตอนเดียว',
+    'จัดเมนูบนจอใหญ่เป็นกลุ่มพับเก็บได้ ลดรายการที่แสดงพร้อมกัน',
+  ],
   '10.22.1070': [
     'นำบรรทัดข้อความวันที่ด้านล่างออกจากตัวอย่างและเอกสารพิมพ์ใบลงทะเบียนกิจกรรม',
   ],

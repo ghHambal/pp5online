@@ -221,7 +221,7 @@ export async function removeEndorsementPhrase(id) {
 // ─── รายชื่อสภาปัจจุบัน (public roster) ───────────────────────────────────────
 export async function getCouncilMembers(academicYear, termId) {
   let q = supabase.from('council_members')
-    .select('id, term_id, position_id, student_id, academic_year, status, source, appointment_method, appointment_order_ref, appointment_reason, appointment_evidence_url, term_start_date, term_end_date, can_create_activities, council_positions(gender, position_name, sort_order, is_elected), students(id, full_name, student_code, main_room, gender, image_url, photo_url)')
+    .select('id, term_id, position_id, student_id, academic_year, status, source, position_role, appointment_method, appointment_order_ref, appointment_reason, appointment_evidence_url, term_start_date, term_end_date, can_create_activities, council_positions(gender, position_name, sort_order, is_elected), students(id, full_name, student_code, main_room, gender, image_url, photo_url)')
     .in('status', ['active', 'designate', 'ended'])
   if (termId) q = q.eq('term_id', termId)
   if (academicYear) q = q.eq('academic_year', academicYear)
@@ -707,6 +707,39 @@ export async function decideNomination({ nominationId, approve, teacherId, comme
     const { error: e3 } = await supabase.from('council_applications').update({ status: 'appointed' }).eq('id', nom.application_id)
     if (e3) throw e3
   }
+}
+
+// เสนอคณะทำงานครบทุกฝ่ายเป็นชุดเดียว; RPC ตรวจผู้สมัคร/จำนวนที่นั่งและบันทึกแบบ atomic
+export async function submitCouncilTeamProposal({ termId, gender, teams }) {
+  const p_teams = teams.flatMap(team => [
+    { position_id: Number(team.positionId), application_id: Number(team.headApplicationId), role: 'head' },
+    ...(team.memberApplicationIds ?? []).map(applicationId => ({
+      position_id: Number(team.positionId), application_id: Number(applicationId), role: 'member',
+    })),
+  ])
+  const { data, error } = await supabase.rpc('propose_council_team', {
+    p_term_id: Number(termId), p_gender: gender, p_teams,
+  })
+  if (error) throw error
+  return data
+}
+
+export async function getCouncilTeamProposals(termId) {
+  const { data, error } = await supabase.from('council_team_proposals')
+    .select(`id, term_id, gender, status, comment, created_at, decided_at,
+      proposed_by_student_id, council_team_proposal_members(id, position_id, position_role,
+        council_positions(position_name, sort_order),
+        council_applications(id, students(full_name, student_code, main_room, image_url, photo_url)))`)
+    .eq('term_id', termId).order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function decideCouncilTeamProposal({ proposalId, approve, comment }) {
+  const { error } = await supabase.rpc('decide_council_team_proposal', {
+    p_proposal_id: Number(proposalId), p_approve: Boolean(approve), p_comment: comment || null,
+  })
+  if (error) throw error
 }
 
 // ─── กิจกรรมประจำปีของสภา — เขียนได้เฉพาะแอดมิน/ประธานสภา/ผู้รับผิดชอบกิจกรรมนั้นๆ (RLS คุมแล้ว) ──
