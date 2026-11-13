@@ -25,7 +25,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1071'
+import { APP_VERSION } from './version.js?v=10.22.1074'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -3837,7 +3837,8 @@ function getWeekNumber(dateStr, cfg) {
 }
 
 // ─── Student Prayer Check-in Scanner Screen ──────────────────────────────────
-export async function renderStudentPrayerScanner(student) {
+export async function renderStudentPrayerScanner(student, options = {}) {
+  const { authorizedByCouncil = false, onBack = null } = options
   const operatorUser = student
   window._lastSuccessFeedbackHTML = ''
 
@@ -3859,7 +3860,9 @@ export async function renderStudentPrayerScanner(student) {
 
   // Check permission for student or teacher
   let hasPermission = false
-  if (student.student_code) {
+  if (authorizedByCouncil) {
+    hasPermission = true
+  } else if (student.student_code) {
     hasPermission = _hasScannerPermissionForToday(student, systemConfig)
   } else if (student.teacher_code) {
     const teacherCodes = (systemConfig.prayerScannerTeachers || '')
@@ -3909,7 +3912,8 @@ export async function renderStudentPrayerScanner(student) {
       </div>`)
 
     document.getElementById('scanner-btn-back-restricted')?.addEventListener('click', () => {
-      window._stuNav('overview')
+      if (onBack) onBack()
+      else window._stuNav('overview')
     })
     return
   }
@@ -4251,6 +4255,10 @@ export async function renderStudentPrayerScanner(student) {
       if (sidebar) sidebar.classList.remove('hidden')
       if (mainWrapper) mainWrapper.classList.add('md:ml-64')
 
+      if (onBack) {
+        onBack()
+        return
+      }
       if (student.teacher_code) {
         import('./views.js').then(({ renderPrayerAdmin }) => {
           renderPrayerAdmin(student)

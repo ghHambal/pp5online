@@ -221,7 +221,7 @@ export async function removeEndorsementPhrase(id) {
 // ─── รายชื่อสภาปัจจุบัน (public roster) ───────────────────────────────────────
 export async function getCouncilMembers(academicYear, termId) {
   let q = supabase.from('council_members')
-    .select('id, term_id, position_id, student_id, academic_year, status, source, position_role, appointment_method, appointment_order_ref, appointment_reason, appointment_evidence_url, term_start_date, term_end_date, can_create_activities, council_positions(gender, position_name, sort_order, is_elected), students(id, full_name, student_code, main_room, gender, image_url, photo_url)')
+    .select('id, term_id, position_id, student_id, academic_year, status, source, position_role, appointment_method, appointment_order_ref, appointment_reason, appointment_evidence_url, term_start_date, term_end_date, can_create_activities, council_positions(gender, position_name, sort_order, is_elected), students(id, full_name, student_code, main_room, gender, image_url, photo_url, can_scan_prayer)')
     .in('status', ['active', 'designate', 'ended'])
   if (termId) q = q.eq('term_id', termId)
   if (academicYear) q = q.eq('academic_year', academicYear)
@@ -261,12 +261,22 @@ export async function getMyCouncilApplications(studentId, termId) {
 
 export async function getMyCouncilMembership(studentId, termId) {
   let q = supabase.from('council_members')
-    .select('id, term_id, position_id, status, source, term_start_date, term_end_date, can_create_activities, council_positions(position_name, gender, is_elected)')
+    .select('id, term_id, position_id, status, source, position_role, term_start_date, term_end_date, can_create_activities, council_positions(position_name, gender, is_elected)')
     .eq('student_id', studentId).in('status', ['active', 'designate'])
   if (termId) q = q.eq('term_id', termId)
   const { data, error } = await q
   if (error) throw error
   return data ?? []
+}
+
+// มอบ/ถอนสิทธิ์นักเรียนสภาให้ทำหน้าที่สแกนละหมาด — RPC จำกัดผู้เรียกเป็นครู/หัวหน้าฝ่ายอีบาดัต
+export async function setCouncilPrayerScannerPermissions(studentIds, enabled) {
+  const { data, error } = await supabase.rpc('set_council_prayer_scanners', {
+    p_student_ids: [...new Set((studentIds ?? []).map(Number).filter(Number.isFinite))],
+    p_enabled: !!enabled,
+  })
+  if (error) throw error
+  return data
 }
 
 // มอบ/ถอนสิทธิ์ "สร้างกิจกรรมเอง" — RPC เช็คสิทธิ์ผู้เรียกฝั่ง DB เอง (แอดมิน หรือประธานสภาเพศเดียวกับเป้าหมาย)

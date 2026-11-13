@@ -54,6 +54,7 @@ import {
   updateMySignature, updateMyPhoto,
   searchStudentsForCouncil, addCouncilMemberManual, updateCouncilMember, removeCouncilMember,
   setMemberCanCreateActivities, getMyActivityAttendanceSummary,
+  setCouncilPrayerScannerPermissions,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -83,6 +84,7 @@ const APPLICATION_STATUS_LABEL = {
 }
 
 let ctx = null
+const selectedIbadatScannerStudentIds = new Set()
 const initialRouteParams = new URLSearchParams(window.location.search)
 const initialRouteView = initialRouteParams.get('view')
 const hasExplicitViewRoute = Boolean(initialRouteView)
@@ -375,6 +377,9 @@ async function init() {
   // (เดี่ยว) และ teacher.positions (array) เพราะข้อมูลจริงมีทั้งสองแบบปนกัน (ดู feedback_supervisor_position_rls_column)
   const isCouncilAdvisor = role === 'teacher' && !!teacher &&
     (teacher.position === 'council_advisor' || (teacher.positions ?? []).includes('council_advisor'))
+  const canScanIbadatPrayer = hasIbadatPrayerScannerAccess({
+    role, isAdmin, isCouncilAdvisor, advisorPositionIds, membership, positions,
+  })
   // แอดมินและครูที่ปรึกษาสภาสร้างกิจกรรมได้เหมือนผู้ดูแล ส่วนสมาชิกนักเรียน
   // ต้องเป็นประธานหรือได้รับมอบสิทธิ์ can_create_activities ในสมาชิกภาพที่ active
   const canCreateActivities = isAdmin || isCouncilAdvisor || isChair ||
@@ -393,7 +398,7 @@ async function init() {
 
   ctx = {
     role, isAdmin, isChair, isCouncilAdvisor, isStudentAffairsHead, isSchoolDirector, isExecutive,
-    canCreateActivities, chairGender,
+    canCreateActivities, chairGender, canScanIbadatPrayer,
     student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases, advisorPositionIds,
   }
@@ -417,6 +422,7 @@ async function refreshPendingEndorsements() {
 async function switchCouncilTerm(termId) {
   const term = councilTerms.find(t => String(t.id) === String(termId))
   if (!term || String(term.id) === String(selectedCouncilTermId)) return
+  selectedIbadatScannerStudentIds.clear()
   selectedCouncilTermId = term.id
   electionYear = Number(term.academic_year)
   const [members, elections, applications, membership] = await Promise.all([
@@ -431,6 +437,10 @@ async function switchCouncilTerm(termId) {
     ctx.isChair = membership.some(m => m.status === 'active' && m.council_positions?.is_elected)
     ctx.canCreateActivities = ctx.isChair || membership.some(m => m.status === 'active' && m.can_create_activities)
     ctx.chairGender = membership.find(m => m.status === 'active' && m.council_positions?.is_elected)?.council_positions?.gender ?? null
+    ctx.canScanIbadatPrayer = hasIbadatPrayerScannerAccess({
+      role: ctx.role, isAdmin: ctx.isAdmin, isCouncilAdvisor: ctx.isCouncilAdvisor,
+      advisorPositionIds: ctx.advisorPositionIds, membership, positions: ctx.positions,
+    })
   }
   adminApps = null; activities = null; ylaEvents = null; docs = null
   delete teamProposalsByGender.M; delete teamProposalsByGender.W
@@ -497,6 +507,17 @@ const NAV_GROUPS = {
   system: { label: 'ระบบ', icon: '⚙️' },
 }
 
+function hasIbadatPrayerScannerAccess({ role, isCouncilAdvisor, advisorPositionIds = [], membership = [], positions = [] }) {
+  const ibadatPositionIds = new Set(positions
+    .filter(position => position.is_active && position.position_name === 'ฝ่ายอีบาดัต')
+    .map(position => Number(position.id)))
+  const assignedAdvisor = isCouncilAdvisor && advisorPositionIds.some(id => ibadatPositionIds.has(Number(id)))
+  const assignedHead = role === 'student' && membership.some(member =>
+    member.status === 'active' && member.position_role === 'head' &&
+    member.council_positions?.position_name === 'ฝ่ายอีบาดัต')
+  return !!(assignedAdvisor || assignedHead)
+}
+
 function getNavItems() {
   // เมนูหลัก = ดูภาพรวมสภานักเรียนเท่านั้น ("สมัคร" ไม่อยู่ที่นี่ — เป็นปุ่มบนหน้าภาพรวมแทน)
   // ⚠️ label "หน้าหลัก" ไม่ใช่ "ภาพรวม" — "ภาพรวม" ชื่อนี้สงวนไว้สำหรับหน้าแดชบอร์ดสถิติของ
@@ -505,6 +526,7 @@ function getNavItems() {
   // งานสภา — สาธารณะ/สมาชิกสภา
   items.push({ id: 'news', icon: '📣', label: 'ประกาศ', group: 'council' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภาของเรา', group: 'council' })
+  if (ctx.canScanIbadatPrayer) items.push({ id: 'ibadatScanner', icon: '🕌', label: 'ผู้สแกนละหมาด', group: 'council' })
   items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม/การเข้าร่วม', group: 'council' })
   if (ctx.isChair || ctx.isAdmin || ctx.isCouncilAdvisor) items.push({ id: 'chairteam', icon: '👔', label: 'เสนอคณะทำงาน', group: 'council' })
   if (ctx.isChair) items.push({ id: 'assignments', icon: '📌', label: 'มอบหมายงาน', group: 'council' })
@@ -4645,6 +4667,66 @@ function renderChairTeamView() {
   return html || `<p class="text-sm text-[var(--muted-2)] text-center py-16">ยังไม่มีรายการรอดำเนินการ</p>`
 }
 
+function renderIbadatPrayerScannerView() {
+  if (!ctx.canScanIbadatPrayer) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะครูที่ปรึกษาฝ่ายอีบาดัตหรือหัวหน้าฝ่ายอีบาดัตที่ได้รับแต่งตั้งในวาระปัจจุบัน</p>`
+  const activeTerm = councilTerms.find(term => term.status === 'active')
+  if (!activeTerm || String(activeTerm.id) !== String(selectedCouncilTermId)) {
+    return `<section class="max-w-4xl mx-auto rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-6"><h2 class="text-lg font-extrabold text-[var(--ink)]">🕌 มอบหมายผู้สแกนละหมาด</h2><p class="mt-2 text-sm text-[var(--muted)]">กรุณาเลือกวาระปัจจุบันจากตัวเลือกด้านบน เพื่อจัดการรายชื่อผู้สแกนของสภาชุดปัจจุบัน</p></section>`
+  }
+  const candidates = ctx.members.filter(member => member.status === 'active' && Number(member.term_id) === Number(activeTerm.id) && member.students)
+  const selectedCount = candidates.filter(member => selectedIbadatScannerStudentIds.has(Number(member.student_id))).length
+  const candidateRows = candidates.length ? candidates.map(member => {
+    const student = member.students
+    const selected = selectedIbadatScannerStudentIds.has(Number(member.student_id))
+    return `<label class="flex items-center gap-3 rounded-xl border border-[var(--line-soft)] bg-[var(--surface)] px-3 py-3 hover:bg-[var(--surface-2)]"><input type="checkbox" class="ibadat-scanner-select h-4 w-4 accent-emerald-700" data-student-id="${Number(member.student_id)}" ${selected ? 'checked' : ''}><span class="min-w-0 flex-1"><span class="block truncate text-sm font-bold text-[var(--ink)]">${esc(student.full_name || '—')}</span><span class="block text-xs text-[var(--muted)]">${esc(student.student_code || '—')} · ${esc(student.main_room || 'ไม่ระบุห้อง')} · ${esc(member.council_positions?.position_name || 'สมาชิกสภา')}</span></span><span class="shrink-0 rounded-full px-2 py-1 text-[0.6875rem] font-bold ${student.can_scan_prayer ? 'bg-emerald-50 text-emerald-700' : 'bg-[var(--surface-2)] text-[var(--muted)]'}">${student.can_scan_prayer ? 'ได้รับสิทธิ์สแกน' : 'ยังไม่มีสิทธิ์'}</span></label>`
+  }).join('') : `<p class="py-8 text-center text-sm text-[var(--muted)]">ไม่พบสมาชิกสภาที่ดำรงตำแหน่งในวาระปัจจุบัน</p>`
+  return `<div class="max-w-5xl mx-auto space-y-4"><section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 sm:p-6"><div class="flex flex-wrap items-start justify-between gap-4"><div><h2 class="text-lg font-extrabold text-[var(--ink)]">🕌 มอบหมายผู้สแกนละหมาด</h2><p class="mt-1 text-sm text-[var(--muted)]">เลือกสมาชิกสภาที่จะทำหน้าที่สแกน สิทธิ์จะเริ่มใช้ได้ตามช่วงเวลาและเงื่อนไขสแกนละหมาดของระบบ</p></div><button type="button" class="btn-open-council-prayer-scan shrink-0 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">📷 เปิดหน้าสแกน</button></div><div class="mt-5 flex flex-wrap items-center gap-2"><button type="button" id="btn-select-ibadat-scanners" class="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--surface-2)]">เลือกสมาชิกทั้งหมด</button><span class="text-xs text-[var(--muted)]">เลือกแล้ว <strong id="ibadat-scanner-selected-count">${selectedCount}</strong> คน</span><div class="ml-auto flex flex-wrap gap-2"><button type="button" class="btn-set-ibadat-scanner rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40" data-enabled="true" ${selectedCount ? '' : 'disabled'}>มอบหมายผู้สแกน</button><button type="button" class="btn-set-ibadat-scanner rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-40" data-enabled="false" ${selectedCount ? '' : 'disabled'}>ถอนสิทธิ์ที่เลือก</button></div></div></section><section id="ibadat-scanner-candidate-list" class="grid grid-cols-1 gap-2 md:grid-cols-2">${candidateRows}</section></div>`
+}
+
+async function setSelectedIbadatScannerPermissions(enabled, button) {
+  const ids = [...selectedIbadatScannerStudentIds].filter(id => ctx.members.some(member =>
+    Number(member.student_id) === id && member.status === 'active' && Number(member.term_id) === Number(selectedCouncilTermId)))
+  if (!ids.length) return showToast('กรุณาเลือกสมาชิกสภาก่อน', 'warning')
+  const actionLabel = enabled ? 'มอบหมายสิทธิ์ผู้สแกน' : 'ถอนสิทธิ์ผู้สแกน'
+  if (!confirm(`ยืนยัน${actionLabel}ให้สมาชิกสภา ${ids.length} คนหรือไม่?`)) return
+  button.disabled = true
+  button.textContent = 'กำลังบันทึก…'
+  try {
+    await setCouncilPrayerScannerPermissions(ids, enabled)
+    ctx.members.forEach(member => {
+      if (ids.includes(Number(member.student_id)) && member.students) member.students.can_scan_prayer = enabled
+    })
+    ids.forEach(id => selectedIbadatScannerStudentIds.delete(id))
+    showToast(`${actionLabel} ${ids.length} คนสำเร็จ`, 'success')
+    render()
+  } catch (error) {
+    showToast(`${actionLabel}ไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error')
+    button.disabled = false
+    button.textContent = enabled ? 'มอบหมายผู้สแกน' : 'ถอนสิทธิ์ที่เลือก'
+  }
+}
+
+async function openCouncilIbadatPrayerScanner() {
+  if (!ctx?.canScanIbadatPrayer) return showToast('บัญชีนี้ไม่มีสิทธิ์สแกนละหมาดฝ่ายอีบาดัต', 'error')
+  const actor = ctx.role === 'teacher' ? ctx.teacher : ctx.student
+  if (!actor) return showToast('โหลดข้อมูลผู้ใช้งานไม่สำเร็จ กรุณาออกจากระบบแล้วเข้าใหม่', 'error')
+  const overlay = document.createElement('div')
+  overlay.id = 'council-ibadat-prayer-scanner-overlay'
+  overlay.className = 'fixed inset-0 z-[200] overflow-y-auto bg-white'
+  overlay.innerHTML = '<div id="stu-content" class="min-h-screen w-full bg-white"></div>'
+  document.body.append(overlay)
+  try {
+    const { renderStudentPrayerScanner } = await import('./student-views.js')
+    await renderStudentPrayerScanner(actor, {
+      authorizedByCouncil: true,
+      onBack: () => overlay.remove(),
+    })
+  } catch (error) {
+    overlay.remove()
+    showToast('เปิดหน้าสแกนไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+  }
+}
+
 const SETTINGS_TAB_RENDERERS = {
   general: renderSettingsGeneral, positions: renderSettingsPositions,
   criteria: renderSettingsCriteria, modules: renderSettingsModules,
@@ -5280,6 +5362,7 @@ const VIEW_RENDERERS = {
   result: renderElectionView,
   settings: renderSettingsView,
   chairteam: renderChairTeamView,
+  ibadatScanner: renderIbadatPrayerScannerView,
   myduty: renderMyDutyView,
   mysummary: renderMySummaryView,
   assignments: renderAssignmentsView,
@@ -5540,6 +5623,33 @@ function wireContentEvents() {
   })
   document.querySelectorAll('.goto-view').forEach(btn => {
     btn.addEventListener('click', () => { setActiveView(btn.dataset.view); render() })
+  })
+  document.querySelectorAll('.btn-open-council-prayer-scan').forEach(btn => {
+    btn.addEventListener('click', () => openCouncilIbadatPrayerScanner())
+  })
+  const updateIbadatScannerSelectionUI = () => {
+    const count = selectedIbadatScannerStudentIds.size
+    const countEl = document.getElementById('ibadat-scanner-selected-count')
+    if (countEl) countEl.textContent = count
+    document.querySelectorAll('.btn-set-ibadat-scanner').forEach(button => { button.disabled = count === 0 })
+  }
+  document.querySelectorAll('.ibadat-scanner-select').forEach(input => {
+    input.addEventListener('change', () => {
+      const id = Number(input.dataset.studentId)
+      if (input.checked) selectedIbadatScannerStudentIds.add(id)
+      else selectedIbadatScannerStudentIds.delete(id)
+      updateIbadatScannerSelectionUI()
+    })
+  })
+  document.getElementById('btn-select-ibadat-scanners')?.addEventListener('click', () => {
+    document.querySelectorAll('.ibadat-scanner-select').forEach(input => {
+      input.checked = true
+      selectedIbadatScannerStudentIds.add(Number(input.dataset.studentId))
+    })
+    updateIbadatScannerSelectionUI()
+  })
+  document.querySelectorAll('.btn-set-ibadat-scanner').forEach(button => {
+    button.addEventListener('click', () => setSelectedIbadatScannerPermissions(button.dataset.enabled === 'true', button))
   })
   document.querySelectorAll('.roster-gender-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => { rosterGenderTab = btn.dataset.gender; render() })

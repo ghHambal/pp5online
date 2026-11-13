@@ -8859,6 +8859,7 @@ export async function renderPrayerAdmin(teacher) {
     `
 
     let _foundScanners = []
+    const _selectedScannerKeys = new Set()
     let _scannerFilterState = {
       audience: 'all',
       type: '',
@@ -9004,6 +9005,8 @@ export async function renderPrayerAdmin(teacher) {
           searchText: [t.teacher_code, t.full_name, t.dept, 'ครู คุณครู'].join(' ').toLowerCase()
         }))
         const allRows = [...studentRows, ...teacherRows]
+        const activeSelectionKeys = new Set(allRows.map(row => `${row.type}:${row.code}`))
+        _selectedScannerKeys.forEach(key => { if (!activeSelectionKeys.has(key)) _selectedScannerKeys.delete(key) })
         const roomOptions = _opts(allRows.map(s => s.roomInfo))
         const maleCount = studentRows.filter(s => s.gender === 'ชาย').length
         const femaleCount = studentRows.filter(s => s.gender === 'หญิง').length
@@ -9059,6 +9062,10 @@ export async function renderPrayerAdmin(teacher) {
                 <button type="button" id="btn-reset-scanner-filters"
                   class="px-3 py-2 rounded-xl border border-gray-200 bg-white text-gray-500 text-xs font-bold hover:bg-gray-50 transition">
                   ล้างตัวกรอง
+                </button>
+                <button type="button" id="btn-revoke-selected-scanners" disabled
+                  class="px-3 py-2 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:bg-red-100 transition">
+                  ถอนสิทธิ์ที่เลือก <span id="scanner-selected-count">0</span> คน
                 </button>
                 <span class="text-xs text-gray-400">แสดง <span id="scanner-filtered-count" class="font-bold text-indigo-600">0</span> คน · <span id="scanner-active-audience-label">${_scannerAudienceLabel(_scannerFilterState.audience)}</span></span>
               </div>
@@ -9116,9 +9123,10 @@ export async function renderPrayerAdmin(teacher) {
             : null
 
           tableWrap.innerHTML = `
-            <table class="w-full text-xs min-w-[980px]">
+            <table class="w-full text-xs min-w-[1020px]">
               <thead class="bg-gray-50 border-b border-gray-100 text-gray-500">
                 <tr>
+                  <th class="px-3 py-3 text-center align-top"><input type="checkbox" id="scanner-select-visible" aria-label="เลือกผู้สแกนเนอร์ที่แสดงอยู่" /></th>
                   <th class="px-4 py-3 text-left align-top">
                     <span class="block mb-1">ประเภท</span>
                     <select id="scanner-filter-type" class="w-28 border border-gray-200 rounded-lg px-2 py-1 bg-white text-[11px] focus:outline-none">
@@ -9173,6 +9181,7 @@ export async function renderPrayerAdmin(teacher) {
                   if (row.type === 'teacher') {
                     return `
                       <tr class="hover:bg-gray-50 transition">
+                        <td class="px-3 py-2 text-center"><input type="checkbox" class="scanner-row-select" data-key="teacher:${_esc(row.code)}" aria-label="เลือก ${_esc(row.name)}" ${_selectedScannerKeys.has(`teacher:${row.code}`) ? 'checked' : ''} /></td>
                         <td class="px-4 py-2"><span class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-100">คุณครู</span></td>
                         <td class="px-2 py-2 font-mono text-gray-700">${_esc(row.code)}</td>
                         <td class="px-3 py-2">
@@ -9212,6 +9221,7 @@ export async function renderPrayerAdmin(teacher) {
 
                   return `
                     <tr class="hover:bg-gray-50 transition">
+                      <td class="px-3 py-2 text-center"><input type="checkbox" class="scanner-row-select" data-key="student:${_esc(row.code)}" aria-label="เลือก ${_esc(row.name)}" ${_selectedScannerKeys.has(`student:${row.code}`) ? 'checked' : ''} /></td>
                       <td class="px-4 py-2">
                         <span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-100">นักเรียน</span>
                       </td>
@@ -9251,12 +9261,38 @@ export async function renderPrayerAdmin(teacher) {
                   `
                 }).join('') : `
                   <tr>
-                    <td colspan="8" class="px-4 py-10 text-center text-gray-400 text-sm">ไม่พบรายชื่อที่ตรงกับตัวกรอง</td>
+                  <td colspan="9" class="px-4 py-10 text-center text-gray-400 text-sm">ไม่พบรายชื่อที่ตรงกับตัวกรอง</td>
                   </tr>
                 `}
               </tbody>
             </table>
           `
+
+          const visibleKeys = rows.map(row => `${row.type}:${row.code}`)
+          const updateSelectionControls = () => {
+            const selectedVisibleCount = visibleKeys.filter(key => _selectedScannerKeys.has(key)).length
+            const selectVisible = document.getElementById('scanner-select-visible')
+            if (selectVisible) {
+              selectVisible.checked = visibleKeys.length > 0 && selectedVisibleCount === visibleKeys.length
+              selectVisible.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleKeys.length
+            }
+            const count = document.getElementById('scanner-selected-count')
+            if (count) count.textContent = _selectedScannerKeys.size
+            const revokeButton = document.getElementById('btn-revoke-selected-scanners')
+            if (revokeButton) revokeButton.disabled = _selectedScannerKeys.size === 0
+          }
+          tableWrap.querySelectorAll('.scanner-row-select').forEach(input => {
+            input.addEventListener('change', () => {
+              if (input.checked) _selectedScannerKeys.add(input.dataset.key)
+              else _selectedScannerKeys.delete(input.dataset.key)
+              updateSelectionControls()
+            })
+          })
+          document.getElementById('scanner-select-visible')?.addEventListener('change', event => {
+            visibleKeys.forEach(key => event.currentTarget.checked ? _selectedScannerKeys.add(key) : _selectedScannerKeys.delete(key))
+            _renderScannersTable()
+          })
+          updateSelectionControls()
 
           ;['scanner-filter-type', 'scanner-filter-room', 'scanner-filter-gender', 'scanner-filter-permission', 'scanner-filter-day'].forEach(id => {
             document.getElementById(id)?.addEventListener('change', e => {
@@ -9328,11 +9364,11 @@ export async function renderPrayerAdmin(teacher) {
             btn.addEventListener('click', async () => {
               const type = btn.dataset.type
               const name = btn.dataset.name
+              const code = btn.dataset.code
               if (!confirm(`ถอนสิทธิ์สแกนเนอร์ของ "${name}" หรือไม่?`)) return
               try {
                 if (type === 'student') {
                   const sid = +btn.dataset.id
-                  const code = btn.dataset.code
                   const { error } = await supabase.from('students').update({ can_scan_prayer: false }).eq('id', sid)
                   if (error) throw error
                   await _saveExtendedScannerCode(code, false)
@@ -9345,13 +9381,13 @@ export async function renderPrayerAdmin(teacher) {
                     await updateSystemConfig(dayKey, updatedCodes.join(','))
                   }
                 } else {
-                  const code = btn.dataset.code
                   const currentConfig = await getSystemConfig().catch(() => ({}))
                   const updatedTeachers = _scannerCodeList(currentConfig.prayerScannerTeachers)
                     .filter(c => c !== code)
 
                   await updateSystemConfig('prayerScannerTeachers', updatedTeachers.join(','))
                 }
+                _selectedScannerKeys.delete(`${type}:${code}`)
                 showToast(`ถอนสิทธิ์ "${name}" สำเร็จ`, 'success')
                 _loadScannersList()
               } catch(err) {
@@ -9384,6 +9420,47 @@ export async function renderPrayerAdmin(teacher) {
         })
 
         _renderScannersTable()
+
+        document.getElementById('btn-revoke-selected-scanners')?.addEventListener('click', async event => {
+          const selectedRows = allRows.filter(row => _selectedScannerKeys.has(`${row.type}:${row.code}`))
+          if (!selectedRows.length) return
+          const names = selectedRows.slice(0, 5).map(row => row.name).join(', ')
+          const extra = selectedRows.length > 5 ? ` และอีก ${selectedRows.length - 5} คน` : ''
+          if (!confirm(`ยืนยันถอนสิทธิ์สแกนละหมาด ${selectedRows.length} คน?\n${names}${extra}`)) return
+          const button = event.currentTarget
+          button.disabled = true
+          button.textContent = 'กำลังถอนสิทธิ์...'
+          try {
+            const selectedStudents = selectedRows.filter(row => row.type === 'student')
+            const selectedTeachers = selectedRows.filter(row => row.type === 'teacher')
+            if (selectedStudents.length) {
+              const { error } = await supabase.from('students').update({ can_scan_prayer: false }).in('id', selectedStudents.map(row => row.id))
+              if (error) throw error
+            }
+            const currentConfig = await getSystemConfig().catch(() => ({}))
+            const studentCodes = new Set(selectedStudents.map(row => row.code))
+            if (studentCodes.size) {
+              const extended = _scannerCodeList(currentConfig.prayerExtendedScannerStudents).filter(code => !studentCodes.has(code))
+              await updateSystemConfig('prayerExtendedScannerStudents', extended.join(','))
+              for (const day of _scannerDays) {
+                const key = `prayerScanner${day.key}`
+                const updated = _scannerCodeList(currentConfig[key]).filter(code => !studentCodes.has(code))
+                await updateSystemConfig(key, updated.join(','))
+              }
+            }
+            const teacherCodes = new Set(selectedTeachers.map(row => row.code))
+            if (teacherCodes.size) {
+              const updated = _scannerCodeList(currentConfig.prayerScannerTeachers).filter(code => !teacherCodes.has(code))
+              await updateSystemConfig('prayerScannerTeachers', updated.join(','))
+            }
+            _selectedScannerKeys.clear()
+            showToast(`ถอนสิทธิ์สแกนละหมาดสำเร็จ ${selectedRows.length} คน`, 'success')
+            await _loadScannersList()
+          } catch (err) {
+            showToast('ถอนสิทธิ์บางรายการไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+            _loadScannersList()
+          }
+        })
 
       } catch(err) {
         listWrap.innerHTML = `<div class="p-8 text-center text-red-400 text-sm">โหลดรายการล้มเหลว: ${err.message}</div>`
