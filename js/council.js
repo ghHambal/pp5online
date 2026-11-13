@@ -2131,7 +2131,7 @@ function printYlaAttendanceRoster(event, detail, { persistSettings = true, setti
     const printableHeight = orientation === 'landscape' ? '186mm' : '273mm'
     const bodyFont = YLA_ROSTER_FONTS[fontFamily].css
     const titleFont = YLA_ROSTER_FONTS[titleFontFamily].css
-    const previewHtml = `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800;900&family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap"><title>${esc(title)}</title><style>@page{size:A4 ${orientation};margin:12mm}*{box-sizing:border-box}html{background:#e5e7eb}body{font-family:${bodyFont};color:#111;margin:0;padding:12px;background:#e5e7eb}.paper{width:${printableWidth};height:${printableHeight};position:relative;overflow:hidden;margin:0 auto 12px;padding:0;background:#fff;box-shadow:0 2px 12px #0002}.header{text-align:center;border-bottom:2px solid #111;padding:0 0 12px;margin-bottom:14px}.logo{height:68px;max-width:150px;object-fit:contain;display:block;margin:0 auto 8px}.title{font-family:${titleFont};font-weight:${titleWeight};font-size:${fontSize + 5}pt;line-height:1.45;margin:0 auto 6px;white-space:pre-line;overflow-wrap:anywhere}.subtitle{font-size:${fontSize + 1}pt;line-height:1.5;white-space:pre-line;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #333;padding:7px 6px;font-size:${fontSize}pt;line-height:1.35;white-space:normal;overflow-wrap:anywhere;vertical-align:middle}td{height:${rowHeight}px}th{background:#eee;text-align:center}tbody tr{break-inside:avoid;page-break-inside:avoid}.empty{text-align:center;padding:20px}thead{display:table-header-group}.roster-remove-control{display:inline-block;margin-left:5px;border:1px solid #fecaca;border-radius:5px;background:#fef2f2;color:#b91c1c;padding:2px 6px;font:700 9pt ${bodyFont};cursor:pointer}.print-note{position:absolute;bottom:2mm;left:0;right:0;font-size:10pt;text-align:center;margin:0}.paper:not(:last-child){break-after:page;page-break-after:always}@media print{html,body{background:#fff}body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.roster-remove-control{display:none!important}.paper{width:auto;height:${printableHeight};min-height:0;margin:0;padding:0;box-shadow:none}}</style></head><body><main class="paper"><header class="header">${logo ? `<img class="logo" src="${esc(logo)}" alt="ตราโรงเรียน">` : ''}<h1 class="title">${esc(title)}</h1>${subtitle ? `<div class="subtitle">${esc(subtitle)}</div>` : ''}</header><table><thead><tr>${head}</tr></thead><tbody>${bodyRows}${emptyRow}</tbody></table><p class="print-note">ใบลงทะเบียนเข้าร่วมกิจกรรม · ${esc(new Date().toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'long' }))}</p></main></body></html>`
+    const previewHtml = `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800;900&family=Noto+Sans+Thai:wght@300;400;500;600;700;800;900&display=swap"><title>${esc(title)}</title><style>@page{size:A4 ${orientation};margin:12mm}*{box-sizing:border-box}html{background:#e5e7eb}body{font-family:${bodyFont};color:#111;margin:0;padding:12px;background:#e5e7eb}.paper{width:${printableWidth};height:${printableHeight};position:relative;overflow:hidden;margin:0 auto 12px;padding:0;background:#fff;box-shadow:0 2px 12px #0002}.header{text-align:center;border-bottom:2px solid #111;padding:0 0 12px;margin-bottom:14px}.logo{height:68px;max-width:150px;object-fit:contain;display:block;margin:0 auto 8px}.title{font-family:${titleFont};font-weight:${titleWeight};font-size:${fontSize + 5}pt;line-height:1.45;margin:0 auto 6px;white-space:pre-line;overflow-wrap:anywhere}.subtitle{font-size:${fontSize + 1}pt;line-height:1.5;white-space:pre-line;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;table-layout:fixed}th,td{border:1px solid #333;padding:7px 6px;font-size:${fontSize}pt;line-height:1.35;white-space:normal;overflow-wrap:anywhere;vertical-align:middle}td{height:${rowHeight}px}th{background:#eee;text-align:center}tbody tr{break-inside:avoid;page-break-inside:avoid}.empty{text-align:center;padding:20px}thead{display:table-header-group}.roster-remove-control{display:inline-block;margin-left:5px;border:1px solid #fecaca;border-radius:5px;background:#fef2f2;color:#b91c1c;padding:2px 6px;font:700 9pt ${bodyFont};cursor:pointer}.paper:not(:last-child){break-after:page;page-break-after:always}@media print{html,body{background:#fff}body{padding:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}.roster-remove-control{display:none!important}.paper{width:auto;height:${printableHeight};min-height:0;margin:0;padding:0;box-shadow:none}}</style></head><body><main class="paper"><header class="header">${logo ? `<img class="logo" src="${esc(logo)}" alt="ตราโรงเรียน">` : ''}<h1 class="title">${esc(title)}</h1>${subtitle ? `<div class="subtitle">${esc(subtitle)}</div>` : ''}</header><table><thead><tr>${head}</tr></thead><tbody>${bodyRows}${emptyRow}</tbody></table></main></body></html>`
     previewReady = new Promise(resolve => {
       iframe.addEventListener('load', async () => {
         try {
@@ -2152,14 +2152,13 @@ function printYlaAttendanceRoster(event, detail, { persistSettings = true, setti
             const rows = [...body.rows]
             const header = firstPage.querySelector('.header')
             const tableHead = table.querySelector('thead')
-            const footer = firstPage.querySelector('.print-note')
             const pageTemplate = firstPage.cloneNode(false)
             const createPage = () => {
               const page = pageTemplate.cloneNode(false)
               page.append(header.cloneNode(true))
               const pageTable = table.cloneNode(false)
               pageTable.append(tableHead.cloneNode(true), doc.createElement('tbody'))
-              page.append(pageTable, footer.cloneNode(true))
+              page.append(pageTable)
               doc.body.append(page)
               return { page, tbody: pageTable.querySelector('tbody') }
             }
@@ -2168,9 +2167,8 @@ function printYlaAttendanceRoster(event, detail, { persistSettings = true, setti
             for (const row of rows) {
               currentPage.tbody.append(row)
               const pageRect = currentPage.page.getBoundingClientRect()
-              const footerHeight = currentPage.page.querySelector('.print-note').getBoundingClientRect().height
               const rowBottom = row.getBoundingClientRect().bottom
-              const availableBottom = pageRect.bottom - footerHeight - 12
+              const availableBottom = pageRect.bottom - 12
               if (rowBottom > availableBottom && currentPage.tbody.rows.length > 1) {
                 currentPage.tbody.removeChild(row)
                 currentPage = createPage()
