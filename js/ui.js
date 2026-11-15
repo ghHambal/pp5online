@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1080'
+import { APP_VERSION } from './version.js?v=10.22.1081'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1081': [
+    'เพิ่มปุ่มพิมพ์ใบเช็ครายชื่อเวรรอบเดือน พร้อมรหัส ชื่อ ตำแหน่ง และช่องเช็ค โดยไม่แสดงห้องเรียน',
+  ],
   '10.22.1080': [
     'เพิ่มหน้าบันทึกเวรสภารายวันสำหรับกิจกรรมเข้าแถว ดุฮรี และอัศรี พร้อมจำกัดรายชื่อและสิทธิ์บันทึกตามฝ่ายที่ครูดูแลหรือเพศของประธาน',
     'แสดงสถิติการมาปฏิบัติ สาย ขาด และอัตราปฏิบัติในหน้าประเมินสมาชิกสภา',

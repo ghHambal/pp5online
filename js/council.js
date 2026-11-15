@@ -3702,6 +3702,7 @@ function renderDailyDutyTracker() {
   return `<div class="space-y-4">
     <section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-4 md:p-6">
       <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-bold">🗓️ บันทึกการปฏิบัติหน้าที่รายวัน</h2><p class="text-xs text-[var(--muted)] mt-1">ลงผลเวรเข้าแถวและเวรช่วงละหมาด เพื่อใช้ประกอบการประเมินสมาชิกสภา</p></div><span class="text-xs rounded-full bg-[var(--primary-soft)] text-[var(--primary)] px-3 py-1.5 font-bold">${members.length} สมาชิกในขอบเขตที่ดูแล</span></div>
+      <div class="flex justify-end mt-3"><button type="button" id="council-duty-print-monthly" class="px-4 py-2 rounded-xl border border-[var(--line)] text-xs font-bold">🖨️ พิมพ์ใบเช็ครายเดือน</button></div>
       <div class="grid sm:grid-cols-2 gap-3 mt-4"><label class="text-xs font-bold">วันที่<input id="council-duty-date" type="date" value="${esc(dailyDutyDate)}" class="block w-full mt-1 border border-[var(--line)] rounded-xl px-3 py-2.5 bg-[var(--surface)]"></label><label class="text-xs font-bold">หน้าที่<select id="council-duty-type" class="block w-full mt-1 border border-[var(--line)] rounded-xl px-3 py-2.5 bg-[var(--surface)]">${Object.entries(typeLabels).map(([key, label]) => `<option value="${key}" ${dailyDutyType === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>
       <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">${[['present','มาปฏิบัติ'],['late','มาสาย'],['absent','ขาด'],['excused','ลา/ได้รับยกเว้น']].map(([status,label]) => `<div class="rounded-xl border border-[var(--line-soft)] p-3"><p class="text-xs text-[var(--muted)]">${label}</p><p class="text-xl font-bold">${count(status)}</p></div>`).join('')}</div>
       <div class="flex flex-wrap gap-2 mt-4"><button type="button" class="council-duty-mark-all px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold" data-status="present">ทำเครื่องหมายทุกคนว่ามาปฏิบัติ</button><button type="button" class="council-duty-mark-all px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold" data-status="absent">ทำเครื่องหมายทุกคนว่าขาด</button></div>
@@ -3712,6 +3713,27 @@ function renderDailyDutyTracker() {
     </section>
     ${isStaff ? `<section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-4"><h3 class="font-bold">📊 สรุปผลเวรสำหรับประกอบการประเมิน</h3><p class="text-xs text-[var(--muted)] mt-1">อัตรามาปฏิบัติ = (มาปฏิบัติ + มาสาย) ÷ จำนวนเวรที่บันทึก โดยไม่นับรายการลา/ได้รับยกเว้น</p><div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3">${members.map(member => { const summary = dutySummaryByMember[member.id]; return `<div class="rounded-xl border border-[var(--line-soft)] p-3"><p class="text-xs font-bold">${esc(member.students?.full_name || '—')}</p><p class="text-xs text-[var(--muted)] mt-1">เวรที่บันทึก ${Number(summary?.total_count || 0)} · มาปฏิบัติ ${Number(summary?.present_count || 0)} · สาย ${Number(summary?.late_count || 0)} · ขาด ${Number(summary?.absent_count || 0)}${Number(summary?.excused_count || 0) ? ` · ยกเว้น ${Number(summary.excused_count)}` : ''}</p><p class="text-sm font-bold text-[var(--primary)] mt-1">อัตราปฏิบัติ ${summary?.duty_rate == null ? '—' : `${summary.duty_rate}%`}</p></div>` }).join('')}</div></section>` : ''}
   </div>`
+}
+
+function printCouncilMonthlyDutyRoster() {
+  const isStaff = ctx.isAdmin || ctx.isCouncilAdvisor
+  const managerGender = ctx.isChair && !isStaff ? ctx.chairGender : null
+  let members = membersVisibleToCouncilAdvisor(ctx.members).filter(member => member.status === 'active')
+  if (managerGender) members = members.filter(member => normalizeGender(member.council_positions?.gender) === normalizeGender(managerGender))
+  members = [...members].sort((a, b) => String(a.students?.student_code || '').localeCompare(String(b.students?.student_code || ''), 'th'))
+  if (!members.length) {
+    showToast('ไม่มีสมาชิกในขอบเขตนี้สำหรับพิมพ์', 'warning')
+    return
+  }
+  const selectedDate = new Date(`${dailyDutyDate}T00:00:00`)
+  const monthLabel = Number.isNaN(selectedDate.getTime())
+    ? 'เดือนที่เลือก'
+    : selectedDate.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
+  const typeLabels = { assembly: 'กิจกรรมเข้าแถว', dhuhr: 'เวรช่วงละหมาดดุฮรี', asr: 'เวรช่วงละหมาดอัศรี' }
+  const rows = members.map((member, index) => `<tr><td class="number">${index + 1}</td><td>${esc(member.students?.student_code || '—')}</td><td>${esc(member.students?.full_name || '—')}</td><td>${esc(member.council_positions?.position_name || '—')}</td><td class="check-cell"></td></tr>`).join('')
+  openHtmlPrintOverlay(`<!doctype html><html lang="th"><head><meta charset="utf-8"><title>ใบเช็ครายชื่อเวรสภานักเรียน ${esc(monthLabel)}</title><style>
+    @page{size:A4 portrait;margin:12mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;color:#111;font-size:12px;margin:0}h1{text-align:center;font-size:19px;margin:0 0 6px}.meta{text-align:center;margin:4px 0 14px;color:#333}table{width:100%;border-collapse:collapse}th,td{border:1px solid #555;padding:7px 6px;vertical-align:middle}th{background:#eee;text-align:center}.number{text-align:center;width:8%}.check-cell{width:18%;height:30px}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}.signature{margin-top:22px;text-align:right}@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+    </style></head><body><h1>ใบเช็ครายชื่อการปฏิบัติหน้าที่สภานักเรียน</h1><p class="meta">${esc(monthLabel)} · ${esc(typeLabels[dailyDutyType] || 'หน้าที่สภานักเรียน')} · จำนวน ${members.length} คน</p><table><thead><tr><th>ลำดับ</th><th>รหัสนักเรียน</th><th>ชื่อ–สกุล</th><th>ตำแหน่ง</th><th>เช็ค/หมายเหตุ</th></tr></thead><tbody>${rows}</tbody></table><p class="signature">ผู้ตรวจ ............................................................</p></body></html>`)
 }
 
 // ใช้ร่วมกัน 2 จุด: หน้า "ประเมิน/เกียรติบัตร" และแท็บ "เกณฑ์และข้อความ" ของหน้าตั้งค่า
@@ -5558,6 +5580,7 @@ function wireContentEvents() {
     dailyDutyRecords = null
     loadDailyDutyRecords()
   }
+  document.getElementById('council-duty-print-monthly')?.addEventListener('click', printCouncilMonthlyDutyRoster)
   document.getElementById('council-duty-date')?.addEventListener('change', reloadDutyForSelection)
   document.getElementById('council-duty-type')?.addEventListener('change', reloadDutyForSelection)
   document.querySelectorAll('.council-duty-mark-all').forEach(button => button.addEventListener('click', () => {
