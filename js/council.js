@@ -19,7 +19,7 @@ import QRCode from 'qrcode'
 import {
   getCouncilConfig, updateCouncilConfig, getCouncilTerms, createCouncilTerm, previewCouncilTermActivation, activateCouncilTerm,
   getCouncilRosterTemplates, saveCouncilRosterTemplate, deleteCouncilRosterTemplate,
-  getCouncilDailyDutyAttendance, saveCouncilDailyDutyAttendance, getCouncilDailyDutySummary,
+  getCouncilDailyDutyCalendar, saveCouncilDailyDutyAttendance,
   getCouncilPositions, getCouncilMembers,
   createCouncilPosition, updateCouncilPosition, deleteCouncilPosition,
   getCouncilElectionConfigs, getMyCouncilApplications, getMyCouncilMembership,
@@ -35,7 +35,7 @@ import {
   getMyCouncilCampaign, saveMyCouncilCampaign, uploadCouncilCampaignVideo,
   getCouncilCampaignReviews, reviewCouncilCampaign,
   getCouncilActivities, createActivity, updateActivityDetails, updateActivityStatus, updateActivityOwnership,
-  getActivityAttendance, getActivityAttendanceDetailed, checkInAttendance,
+  getActivityAttendance, getActivityAttendanceDetailed, getCouncilActivityAttendanceForActivities, checkInAttendance, undoCheckInAttendance,
   getCertificateRule, upsertCertificateRule,
   getActivityCertificateOverrides, setCertificateOverride,
   getCouncilAnnouncements, postAnnouncement, getMyAnnouncementAcks, ackAnnouncement,
@@ -423,6 +423,11 @@ async function switchCouncilTerm(termId) {
   const term = councilTerms.find(t => String(t.id) === String(termId))
   if (!term || String(term.id) === String(selectedCouncilTermId)) return
   selectedCouncilTermId = term.id
+  const termDateRange = councilTermDateRange(term)
+  const startMonth = termDateRange.start.slice(0, 7)
+  const endMonth = termDateRange.end.slice(0, 7)
+  if (dutyCalendarMonth < startMonth) dutyCalendarMonth = startMonth
+  if (dutyCalendarMonth > endMonth) dutyCalendarMonth = endMonth
   electionYear = Number(term.academic_year)
   const [members, elections, applications, membership] = await Promise.all([
     getCouncilMembers(null, term.id).catch(() => []),
@@ -442,7 +447,7 @@ async function switchCouncilTerm(termId) {
     })
   }
   adminApps = null; activities = null; ylaEvents = null; docs = null
-  dailyDutyRecords = null; dutySummaryByMember = {}
+  dutyCalendarRecords = null; dutyCalendarActivities = null; dutyCalendarActivityAttendance = {}; dutyCalendarLoading = false; dutySummaryByMember = {}
   delete teamProposalsByGender.M; delete teamProposalsByGender.W
   delete openPositionsByGender.M; delete openPositionsByGender.W
   delete nomineesByGender.M; delete nomineesByGender.W
@@ -3660,7 +3665,80 @@ let evalOpenMemberId = null
 let dutySummaryByMember = {}
 let dailyDutyDate = new Date().toLocaleDateString('en-CA')
 let dailyDutyType = 'assembly'
-let dailyDutyRecords = null
+let dutyCalendarMonth = new Date().toLocaleDateString('en-CA').slice(0, 7)
+let dutyCalendarMode = 'month'
+let dutyCalendarRecords = null
+let dutyCalendarActivities = null
+let dutyCalendarActivityAttendance = {}
+let dutyCalendarRequestId = 0
+let dutyCalendarLoading = false
+let dutyAttendanceDayModal = null
+
+const localDateString = date => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+const dateFromKey = key => new Date(`${key}T00:00:00`)
+const dateKeyFromParts = (year, month, day = 1) => `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+function councilTermDateRange(term = selectedCouncilTerm()) {
+  if (!term) return { start: dailyDutyDate, end: dailyDutyDate }
+  const gregorianYear = year => Number(year) > 2400 ? Number(year) - 543 : Number(year)
+  const startYear = gregorianYear(term.start_year)
+  const endYear = gregorianYear(term.end_year)
+  const start = term.duty_start_date || dateKeyFromParts(startYear, Number(term.start_semester) === 2 ? 11 : 5, 1)
+  let end = term.duty_end_date
+  if (!end) {
+    if (Number(term.end_semester) === 2) {
+      end = dateKeyFromParts(endYear + 1, 3, 31)
+    } else {
+      end = dateKeyFromParts(endYear, 10, 31)
+    }
+  }
+  return { start, end }
+}
+
+function summarizeCouncilDutyRows(rows, countAsr = ctx?.cfg?.council_duty_asr_counts_for_evaluation === 'true') {
+  const summary = {}
+  for (const row of rows || []) {
+    if (!countAsr && row.duty_type === 'asr') continue
+    const memberId = Number(row.membership_id)
+    const item = summary[memberId] ||= { total_count: 0, present_count: 0, late_count: 0, absent_count: 0, excused_count: 0 }
+    item.total_count++
+    if (row.status === 'present') item.present_count++
+    else if (row.status === 'late') item.late_count++
+    else if (row.status === 'absent') item.absent_count++
+    else if (row.status === 'excused') item.excused_count++
+  }
+  for (const item of Object.values(summary)) {
+    const denominator = item.total_count - item.excused_count
+    item.duty_rate = denominator > 0 ? Math.round(((item.present_count + item.late_count) / denominator) * 1000) / 10 : null
+  }
+  return summary
+}
+
+async function loadDutyCalendarData() {
+  dutyCalendarLoading = true
+  if (!selectedCouncilTermId) {
+    dutyCalendarRecords = []; dutyCalendarActivities = []; dutyCalendarLoading = false; render(); return
+  }
+  const requestId = ++dutyCalendarRequestId
+  const { start, end } = councilTermDateRange()
+  const [dutyResult, activityResult] = await Promise.allSettled([
+    getCouncilDailyDutyCalendar(selectedCouncilTermId, start, end),
+    getCouncilActivities(electionYear, selectedCouncilTermId),
+  ])
+  if (requestId !== dutyCalendarRequestId) return
+  dutyCalendarRecords = dutyResult.status === 'fulfilled' ? dutyResult.value : []
+  dutyCalendarActivities = activityResult.status === 'fulfilled' ? activityResult.value : []
+  if (activityResult.status === 'fulfilled') {
+    dutyCalendarActivityAttendance = await getCouncilActivityAttendanceForActivities(activityResult.value.map(a => a.id)).catch(() => ({}))
+  } else {
+    dutyCalendarActivityAttendance = {}
+  }
+  if (requestId !== dutyCalendarRequestId) return
+  dutyCalendarLoading = false
+  if (dutyResult.status === 'rejected') showToast('โหลดภาพรวมเวรไม่สำเร็จ: ' + getFriendlyErrorMessage(dutyResult.reason), 'error')
+  if (activityResult.status === 'rejected') showToast('โหลดกิจกรรมไม่สำเร็จ: ' + getFriendlyErrorMessage(activityResult.reason), 'error')
+  render()
+}
 
 const DECISION_LABEL = {
   pass: ['ผ่าน', 'text-[#106143] bg-[var(--ok-soft-line)] border-[var(--ok-soft-line)]'],
@@ -3675,44 +3753,205 @@ async function loadEvalCriteria() {
 async function loadEvaluations() {
   const rows = await getCouncilEvaluations(electionYear, selectedCouncilTermId).catch(() => [])
   evaluations = Object.fromEntries(rows.map(r => [r.member_id, r]))
-  dutySummaryByMember = ctx?.isAdmin || ctx?.isCouncilAdvisor
-    ? Object.fromEntries((await getCouncilDailyDutySummary(selectedCouncilTermId).catch(() => [])).map(row => [row.membership_id, row]))
-    : {}
-  render()
-}
-
-async function loadDailyDutyRecords() {
-  dailyDutyRecords = await getCouncilDailyDutyAttendance(selectedCouncilTermId, dailyDutyDate, dailyDutyType).catch(err => {
-    showToast('โหลดบันทึกเวรไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
-    return []
-  })
+  if (ctx?.isAdmin || ctx?.isCouncilAdvisor) {
+    const { start, end } = councilTermDateRange()
+    const dutyRows = await getCouncilDailyDutyCalendar(selectedCouncilTermId, start, end).catch(() => [])
+    dutySummaryByMember = summarizeCouncilDutyRows(dutyRows)
+  } else dutySummaryByMember = {}
   render()
 }
 
 function renderDailyDutyTracker() {
-  if (dailyDutyRecords === null) { loadDailyDutyRecords(); return '<p class="text-sm text-[var(--muted-2)] text-center py-16">กำลังโหลดบันทึกเวร…</p>' }
+  if (dutyCalendarRecords === null || dutyCalendarActivities === null) {
+    if (!dutyCalendarLoading) loadDutyCalendarData()
+    return '<p class="text-sm text-[var(--muted-2)] text-center py-16">กำลังโหลดปฏิทินเช็คชื่อ…</p>'
+  }
   const isStaff = ctx.isAdmin || ctx.isCouncilAdvisor
   const managerGender = ctx.isChair && !isStaff ? ctx.chairGender : null
   let members = membersVisibleToCouncilAdvisor(ctx.members).filter(member => member.status === 'active')
   if (managerGender) members = members.filter(member => normalizeGender(member.council_positions?.gender) === normalizeGender(managerGender))
-  const byId = new Map(dailyDutyRecords.map(row => [Number(row.membership_id), row]))
-  const values = new Map(members.map(member => [member.id, byId.get(Number(member.id))?.status || '']))
-  const count = status => [...values.values()].filter(value => value === status).length
   const typeLabels = { assembly: 'กิจกรรมเข้าแถว', dhuhr: 'เวรช่วงละหมาดดุฮรี', asr: 'เวรช่วงละหมาดอัศรี' }
-  return `<div class="space-y-4">
-    <section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-4 md:p-6">
-      <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-bold">🗓️ บันทึกการปฏิบัติหน้าที่รายวัน</h2><p class="text-xs text-[var(--muted)] mt-1">ลงผลเวรเข้าแถวและเวรช่วงละหมาด เพื่อใช้ประกอบการประเมินสมาชิกสภา</p></div><span class="text-xs rounded-full bg-[var(--primary-soft)] text-[var(--primary)] px-3 py-1.5 font-bold">${members.length} สมาชิกในขอบเขตที่ดูแล</span></div>
-      <div class="flex justify-end mt-3"><button type="button" id="council-duty-print-monthly" class="px-4 py-2 rounded-xl border border-[var(--line)] text-xs font-bold">🖨️ พิมพ์ใบเช็ครายเดือน</button></div>
-      <div class="grid sm:grid-cols-2 gap-3 mt-4"><label class="text-xs font-bold">วันที่<input id="council-duty-date" type="date" value="${esc(dailyDutyDate)}" class="block w-full mt-1 border border-[var(--line)] rounded-xl px-3 py-2.5 bg-[var(--surface)]"></label><label class="text-xs font-bold">หน้าที่<select id="council-duty-type" class="block w-full mt-1 border border-[var(--line)] rounded-xl px-3 py-2.5 bg-[var(--surface)]">${Object.entries(typeLabels).map(([key, label]) => `<option value="${key}" ${dailyDutyType === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>
-      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">${[['present','มาปฏิบัติ'],['late','มาสาย'],['absent','ขาด'],['excused','ลา/ได้รับยกเว้น']].map(([status,label]) => `<div class="rounded-xl border border-[var(--line-soft)] p-3"><p class="text-xs text-[var(--muted)]">${label}</p><p class="text-xl font-bold">${count(status)}</p></div>`).join('')}</div>
-      <div class="flex flex-wrap gap-2 mt-4"><button type="button" class="council-duty-mark-all px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold" data-status="present">ทำเครื่องหมายทุกคนว่ามาปฏิบัติ</button><button type="button" class="council-duty-mark-all px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold" data-status="absent">ทำเครื่องหมายทุกคนว่าขาด</button></div>
-      <form id="council-duty-attendance-form" class="mt-4"><div class="overflow-x-auto rounded-xl border border-[var(--line-soft)]"><table class="w-full text-left text-xs"><thead class="bg-[var(--bg-2)]"><tr><th class="p-3">สมาชิก</th><th class="p-3">ฝ่าย</th><th class="p-3 min-w-44">ผลการปฏิบัติ</th><th class="p-3 min-w-48">หมายเหตุ</th></tr></thead><tbody>${members.map(member => {
-      const prior = byId.get(Number(member.id))
-      return `<tr class="border-t border-[var(--line-soft)]"><td class="p-3"><span class="font-bold">${esc(member.students?.full_name || '—')}</span><span class="block text-[var(--muted)]">${esc(member.students?.student_code || '')} · ${esc(member.students?.main_room || '')}</span></td><td class="p-3">${esc(member.council_positions?.position_name || '—')}</td><td class="p-3"><select name="status_${member.id}" class="w-full border border-[var(--line)] rounded-lg px-2 py-2 bg-[var(--surface)]"><option value="">ยังไม่บันทึก</option><option value="present" ${values.get(member.id) === 'present' ? 'selected' : ''}>มาปฏิบัติ</option><option value="late" ${values.get(member.id) === 'late' ? 'selected' : ''}>มาสาย</option><option value="absent" ${values.get(member.id) === 'absent' ? 'selected' : ''}>ขาด</option><option value="excused" ${values.get(member.id) === 'excused' ? 'selected' : ''}>ลา/ได้รับยกเว้น</option></select></td><td class="p-3"><input name="note_${member.id}" value="${esc(prior?.note || '')}" maxlength="500" placeholder="หมายเหตุ (ถ้ามี)" class="w-full border border-[var(--line)] rounded-lg px-2 py-2 bg-[var(--surface)]"></td></tr>`
-    }).join('') || '<tr><td colspan="4" class="p-6 text-center text-[var(--muted)]">ไม่มีสมาชิกที่อยู่ในขอบเขตนี้</td></tr>'}</tbody></table></div><button type="submit" ${members.length ? '' : 'disabled'} class="mt-3 w-full md:w-auto px-5 py-3 rounded-xl bg-[var(--primary)] text-white text-sm font-bold disabled:opacity-50">💾 บันทึกผลปฏิบัติหน้าที่</button></form>
-    </section>
-    ${isStaff ? `<section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-4"><h3 class="font-bold">📊 สรุปผลเวรสำหรับประกอบการประเมิน</h3><p class="text-xs text-[var(--muted)] mt-1">อัตรามาปฏิบัติ = (มาปฏิบัติ + มาสาย) ÷ จำนวนเวรที่บันทึก โดยไม่นับรายการลา/ได้รับยกเว้น</p><div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3">${members.map(member => { const summary = dutySummaryByMember[member.id]; return `<div class="rounded-xl border border-[var(--line-soft)] p-3"><p class="text-xs font-bold">${esc(member.students?.full_name || '—')}</p><p class="text-xs text-[var(--muted)] mt-1">เวรที่บันทึก ${Number(summary?.total_count || 0)} · มาปฏิบัติ ${Number(summary?.present_count || 0)} · สาย ${Number(summary?.late_count || 0)} · ขาด ${Number(summary?.absent_count || 0)}${Number(summary?.excused_count || 0) ? ` · ยกเว้น ${Number(summary.excused_count)}` : ''}</p><p class="text-sm font-bold text-[var(--primary)] mt-1">อัตราปฏิบัติ ${summary?.duty_rate == null ? '—' : `${summary.duty_rate}%`}</p></div>` }).join('')}</div></section>` : ''}
-  </div>`
+  const monthDate = dateFromKey(`${dutyCalendarMonth}-01`)
+  const monthLabel = monthDate.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
+  const monthStart = localDateString(monthDate)
+  const monthEnd = localDateString(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0))
+  const visibleRows = dutyCalendarRecords.filter(row => members.some(member => Number(member.id) === Number(row.membership_id)))
+  const monthlyRows = visibleRows.filter(row => row.duty_date >= monthStart && row.duty_date <= monthEnd && row.duty_type === dailyDutyType)
+  const activityRows = dutyCalendarActivities.filter(item => item.activity_date && item.activity_date >= monthStart && item.activity_date <= monthEnd && item.status !== 'cancelled')
+  const byDate = new Map()
+  for (const row of monthlyRows) byDate.set(row.duty_date, [...(byDate.get(row.duty_date) || []), row])
+  const activitiesByDate = new Map()
+  for (const item of activityRows) activitiesByDate.set(item.activity_date, [...(activitiesByDate.get(item.activity_date) || []), item])
+  const dateButtons = []
+  const firstDayOffset = (monthDate.getDay() + 6) % 7
+  const daysInMonth = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0).getDate()
+  for (let i = 0; i < firstDayOffset; i++) dateButtons.push('<div aria-hidden="true"></div>')
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateKey = dateKeyFromParts(monthDate.getFullYear(), monthDate.getMonth() + 1, day)
+    const records = byDate.get(dateKey) || []
+    const dayActivities = activitiesByDate.get(dateKey) || []
+    const counts = Object.fromEntries(['present','late','absent','excused'].map(status => [status, records.filter(row => row.status === status).length]))
+    const isToday = dateKey === localDateString(new Date())
+    dateButtons.push(`<button type="button" class="council-duty-calendar-day min-h-24 sm:min-h-28 rounded-xl border ${isToday ? 'border-[var(--primary-45)] bg-[var(--primary-soft)]' : 'border-[var(--line-soft)] bg-[var(--surface)]'} p-1.5 sm:p-2 text-left hover:border-[var(--primary-45)] hover:shadow-sm transition" data-duty-open-date="${dateKey}"><span class="flex items-center justify-between"><b class="text-xs sm:text-sm">${day}</b>${dayActivities.length ? `<span class="rounded-full bg-[var(--gold-soft)] text-[var(--gold-ink)] px-1.5 py-0.5 text-[9px] font-bold">กิจกรรม ${dayActivities.length}</span>` : ''}</span><span class="mt-1 block text-[9px] sm:text-[10px] text-[var(--muted)]">${records.length}/${members.length} เช็คชื่อ</span><span class="mt-1 flex flex-wrap gap-1">${counts.present ? `<i class="not-italic rounded bg-[var(--ok-soft)] text-[#106143] px-1 text-[9px]">ม ${counts.present}</i>` : ''}${counts.late ? `<i class="not-italic rounded bg-[var(--gold-soft)] text-[var(--gold-ink)] px-1 text-[9px]">ส ${counts.late}</i>` : ''}${counts.absent ? `<i class="not-italic rounded bg-[var(--bad-soft)] text-[var(--bad)] px-1 text-[9px]">ข ${counts.absent}</i>` : ''}${counts.excused ? `<i class="not-italic rounded bg-[var(--bg-2)] text-[var(--muted)] px-1 text-[9px]">ล ${counts.excused}</i>` : ''}</span>${dayActivities.length ? `<span class="mt-1 block truncate text-[9px] text-[var(--gold-ink)]">${esc(dayActivities[0].title)}${dayActivities.length > 1 ? ` +${dayActivities.length - 1}` : ''}</span>` : ''}</button>`)
+  }
+  const monthCalendar = `<div class="grid grid-cols-7 gap-1 sm:gap-2">${['จ','อ','พ','พฤ','ศ','ส','อา'].map(day => `<div class="py-1 text-center text-[10px] font-bold text-[var(--muted)]">${day}</div>`).join('')}${dateButtons.join('')}</div>`
+
+  const range = councilTermDateRange()
+  const termStartMonth = dateFromKey(range.start)
+  const termEndMonth = dateFromKey(range.end)
+  const termStartMonthKey = `${termStartMonth.getFullYear()}-${String(termStartMonth.getMonth() + 1).padStart(2, '0')}`
+  const termEndMonthKey = `${termEndMonth.getFullYear()}-${String(termEndMonth.getMonth() + 1).padStart(2, '0')}`
+  const monthCards = []
+  for (let cursor = new Date(termStartMonth.getFullYear(), termStartMonth.getMonth(), 1), endMonth = new Date(termEndMonth.getFullYear(), termEndMonth.getMonth(), 1); cursor <= endMonth; cursor.setMonth(cursor.getMonth() + 1)) {
+    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`
+    const startKey = dateKeyFromParts(cursor.getFullYear(), cursor.getMonth() + 1, 1)
+    const endKey = localDateString(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0))
+    const dutyCount = visibleRows.filter(row => row.duty_date >= startKey && row.duty_date <= endKey).length
+    const eventCount = dutyCalendarActivities.filter(item => item.activity_date >= startKey && item.activity_date <= endKey && item.status !== 'cancelled').length
+    monthCards.push(`<button type="button" class="council-duty-term-month rounded-xl border border-[var(--line-soft)] p-3 text-left hover:border-[var(--primary-45)]" data-month="${key}"><b class="text-xs">${cursor.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}</b><span class="mt-1 block text-[10px] text-[var(--muted)]">ลงผลเวร ${dutyCount} รายการ · กิจกรรม ${eventCount}</span></button>`)
+  }
+  const summaryByMember = summarizeCouncilDutyRows(visibleRows)
+  const countableActivities = dutyCalendarActivities.filter(item => ['ongoing','completed'].includes(item.status) && item.counts_for_evaluation !== false)
+  const termTable = members.map((member, index) => {
+    const duty = summaryByMember[Number(member.id)] || {}
+    const eligibleEvents = countableActivities.filter(item => !item.gender || normalizeGender(item.gender) === normalizeGender(member.council_positions?.gender))
+    const attendedEvents = eligibleEvents.filter(item => dutyCalendarActivityAttendance[item.id]?.has(member.student_id)).length
+    return `<tr class="border-t border-[var(--line-soft)]"><td class="p-2 text-center text-[var(--muted)]">${index + 1}</td><td class="p-2"><b>${esc(member.students?.full_name || '—')}</b><span class="block text-[10px] text-[var(--muted)]">${esc(member.students?.student_code || '')}</span></td><td class="p-2 text-center">${Number(duty.total_count || 0)}</td><td class="p-2 text-center text-[#106143]">${Number(duty.present_count || 0)}</td><td class="p-2 text-center text-[var(--gold-ink)]">${Number(duty.late_count || 0)}</td><td class="p-2 text-center text-[var(--bad)]">${Number(duty.absent_count || 0)}</td><td class="p-2 text-center">${duty.duty_rate == null ? '—' : `${duty.duty_rate}%`}</td><td class="p-2 text-center">${attendedEvents}/${eligibleEvents.length}</td></tr>`
+  }).join('')
+  const asrEvaluationLabel = ctx.cfg?.council_duty_asr_counts_for_evaluation === 'true' ? 'นับเวรอัศรี' : 'ไม่นับเวรอัศรี'
+  const termOverview = `<section class="space-y-3"><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">${monthCards.join('') || '<p class="text-xs text-[var(--muted)]">ไม่พบช่วงวันที่ของวาระ</p>'}</div><div class="overflow-x-auto rounded-xl border border-[var(--line-soft)]"><table class="w-full min-w-[760px] text-xs"><thead class="bg-[var(--bg-2)]"><tr><th class="p-2">#</th><th class="p-2 text-left">สมาชิก</th><th class="p-2">เวรที่บันทึก</th><th class="p-2">มา</th><th class="p-2">สาย</th><th class="p-2">ขาด</th><th class="p-2">อัตราปฏิบัติ</th><th class="p-2">เข้าร่วมกิจกรรม</th></tr></thead><tbody>${termTable || '<tr><td colspan="8" class="p-6 text-center text-[var(--muted)]">ไม่มีสมาชิกในขอบเขตนี้</td></tr>'}</tbody></table></div><p class="text-[10px] text-[var(--muted)]">อัตราปฏิบัติเวรคำนวณจาก มา+สาย เทียบกับรายการที่ไม่ใช่ลา · ${asrEvaluationLabel} ในอัตราประเมิน · ปรับได้ที่ ตั้งค่า &gt; ทั่วไป · กิจกรรมนับเฉพาะกิจกรรมที่กำลังดำเนินการหรือเสร็จแล้วและตั้งให้นับประเมิน</p></section>`
+  const typeSelect = `<label class="text-xs font-bold">ประเภทเวร<select id="council-duty-type" class="ml-2 border border-[var(--line)] rounded-lg px-2 py-1.5 bg-[var(--surface)]">${Object.entries(typeLabels).map(([key, label]) => `<option value="${key}" ${dailyDutyType === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label>`
+  const viewTabs = [['month','ปฏิทินรายเดือน'],['term','ภาพรวมทั้งวาระ']].map(([key,label]) => `<button type="button" class="council-duty-view px-3 py-2 rounded-lg text-xs font-bold ${dutyCalendarMode === key ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)] text-[var(--ink-2)]'}" data-view="${key}">${label}</button>`).join('')
+  const monthHeader = `<div class="flex items-center justify-between gap-2"><button type="button" id="council-duty-month-prev" ${dutyCalendarMonth <= termStartMonthKey ? 'disabled' : ''} class="px-3 py-2 rounded-lg border border-[var(--line)] disabled:opacity-40" aria-label="เดือนก่อนหน้า">‹</button><h3 class="font-bold text-[var(--ink)]">${esc(monthLabel)}</h3><button type="button" id="council-duty-month-next" ${dutyCalendarMonth >= termEndMonthKey ? 'disabled' : ''} class="px-3 py-2 rounded-lg border border-[var(--line)] disabled:opacity-40" aria-label="เดือนถัดไป">›</button></div>`
+  return `<div class="space-y-4"><section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-4 md:p-6 space-y-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-bold">🗓️ เช็คชื่อกิจกรรมและปฏิบัติหน้าที่</h2><p class="text-xs text-[var(--muted)] mt-1">กดวันที่เพื่อเปิดหน้าจอเช็คชื่อเต็มจอ · ${members.length} สมาชิกในขอบเขตที่ดูแล</p></div><button type="button" id="council-duty-print-monthly" class="px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold">🖨️ พิมพ์ใบรายชื่อ</button></div><div class="flex flex-wrap items-center justify-between gap-2"><div class="flex gap-2">${viewTabs}</div>${typeSelect}</div>${dutyCalendarMode === 'month' ? `<div class="space-y-3">${monthHeader}${monthCalendar}<p class="text-[10px] text-[var(--muted)]">สีสถานะ: มา · สาย · ขาด · ลา/ยกเว้น · ป้ายสีทองคือวันที่มีกิจกรรม</p></div>` : termOverview}</section></div>`
+}
+
+function councilDutyVisibleMembers() {
+  const isStaff = ctx.isAdmin || ctx.isCouncilAdvisor
+  const managerGender = ctx.isChair && !isStaff ? ctx.chairGender : null
+  return membersVisibleToCouncilAdvisor(ctx.members).filter(member => member.status === 'active')
+    .filter(member => !managerGender || normalizeGender(member.council_positions?.gender) === normalizeGender(managerGender))
+}
+
+const COUNCIL_DUTY_STATUSES = [
+  ['present', 'มา', 'bg-emerald-600 text-white'],
+  ['late', 'สาย', 'bg-amber-500 text-white'],
+  ['absent', 'ขาด', 'bg-rose-600 text-white'],
+  ['excused', 'ลา', 'bg-sky-600 text-white'],
+]
+
+function syncCouncilDutyDayModalFields(root) {
+  if (!dutyAttendanceDayModal || !root) return
+  const current = dutyAttendanceDayModal
+  current.notesByType[current.type] = Object.fromEntries([...root.querySelectorAll('[data-duty-note]')].map(input => [input.dataset.dutyNote, input.value]))
+}
+
+function renderCouncilAttendanceDayModal() {
+  if (!dutyAttendanceDayModal) return ''
+  const { date, type } = dutyAttendanceDayModal
+  const members = councilDutyVisibleMembers()
+  const dateLabel = dateFromKey(date).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const rows = dutyCalendarRecords.filter(row => row.duty_date === date && row.duty_type === type)
+  const byId = new Map(rows.map(row => [Number(row.membership_id), row]))
+  const statuses = dutyAttendanceDayModal.statusesByType[type] || {}
+  const notes = dutyAttendanceDayModal.notesByType[type] || {}
+  const activitiesToday = dutyCalendarActivities.filter(activity => activity.activity_date === date && activity.status !== 'cancelled')
+  const typeLabels = { assembly: 'กิจกรรมเข้าแถว', dhuhr: 'เวรช่วงละหมาดดุฮรี', asr: 'เวรช่วงละหมาดอัศรี' }
+  const activitySections = activitiesToday.map(activity => {
+    const eventMembers = members.filter(member => !activity.gender || normalizeGender(activity.gender) === normalizeGender(member.council_positions?.gender))
+    const checked = dutyCalendarActivityAttendance[activity.id] || new Set()
+    const manageable = canManageActivity(activity)
+    const checkedCount = eventMembers.filter(member => checked.has(member.student_id)).length
+    return `<section class="rounded-xl border border-[var(--line-soft)] p-3"><div class="flex flex-wrap justify-between gap-2"><div><h3 class="font-bold text-sm">🎯 ${esc(activity.title)}</h3><p class="text-[10px] text-[var(--muted)] mt-0.5">${esc(activity.location || '')}${activity.owner_text ? ` · ${esc(activity.owner_text)}` : ''} · เช็คอิน ${checkedCount}/${eventMembers.length}</p></div><span class="self-start text-[10px] rounded-full px-2 py-1 bg-[var(--gold-soft)] text-[var(--gold-ink)]">กิจกรรม</span></div><div class="mt-3 space-y-1">${eventMembers.map((member, index) => {
+      const done = checked.has(member.student_id)
+      return `<div class="flex items-center gap-2 border-t border-[var(--line-soft)] py-2"><span class="text-[10px] text-[var(--muted)] w-5 text-right">${index + 1}</span><span class="min-w-0 flex-1"><b class="block truncate text-xs">${esc(member.students?.full_name || '—')}</b><small class="text-[10px] text-[var(--muted)]">${esc(member.students?.student_code || '')}</small></span>${manageable ? `<button type="button" class="council-day-activity-toggle rounded-lg px-3 py-2 text-[10px] font-bold ${done ? 'bg-emerald-100 text-emerald-800' : 'bg-[var(--bg-2)] text-[var(--ink-2)]'}" data-activity-id="${activity.id}" data-student-id="${member.student_id}" data-checked="${done ? '1' : '0'}">${done ? '✓ เช็คแล้ว · ยกเลิก' : '＋ เช็คชื่อ'}</button>` : `<span class="text-[10px] ${done ? 'text-emerald-700' : 'text-[var(--muted)]'}">${done ? '✓ เช็คแล้ว' : 'ยังไม่เช็ค'}</span>`}</div>`
+    }).join('') || '<p class="py-3 text-xs text-[var(--muted)]">ไม่พบสมาชิกที่เกี่ยวข้องกับกิจกรรมนี้</p>'}</div></section>`
+  }).join('')
+  const statusButtons = member => COUNCIL_DUTY_STATUSES.map(([key, label, activeClass]) => `<button type="button" class="council-day-duty-status rounded-lg border px-2.5 py-2 text-[10px] font-bold ${statuses[member.id] === key ? activeClass + ' border-transparent' : 'border-[var(--line)] text-[var(--muted)]'}" data-member-id="${member.id}" data-status="${key}">${label}</button>`).join('')
+  const memberRows = members.map((member, index) => `<div class="grid grid-cols-1 lg:grid-cols-[minmax(190px,1fr)_auto_minmax(180px,0.8fr)] gap-2 border-t border-[var(--line-soft)] py-3 items-center"><div class="flex items-center gap-2 min-w-0"><span class="text-[10px] text-[var(--muted)] w-5 text-right">${index + 1}</span><div class="min-w-0"><b class="block truncate text-xs">${esc(member.students?.full_name || '—')}</b><small class="text-[10px] text-[var(--muted)]">${esc(member.students?.student_code || '')} · ${esc(member.council_positions?.position_name || '—')}</small></div></div><div class="flex gap-1.5">${statusButtons(member)}</div><input data-duty-note="${member.id}" maxlength="500" value="${esc(notes[member.id] ?? byId.get(Number(member.id))?.note ?? '')}" placeholder="หมายเหตุ (ถ้ามี)" class="w-full border border-[var(--line)] rounded-lg px-3 py-2 text-xs bg-[var(--surface)]"></div>`).join('')
+  return `<div id="council-duty-day-modal" class="fixed inset-0 z-[220] flex flex-col bg-[var(--surface)] text-[var(--ink)]" role="dialog" aria-modal="true" aria-label="เช็คชื่อกิจกรรมและเวร"><header class="flex items-center gap-3 border-b border-[var(--line-soft)] px-3 sm:px-6 py-3 shrink-0"><button type="button" id="council-duty-day-close" class="rounded-xl border border-[var(--line)] px-3 py-2 text-sm font-bold">← กลับ</button><div class="min-w-0 flex-1"><h2 class="font-bold text-sm sm:text-base">เช็คชื่อรายวัน</h2><p class="text-[10px] sm:text-xs text-[var(--muted)] truncate">${esc(dateLabel)}</p></div><span class="hidden sm:inline rounded-full bg-[var(--primary-soft)] px-3 py-1.5 text-xs font-bold text-[var(--primary)]">${members.length} สมาชิก</span></header><div class="flex gap-2 overflow-x-auto border-b border-[var(--line-soft)] px-3 sm:px-6 py-2 shrink-0">${Object.entries(typeLabels).map(([key,label]) => `<button type="button" class="council-duty-day-type rounded-lg px-3 py-2 text-xs font-bold whitespace-nowrap ${type === key ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)]'}" data-type="${key}">${label}</button>`).join('')}</div><main class="flex-1 overflow-y-auto px-3 sm:px-6 py-4 space-y-5"><section class="rounded-xl border border-[var(--line-soft)] p-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><h3 class="font-bold text-sm">👥 ${typeLabels[type]}</h3><p class="text-[10px] text-[var(--muted)]">แตะสถานะเพื่อกำหนดผล แล้วบันทึกด้านล่าง</p></div><div class="flex flex-wrap gap-1.5">${[['present','มาทุกคน'],['absent','ขาดทุกคน']].map(([key,label]) => `<button type="button" class="council-day-duty-fill rounded-lg border border-[var(--line)] px-2.5 py-2 text-[10px] font-bold" data-status="${key}">${label}</button>`).join('')}</div></div><div class="mt-3">${memberRows || '<p class="py-8 text-center text-xs text-[var(--muted)]">ไม่มีสมาชิกในขอบเขตนี้</p>'}</div><button type="button" id="council-duty-day-save" ${members.length ? '' : 'disabled'} class="mt-3 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">💾 บันทึกผล${rows.length ? ` · บันทึกแล้ว ${rows.length} คน` : ''}</button></section><section class="space-y-3"><div><h3 class="font-bold text-sm">กิจกรรมในวันนี้</h3><p class="text-[10px] text-[var(--muted)]">เช็คชื่อหรือยกเลิกเช็คอินได้ตามสิทธิ์ของกิจกรรม</p></div>${activitySections || '<div class="rounded-xl border border-dashed border-[var(--line)] p-5 text-center text-xs text-[var(--muted)]">วันนี้ไม่มีกิจกรรมสภาที่กำหนดไว้</div>'}</section></main></div>`
+}
+
+function openCouncilAttendanceDay(date) {
+  const existing = document.getElementById('council-duty-day-modal')
+  existing?.remove()
+  const statusesByType = {}
+  const notesByType = {}
+  for (const type of ['assembly','dhuhr','asr']) {
+    const entries = dutyCalendarRecords.filter(row => row.duty_date === date && row.duty_type === type)
+    statusesByType[type] = Object.fromEntries(entries.map(row => [Number(row.membership_id), row.status]))
+    notesByType[type] = Object.fromEntries(entries.map(row => [Number(row.membership_id), row.note || '']))
+  }
+  dutyAttendanceDayModal = { date, type: dailyDutyType, statusesByType, notesByType }
+  document.body.insertAdjacentHTML('beforeend', renderCouncilAttendanceDayModal())
+  wireCouncilAttendanceDayModal()
+}
+
+function wireCouncilAttendanceDayModal() {
+  const root = document.getElementById('council-duty-day-modal')
+  if (!root || !dutyAttendanceDayModal) return
+  root.querySelector('#council-duty-day-close')?.addEventListener('click', () => { dutyAttendanceDayModal = null; root.remove() })
+  root.querySelectorAll('.council-duty-day-type').forEach(button => button.addEventListener('click', () => {
+    syncCouncilDutyDayModalFields(root)
+    dutyAttendanceDayModal.type = button.dataset.type
+    root.outerHTML = renderCouncilAttendanceDayModal()
+    wireCouncilAttendanceDayModal()
+  }))
+  root.querySelectorAll('.council-day-duty-status').forEach(button => button.addEventListener('click', () => {
+    const { type, statusesByType } = dutyAttendanceDayModal
+    statusesByType[type][button.dataset.memberId] = button.dataset.status
+    root.outerHTML = renderCouncilAttendanceDayModal()
+    wireCouncilAttendanceDayModal()
+  }))
+  root.querySelectorAll('.council-day-duty-fill').forEach(button => button.addEventListener('click', () => {
+    syncCouncilDutyDayModalFields(root)
+    const statuses = dutyAttendanceDayModal.statusesByType[dutyAttendanceDayModal.type]
+    for (const member of councilDutyVisibleMembers()) statuses[member.id] = button.dataset.status
+    root.outerHTML = renderCouncilAttendanceDayModal()
+    wireCouncilAttendanceDayModal()
+  }))
+  root.querySelectorAll('.council-day-activity-toggle').forEach(button => button.addEventListener('click', async () => {
+    const activityId = Number(button.dataset.activityId)
+    const studentId = Number(button.dataset.studentId)
+    button.disabled = true
+    try {
+      if (button.dataset.checked === '1') {
+        await undoCheckInAttendance({ activityId, studentId })
+        dutyCalendarActivityAttendance[activityId]?.delete(studentId)
+      } else {
+        await checkInAttendance({ activityId, studentId })
+        dutyCalendarActivityAttendance[activityId]?.add(studentId)
+      }
+      syncCouncilDutyDayModalFields(root)
+      root.outerHTML = renderCouncilAttendanceDayModal()
+      wireCouncilAttendanceDayModal()
+    } catch (error) {
+      showToast('อัปเดตการเข้าร่วมกิจกรรมไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+      button.disabled = false
+    }
+  }))
+  root.querySelector('#council-duty-day-save')?.addEventListener('click', async buttonEvent => {
+    syncCouncilDutyDayModalFields(root)
+    const { type, date, statusesByType, notesByType } = dutyAttendanceDayModal
+    const entries = Object.entries(statusesByType[type] || {}).filter(([, status]) => status).map(([membershipId, status]) => ({
+      membership_id: Number(membershipId), status, note: String(notesByType[type]?.[membershipId] || '').trim() || null,
+    }))
+    if (!entries.length) { showToast('เลือกผลการปฏิบัติอย่างน้อยหนึ่งคนก่อนบันทึก', 'warning'); return }
+    const button = buttonEvent.currentTarget
+    button.disabled = true; button.textContent = 'กำลังบันทึก…'
+    try {
+      const count = await saveCouncilDailyDutyAttendance({ termId: selectedCouncilTermId, dutyDate: date, dutyType: type, entries })
+      dailyDutyDate = date
+      dutyAttendanceDayModal = null
+      root.remove()
+      dutyCalendarRecords = null; dutyCalendarActivities = null
+      await loadDutyCalendarData()
+      showToast(`บันทึกผลเวรแล้ว ${count} รายการ`, 'success')
+    } catch (error) {
+      showToast('บันทึกผลเวรไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+      button.disabled = false; button.textContent = '💾 บันทึกผล'
+    }
+  })
 }
 
 function printCouncilMonthlyDutyRoster() {
@@ -3725,7 +3964,7 @@ function printCouncilMonthlyDutyRoster() {
     showToast('ไม่มีสมาชิกในขอบเขตนี้สำหรับพิมพ์', 'warning')
     return
   }
-  const selectedDate = new Date(`${dailyDutyDate}T00:00:00`)
+  const selectedDate = dateFromKey(`${dutyCalendarMonth}-01`)
   const monthLabel = Number.isNaN(selectedDate.getTime())
     ? 'เดือนที่เลือก'
     : selectedDate.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })
@@ -4444,6 +4683,11 @@ function renderSettingsGeneral() {
         <div>
           <label class="block text-xs font-medium text-[var(--muted)] mb-1">% เช็คชื่อขั้นต่ำที่ควรผ่าน (เว้นว่าง = ไม่ตั้งเกณฑ์)</label>
           <input type="number" min="0" max="100" step="1" name="council_min_attendance_pct" value="${esc(cfg.council_min_attendance_pct || '')}" placeholder="เช่น 80" class="w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]" />
+        </div>
+        <div class="rounded-xl border border-[var(--line-soft)] bg-[var(--bg-2)] p-3 space-y-2">
+          <div><p class="text-xs font-bold text-[var(--ink-2)]">การนับเวรช่วงละหมาดอัศรีในการประเมิน</p><p class="text-[10px] text-[var(--muted)] mt-1">เลือกว่าจะนำผลเวรอัศรีไปรวมกับอัตราปฏิบัติหน้าที่ของสมาชิกหรือไม่ · ค่าเริ่มต้นไม่นับ</p></div>
+          <input type="hidden" name="council_duty_asr_counts_for_evaluation" value="${cfg.council_duty_asr_counts_for_evaluation === 'true' ? 'true' : 'false'}">
+          <div class="flex flex-wrap gap-2"><button type="button" class="council-duty-asr-setting rounded-lg px-3 py-2 text-xs font-bold ${cfg.council_duty_asr_counts_for_evaluation === 'true' ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)] text-[var(--ink-2)]'}" data-value="true">นับเวรอัศรีในการประเมิน</button><button type="button" class="council-duty-asr-setting rounded-lg px-3 py-2 text-xs font-bold ${cfg.council_duty_asr_counts_for_evaluation === 'true' ? 'border border-[var(--line)] text-[var(--ink-2)]' : 'bg-[var(--primary)] text-white'}" data-value="false">ไม่นับเวรอัศรี</button></div>
         </div>
       </div>
 
@@ -5573,39 +5817,33 @@ function renderFullscreenFlow() {
 
 function wireContentEvents() {
   document.getElementById('council-term-switcher')?.addEventListener('change', e => switchCouncilTerm(e.target.value))
-
-  const reloadDutyForSelection = () => {
-    dailyDutyDate = document.getElementById('council-duty-date')?.value || dailyDutyDate
-    dailyDutyType = document.getElementById('council-duty-type')?.value || dailyDutyType
-    dailyDutyRecords = null
-    loadDailyDutyRecords()
-  }
   document.getElementById('council-duty-print-monthly')?.addEventListener('click', printCouncilMonthlyDutyRoster)
-  document.getElementById('council-duty-date')?.addEventListener('change', reloadDutyForSelection)
-  document.getElementById('council-duty-type')?.addEventListener('change', reloadDutyForSelection)
-  document.querySelectorAll('.council-duty-mark-all').forEach(button => button.addEventListener('click', () => {
-    document.querySelectorAll('#council-duty-attendance-form select[name^="status_"]').forEach(select => { select.value = button.dataset.status })
-  }))
-  document.getElementById('council-duty-attendance-form')?.addEventListener('submit', async event => {
-    event.preventDefault()
-    const form = event.currentTarget
-    const entries = [...form.querySelectorAll('select[name^="status_"]')].filter(input => input.value).map(input => {
-      const membershipId = Number(input.name.slice('status_'.length))
-      return { membership_id: membershipId, status: input.value, note: form.elements[`note_${membershipId}`]?.value?.trim() || null }
-    })
-    if (!entries.length) { showToast('เลือกผลการปฏิบัติอย่างน้อยหนึ่งคนก่อนบันทึก', 'warning'); return }
-    const button = form.querySelector('button[type="submit"]'); button.disabled = true; button.textContent = 'กำลังบันทึก…'
-    try {
-      const savedCount = await saveCouncilDailyDutyAttendance({ termId: selectedCouncilTermId, dutyDate: dailyDutyDate, dutyType: dailyDutyType, entries })
-      dailyDutyRecords = await getCouncilDailyDutyAttendance(selectedCouncilTermId, dailyDutyDate, dailyDutyType)
-      if (ctx.isAdmin || ctx.isCouncilAdvisor) dutySummaryByMember = Object.fromEntries((await getCouncilDailyDutySummary(selectedCouncilTermId).catch(() => [])).map(row => [row.membership_id, row]))
-      showToast(`บันทึกผลปฏิบัติหน้าที่แล้ว ${savedCount} รายการ ✅`, 'success')
-      render()
-    } catch (err) {
-      showToast('บันทึกผลเวรไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
-      button.disabled = false; button.textContent = '💾 บันทึกผลปฏิบัติหน้าที่'
-    }
+  document.getElementById('council-duty-type')?.addEventListener('change', event => { dailyDutyType = event.target.value; render() })
+  document.querySelectorAll('.council-duty-view').forEach(button => button.addEventListener('click', () => { dutyCalendarMode = button.dataset.view; render() }))
+  document.getElementById('council-duty-month-prev')?.addEventListener('click', () => {
+    const current = dateFromKey(`${dutyCalendarMonth}-01`)
+    current.setMonth(current.getMonth() - 1)
+    dutyCalendarMonth = localDateString(current).slice(0, 7)
+    dailyDutyDate = `${dutyCalendarMonth}-01`
+    render()
   })
+  document.getElementById('council-duty-month-next')?.addEventListener('click', () => {
+    const current = dateFromKey(`${dutyCalendarMonth}-01`)
+    current.setMonth(current.getMonth() + 1)
+    dutyCalendarMonth = localDateString(current).slice(0, 7)
+    dailyDutyDate = `${dutyCalendarMonth}-01`
+    render()
+  })
+  document.querySelectorAll('[data-duty-open-date]').forEach(button => button.addEventListener('click', () => {
+    dailyDutyDate = button.dataset.dutyOpenDate
+    openCouncilAttendanceDay(dailyDutyDate)
+  }))
+  document.querySelectorAll('.council-duty-term-month').forEach(button => button.addEventListener('click', () => {
+    dutyCalendarMonth = button.dataset.month
+    dailyDutyDate = `${dutyCalendarMonth}-01`
+    dutyCalendarMode = 'month'
+    render()
+  }))
 
   document.getElementById('campaign-video-file')?.addEventListener('change', async e => {
     const input = e.target, file = input.files?.[0], form = input.closest('form')
@@ -6391,6 +6629,16 @@ function wireSettingsEvents() {
     btn.addEventListener('click', () => { settingsTab = btn.dataset.tab; render() })
   })
 
+  document.querySelectorAll('.council-duty-asr-setting').forEach(btn => btn.addEventListener('click', () => {
+    const selected = btn.dataset.value === 'true' ? 'true' : 'false'
+    const form = document.getElementById('settings-general-form')
+    if (form?.elements.council_duty_asr_counts_for_evaluation) form.elements.council_duty_asr_counts_for_evaluation.value = selected
+    document.querySelectorAll('.council-duty-asr-setting').forEach(option => {
+      const active = option.dataset.value === selected
+      option.className = `council-duty-asr-setting rounded-lg px-3 py-2 text-xs font-bold ${active ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)] text-[var(--ink-2)]'}`
+    })
+  }))
+
   document.getElementById('settings-general-form')?.addEventListener('submit', async e => {
     e.preventDefault()
     const f = e.target
@@ -6411,6 +6659,7 @@ function wireSettingsEvents() {
         council_eligible_grade_levels: f.council_eligible_grade_levels.value.trim(),
         council_min_certificates: f.council_min_certificates.value,
         council_min_attendance_pct: f.council_min_attendance_pct.value,
+        council_duty_asr_counts_for_evaluation: f.council_duty_asr_counts_for_evaluation.value,
         council_require_teacher_endorsement: f.council_require_teacher_endorsement.checked ? 'true' : 'false',
         council_require_peer_endorsement: f.council_require_peer_endorsement.checked ? 'true' : 'false',
         council_apply_opens_at: f.council_apply_opens_at.value ? new Date(f.council_apply_opens_at.value).toISOString() : '',
@@ -6424,6 +6673,11 @@ function wireSettingsEvents() {
       }
       await updateCouncilConfig(updates)
       ctx.cfg = { ...ctx.cfg, ...updates }
+      if (ctx.isAdmin || ctx.isCouncilAdvisor) {
+        const { start, end } = councilTermDateRange()
+        const dutyRows = await getCouncilDailyDutyCalendar(selectedCouncilTermId, start, end).catch(() => [])
+        dutySummaryByMember = summarizeCouncilDutyRows(dutyRows)
+      }
       applyBranding(ctx.cfg)
       showToast('บันทึกการตั้งค่าแล้ว ✅', 'success')
       render()

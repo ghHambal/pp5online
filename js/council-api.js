@@ -10,6 +10,7 @@ const COUNCIL_CONFIG_KEYS = [
   'council_eligible_grade_levels', 'council_require_teacher_endorsement', 'council_require_peer_endorsement',
   'council_min_certificates', // จำนวนเกียรติบัตร/รางวัลขั้นต่ำที่ต้องแนบตอนสมัคร (default '5')
   'council_min_attendance_pct', // % เช็คชื่อขั้นต่ำ (จากกิจกรรมที่ counts_for_evaluation=true และเกิดขึ้นแล้ว) สำหรับประเมินความเป็นสมาชิกสภา — ว่าง = ไม่บังคับ
+  'council_duty_asr_counts_for_evaluation', // ตั้งค่าให้เวรอัศรีนับ/ไม่นับในการประเมิน (ค่าเริ่มต้นไม่นับ)
   'council_apply_opens_at', 'council_apply_closes_at', // ช่วงเวลาเปิด-ปิดรับสมัคร
   'council_featured_phase', // '' (auto)/'apply'/'election'/'none' — จุดเด่นในหน้าหลักที่แอดมินเลือกเองได้ ไม่งั้นคำนวณจากวันที่
   'council_video_max_minutes', 'council_video_brief', // วิดีโอแนะนำตัว: จำนวนนาที + หัวข้อที่ต้องพูด (JSON array)
@@ -832,6 +833,22 @@ export async function getActivityAttendance(activityId) {
   return new Set((data ?? []).map(r => r.student_id))
 }
 
+export async function getCouncilActivityAttendanceForActivities(activityIds) {
+  const ids = [...new Set((activityIds ?? []).map(Number).filter(Number.isFinite))]
+  const byActivity = Object.fromEntries(ids.map(id => [id, new Set()]))
+  if (!ids.length) return byActivity
+  const pageSize = 1000
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase.from('council_activity_attendance')
+      .select('activity_id, student_id').in('activity_id', ids)
+      .order('activity_id').order('student_id').range(from, from + pageSize - 1)
+    if (error) throw error
+    for (const row of data ?? []) byActivity[row.activity_id]?.add(row.student_id)
+    if ((data?.length ?? 0) < pageSize) break
+  }
+  return byActivity
+}
+
 // รายละเอียดเต็มพร้อมชื่อ+เวลาเช็คชื่อ — ใช้คำนวณสิทธิ์เกียรติบัตร (ต้องรู้ "วันไหนบ้าง" ไม่ใช่แค่จำนวนครั้ง)
 export async function getActivityAttendanceDetailed(activityId) {
   const { data, error } = await supabase.from('council_activity_attendance')
@@ -1062,6 +1079,20 @@ export async function getCouncilDailyDutyAttendance(termId, dutyDate, dutyType) 
   })
   if (error) throw error
   return data ?? []
+}
+
+export async function getCouncilDailyDutyCalendar(termId, startDate, endDate) {
+  const rows = []
+  const pageSize = 1000
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase.rpc('get_council_daily_duty_calendar', {
+      p_term_id: Number(termId), p_start_date: startDate, p_end_date: endDate,
+    }).range(from, from + pageSize - 1)
+    if (error) throw error
+    rows.push(...(data ?? []))
+    if ((data?.length ?? 0) < pageSize) break
+  }
+  return rows
 }
 
 export async function saveCouncilDailyDutyAttendance({ termId, dutyDate, dutyType, entries }) {

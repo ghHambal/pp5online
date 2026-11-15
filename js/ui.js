@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1081'
+import { APP_VERSION } from './version.js?v=10.22.1082'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1082': [
+    'เพิ่มปฏิทินเช็คชื่อเวรกิจกรรมและหน้าที่สภา กดวันที่เพื่อเปิดหน้าต่างเช็คชื่อเต็มจอ พร้อมภาพรวมรายเดือนและทั้งวาระ',
+    'เพิ่มตัวเลือกให้ผู้ดูแลกำหนดว่าจะนับเวรอัศรีในการประเมินหรือไม่ โดยค่าเริ่มต้นไม่นับ',
+  ],
   '10.22.1081': [
     'เพิ่มปุ่มพิมพ์ใบเช็ครายชื่อเวรรอบเดือน พร้อมรหัส ชื่อ ตำแหน่ง และช่องเช็ค โดยไม่แสดงห้องเรียน',
   ],
