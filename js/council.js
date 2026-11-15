@@ -4667,15 +4667,51 @@ function renderChairTeamView() {
 async function openCouncilIbadatPrayerAdmin() {
   if (!ctx?.canScanIbadatPrayer) return showToast('บัญชีนี้ไม่มีสิทธิ์จัดการผู้สแกนฝ่ายอีบาดัต', 'error')
   if (document.getElementById('council-ibadat-prayer-admin-overlay')) return
+  const activeTerm = councilTerms.find(term => term.status === 'active')
+  if (!activeTerm) return showToast('ไม่พบวาระสภาที่กำลังดำรงตำแหน่ง', 'warning')
+  let councilMembers
+  try {
+    councilMembers = (await getCouncilMembers(null, activeTerm.id)).filter(member => member.status === 'active')
+  } catch (error) {
+    return showToast('โหลดรายชื่อสภาปัจจุบันไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+  }
   const overlay = document.createElement('div')
   overlay.id = 'council-ibadat-prayer-admin-overlay'
-  overlay.className = 'fixed inset-0 z-[200] bg-slate-100'
+  overlay.className = 'fixed inset-0 z-[200] overflow-y-auto bg-slate-50 p-3 sm:p-5'
   overlay.innerHTML = `
-    <button type="button" id="council-prayer-dashboard-close" aria-label="กลับระบบสภา"
-      class="absolute right-3 top-3 z-[202] rounded-xl border border-white/30 bg-slate-900/80 px-3 py-2 text-sm font-bold text-white shadow-lg backdrop-blur hover:bg-slate-900">✕ กลับระบบสภา</button>
-    <iframe title="คะแนนละหมาด — มอบสิทธิ์สแกนเนอร์" class="h-full w-full border-0" src="dashboard.html?view=prayer-admin&amp;tab=scanners&amp;councilPrayerAccess=1"></iframe>`
+    <div class="mx-auto max-w-5xl">
+      <header class="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <h1 class="text-lg font-bold text-slate-800">คะแนนละหมาด</h1>
+        <button type="button" id="council-prayer-dashboard-close" aria-label="กลับระบบสภ"
+          class="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50">← กลับระบบสภา</button>
+      </header>
+      <main id="council-ibadat-prayer-admin-content" class="min-h-[70vh]"><div class="py-16 text-center text-sm text-slate-400">กำลังเปิดหน้ามอบสิทธิ์สแกนเนอร์…</div></main>
+    </div>`
   document.body.append(overlay)
   document.getElementById('council-prayer-dashboard-close')?.addEventListener('click', () => overlay.remove())
+  try {
+    const { renderPrayerAdmin } = await import('./views.js')
+    const councilStudentIds = new Set(councilMembers.map(member => Number(member.student_id)).filter(Number.isFinite))
+    const ibadatScannerCandidates = councilMembers
+      .filter(member => member.council_positions?.position_name === 'ฝ่ายอีบาดัต' && member.students?.id)
+      .map(member => ({
+        id: Number(member.students.id),
+        code: String(member.students.student_code ?? ''),
+        name: member.students.full_name ?? '',
+        room: member.students.main_room ?? '',
+        gender: member.students.gender ?? '',
+        image_url: member.students.image_url || member.students.photo_url || '',
+      }))
+    await renderPrayerAdmin(ctx.teacher ?? null, {
+      councilPrayerAccess: true,
+      councilStudentIds,
+      councilScannerCandidates: ibadatScannerCandidates,
+      initialTab: 'scanners',
+    })
+  } catch (error) {
+    overlay.remove()
+    showToast('เปิดหน้ามอบสิทธิ์ไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+  }
 }
 
 async function openCouncilIbadatPrayerScanner() {

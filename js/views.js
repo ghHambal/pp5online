@@ -7706,9 +7706,15 @@ function _fmtD(d) { return `${d.getDate()}/${d.getMonth() + 1}` }
 // ─── Admin: ละหมาด ───────────────────────────────────────────────────────────
 
 export async function renderPrayerAdmin(teacher, options = {}) {
-  const { initialTab = 'scores', councilPrayerAccess = false, councilStudentIds = new Set() } = options
-  setActiveNav('prayer-admin')
-  document.getElementById('page-title').textContent = 'คะแนนละหมาด'
+  const { initialTab = 'scores', councilPrayerAccess = false, councilStudentIds = new Set(), councilScannerCandidates = [] } = options
+  const prayerAdminRoot = councilPrayerAccess
+    ? document.getElementById('council-ibadat-prayer-admin-content')
+    : document.getElementById('main-content')
+  if (!councilPrayerAccess) {
+    setActiveNav('prayer-admin')
+    const pageTitle = document.getElementById('page-title')
+    if (pageTitle) pageTitle.textContent = 'คะแนนละหมาด'
+  }
   let historyInterval = null
 
   // Fetch teacher details dynamically if not passed
@@ -7752,7 +7758,8 @@ export async function renderPrayerAdmin(teacher, options = {}) {
   }
 
   // ─── Shell (tabs) ─────────────────────────────────────────────────────────
-  setContent(`<div class="max-w-5xl mx-auto animate-fade">
+  if (!prayerAdminRoot) throw new Error('ไม่พบพื้นที่แสดงหน้าคะแนนละหมาด')
+  prayerAdminRoot.innerHTML = `<div class="max-w-5xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <div>
         <p class="text-xs text-gray-400 mt-0.5">บันทึกการมาละหมาดทุกห้อง — Sync รายวันลงชีท Solat</p>
@@ -7784,7 +7791,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
       ` : ''}
     </div>
     <div id="pr-tab-content"></div>
-  </div>`)
+  </div>`
 
   // ─── Tab: คะแนน ───────────────────────────────────────────────────────────
   const _showScores = () => {
@@ -8830,10 +8837,28 @@ export async function renderPrayerAdmin(teacher, options = {}) {
           <span class="text-sm font-semibold text-gray-700">🔑 มอบสิทธิ์เครื่องสแกนเนอร์ (แกนนำสภานักเรียน / คุณครู)</span>
         </div>
         <div class="px-5 py-4 space-y-4">
+          ${councilPrayerAccess ? `
+            <section class="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p class="text-xs font-semibold text-emerald-800">เลือกรายชื่อสมาชิกฝ่ายอีบาดัต</p>
+                  <p class="text-[11px] text-gray-500">รายชื่อจากสมาชิกสภาฝ่ายอีบาดัตในวาระปัจจุบัน</p>
+                </div>
+                <button type="button" id="btn-add-ibadat-scanner-candidates" class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800">เพิ่มรายชื่อที่เลือก</button>
+              </div>
+              <input id="ibadat-scanner-candidate-search" type="search" placeholder="ค้นหาชื่อ รหัส หรือห้อง" class="mb-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-200" />
+              <div id="ibadat-scanner-candidate-list" class="grid max-h-64 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
+                ${councilScannerCandidates.map(student => `
+                  <label class="ibadat-scanner-candidate flex cursor-pointer items-center gap-2 rounded-lg border border-gray-100 bg-white p-2.5" data-search="${_esc(`${student.name} ${student.code} ${student.room}`.toLowerCase())}">
+                    <input type="checkbox" class="ibadat-scanner-candidate-check" value="${_esc(student.id)}" />
+                    <span class="min-w-0"><span class="block truncate text-xs font-semibold text-gray-800">${_esc(student.name || 'ไม่ระบุชื่อ')}</span><span class="block truncate text-[10px] text-gray-500">${_esc(student.code)} · ${_esc(student.room || 'ไม่ระบุห้อง')}</span></span>
+                  </label>`).join('') || '<p class="col-span-full py-4 text-center text-xs text-gray-400">ไม่พบรายชื่อสมาชิกฝ่ายอีบาดัตในวาระปัจจุบัน</p>'}
+              </div>
+            </section>` : ''}
           <div>
-            <label class="block text-xs font-medium text-gray-500 mb-1">ระบุรหัสนักเรียนหรือรหัสคุณครู (กรอกหลายรหัสพร้อมกันได้ คั่นด้วยเว้นวรรคหรือลูกน้ำ)</label>
+            <label class="block text-xs font-medium text-gray-500 mb-1">${councilPrayerAccess ? 'หรือค้นหาด้วยรหัสนักเรียน' : 'ระบุรหัสนักเรียนหรือรหัสคุณครู (กรอกหลายรหัสพร้อมกันได้ คั่นด้วยเว้นวรรคหรือลูกน้ำ)'}</label>
             <div class="flex gap-2">
-              <input type="text" id="pr-scanner-search-input" placeholder="เช่น 24275 (นักเรียน) หรือ 1114 (ครู)"
+              <input type="text" id="pr-scanner-search-input" placeholder="${councilPrayerAccess ? 'เช่น 24275 (รหัสนักเรียน)' : 'เช่น 24275 (นักเรียน) หรือ 1114 (ครู)'}"
                 class="flex-1 text-sm border border-gray-200 rounded-xl px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
               <button id="btn-search-scanner-students" class="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition">ค้นหารายชื่อ</button>
             </div>
@@ -8878,6 +8903,48 @@ export async function renderPrayerAdmin(teacher, options = {}) {
       { key: 'Wed', label: 'พ', full: 'พุธ' },
       { key: 'Thu', label: 'พฤ', full: 'พฤหัสบดี' }
     ]
+
+    const _renderScannerPreview = () => {
+      const previewContainer = document.getElementById('scanner-preview-container')
+      const previewCards = document.getElementById('scanner-preview-cards')
+      if (!_foundScanners.length) {
+        previewContainer?.classList.add('hidden')
+        return
+      }
+      previewContainer?.classList.remove('hidden')
+      if (!previewCards) return
+      previewCards.innerHTML = _foundScanners.map(s => `
+        <div class="bg-white rounded-xl border border-indigo-100 p-3 flex items-center gap-3">
+          ${s.image_url
+            ? `<img src="${_esc(s.image_url)}" class="${s.type === 'student' ? 'student-avatar-premium w-10 h-14' : 'w-10 h-10 rounded-full object-cover flex-shrink-0'}" />`
+            : `<div class="${s.type === 'student' ? 'student-avatar-premium-placeholder w-10 h-14 bg-indigo-50 text-indigo-600' : 'w-10 h-10 bg-indigo-100 text-indigo-700'} flex flex-shrink-0 items-center justify-center rounded-full text-xs font-bold">👤</div>`}
+          <div class="min-w-0"><p class="truncate text-xs font-bold text-gray-800">${_esc(s.full_name || 'ไม่ระบุชื่อ')}${s.type === 'teacher' ? '<span class="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-800">คุณครู</span>' : ''}</p><p class="text-[10px] text-gray-400">${_esc(s.display_info || `รหัส ${s.code} · ห้อง ${s.main_room || '—'}`)}</p></div>
+        </div>`).join('')
+    }
+
+    if (councilPrayerAccess) {
+      const candidateList = document.getElementById('ibadat-scanner-candidate-list')
+      document.getElementById('ibadat-scanner-candidate-search')?.addEventListener('input', event => {
+        const query = event.target.value.trim().toLowerCase()
+        candidateList?.querySelectorAll('.ibadat-scanner-candidate').forEach(label => {
+          label.classList.toggle('hidden', query && !label.dataset.search.includes(query))
+        })
+      })
+      document.getElementById('btn-add-ibadat-scanner-candidates')?.addEventListener('click', () => {
+        const selectedIds = new Set([...candidateList.querySelectorAll('.ibadat-scanner-candidate-check:checked')].map(input => Number(input.value)))
+        if (!selectedIds.size) return showToast('เลือกรายชื่อฝ่ายอีบาดัตก่อน', 'warning')
+        const additions = councilScannerCandidates.filter(student => selectedIds.has(Number(student.id))).map(student => ({
+          ...student,
+          type: 'student',
+          display_info: `รหัส ${student.code} · ห้อง ${student.room || '—'} · ${student.gender || 'ไม่ระบุเพศ'} · ฝ่ายอีบาดัต`,
+        }))
+        const existing = new Set(_foundScanners.map(student => Number(student.id)))
+        _foundScanners.push(...additions.filter(student => !existing.has(Number(student.id))))
+        candidateList.querySelectorAll('.ibadat-scanner-candidate-check').forEach(input => { input.checked = false })
+        _renderScannerPreview()
+        showToast(`เพิ่มรายชื่อ ${additions.length} คนในรายการตรวจสอบ`, 'success')
+      })
+    }
 
     const _scannerCodeList = (value) => (value || '')
       .split(/[\s,]+/)
@@ -9500,40 +9567,18 @@ export async function renderPrayerAdmin(teacher, options = {}) {
         const studentsData = stuRes.data ?? []
         const teachersData = teachRes.data ?? []
 
-        _foundScanners = [
+        const foundByCode = [
           ...studentsData.filter(s => !councilPrayerAccess || councilStudentIds.has(Number(s.id))).map(s => ({ ...s, code: s.student_code, type: 'student', display_info: `รหัส ${s.student_code} · ห้อง ${s.main_room || '—'} · ${s.gender || 'ไม่ระบุเพศ'}` })),
           ...(councilPrayerAccess ? [] : teachersData.map(t => ({ ...t, code: t.teacher_code, type: 'teacher', display_info: `รหัสครู ${t.teacher_code} · กลุ่มสาระ ${t.dept || '—'}` })))
         ]
-
-        const previewContainer = document.getElementById('scanner-preview-container')
-        const previewCards = document.getElementById('scanner-preview-cards')
-
-        if (!_foundScanners.length) {
-          previewContainer.classList.add('hidden')
+        if (!foundByCode.length) {
+          if (!_foundScanners.length) document.getElementById('scanner-preview-container')?.classList.add('hidden')
           showToast('ไม่พบรหัสนักเรียนหรือรหัสครูที่ระบุ', 'warning')
           return
         }
-
-        previewContainer.classList.remove('hidden')
-        previewCards.innerHTML = _foundScanners.map(s => `
-          <div class="bg-white rounded-xl border border-indigo-100 p-3 flex items-center gap-3">
-            ${s.type === 'student'
-              ? (s.image_url
-                  ? `<img src="${s.image_url}" class="student-avatar-premium w-10 h-14" />`
-                  : `<div class="student-avatar-premium-placeholder w-10 h-14 bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs flex-shrink-0">👤</div>`)
-              : (s.image_url
-                  ? `<img src="${s.image_url}" class="w-10 h-10 rounded-full object-cover flex-shrink-0"/>`
-                  : `<div class="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center font-bold text-indigo-700 flex-shrink-0">👨‍🏫</div>`)
-            }
-            <div class="min-w-0">
-              <p class="font-bold text-gray-800 text-xs truncate">
-                ${s.full_name}
-                ${s.type === 'teacher' ? `<span class="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[9px] font-bold">คุณครู</span>` : ''}
-              </p>
-              <p class="text-[10px] text-gray-400">${s.display_info}</p>
-            </div>
-          </div>
-        `).join('')
+        const existingKeys = new Set(_foundScanners.map(s => `${s.type}:${s.code}`))
+        _foundScanners.push(...foundByCode.filter(s => !existingKeys.has(`${s.type}:${s.code}`)))
+        _renderScannerPreview()
 
       } catch(err) {
         showToast('ค้นหาล้มเหลว: ' + err.message, 'error')
@@ -9594,7 +9639,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
       historyInterval = null
     }
 
-    document.querySelectorAll('[data-tab]').forEach(b => {
+    prayerAdminRoot.querySelectorAll('[data-tab]').forEach(b => {
       b.className = b.dataset.tab===tab
         ? 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700'
         : 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700'

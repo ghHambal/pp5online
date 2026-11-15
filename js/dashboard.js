@@ -23,7 +23,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1077'
+import { APP_VERSION } from './version.js?v=10.22.1078'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
@@ -31,9 +31,6 @@ import { openRegradeModal } from './regrade-modal.js'
 import { renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.825'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
-let councilPrayerAccessMode = false
-let councilPrayerStudentIds = new Set()
-
 async function requireAuth() {
   showPageLoader(true)
   const { data: { session } } = await supabase.auth.getSession()
@@ -45,38 +42,11 @@ async function requireAuth() {
     .eq('id', session.user.id)
     .maybeSingle()
 
-  // เปิด dashboard โหมดคะแนนละหมาดจากระบบสภาได้เฉพาะผู้รับผิดชอบฝ่ายอีบาดัต
-  const councilPrayerRequested = new URLSearchParams(location.search).get('councilPrayerAccess') === '1'
-  const isAdmin = profile?.role === 'admin' || profile?.is_also_admin
-  if (!error && councilPrayerRequested && !isAdmin) {
-    const { data: allowed, error: accessError } = await supabase.rpc('is_council_ibadat_prayer_scanner')
-    councilPrayerAccessMode = !accessError && allowed === true
-  } else {
-    councilPrayerAccessMode = !error && councilPrayerRequested && isAdmin
-  }
-
-  // อนุญาต: แอดมิน หรือผู้รับผิดชอบอีบาดัตที่เปิดเฉพาะหน้าคะแนนละหมาดจากระบบสภา
-  if (error || (!isAdmin && !councilPrayerAccessMode)) {
+  // อนุญาต: role=admin หรือ is_also_admin=true
+  if (error || (profile?.role !== 'admin' && !profile?.is_also_admin)) {
     showToast('หน้านี้สำหรับผู้ดูแลระบบเท่านั้น', 'warning')
     setTimeout(() => window.location.replace('teacher.html'), 600)
     return null
-  }
-
-  if (councilPrayerAccessMode) {
-    const { data: terms, error: termsError } = await supabase.from('council_terms').select('id').eq('status', 'active').limit(1)
-    const activeTermId = terms?.[0]?.id
-    if (termsError || !activeTermId) {
-      showToast('ไม่พบวาระสภาปัจจุบันสำหรับจัดการสิทธิ์สแกน', 'error')
-      setTimeout(() => window.location.replace('council.html'), 600)
-      return null
-    }
-    const { data: members, error: membersError } = await supabase.from('council_members').select('student_id').eq('term_id', activeTermId).eq('status', 'active')
-    if (membersError) {
-      showToast('โหลดรายชื่อสภาปัจจุบันไม่สำเร็จ', 'error')
-      setTimeout(() => window.location.replace('council.html'), 600)
-      return null
-    }
-    councilPrayerStudentIds = new Set((members ?? []).map(row => Number(row.student_id)).filter(Number.isFinite))
   }
 
   return session
@@ -868,11 +838,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'payments':            renderPayments,
     'life-skill-admin':    renderLifeSkillAdmin,
     'reading-admin':       renderReadingAdmin,
-    'prayer-admin':        () => renderPrayerAdmin(null, {
-      initialTab: new URLSearchParams(location.search).get('tab') || 'scores',
-      councilPrayerAccess: councilPrayerAccessMode,
-      councilStudentIds: councilPrayerStudentIds,
-    }),
+    'prayer-admin':        renderPrayerAdmin,
     settings:       renderSettings,
     import:         renderImport,
     'admin-profile': renderAdminProfile,
@@ -908,10 +874,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       const teacher = await getMyTeacherProfile(session.user.id).catch(() => null)
       return m.renderCertificateManager(teacher)
     }),
-  }
-
-  if (councilPrayerAccessMode) {
-    Object.keys(routes).forEach(view => { if (view !== 'prayer-admin') delete routes[view] })
   }
 
   document.querySelectorAll('[data-nav]').forEach(link => {
@@ -950,9 +912,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ใช้ตอนกดลิงก์ push notification ให้เด้งเข้าหน้านั้นทันทีแทนที่จะเปิดหน้าภาพรวมเฉยๆ แล้วต้องไปหาเมนูเอง
   const deepLinkParams = new URLSearchParams(location.search)
   const deepLinkView = deepLinkParams.get('view')
-  if (councilPrayerAccessMode) {
-    routes['prayer-admin']()
-  } else if (deepLinkView && routes[deepLinkView]) {
+  if (deepLinkView && routes[deepLinkView]) {
     window._pendingQRTab = deepLinkParams.get('tab') || null
     routes[deepLinkView]()
   } else {
