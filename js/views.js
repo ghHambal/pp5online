@@ -7578,7 +7578,7 @@ export async function renderReadingAdmin() {
   }
 
   const _switchTab = (tab) => {
-    document.querySelectorAll('[data-tab]').forEach(b => {
+    document.querySelectorAll('#main-content [data-tab]').forEach(b => {
       b.className = b.dataset.tab===tab
         ? 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700'
         : 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700'
@@ -7705,9 +7705,16 @@ function _fmtD(d) { return `${d.getDate()}/${d.getMonth() + 1}` }
 
 // ─── Admin: ละหมาด ───────────────────────────────────────────────────────────
 
-export async function renderPrayerAdmin(teacher) {
-  setActiveNav('prayer-admin')
-  document.getElementById('page-title').textContent = 'คะแนนละหมาด'
+export async function renderPrayerAdmin(teacher, options = {}) {
+  const { councilIbadatMode = false, councilMembers = [], onBack = null, onOpenScanner = null } = options
+  const prayerAdminRoot = councilIbadatMode
+    ? document.getElementById('council-ibadat-prayer-admin-content')
+    : document.getElementById('main-content')
+  if (!councilIbadatMode) {
+    setActiveNav('prayer-admin')
+    const pageTitle = document.getElementById('page-title')
+    if (pageTitle) pageTitle.textContent = 'คะแนนละหมาด'
+  }
   let historyInterval = null
 
   // Fetch teacher details dynamically if not passed
@@ -7741,8 +7748,8 @@ export async function renderPrayerAdmin(teacher) {
     .map(c => c.trim())
     .filter(Boolean)
 
-  let isAllowedScanner = false
-  if (activeTeacher) {
+  let isAllowedScanner = councilIbadatMode
+  if (activeTeacher && !councilIbadatMode) {
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', activeTeacher.profile_id).maybeSingle()
     isAllowedScanner = teacherCodes.includes(activeTeacher.teacher_code) ||
                        activeTeacher.staff_type === 'แอดมิน' ||
@@ -7751,14 +7758,17 @@ export async function renderPrayerAdmin(teacher) {
   }
 
   // ─── Shell (tabs) ─────────────────────────────────────────────────────────
-  setContent(`<div class="max-w-5xl mx-auto animate-fade">
+  if (!prayerAdminRoot) throw new Error('ไม่พบพื้นที่แสดงหน้าคะแนนละหมาด')
+  prayerAdminRoot.innerHTML = `<div class="max-w-5xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <div>
-        <p class="text-xs text-gray-400 mt-0.5">บันทึกการมาละหมาดทุกห้อง — Sync รายวันลงชีท Solat</p>
+        ${councilIbadatMode ? '<h1 class="text-lg font-bold text-gray-800">คะแนนละหมาด</h1>' : ''}
+        <p class="text-xs text-gray-400 mt-0.5">${councilIbadatMode ? 'มอบหมายสมาชิกสภาให้ทำหน้าที่สแกนละหมาด' : 'บันทึกการมาละหมาดทุกห้อง — Sync รายวันลงชีท Solat'}</p>
       </div>
-      <div id="pr-tab-actions"></div>
+      <div class="flex items-center gap-2"><div id="pr-tab-actions"></div>${councilIbadatMode ? '<button id="pr-council-open-scan" class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">📷 เปิดหน้าสแกน</button><button id="pr-council-back" class="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50">← กลับระบบสภา</button>' : ''}</div>
     </div>
     <div class="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
+      ${councilIbadatMode ? '' : `
       <button id="pr-tab-scores" data-tab="scores"
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700">
         📊 คะแนน
@@ -7767,23 +7777,29 @@ export async function renderPrayerAdmin(teacher) {
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
         🖥️ มอนิเตอร์สแกนล่าสุด
       </button>
-      <button id="pr-tab-scanners" data-tab="scanners"
-        class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
-        🔑 มอบสิทธิ์สแกนเนอร์
-      </button>
       <button id="pr-tab-config" data-tab="config"
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
         ⚙️ ตั้งค่า
       </button>
+      `}
+      <button id="pr-tab-scanners" data-tab="scanners"
+        class="px-4 py-1.5 rounded-lg text-sm font-medium transition ${councilIbadatMode ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}">
+        🔑 มอบสิทธิ์สแกนเนอร์
+      </button>
+      ${councilIbadatMode ? '' : `
       ${isAllowedScanner ? `
       <button id="pr-tab-scanner-cam" data-tab="scanner-cam"
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 font-bold">
         📷 เปิดกล้องสแกน
       </button>
       ` : ''}
+      `}
     </div>
     <div id="pr-tab-content"></div>
-  </div>`)
+  </div>`
+  document.getElementById('pr-council-back')?.addEventListener('click', () => onBack?.())
+  document.getElementById('pr-council-open-scan')?.addEventListener('click', () => onOpenScanner?.())
+  if (councilIbadatMode) document.getElementById('pr-tab-actions').innerHTML = ''
 
   // ─── Tab: คะแนน ───────────────────────────────────────────────────────────
   const _showScores = () => {
@@ -8792,7 +8808,117 @@ export async function renderPrayerAdmin(teacher) {
   }
 
   // ─── Tab: มอบสิทธิ์สแกนเนอร์ ──────────────────────────────────────────
+  const _showCouncilIbadatScanners = async () => {
+    const list = document.getElementById('pr-tab-content')
+    if (!list) return
+    list.innerHTML = `
+      <section class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-50 flex items-center justify-between gap-3">
+          <div><p class="text-sm font-semibold text-gray-700">🔑 มอบสิทธิ์เครื่องสแกนเนอร์</p><p class="mt-1 text-xs text-gray-400">เลือกได้เฉพาะสมาชิกสภาที่ดำรงตำแหน่งในวาระปัจจุบัน</p></div>
+          <span id="council-scanner-count" class="text-xs text-gray-400">กำลังโหลด…</span>
+        </div>
+        <div class="p-4 border-b border-gray-100 space-y-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <input id="council-scanner-search" type="search" placeholder="ค้นหาชื่อ รหัส หรือห้อง" class="min-w-[220px] flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
+            <button id="council-scanner-select-visible" class="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50">เลือกที่แสดง</button>
+            <span class="text-xs text-gray-500">เลือก <strong id="council-scanner-selected-count">0</strong> คน</span>
+            <button type="button" class="council-scanner-set px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold disabled:opacity-40" data-enabled="true" disabled>มอบหมายผู้สแกน</button>
+            <button type="button" class="council-scanner-set px-3 py-2 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-bold disabled:opacity-40" data-enabled="false" disabled>ถอนสิทธิ์</button>
+          </div>
+        </div>
+        <div id="council-scanner-members" class="grid grid-cols-1 md:grid-cols-2 gap-2 p-4"><p class="col-span-full py-10 text-center text-sm text-gray-400">กำลังโหลดรายชื่อสมาชิกสภา…</p></div>
+      </section>`
+
+    const members = (councilMembers ?? []).filter(member => member?.status === 'active' && member.students?.id)
+    const studentIds = [...new Set(members.map(member => Number(member.students.id)).filter(Number.isFinite))]
+    if (!studentIds.length) {
+      document.getElementById('council-scanner-count').textContent = '0 คน'
+      document.getElementById('council-scanner-members').innerHTML = '<p class="col-span-full py-10 text-center text-sm text-gray-400">ไม่พบสมาชิกสภาในวาระปัจจุบัน</p>'
+      return
+    }
+
+    const { data: freshStudents, error } = await supabase.from('students')
+      .select('id, student_code, full_name, main_room, gender, image_url, can_scan_prayer')
+      .in('id', studentIds)
+    if (error) {
+      document.getElementById('council-scanner-members').innerHTML = `<p class="col-span-full py-10 text-center text-sm text-red-500">โหลดรายชื่อไม่สำเร็จ: ${_esc(error.message)}</p>`
+      return
+    }
+    const freshById = new Map((freshStudents ?? []).map(student => [Number(student.id), student]))
+    const rows = members.map(member => ({
+      ...member,
+      student: freshById.get(Number(member.students.id)),
+    })).filter(row => row.student)
+    const selected = new Set()
+    const countEl = document.getElementById('council-scanner-count')
+    const membersEl = document.getElementById('council-scanner-members')
+
+    const syncSelection = () => {
+      document.getElementById('council-scanner-selected-count').textContent = selected.size
+      document.querySelectorAll('.council-scanner-set').forEach(button => { button.disabled = !selected.size })
+    }
+    const drawRows = () => {
+      countEl.textContent = `${rows.length} คน`
+      membersEl.innerHTML = rows.map(row => {
+        const s = row.student
+        return `<label class="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-3 hover:bg-gray-50">
+          <input type="checkbox" class="council-scanner-member h-4 w-4 accent-indigo-600" data-id="${Number(s.id)}" ${selected.has(Number(s.id)) ? 'checked' : ''}>
+          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-bold text-gray-800">${_esc(s.full_name || '—')}</span><span class="block truncate text-xs text-gray-400">${_esc(s.student_code || '—')} · ${_esc(s.main_room || 'ไม่ระบุห้อง')} · ${_esc(row.council_positions?.position_name || 'สมาชิกสภา')}</span></span>
+          <span class="shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${s.can_scan_prayer ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${s.can_scan_prayer ? 'ได้รับสิทธิ์แล้ว' : 'ยังไม่มีสิทธิ์'}</span>
+        </label>`
+      }).join('')
+      membersEl.querySelectorAll('.council-scanner-member').forEach(input => input.addEventListener('change', () => {
+        const id = Number(input.dataset.id)
+        if (input.checked) selected.add(id)
+        else selected.delete(id)
+        syncSelection()
+      }))
+      syncSelection()
+    }
+    drawRows()
+    document.getElementById('council-scanner-search').addEventListener('input', event => {
+      const query = event.target.value.trim().toLocaleLowerCase('th')
+      membersEl.querySelectorAll('.council-scanner-member').forEach(input => {
+        const label = input.closest('label')
+        label.hidden = !!query && !label.textContent.toLocaleLowerCase('th').includes(query)
+      })
+    })
+    document.getElementById('council-scanner-select-visible').addEventListener('click', () => {
+      membersEl.querySelectorAll('.council-scanner-member').forEach(input => {
+        if (input.closest('label')?.hidden) return
+        input.checked = true
+        selected.add(Number(input.dataset.id))
+      })
+      syncSelection()
+    })
+    document.querySelectorAll('.council-scanner-set').forEach(button => button.addEventListener('click', async () => {
+      const ids = [...selected]
+      const enabled = button.dataset.enabled === 'true'
+      if (!ids.length || !confirm(`ยืนยัน${enabled ? 'มอบหมาย' : 'ถอน'}สิทธิ์ผู้สแกนละหมาดให้ ${ids.length} คนหรือไม่?`)) return
+      button.disabled = true
+      try {
+        const { error: rpcError } = await supabase.rpc('set_council_prayer_scanners', { p_student_ids: ids, p_enabled: enabled })
+        if (rpcError) throw rpcError
+        ids.forEach(id => {
+          const row = rows.find(item => Number(item.student.id) === id)
+          if (row) row.student.can_scan_prayer = enabled
+          selected.delete(id)
+        })
+        showToast(`${enabled ? 'มอบหมาย' : 'ถอน'}สิทธิ์สำเร็จ ${ids.length} คน`, 'success')
+        drawRows()
+      } catch (err) {
+        showToast('บันทึกสิทธิ์ไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+        syncSelection()
+      }
+    }))
+  }
+
   const _showScanners = () => {
+    if (councilIbadatMode) {
+      document.getElementById('pr-tab-actions').innerHTML = ''
+      _showCouncilIbadatScanners()
+      return
+    }
     document.getElementById('pr-tab-actions').innerHTML = ''
     document.getElementById('pr-tab-content').innerHTML = `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
@@ -9578,7 +9704,7 @@ export async function renderPrayerAdmin(teacher) {
       historyInterval = null
     }
 
-    document.querySelectorAll('[data-tab]').forEach(b => {
+    prayerAdminRoot.querySelectorAll('[data-tab]').forEach(b => {
       b.className = b.dataset.tab===tab
         ? 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700'
         : 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700'
@@ -9588,17 +9714,17 @@ export async function renderPrayerAdmin(teacher) {
     else if (tab==='scanners') _showScanners();
     else _showConfig()
   }
-  document.getElementById('pr-tab-scores').addEventListener('click', ()=>_switchTab('scores'))
+  document.getElementById('pr-tab-scores')?.addEventListener('click', ()=>_switchTab('scores'))
   document.getElementById('pr-tab-history')?.addEventListener('click', ()=>_switchTab('history'))
   document.getElementById('pr-tab-scanners').addEventListener('click', ()=>_switchTab('scanners'))
-  document.getElementById('pr-tab-config').addEventListener('click', ()=>_switchTab('config'))
-  if (isAllowedScanner) {
+  document.getElementById('pr-tab-config')?.addEventListener('click', ()=>_switchTab('config'))
+  if (isAllowedScanner && !councilIbadatMode) {
     document.getElementById('pr-tab-scanner-cam')?.addEventListener('click', async () => {
       const { renderStudentPrayerScanner } = await import('./student-views.js')
       renderStudentPrayerScanner(activeTeacher)
     })
   }
-  _switchTab('scores')
+  _switchTab(councilIbadatMode ? 'scanners' : 'scores')
 }
 
 function _openReadingModal(col, year, sem, onSave) {

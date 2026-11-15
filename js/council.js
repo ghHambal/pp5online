@@ -54,7 +54,6 @@ import {
   updateMySignature, updateMyPhoto,
   searchStudentsForCouncil, addCouncilMemberManual, updateCouncilMember, removeCouncilMember,
   setMemberCanCreateActivities, getMyActivityAttendanceSummary,
-  setCouncilPrayerScannerPermissions,
 } from './council-api.js'
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -84,7 +83,6 @@ const APPLICATION_STATUS_LABEL = {
 }
 
 let ctx = null
-const selectedIbadatScannerStudentIds = new Set()
 const initialRouteParams = new URLSearchParams(window.location.search)
 const initialRouteView = initialRouteParams.get('view')
 const hasExplicitViewRoute = Boolean(initialRouteView)
@@ -422,7 +420,6 @@ async function refreshPendingEndorsements() {
 async function switchCouncilTerm(termId) {
   const term = councilTerms.find(t => String(t.id) === String(termId))
   if (!term || String(term.id) === String(selectedCouncilTermId)) return
-  selectedIbadatScannerStudentIds.clear()
   selectedCouncilTermId = term.id
   electionYear = Number(term.academic_year)
   const [members, elections, applications, membership] = await Promise.all([
@@ -4667,42 +4664,33 @@ function renderChairTeamView() {
   return html || `<p class="text-sm text-[var(--muted-2)] text-center py-16">ยังไม่มีรายการรอดำเนินการ</p>`
 }
 
-function renderIbadatPrayerScannerView() {
-  if (!ctx.canScanIbadatPrayer) return `<p class="text-sm text-[var(--muted-2)] text-center py-16">หน้านี้ใช้ได้เฉพาะครูที่ปรึกษาฝ่ายอีบาดัตหรือหัวหน้าฝ่ายอีบาดัตที่ได้รับแต่งตั้งในวาระปัจจุบัน</p>`
+async function openCouncilIbadatPrayerAdmin() {
+  if (!ctx?.canScanIbadatPrayer) return showToast('บัญชีนี้ไม่มีสิทธิ์จัดการผู้สแกนฝ่ายอีบาดัต', 'error')
+  if (document.getElementById('council-ibadat-prayer-admin-overlay')) return
   const activeTerm = councilTerms.find(term => term.status === 'active')
-  if (!activeTerm || String(activeTerm.id) !== String(selectedCouncilTermId)) {
-    return `<section class="max-w-4xl mx-auto rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-6"><h2 class="text-lg font-extrabold text-[var(--ink)]">🕌 มอบหมายผู้สแกนละหมาด</h2><p class="mt-2 text-sm text-[var(--muted)]">กรุณาเลือกวาระปัจจุบันจากตัวเลือกด้านบน เพื่อจัดการรายชื่อผู้สแกนของสภาชุดปัจจุบัน</p></section>`
-  }
-  const candidates = ctx.members.filter(member => member.status === 'active' && Number(member.term_id) === Number(activeTerm.id) && member.students)
-  const selectedCount = candidates.filter(member => selectedIbadatScannerStudentIds.has(Number(member.student_id))).length
-  const candidateRows = candidates.length ? candidates.map(member => {
-    const student = member.students
-    const selected = selectedIbadatScannerStudentIds.has(Number(member.student_id))
-    return `<label class="flex items-center gap-3 rounded-xl border border-[var(--line-soft)] bg-[var(--surface)] px-3 py-3 hover:bg-[var(--surface-2)]"><input type="checkbox" class="ibadat-scanner-select h-4 w-4 accent-emerald-700" data-student-id="${Number(member.student_id)}" ${selected ? 'checked' : ''}><span class="min-w-0 flex-1"><span class="block truncate text-sm font-bold text-[var(--ink)]">${esc(student.full_name || '—')}</span><span class="block text-xs text-[var(--muted)]">${esc(student.student_code || '—')} · ${esc(student.main_room || 'ไม่ระบุห้อง')} · ${esc(member.council_positions?.position_name || 'สมาชิกสภา')}</span></span><span class="shrink-0 rounded-full px-2 py-1 text-[0.6875rem] font-bold ${student.can_scan_prayer ? 'bg-emerald-50 text-emerald-700' : 'bg-[var(--surface-2)] text-[var(--muted)]'}">${student.can_scan_prayer ? 'ได้รับสิทธิ์สแกน' : 'ยังไม่มีสิทธิ์'}</span></label>`
-  }).join('') : `<p class="py-8 text-center text-sm text-[var(--muted)]">ไม่พบสมาชิกสภาที่ดำรงตำแหน่งในวาระปัจจุบัน</p>`
-  return `<div class="max-w-5xl mx-auto space-y-4"><section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 sm:p-6"><div class="flex flex-wrap items-start justify-between gap-4"><div><h2 class="text-lg font-extrabold text-[var(--ink)]">🕌 มอบหมายผู้สแกนละหมาด</h2><p class="mt-1 text-sm text-[var(--muted)]">เลือกสมาชิกสภาที่จะทำหน้าที่สแกน สิทธิ์จะเริ่มใช้ได้ตามช่วงเวลาและเงื่อนไขสแกนละหมาดของระบบ</p></div><button type="button" class="btn-open-council-prayer-scan shrink-0 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-800">📷 เปิดหน้าสแกน</button></div><div class="mt-5 flex flex-wrap items-center gap-2"><button type="button" id="btn-select-ibadat-scanners" class="rounded-lg border border-[var(--line)] px-3 py-2 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--surface-2)]">เลือกสมาชิกทั้งหมด</button><span class="text-xs text-[var(--muted)]">เลือกแล้ว <strong id="ibadat-scanner-selected-count">${selectedCount}</strong> คน</span><div class="ml-auto flex flex-wrap gap-2"><button type="button" class="btn-set-ibadat-scanner rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-40" data-enabled="true" ${selectedCount ? '' : 'disabled'}>มอบหมายผู้สแกน</button><button type="button" class="btn-set-ibadat-scanner rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-40" data-enabled="false" ${selectedCount ? '' : 'disabled'}>ถอนสิทธิ์ที่เลือก</button></div></div></section><section id="ibadat-scanner-candidate-list" class="grid grid-cols-1 gap-2 md:grid-cols-2">${candidateRows}</section></div>`
-}
-
-async function setSelectedIbadatScannerPermissions(enabled, button) {
-  const ids = [...selectedIbadatScannerStudentIds].filter(id => ctx.members.some(member =>
-    Number(member.student_id) === id && member.status === 'active' && Number(member.term_id) === Number(selectedCouncilTermId)))
-  if (!ids.length) return showToast('กรุณาเลือกสมาชิกสภาก่อน', 'warning')
-  const actionLabel = enabled ? 'มอบหมายสิทธิ์ผู้สแกน' : 'ถอนสิทธิ์ผู้สแกน'
-  if (!confirm(`ยืนยัน${actionLabel}ให้สมาชิกสภา ${ids.length} คนหรือไม่?`)) return
-  button.disabled = true
-  button.textContent = 'กำลังบันทึก…'
+  if (!activeTerm) return showToast('ไม่พบวาระสภาที่กำลังดำรงตำแหน่ง', 'warning')
+  let councilMembers
   try {
-    await setCouncilPrayerScannerPermissions(ids, enabled)
-    ctx.members.forEach(member => {
-      if (ids.includes(Number(member.student_id)) && member.students) member.students.can_scan_prayer = enabled
-    })
-    ids.forEach(id => selectedIbadatScannerStudentIds.delete(id))
-    showToast(`${actionLabel} ${ids.length} คนสำเร็จ`, 'success')
-    render()
+    councilMembers = (await getCouncilMembers(null, activeTerm.id)).filter(member => member.status === 'active')
   } catch (error) {
-    showToast(`${actionLabel}ไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error')
-    button.disabled = false
-    button.textContent = enabled ? 'มอบหมายผู้สแกน' : 'ถอนสิทธิ์ที่เลือก'
+    return showToast('โหลดรายชื่อสภาปัจจุบันไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+  }
+  const overlay = document.createElement('div')
+  overlay.id = 'council-ibadat-prayer-admin-overlay'
+  overlay.className = 'fixed inset-0 z-[200] overflow-y-auto bg-slate-50 p-3 sm:p-5'
+  overlay.innerHTML = '<main id="council-ibadat-prayer-admin-content" class="min-h-[calc(100vh-2rem)]"><div class="mx-auto max-w-5xl py-16 text-center text-sm text-gray-400">กำลังเปิดหน้ามอบสิทธิ์สแกนเนอร์…</div></main>'
+  document.body.append(overlay)
+  try {
+    const { renderPrayerAdmin } = await import('./views.js')
+    await renderPrayerAdmin(ctx.teacher ?? null, {
+      councilIbadatMode: true,
+      councilMembers,
+      onBack: () => { overlay.remove(); setActiveView('overview'); render() },
+      onOpenScanner: () => openCouncilIbadatPrayerScanner(),
+    })
+  } catch (error) {
+    overlay.remove()
+    showToast('เปิดหน้ามอบสิทธิ์ไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
   }
 }
 
@@ -5362,7 +5350,6 @@ const VIEW_RENDERERS = {
   result: renderElectionView,
   settings: renderSettingsView,
   chairteam: renderChairTeamView,
-  ibadatScanner: renderIbadatPrayerScannerView,
   myduty: renderMyDutyView,
   mysummary: renderMySummaryView,
   assignments: renderAssignmentsView,
@@ -5390,6 +5377,12 @@ function render() {
   const items = getNavItems()
   if (!items.some(it => it.id === activeView)) setActiveView('overview')
   renderNav(items)
+
+  if (activeView === 'ibadatScanner') {
+    content.innerHTML = '<div class="py-16 text-center text-sm text-[var(--muted)]">กำลังเปิดหน้ามอบสิทธิ์สแกนเนอร์…</div>'
+    openCouncilIbadatPrayerAdmin()
+    return
+  }
 
   // เนื้อหาเต็มพื้นที่ที่มีจริง (ไม่ล็อก max-width) — ตามที่ผู้ใช้ทักท้วงว่าจอใหญ่ยังมีขอบว่าง
   // เหลือมาก ระยะขอบ (padding) ไล่กว้างขึ้นตาม breakpoint แทน ให้เนื้อหาไม่ชิดขอบจอเกินไป
@@ -5623,33 +5616,6 @@ function wireContentEvents() {
   })
   document.querySelectorAll('.goto-view').forEach(btn => {
     btn.addEventListener('click', () => { setActiveView(btn.dataset.view); render() })
-  })
-  document.querySelectorAll('.btn-open-council-prayer-scan').forEach(btn => {
-    btn.addEventListener('click', () => openCouncilIbadatPrayerScanner())
-  })
-  const updateIbadatScannerSelectionUI = () => {
-    const count = selectedIbadatScannerStudentIds.size
-    const countEl = document.getElementById('ibadat-scanner-selected-count')
-    if (countEl) countEl.textContent = count
-    document.querySelectorAll('.btn-set-ibadat-scanner').forEach(button => { button.disabled = count === 0 })
-  }
-  document.querySelectorAll('.ibadat-scanner-select').forEach(input => {
-    input.addEventListener('change', () => {
-      const id = Number(input.dataset.studentId)
-      if (input.checked) selectedIbadatScannerStudentIds.add(id)
-      else selectedIbadatScannerStudentIds.delete(id)
-      updateIbadatScannerSelectionUI()
-    })
-  })
-  document.getElementById('btn-select-ibadat-scanners')?.addEventListener('click', () => {
-    document.querySelectorAll('.ibadat-scanner-select').forEach(input => {
-      input.checked = true
-      selectedIbadatScannerStudentIds.add(Number(input.dataset.studentId))
-    })
-    updateIbadatScannerSelectionUI()
-  })
-  document.querySelectorAll('.btn-set-ibadat-scanner').forEach(button => {
-    button.addEventListener('click', () => setSelectedIbadatScannerPermissions(button.dataset.enabled === 'true', button))
   })
   document.querySelectorAll('.roster-gender-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => { rosterGenderTab = btn.dataset.gender; render() })
