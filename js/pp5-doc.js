@@ -1722,7 +1722,7 @@ function _buildPage5(d) {
     ${row(`<span>${_levelLbl}</span>${uline('16mm', _shortRoom(cls.class_name))}
            <span>&emsp;ภาคเรียนที่</span>${uline('10mm', semester)}
            <span>&emsp;ปีการศึกษา</span>${uline('18mm', academicYear)}
-           <span>&emsp;เวลา</span>${uline('12mm')}
+           <span>&emsp;เวลา</span>${uline('12mm', perWeek)}
            <span>ชั่วโมง&emsp;จำนวน</span>${uline('', credit, true)}
            <span>หน่วยกิต</span>`)}
     ${row(`<span>ครูผู้สอน</span>${uline('80mm', teacher?.full_name??'')}`)}

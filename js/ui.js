@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1074'
+import { APP_VERSION } from './version.js?v=10.22.1075'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1075': [
+    'เติมจำนวนคาบในช่องเวลาในหน้าสุดท้ายของเอกสาร ปพ.5',
+  ],
   '10.22.1074': [
     'ให้ครูที่ปรึกษาฝ่ายอีบาดัตและหัวหน้าฝ่ายที่ได้รับแต่งตั้ง มอบหมายหรือถอนสิทธิ์ผู้สแกนจากสมาชิกสภาปัจจุบันได้',
     'ตรวจสิทธิ์การมอบหมายผู้สแกนที่ฐานข้อมูล และคงหน้าสแกนละหมาดแบบเต็มจอไว้ในระบบสภา',
