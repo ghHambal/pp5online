@@ -9280,8 +9280,8 @@ export async function renderPrayerAdmin(teacher, options = {}) {
                   const dayButtonsHTML = _scannerDays.map(d => {
                     const isAssigned = row.assignedDays.includes(d.key)
                     return `
-                      <button class="btn-toggle-day-scanner w-6 h-6 rounded-full text-[9px] font-extrabold transition-all border ${isAssigned ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'} ${councilPrayerAccess ? 'opacity-50' : ''}" ${councilPrayerAccess ? 'disabled' : ''}
-                        data-code="${_esc(row.code)}" data-day="${d.key}" data-name="${_esc(row.name)}" title="เวรวัน${d.full}">
+                      <button class="btn-toggle-day-scanner w-6 h-6 rounded-full text-[9px] font-extrabold transition-all border ${isAssigned ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'}"
+                        data-id="${row.id}" data-code="${_esc(row.code)}" data-day="${d.key}" data-name="${_esc(row.name)}" title="เวรวัน${d.full}">
                         ${d.label}
                       </button>
                     `
@@ -9408,15 +9408,24 @@ export async function renderPrayerAdmin(teacher, options = {}) {
               const name = btn.dataset.name
               btn.disabled = true
               try {
-                const currentConfig = await getSystemConfig().catch(() => ({}))
-                const dayKey = `prayerScanner${day}`
-                let codes = _scannerCodeList(currentConfig[dayKey])
-                if (codes.includes(code)) {
-                  codes = codes.filter(c => c !== code)
+                if (councilPrayerAccess) {
+                  const { error } = await supabase.rpc('set_council_prayer_scanner_day', {
+                    p_student_id: Number(btn.dataset.id),
+                    p_day: day,
+                    p_enabled: !btn.classList.contains('bg-indigo-600'),
+                  })
+                  if (error) throw error
                 } else {
-                  codes.push(code)
+                  const currentConfig = await getSystemConfig().catch(() => ({}))
+                  const dayKey = `prayerScanner${day}`
+                  let codes = _scannerCodeList(currentConfig[dayKey])
+                  if (codes.includes(code)) {
+                    codes = codes.filter(c => c !== code)
+                  } else {
+                    codes.push(code)
+                  }
+                  await updateSystemConfig(dayKey, codes.join(','))
                 }
-                await updateSystemConfig(dayKey, codes.join(','))
                 const dayName = _scannerDays.find(d => d.key === day)?.full || day
                 showToast(`ปรับสิทธิ์เวรวัน${dayName} ของ "${name}" สำเร็จ`, 'success')
                 _loadScannersList()

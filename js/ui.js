@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1078'
+import { APP_VERSION } from './version.js?v=10.22.1079'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1079': [
+    'เปิดให้ครูที่ปรึกษาฝ่ายอีบาดัตและหัวหน้าฝ่ายกำหนดวันเวรสแกนของสมาชิกสภาที่ได้รับสิทธิ์ได้ โดยจำกัดการบันทึกไว้เฉพาะสมาชิกสภาวาระปัจจุบัน',
+  ],
   '10.22.1078': [
     'ใช้หน้าจัดการสิทธิ์สแกนเนอร์ชุดเดียวกับคะแนนละหมาดภายในระบบสภา โดยไม่เปิดหน้า Admin Dashboard',
     'แสดงรายชื่อสมาชิกฝ่ายอีบาดัตวาระปัจจุบันให้เลือกมอบสิทธิ์สแกนได้ พร้อมจำกัดการมอบหมายและถอนสิทธิ์เฉพาะสมาชิกสภาวาระปัจจุบัน',
