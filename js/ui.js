@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1076'
+import { APP_VERSION } from './version.js?v=10.22.1077'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1077': [
+    'เปิดหน้าคะแนนละหมาดชุดเดียวกับระบบหลักจากเมนูสภา พร้อมตรวจสิทธิ์ครูที่ปรึกษาและหัวหน้าฝ่ายอีบาดัต',
+    'จำกัดการมอบหมายและถอนสิทธิ์ผ่านระบบสภาไว้เฉพาะสมาชิกสภาวาระปัจจุบัน',
+  ],
   '10.22.1076': [
     'เปิดหน้ามอบสิทธิ์สแกนเนอร์หน้าเดียวกับระบบคะแนนละหมาดให้ผู้รับผิดชอบฝ่ายอีบาดัต โดยแสดงเฉพาะสมาชิกสภาวาระปัจจุบัน',
     'เชื่อมการมอบหมายและถอนสิทธิ์จากหน้าคะแนนละหมาดเข้ากับ RPC ตรวจสิทธิ์ของฝ่ายอีบาดัต',

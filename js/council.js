@@ -4667,31 +4667,15 @@ function renderChairTeamView() {
 async function openCouncilIbadatPrayerAdmin() {
   if (!ctx?.canScanIbadatPrayer) return showToast('บัญชีนี้ไม่มีสิทธิ์จัดการผู้สแกนฝ่ายอีบาดัต', 'error')
   if (document.getElementById('council-ibadat-prayer-admin-overlay')) return
-  const activeTerm = councilTerms.find(term => term.status === 'active')
-  if (!activeTerm) return showToast('ไม่พบวาระสภาที่กำลังดำรงตำแหน่ง', 'warning')
-  let councilMembers
-  try {
-    councilMembers = (await getCouncilMembers(null, activeTerm.id)).filter(member => member.status === 'active')
-  } catch (error) {
-    return showToast('โหลดรายชื่อสภาปัจจุบันไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
-  }
   const overlay = document.createElement('div')
   overlay.id = 'council-ibadat-prayer-admin-overlay'
-  overlay.className = 'fixed inset-0 z-[200] overflow-y-auto bg-slate-50 p-3 sm:p-5'
-  overlay.innerHTML = '<main id="council-ibadat-prayer-admin-content" class="min-h-[calc(100vh-2rem)]"><div class="mx-auto max-w-5xl py-16 text-center text-sm text-gray-400">กำลังเปิดหน้ามอบสิทธิ์สแกนเนอร์…</div></main>'
+  overlay.className = 'fixed inset-0 z-[200] bg-slate-100'
+  overlay.innerHTML = `
+    <button type="button" id="council-prayer-dashboard-close" aria-label="กลับระบบสภา"
+      class="absolute right-3 top-3 z-[202] rounded-xl border border-white/30 bg-slate-900/80 px-3 py-2 text-sm font-bold text-white shadow-lg backdrop-blur hover:bg-slate-900">✕ กลับระบบสภา</button>
+    <iframe title="คะแนนละหมาด — มอบสิทธิ์สแกนเนอร์" class="h-full w-full border-0" src="dashboard.html?view=prayer-admin&amp;tab=scanners&amp;councilPrayerAccess=1"></iframe>`
   document.body.append(overlay)
-  try {
-    const { renderPrayerAdmin } = await import('./views.js')
-    await renderPrayerAdmin(ctx.teacher ?? null, {
-      councilIbadatMode: true,
-      councilMembers,
-      onBack: () => { overlay.remove(); setActiveView('overview'); render() },
-      onOpenScanner: () => openCouncilIbadatPrayerScanner(),
-    })
-  } catch (error) {
-    overlay.remove()
-    showToast('เปิดหน้ามอบสิทธิ์ไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
-  }
+  document.getElementById('council-prayer-dashboard-close')?.addEventListener('click', () => overlay.remove())
 }
 
 async function openCouncilIbadatPrayerScanner() {

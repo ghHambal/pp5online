@@ -7706,15 +7706,9 @@ function _fmtD(d) { return `${d.getDate()}/${d.getMonth() + 1}` }
 // ─── Admin: ละหมาด ───────────────────────────────────────────────────────────
 
 export async function renderPrayerAdmin(teacher, options = {}) {
-  const { councilIbadatMode = false, councilMembers = [], onBack = null, onOpenScanner = null } = options
-  const prayerAdminRoot = councilIbadatMode
-    ? document.getElementById('council-ibadat-prayer-admin-content')
-    : document.getElementById('main-content')
-  if (!councilIbadatMode) {
-    setActiveNav('prayer-admin')
-    const pageTitle = document.getElementById('page-title')
-    if (pageTitle) pageTitle.textContent = 'คะแนนละหมาด'
-  }
+  const { initialTab = 'scores', councilPrayerAccess = false, councilStudentIds = new Set() } = options
+  setActiveNav('prayer-admin')
+  document.getElementById('page-title').textContent = 'คะแนนละหมาด'
   let historyInterval = null
 
   // Fetch teacher details dynamically if not passed
@@ -7748,27 +7742,24 @@ export async function renderPrayerAdmin(teacher, options = {}) {
     .map(c => c.trim())
     .filter(Boolean)
 
-  let isAllowedScanner = councilIbadatMode
-  if (activeTeacher && !councilIbadatMode) {
+  let isAllowedScanner = councilPrayerAccess
+  if (activeTeacher) {
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', activeTeacher.profile_id).maybeSingle()
-    isAllowedScanner = teacherCodes.includes(activeTeacher.teacher_code) ||
+    isAllowedScanner = councilPrayerAccess || teacherCodes.includes(activeTeacher.teacher_code) ||
                        activeTeacher.staff_type === 'แอดมิน' ||
                        activeTeacher.position === 'admin' ||
                        profile?.role === 'admin'
   }
 
   // ─── Shell (tabs) ─────────────────────────────────────────────────────────
-  if (!prayerAdminRoot) throw new Error('ไม่พบพื้นที่แสดงหน้าคะแนนละหมาด')
-  prayerAdminRoot.innerHTML = `<div class="max-w-5xl mx-auto animate-fade">
+  setContent(`<div class="max-w-5xl mx-auto animate-fade">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
       <div>
-        ${councilIbadatMode ? '<h1 class="text-lg font-bold text-gray-800">คะแนนละหมาด</h1>' : ''}
-        <p class="text-xs text-gray-400 mt-0.5">${councilIbadatMode ? 'มอบหมายสมาชิกสภาให้ทำหน้าที่สแกนละหมาด' : 'บันทึกการมาละหมาดทุกห้อง — Sync รายวันลงชีท Solat'}</p>
+        <p class="text-xs text-gray-400 mt-0.5">บันทึกการมาละหมาดทุกห้อง — Sync รายวันลงชีท Solat</p>
       </div>
-      <div class="flex items-center gap-2"><div id="pr-tab-actions"></div>${councilIbadatMode ? '<button id="pr-council-open-scan" class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white hover:bg-emerald-700">📷 เปิดหน้าสแกน</button><button id="pr-council-back" class="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50">← กลับระบบสภา</button>' : ''}</div>
+      <div id="pr-tab-actions"></div>
     </div>
     <div class="flex gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit flex-wrap">
-      ${councilIbadatMode ? '' : `
       <button id="pr-tab-scores" data-tab="scores"
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700">
         📊 คะแนน
@@ -7777,29 +7768,23 @@ export async function renderPrayerAdmin(teacher, options = {}) {
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
         🖥️ มอนิเตอร์สแกนล่าสุด
       </button>
-      <button id="pr-tab-config" data-tab="config"
-        class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
-        ⚙️ ตั้งค่า
-      </button>
-      `}
       <button id="pr-tab-scanners" data-tab="scanners"
-        class="px-4 py-1.5 rounded-lg text-sm font-medium transition ${councilIbadatMode ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'}">
+        class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
         🔑 มอบสิทธิ์สแกนเนอร์
       </button>
-      ${councilIbadatMode ? '' : `
+      <button id="pr-tab-config" data-tab="config"
+        class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700" ${councilPrayerAccess ? 'disabled title="แท็บนี้สำหรับผู้ดูแลระบบ"' : ''}>
+        ⚙️ ตั้งค่า
+      </button>
       ${isAllowedScanner ? `
       <button id="pr-tab-scanner-cam" data-tab="scanner-cam"
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 font-bold">
         📷 เปิดกล้องสแกน
       </button>
       ` : ''}
-      `}
     </div>
     <div id="pr-tab-content"></div>
-  </div>`
-  document.getElementById('pr-council-back')?.addEventListener('click', () => onBack?.())
-  document.getElementById('pr-council-open-scan')?.addEventListener('click', () => onOpenScanner?.())
-  if (councilIbadatMode) document.getElementById('pr-tab-actions').innerHTML = ''
+  </div>`)
 
   // ─── Tab: คะแนน ───────────────────────────────────────────────────────────
   const _showScores = () => {
@@ -8808,117 +8793,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
   }
 
   // ─── Tab: มอบสิทธิ์สแกนเนอร์ ──────────────────────────────────────────
-  const _showCouncilIbadatScanners = async () => {
-    const list = document.getElementById('pr-tab-content')
-    if (!list) return
-    list.innerHTML = `
-      <section class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        <div class="px-5 py-3 border-b border-gray-50 flex items-center justify-between gap-3">
-          <div><p class="text-sm font-semibold text-gray-700">🔑 มอบสิทธิ์เครื่องสแกนเนอร์</p><p class="mt-1 text-xs text-gray-400">เลือกได้เฉพาะสมาชิกสภาที่ดำรงตำแหน่งในวาระปัจจุบัน</p></div>
-          <span id="council-scanner-count" class="text-xs text-gray-400">กำลังโหลด…</span>
-        </div>
-        <div class="p-4 border-b border-gray-100 space-y-3">
-          <div class="flex flex-wrap items-center gap-2">
-            <input id="council-scanner-search" type="search" placeholder="ค้นหาชื่อ รหัส หรือห้อง" class="min-w-[220px] flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-200">
-            <button id="council-scanner-select-visible" class="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50">เลือกที่แสดง</button>
-            <span class="text-xs text-gray-500">เลือก <strong id="council-scanner-selected-count">0</strong> คน</span>
-            <button type="button" class="council-scanner-set px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold disabled:opacity-40" data-enabled="true" disabled>มอบหมายผู้สแกน</button>
-            <button type="button" class="council-scanner-set px-3 py-2 rounded-xl border border-red-200 bg-red-50 text-red-700 text-xs font-bold disabled:opacity-40" data-enabled="false" disabled>ถอนสิทธิ์</button>
-          </div>
-        </div>
-        <div id="council-scanner-members" class="grid grid-cols-1 md:grid-cols-2 gap-2 p-4"><p class="col-span-full py-10 text-center text-sm text-gray-400">กำลังโหลดรายชื่อสมาชิกสภา…</p></div>
-      </section>`
-
-    const members = (councilMembers ?? []).filter(member => member?.status === 'active' && member.students?.id)
-    const studentIds = [...new Set(members.map(member => Number(member.students.id)).filter(Number.isFinite))]
-    if (!studentIds.length) {
-      document.getElementById('council-scanner-count').textContent = '0 คน'
-      document.getElementById('council-scanner-members').innerHTML = '<p class="col-span-full py-10 text-center text-sm text-gray-400">ไม่พบสมาชิกสภาในวาระปัจจุบัน</p>'
-      return
-    }
-
-    const { data: freshStudents, error } = await supabase.from('students')
-      .select('id, student_code, full_name, main_room, gender, image_url, can_scan_prayer')
-      .in('id', studentIds)
-    if (error) {
-      document.getElementById('council-scanner-members').innerHTML = `<p class="col-span-full py-10 text-center text-sm text-red-500">โหลดรายชื่อไม่สำเร็จ: ${_esc(error.message)}</p>`
-      return
-    }
-    const freshById = new Map((freshStudents ?? []).map(student => [Number(student.id), student]))
-    const rows = members.map(member => ({
-      ...member,
-      student: freshById.get(Number(member.students.id)),
-    })).filter(row => row.student)
-    const selected = new Set()
-    const countEl = document.getElementById('council-scanner-count')
-    const membersEl = document.getElementById('council-scanner-members')
-
-    const syncSelection = () => {
-      document.getElementById('council-scanner-selected-count').textContent = selected.size
-      document.querySelectorAll('.council-scanner-set').forEach(button => { button.disabled = !selected.size })
-    }
-    const drawRows = () => {
-      countEl.textContent = `${rows.length} คน`
-      membersEl.innerHTML = rows.map(row => {
-        const s = row.student
-        return `<label class="flex items-center gap-3 rounded-xl border border-gray-100 px-3 py-3 hover:bg-gray-50">
-          <input type="checkbox" class="council-scanner-member h-4 w-4 accent-indigo-600" data-id="${Number(s.id)}" ${selected.has(Number(s.id)) ? 'checked' : ''}>
-          <span class="min-w-0 flex-1"><span class="block truncate text-sm font-bold text-gray-800">${_esc(s.full_name || '—')}</span><span class="block truncate text-xs text-gray-400">${_esc(s.student_code || '—')} · ${_esc(s.main_room || 'ไม่ระบุห้อง')} · ${_esc(row.council_positions?.position_name || 'สมาชิกสภา')}</span></span>
-          <span class="shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${s.can_scan_prayer ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'}">${s.can_scan_prayer ? 'ได้รับสิทธิ์แล้ว' : 'ยังไม่มีสิทธิ์'}</span>
-        </label>`
-      }).join('')
-      membersEl.querySelectorAll('.council-scanner-member').forEach(input => input.addEventListener('change', () => {
-        const id = Number(input.dataset.id)
-        if (input.checked) selected.add(id)
-        else selected.delete(id)
-        syncSelection()
-      }))
-      syncSelection()
-    }
-    drawRows()
-    document.getElementById('council-scanner-search').addEventListener('input', event => {
-      const query = event.target.value.trim().toLocaleLowerCase('th')
-      membersEl.querySelectorAll('.council-scanner-member').forEach(input => {
-        const label = input.closest('label')
-        label.hidden = !!query && !label.textContent.toLocaleLowerCase('th').includes(query)
-      })
-    })
-    document.getElementById('council-scanner-select-visible').addEventListener('click', () => {
-      membersEl.querySelectorAll('.council-scanner-member').forEach(input => {
-        if (input.closest('label')?.hidden) return
-        input.checked = true
-        selected.add(Number(input.dataset.id))
-      })
-      syncSelection()
-    })
-    document.querySelectorAll('.council-scanner-set').forEach(button => button.addEventListener('click', async () => {
-      const ids = [...selected]
-      const enabled = button.dataset.enabled === 'true'
-      if (!ids.length || !confirm(`ยืนยัน${enabled ? 'มอบหมาย' : 'ถอน'}สิทธิ์ผู้สแกนละหมาดให้ ${ids.length} คนหรือไม่?`)) return
-      button.disabled = true
-      try {
-        const { error: rpcError } = await supabase.rpc('set_council_prayer_scanners', { p_student_ids: ids, p_enabled: enabled })
-        if (rpcError) throw rpcError
-        ids.forEach(id => {
-          const row = rows.find(item => Number(item.student.id) === id)
-          if (row) row.student.can_scan_prayer = enabled
-          selected.delete(id)
-        })
-        showToast(`${enabled ? 'มอบหมาย' : 'ถอน'}สิทธิ์สำเร็จ ${ids.length} คน`, 'success')
-        drawRows()
-      } catch (err) {
-        showToast('บันทึกสิทธิ์ไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
-        syncSelection()
-      }
-    }))
-  }
-
   const _showScanners = () => {
-    if (councilIbadatMode) {
-      document.getElementById('pr-tab-actions').innerHTML = ''
-      _showCouncilIbadatScanners()
-      return
-    }
     document.getElementById('pr-tab-actions').innerHTML = ''
     document.getElementById('pr-tab-content').innerHTML = `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
@@ -8929,21 +8804,21 @@ export async function renderPrayerAdmin(teacher, options = {}) {
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label class="block text-xs font-medium text-gray-500 mb-1">เวลาเริ่มสแกน</label>
-              <input type="text" id="pr-scan-start" value="${cfg.prayerScanStartTime??'12:20'}" placeholder="12:20"
+              <input type="text" id="pr-scan-start" value="${cfg.prayerScanStartTime??'12:20'}" placeholder="12:20" ${councilPrayerAccess ? 'readonly' : ''}
                 class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-500 mb-1">ปิดสำหรับแกนนำทั่วไป</label>
-              <input type="text" id="pr-scan-end" value="${cfg.prayerScanEndTime??'12:50'}" placeholder="12:50"
+              <input type="text" id="pr-scan-end" value="${cfg.prayerScanEndTime??'12:50'}" placeholder="12:50" ${councilPrayerAccess ? 'readonly' : ''}
                 class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
             <div>
               <label class="block text-xs font-medium text-gray-500 mb-1">ปิดสำหรับประธาน/รองประธาน</label>
-              <input type="text" id="pr-scan-ext-end" value="${cfg.prayerScanExtendedEndTime??'13:05'}" placeholder="13:05"
+              <input type="text" id="pr-scan-ext-end" value="${cfg.prayerScanExtendedEndTime??'13:05'}" placeholder="13:05" ${councilPrayerAccess ? 'readonly' : ''}
                 class="w-full text-sm border border-gray-200 rounded-xl px-4 py-2.5 font-mono bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300" />
             </div>
           </div>
-          <button id="pr-save-scanner-time-cfg"
+          <button id="pr-save-scanner-time-cfg" ${councilPrayerAccess ? 'disabled title="ให้ผู้ดูแลระบบตั้งค่าช่วงเวลาสแกน"' : ''}
             class="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition">
             บันทึกช่วงเวลาสแกน
           </button>
@@ -9074,8 +8949,8 @@ export async function renderPrayerAdmin(teacher, options = {}) {
 
         // 2. ดึงข้อมูลครูที่มีสิทธิ์จาก config
         const currentConfig = await getSystemConfig().catch(() => ({}))
-        const studentsList = students ?? []
-        const teacherCodes = _scannerCodeList(currentConfig.prayerScannerTeachers)
+        const studentsList = (students ?? []).filter(student => !councilPrayerAccess || councilStudentIds.has(Number(student.id)))
+        const teacherCodes = councilPrayerAccess ? [] : _scannerCodeList(currentConfig.prayerScannerTeachers)
         const extendedStudentCodes = new Set(_scannerCodeList(currentConfig.prayerExtendedScannerStudents))
 
         let permittedTeachers = []
@@ -9338,7 +9213,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
                   const dayButtonsHTML = _scannerDays.map(d => {
                     const isAssigned = row.assignedDays.includes(d.key)
                     return `
-                      <button class="btn-toggle-day-scanner w-6 h-6 rounded-full text-[9px] font-extrabold transition-all border ${isAssigned ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'}"
+                      <button class="btn-toggle-day-scanner w-6 h-6 rounded-full text-[9px] font-extrabold transition-all border ${isAssigned ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100 hover:text-gray-600'} ${councilPrayerAccess ? 'opacity-50' : ''}" ${councilPrayerAccess ? 'disabled' : ''}
                         data-code="${_esc(row.code)}" data-day="${d.key}" data-name="${_esc(row.name)}" title="เวรวัน${d.full}">
                         ${d.label}
                       </button>
@@ -9366,7 +9241,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
                         <span class="px-2 py-0.5 rounded-full ${row.gender === 'หญิง' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-sky-50 text-sky-700 border-sky-100'} text-[10px] font-bold border">${_esc(row.gender || '—')}</span>
                       </td>
                       <td class="px-3 py-2">
-                        <button class="btn-toggle-extended-scanner inline-flex items-center justify-center min-w-[70px] px-2 py-1 rounded-lg transition text-[10px] font-bold border ${row.permission === 'extended' ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'}"
+                        <button class="btn-toggle-extended-scanner inline-flex items-center justify-center min-w-[70px] px-2 py-1 rounded-lg transition text-[10px] font-bold border ${row.permission === 'extended' ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'} ${councilPrayerAccess ? 'opacity-50' : ''}" ${councilPrayerAccess ? 'disabled' : ''}
                           data-code="${_esc(row.code)}" data-name="${_esc(row.name)}" data-extended="${row.permission === 'extended' ? '1' : '0'}">
                           ${row.permission === 'extended' ? 'ขยายเวลา' : 'ทั่วไป'}
                         </button>
@@ -9495,16 +9370,23 @@ export async function renderPrayerAdmin(teacher, options = {}) {
               try {
                 if (type === 'student') {
                   const sid = +btn.dataset.id
-                  const { error } = await supabase.from('students').update({ can_scan_prayer: false }).eq('id', sid)
-                  if (error) throw error
-                  await _saveExtendedScannerCode(code, false)
+                  if (councilPrayerAccess) {
+                    const { error } = await supabase.rpc('set_council_prayer_scanners', { p_student_ids: [sid], p_enabled: false })
+                    if (error) throw error
+                  } else {
+                    const { error } = await supabase.from('students').update({ can_scan_prayer: false }).eq('id', sid)
+                    if (error) throw error
+                    await _saveExtendedScannerCode(code, false)
+                  }
 
                   // ล้างรหัสในกลุ่มรายวันด้วย
-                  const currentConfig = await getSystemConfig().catch(() => ({}))
-                  for (const d of _scannerDays) {
-                    const dayKey = `prayerScanner${d.key}`
-                    const updatedCodes = _scannerCodeList(currentConfig[dayKey]).filter(c => c !== code)
-                    await updateSystemConfig(dayKey, updatedCodes.join(','))
+                  if (!councilPrayerAccess) {
+                    const currentConfig = await getSystemConfig().catch(() => ({}))
+                    for (const d of _scannerDays) {
+                      const dayKey = `prayerScanner${d.key}`
+                      const updatedCodes = _scannerCodeList(currentConfig[dayKey]).filter(c => c !== code)
+                      await updateSystemConfig(dayKey, updatedCodes.join(','))
+                    }
                   }
                 } else {
                   const currentConfig = await getSystemConfig().catch(() => ({}))
@@ -9558,26 +9440,31 @@ export async function renderPrayerAdmin(teacher, options = {}) {
           button.textContent = 'กำลังถอนสิทธิ์...'
           try {
             const selectedStudents = selectedRows.filter(row => row.type === 'student')
-            const selectedTeachers = selectedRows.filter(row => row.type === 'teacher')
-            if (selectedStudents.length) {
+            const selectedTeachers = councilPrayerAccess ? [] : selectedRows.filter(row => row.type === 'teacher')
+            if (councilPrayerAccess && selectedStudents.length) {
+              const { error } = await supabase.rpc('set_council_prayer_scanners', { p_student_ids: selectedStudents.map(row => row.id), p_enabled: false })
+              if (error) throw error
+            } else if (selectedStudents.length) {
               const { error } = await supabase.from('students').update({ can_scan_prayer: false }).in('id', selectedStudents.map(row => row.id))
               if (error) throw error
             }
-            const currentConfig = await getSystemConfig().catch(() => ({}))
-            const studentCodes = new Set(selectedStudents.map(row => row.code))
-            if (studentCodes.size) {
-              const extended = _scannerCodeList(currentConfig.prayerExtendedScannerStudents).filter(code => !studentCodes.has(code))
-              await updateSystemConfig('prayerExtendedScannerStudents', extended.join(','))
-              for (const day of _scannerDays) {
-                const key = `prayerScanner${day.key}`
-                const updated = _scannerCodeList(currentConfig[key]).filter(code => !studentCodes.has(code))
-                await updateSystemConfig(key, updated.join(','))
+            if (!councilPrayerAccess) {
+              const currentConfig = await getSystemConfig().catch(() => ({}))
+              const studentCodes = new Set(selectedStudents.map(row => row.code))
+              if (studentCodes.size) {
+                const extended = _scannerCodeList(currentConfig.prayerExtendedScannerStudents).filter(code => !studentCodes.has(code))
+                await updateSystemConfig('prayerExtendedScannerStudents', extended.join(','))
+                for (const day of _scannerDays) {
+                  const key = `prayerScanner${day.key}`
+                  const updated = _scannerCodeList(currentConfig[key]).filter(code => !studentCodes.has(code))
+                  await updateSystemConfig(key, updated.join(','))
+                }
               }
-            }
-            const teacherCodes = new Set(selectedTeachers.map(row => row.code))
-            if (teacherCodes.size) {
-              const updated = _scannerCodeList(currentConfig.prayerScannerTeachers).filter(code => !teacherCodes.has(code))
-              await updateSystemConfig('prayerScannerTeachers', updated.join(','))
+              const teacherCodes = new Set(selectedTeachers.map(row => row.code))
+              if (teacherCodes.size) {
+                const updated = _scannerCodeList(currentConfig.prayerScannerTeachers).filter(code => !teacherCodes.has(code))
+                await updateSystemConfig('prayerScannerTeachers', updated.join(','))
+              }
             }
             _selectedScannerKeys.clear()
             showToast(`ถอนสิทธิ์สแกนละหมาดสำเร็จ ${selectedRows.length} คน`, 'success')
@@ -9604,7 +9491,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
       try {
         const [stuRes, teachRes] = await Promise.all([
           supabase.from('students').select('id, student_code, full_name, main_room, gender, image_url').in('student_code', codes),
-          supabase.from('teachers').select('id, teacher_code, full_name, dept, image_url').in('teacher_code', codes)
+          councilPrayerAccess ? Promise.resolve({ data: [], error: null }) : supabase.from('teachers').select('id, teacher_code, full_name, dept, image_url').in('teacher_code', codes)
         ])
 
         if (stuRes.error) throw stuRes.error
@@ -9614,8 +9501,8 @@ export async function renderPrayerAdmin(teacher, options = {}) {
         const teachersData = teachRes.data ?? []
 
         _foundScanners = [
-          ...studentsData.map(s => ({ ...s, code: s.student_code, type: 'student', display_info: `รหัส ${s.student_code} · ห้อง ${s.main_room || '—'} · ${s.gender || 'ไม่ระบุเพศ'}` })),
-          ...teachersData.map(t => ({ ...t, code: t.teacher_code, type: 'teacher', display_info: `รหัสครู ${t.teacher_code} · กลุ่มสาระ ${t.dept || '—'}` }))
+          ...studentsData.filter(s => !councilPrayerAccess || councilStudentIds.has(Number(s.id))).map(s => ({ ...s, code: s.student_code, type: 'student', display_info: `รหัส ${s.student_code} · ห้อง ${s.main_room || '—'} · ${s.gender || 'ไม่ระบุเพศ'}` })),
+          ...(councilPrayerAccess ? [] : teachersData.map(t => ({ ...t, code: t.teacher_code, type: 'teacher', display_info: `รหัสครู ${t.teacher_code} · กลุ่มสาระ ${t.dept || '—'}` })))
         ]
 
         const previewContainer = document.getElementById('scanner-preview-container')
@@ -9663,13 +9550,16 @@ export async function renderPrayerAdmin(teacher, options = {}) {
         const teacherCodes = _foundScanners.filter(s => s.type === 'teacher').map(s => s.code)
 
         // 1. อัปเดต students
-        if (studentIds.length > 0) {
+        if (councilPrayerAccess && studentIds.length > 0) {
+          const { error } = await supabase.rpc('set_council_prayer_scanners', { p_student_ids: studentIds, p_enabled: true })
+          if (error) throw error
+        } else if (studentIds.length > 0) {
           const { error } = await supabase.from('students').update({ can_scan_prayer: true }).in('id', studentIds)
           if (error) throw error
         }
 
         // 2. อัปเดต teachers ใน config
-        if (teacherCodes.length > 0) {
+        if (!councilPrayerAccess && teacherCodes.length > 0) {
           const currentConfig = await getSystemConfig().catch(() => ({}))
           let existingTeachers = _scannerCodeList(currentConfig.prayerScannerTeachers)
 
@@ -9704,7 +9594,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
       historyInterval = null
     }
 
-    prayerAdminRoot.querySelectorAll('[data-tab]').forEach(b => {
+    document.querySelectorAll('[data-tab]').forEach(b => {
       b.className = b.dataset.tab===tab
         ? 'px-4 py-1.5 rounded-lg text-sm font-medium transition bg-white shadow text-indigo-700'
         : 'px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700'
@@ -9714,17 +9604,18 @@ export async function renderPrayerAdmin(teacher, options = {}) {
     else if (tab==='scanners') _showScanners();
     else _showConfig()
   }
-  document.getElementById('pr-tab-scores')?.addEventListener('click', ()=>_switchTab('scores'))
+  document.getElementById('pr-tab-scores').addEventListener('click', ()=>_switchTab('scores'))
   document.getElementById('pr-tab-history')?.addEventListener('click', ()=>_switchTab('history'))
   document.getElementById('pr-tab-scanners').addEventListener('click', ()=>_switchTab('scanners'))
-  document.getElementById('pr-tab-config')?.addEventListener('click', ()=>_switchTab('config'))
-  if (isAllowedScanner && !councilIbadatMode) {
+  document.getElementById('pr-tab-config').addEventListener('click', ()=>_switchTab('config'))
+  if (isAllowedScanner) {
     document.getElementById('pr-tab-scanner-cam')?.addEventListener('click', async () => {
       const { renderStudentPrayerScanner } = await import('./student-views.js')
       renderStudentPrayerScanner(activeTeacher)
     })
   }
-  _switchTab(councilIbadatMode ? 'scanners' : 'scores')
+  const requestedTab = councilPrayerAccess ? 'scanners' : initialTab
+  _switchTab(['scores', 'history', 'scanners', 'config', 'scanner-cam'].includes(requestedTab) ? requestedTab : 'scores')
 }
 
 function _openReadingModal(col, year, sem, onSave) {
