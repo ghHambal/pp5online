@@ -18,6 +18,8 @@ import {
 import QRCode from 'qrcode'
 import {
   getCouncilConfig, updateCouncilConfig, getCouncilTerms, createCouncilTerm, previewCouncilTermActivation, activateCouncilTerm,
+  getCouncilRosterTemplates, saveCouncilRosterTemplate, deleteCouncilRosterTemplate,
+  getCouncilDailyDutyAttendance, saveCouncilDailyDutyAttendance, getCouncilDailyDutySummary,
   getCouncilPositions, getCouncilMembers,
   createCouncilPosition, updateCouncilPosition, deleteCouncilPosition,
   getCouncilElectionConfigs, getMyCouncilApplications, getMyCouncilMembership,
@@ -38,7 +40,7 @@ import {
   getActivityCertificateOverrides, setCertificateOverride,
   getCouncilAnnouncements, postAnnouncement, getMyAnnouncementAcks, ackAnnouncement,
   getAnnouncementAckCounts, getTotalActiveStudentCount,
-  getOpenPositionsForNomination, getInterviewedForNomination, proposeNomination, getPendingNominations, decideNomination,
+  getOpenPositionsForNomination, getNomineesForTeamProposal, proposeNomination, getPendingNominations, decideNomination,
   submitCouncilTeamProposal, getCouncilTeamProposals, decideCouncilTeamProposal,
   getMyRoutines, getRoutineLogsForWeek, addRoutine, removeRoutine, toggleRoutineLog,
   getMyAssignments, getAssignmentsForGender, createAssignment, updateAssignmentStatus, deleteAssignment,
@@ -440,9 +442,10 @@ async function switchCouncilTerm(termId) {
     })
   }
   adminApps = null; activities = null; ylaEvents = null; docs = null
+  dailyDutyRecords = null; dutySummaryByMember = {}
   delete teamProposalsByGender.M; delete teamProposalsByGender.W
   delete openPositionsByGender.M; delete openPositionsByGender.W
-  delete interviewedByGender.M; delete interviewedByGender.W
+  delete nomineesByGender.M; delete nomineesByGender.W
   delete pendingNomsByGender.M; delete pendingNomsByGender.W
   adminCandidatesByGender.M = null; adminCandidatesByGender.W = null
   campaignReviewsByGender.M = null; campaignReviewsByGender.W = null
@@ -524,6 +527,7 @@ function getNavItems() {
   items.push({ id: 'news', icon: '📣', label: 'ประกาศ', group: 'council' })
   items.push({ id: 'roster', icon: '🏛️', label: 'สภาของเรา', group: 'council' })
   if (ctx.canScanIbadatPrayer) items.push({ id: 'ibadatScanner', icon: '🕌', label: 'ผู้สแกนละหมาด', group: 'council' })
+  if (ctx.isAdmin || ctx.isChair || (ctx.isCouncilAdvisor && ctx.advisorPositionIds?.length)) items.push({ id: 'dutyTracker', icon: '🗓️', label: 'บันทึกเวรรายวัน', group: 'council' })
   items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม/การเข้าร่วม', group: 'council' })
   if (ctx.isChair || ctx.isAdmin || ctx.isCouncilAdvisor) items.push({ id: 'chairteam', icon: '👔', label: 'เสนอคณะทำงาน', group: 'council' })
   if (ctx.isChair) items.push({ id: 'assignments', icon: '📌', label: 'มอบหมายงาน', group: 'council' })
@@ -2109,7 +2113,7 @@ function printYlaAttendanceRoster(event, detail, { persistSettings = true, setti
   let title = event.roster_title || `รายชื่อผู้เข้าร่วมกิจกรรม ${event.title}`
   let subtitle = event.roster_subtitle || [ylaDateRange(event), event.location].filter(Boolean).join(' · ')
   let logo = event.roster_logo_url || ctx.cfg.council_logo_url || ''
-  let rosterGender = 'all'
+  let rosterGender = ['M', 'W'].includes(event.roster_gender) ? event.roster_gender : 'all'
   const originalMembers = [...(detail.participants ?? [])]
   const originalMemberOrder = new Map(originalMembers.map((member, index) => [member, index]))
   let members = [...originalMembers]
@@ -2130,6 +2134,17 @@ function printYlaAttendanceRoster(event, detail, { persistSettings = true, setti
   document.body.appendChild(overlay)
   const columnsList = overlay.querySelector('[data-columns-list]')
   const iframe = overlay.querySelector('iframe')
+  const templateScope = 'roster'
+  const templatePanel = document.createElement('section')
+  templatePanel.style.cssText = 'border:1px solid #c7d2fe;background:#f8faff;border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:7px'
+  templatePanel.innerHTML = '<strong style="font-size:13px">💾 แบบใบรายชื่อที่บันทึกไว้</strong><input data-template-name maxlength="80" placeholder="ตั้งชื่อ เช่น เวรเข้าแถวรายเดือน" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"><select data-template-select style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font:inherit"><option value="">เลือกแบบที่เคยบันทึก</option></select><div style="display:flex;gap:6px;flex-wrap:wrap"><button type="button" data-action="save-template" style="border:0;background:#4f46e5;color:#fff;border-radius:8px;padding:7px 9px;font-weight:700">บันทึกเป็นแบบใหม่/อัปเดต</button><button type="button" data-action="load-template" style="border:1px solid #a5b4fc;background:#fff;color:#3730a3;border-radius:8px;padding:7px 9px;font-weight:700">เรียกใช้</button><button type="button" data-action="delete-template" style="border:1px solid #fecaca;background:#fff;color:#b91c1c;border-radius:8px;padding:7px 9px;font-weight:700">ลบแบบที่เลือก</button></div><small style="font-size:11px;color:#64748b">บันทึกไว้ในบัญชีของคุณ เรียกใช้ได้ทุกครั้งที่เปิดหน้าจัดใบรายชื่อนี้</small>'
+  overlay.querySelector('aside')?.prepend(templatePanel)
+  let savedTemplates = []
+  const refreshTemplateOptions = selectedId => {
+    const select = templatePanel.querySelector('[data-template-select]')
+    select.innerHTML = '<option value="">เลือกแบบที่เคยบันทึก</option>' + savedTemplates.map(row => `<option value="${row.id}" ${String(row.id) === String(selectedId) ? 'selected' : ''}>${esc(row.name)}</option>`).join('')
+  }
+  getCouncilRosterTemplates(templateScope).then(rows => { savedTemplates = rows; refreshTemplateOptions() }).catch(err => showToast('โหลดแบบใบรายชื่อที่บันทึกไว้ไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'))
   const removeMemberFromRoster = index => {
     if (!Number.isInteger(index) || index < 0 || index >= members.length) return false
     members.splice(index, 1)
@@ -2149,6 +2164,22 @@ function printYlaAttendanceRoster(event, detail, { persistSettings = true, setti
     title = overlay.querySelector('[data-field="title"]').value
     subtitle = overlay.querySelector('[data-field="subtitle"]').value
     logo = overlay.querySelector('[data-field="logo"]').value.trim()
+  }
+  const collectSettings = () => ({ roster_title: title, roster_subtitle: subtitle, roster_logo_url: logo, roster_font_size: fontSize, roster_font_family: fontFamily, roster_title_font_family: titleFontFamily, roster_title_weight: titleWeight, roster_row_height: rowHeight, roster_page_size: pageSize, roster_columns: columns.map(column => ({ ...column })), roster_sort_order: rosterSortOrder, roster_gender: rosterGender })
+  const applyTemplateSettings = settings => {
+    if (!settings || typeof settings !== 'object') throw new Error('รูปแบบที่บันทึกไม่ถูกต้อง')
+    const keys = { title: 'roster_title', subtitle: 'roster_subtitle', logo: 'roster_logo_url', 'font-size': 'roster_font_size', 'font-family': 'roster_font_family', 'title-font-family': 'roster_title_font_family', 'title-weight': 'roster_title_weight', 'row-height': 'roster_row_height', 'page-size': 'roster_page_size' }
+    for (const [field, key] of Object.entries(keys)) {
+      const input = overlay.querySelector(`[data-field="${field}"]`)
+      if (input && settings[key] != null) input.value = settings[key]
+    }
+    const nextColumns = Array.isArray(settings.roster_columns) ? settings.roster_columns.filter(column => allowedKeys.has(column?.key)).map(column => ({ key: column.key, label: String(column.label || '').slice(0, 60), align: ['left', 'center', 'right'].includes(column.align) ? column.align : 'center', width: Math.min(80, Math.max(5, Number(column.width) || 0)) })) : []
+    if (nextColumns.length) columns = nextColumns
+    rosterSortOrder = ['name_asc', 'name_desc', 'code_asc', 'code_desc', 'room_name', 'original'].includes(settings.roster_sort_order) ? settings.roster_sort_order : 'name_asc'
+    rosterGender = ['M', 'W'].includes(settings.roster_gender) ? settings.roster_gender : 'all'
+    overlay.querySelector('[data-roster-sort]').value = rosterSortOrder
+    overlay.querySelector('[data-roster-gender]').value = rosterGender
+    renderColumns(); renderPreview()
   }
   let previewVersion = 0
   let previewReady = Promise.resolve()
@@ -2227,6 +2258,7 @@ function printYlaAttendanceRoster(event, detail, { persistSettings = true, setti
     return previewReady
   }
   renderColumns(); renderPreview()
+  overlay.querySelector('[data-roster-gender]').value = rosterGender
   bindYlaLogoPicker(overlay, {
     urlInput: '[data-field="logo"]',
     choiceSelect: overlay.querySelector('[data-logo-choice]'),
@@ -2298,7 +2330,7 @@ function printYlaAttendanceRoster(event, detail, { persistSettings = true, setti
       const button = e.target.closest('[data-action="save"]')
       currentSettings(); button.disabled = true; button.textContent = 'กำลังบันทึก...'
       try {
-        const settings = { roster_title: title, roster_subtitle: subtitle, roster_logo_url: logo, roster_font_size: fontSize, roster_font_family: fontFamily, roster_title_font_family: titleFontFamily, roster_title_weight: titleWeight, roster_row_height: rowHeight, roster_page_size: pageSize, roster_columns: columns, roster_sort_order: rosterSortOrder }
+        const settings = collectSettings()
         if (persistSettings) {
           await updateCouncilYlaRosterSettings(event.id, { rosterTitle: title, rosterSubtitle: subtitle, rosterLogoUrl: logo, rosterFontSize: fontSize, rosterFontFamily: fontFamily, rosterTitleFontFamily: titleFontFamily, rosterTitleWeight: titleWeight, rosterRowHeight: rowHeight, rosterPageSize: pageSize, rosterColumns: columns })
           Object.assign(event, settings)
@@ -2309,6 +2341,33 @@ function printYlaAttendanceRoster(event, detail, { persistSettings = true, setti
         }
         button.textContent = 'บันทึกแล้ว'
       } catch (err) { showToast('บันทึกรูปแบบไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); button.disabled = false; button.textContent = persistSettings ? 'บันทึกแบบนี้ให้กิจกรรม' : 'บันทึกค่าตั้งต้น' }
+    }
+    if (action === 'save-template') {
+      const name = templatePanel.querySelector('[data-template-name]').value.trim()
+      if (!name) { showToast('ตั้งชื่อแบบใบรายชื่อก่อนบันทึก', 'warning'); return }
+      const button = e.target.closest('[data-action="save-template"]'); button.disabled = true; button.textContent = 'กำลังบันทึก…'
+      try {
+        currentSettings()
+        const saved = await saveCouncilRosterTemplate({ templateScope, name, settings: collectSettings() })
+        savedTemplates = await getCouncilRosterTemplates(templateScope); refreshTemplateOptions(saved.id)
+        showToast(`บันทึกแบบ “${saved.name}” แล้ว เรียกใช้ได้ภายหลัง ✅`, 'success')
+      } catch (err) { showToast('บันทึกแบบใบรายชื่อไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
+      finally { button.disabled = false; button.textContent = 'บันทึกเป็นแบบใหม่/อัปเดต' }
+    }
+    if (action === 'load-template') {
+      const id = templatePanel.querySelector('[data-template-select]').value
+      const saved = savedTemplates.find(row => String(row.id) === String(id))
+      if (!saved) { showToast('เลือกแบบใบรายชื่อที่ต้องการเรียกใช้ก่อน', 'warning'); return }
+      try { applyTemplateSettings(saved.settings); templatePanel.querySelector('[data-template-name]').value = saved.name; showToast(`เรียกใช้แบบ “${saved.name}” แล้ว`, 'success') }
+      catch (err) { showToast('เรียกใช้แบบใบรายชื่อไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
+    }
+    if (action === 'delete-template') {
+      const id = templatePanel.querySelector('[data-template-select]').value
+      const saved = savedTemplates.find(row => String(row.id) === String(id))
+      if (!saved) { showToast('เลือกแบบใบรายชื่อที่ต้องการลบก่อน', 'warning'); return }
+      if (!confirm(`ลบแบบใบรายชื่อ “${saved.name}”?`)) return
+      try { await deleteCouncilRosterTemplate(saved.id); savedTemplates = await getCouncilRosterTemplates(templateScope); refreshTemplateOptions(); templatePanel.querySelector('[data-template-name]').value = ''; showToast('ลบแบบใบรายชื่อแล้ว', 'success') }
+      catch (err) { showToast('ลบแบบใบรายชื่อไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error') }
     }
   })
   overlay.addEventListener('keydown', e => { if (e.key === 'Escape') overlay.remove() })
@@ -3598,6 +3657,10 @@ function renderNewsView() {
 let evalCriteria = null
 let evaluations = null // { [memberId]: evaluationRow }
 let evalOpenMemberId = null
+let dutySummaryByMember = {}
+let dailyDutyDate = new Date().toLocaleDateString('en-CA')
+let dailyDutyType = 'assembly'
+let dailyDutyRecords = null
 
 const DECISION_LABEL = {
   pass: ['ผ่าน', 'text-[#106143] bg-[var(--ok-soft-line)] border-[var(--ok-soft-line)]'],
@@ -3612,7 +3675,43 @@ async function loadEvalCriteria() {
 async function loadEvaluations() {
   const rows = await getCouncilEvaluations(electionYear, selectedCouncilTermId).catch(() => [])
   evaluations = Object.fromEntries(rows.map(r => [r.member_id, r]))
+  dutySummaryByMember = ctx?.isAdmin || ctx?.isCouncilAdvisor
+    ? Object.fromEntries((await getCouncilDailyDutySummary(selectedCouncilTermId).catch(() => [])).map(row => [row.membership_id, row]))
+    : {}
   render()
+}
+
+async function loadDailyDutyRecords() {
+  dailyDutyRecords = await getCouncilDailyDutyAttendance(selectedCouncilTermId, dailyDutyDate, dailyDutyType).catch(err => {
+    showToast('โหลดบันทึกเวรไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+    return []
+  })
+  render()
+}
+
+function renderDailyDutyTracker() {
+  if (dailyDutyRecords === null) { loadDailyDutyRecords(); return '<p class="text-sm text-[var(--muted-2)] text-center py-16">กำลังโหลดบันทึกเวร…</p>' }
+  const isStaff = ctx.isAdmin || ctx.isCouncilAdvisor
+  const managerGender = ctx.isChair && !isStaff ? ctx.chairGender : null
+  let members = membersVisibleToCouncilAdvisor(ctx.members).filter(member => member.status === 'active')
+  if (managerGender) members = members.filter(member => normalizeGender(member.council_positions?.gender) === normalizeGender(managerGender))
+  const byId = new Map(dailyDutyRecords.map(row => [Number(row.membership_id), row]))
+  const values = new Map(members.map(member => [member.id, byId.get(Number(member.id))?.status || '']))
+  const count = status => [...values.values()].filter(value => value === status).length
+  const typeLabels = { assembly: 'กิจกรรมเข้าแถว', dhuhr: 'เวรช่วงละหมาดดุฮรี', asr: 'เวรช่วงละหมาดอัศรี' }
+  return `<div class="space-y-4">
+    <section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-4 md:p-6">
+      <div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-bold">🗓️ บันทึกการปฏิบัติหน้าที่รายวัน</h2><p class="text-xs text-[var(--muted)] mt-1">ลงผลเวรเข้าแถวและเวรช่วงละหมาด เพื่อใช้ประกอบการประเมินสมาชิกสภา</p></div><span class="text-xs rounded-full bg-[var(--primary-soft)] text-[var(--primary)] px-3 py-1.5 font-bold">${members.length} สมาชิกในขอบเขตที่ดูแล</span></div>
+      <div class="grid sm:grid-cols-2 gap-3 mt-4"><label class="text-xs font-bold">วันที่<input id="council-duty-date" type="date" value="${esc(dailyDutyDate)}" class="block w-full mt-1 border border-[var(--line)] rounded-xl px-3 py-2.5 bg-[var(--surface)]"></label><label class="text-xs font-bold">หน้าที่<select id="council-duty-type" class="block w-full mt-1 border border-[var(--line)] rounded-xl px-3 py-2.5 bg-[var(--surface)]">${Object.entries(typeLabels).map(([key, label]) => `<option value="${key}" ${dailyDutyType === key ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">${[['present','มาปฏิบัติ'],['late','มาสาย'],['absent','ขาด'],['excused','ลา/ได้รับยกเว้น']].map(([status,label]) => `<div class="rounded-xl border border-[var(--line-soft)] p-3"><p class="text-xs text-[var(--muted)]">${label}</p><p class="text-xl font-bold">${count(status)}</p></div>`).join('')}</div>
+      <div class="flex flex-wrap gap-2 mt-4"><button type="button" class="council-duty-mark-all px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold" data-status="present">ทำเครื่องหมายทุกคนว่ามาปฏิบัติ</button><button type="button" class="council-duty-mark-all px-3 py-2 rounded-xl border border-[var(--line)] text-xs font-bold" data-status="absent">ทำเครื่องหมายทุกคนว่าขาด</button></div>
+      <form id="council-duty-attendance-form" class="mt-4"><div class="overflow-x-auto rounded-xl border border-[var(--line-soft)]"><table class="w-full text-left text-xs"><thead class="bg-[var(--bg-2)]"><tr><th class="p-3">สมาชิก</th><th class="p-3">ฝ่าย</th><th class="p-3 min-w-44">ผลการปฏิบัติ</th><th class="p-3 min-w-48">หมายเหตุ</th></tr></thead><tbody>${members.map(member => {
+      const prior = byId.get(Number(member.id))
+      return `<tr class="border-t border-[var(--line-soft)]"><td class="p-3"><span class="font-bold">${esc(member.students?.full_name || '—')}</span><span class="block text-[var(--muted)]">${esc(member.students?.student_code || '')} · ${esc(member.students?.main_room || '')}</span></td><td class="p-3">${esc(member.council_positions?.position_name || '—')}</td><td class="p-3"><select name="status_${member.id}" class="w-full border border-[var(--line)] rounded-lg px-2 py-2 bg-[var(--surface)]"><option value="">ยังไม่บันทึก</option><option value="present" ${values.get(member.id) === 'present' ? 'selected' : ''}>มาปฏิบัติ</option><option value="late" ${values.get(member.id) === 'late' ? 'selected' : ''}>มาสาย</option><option value="absent" ${values.get(member.id) === 'absent' ? 'selected' : ''}>ขาด</option><option value="excused" ${values.get(member.id) === 'excused' ? 'selected' : ''}>ลา/ได้รับยกเว้น</option></select></td><td class="p-3"><input name="note_${member.id}" value="${esc(prior?.note || '')}" maxlength="500" placeholder="หมายเหตุ (ถ้ามี)" class="w-full border border-[var(--line)] rounded-lg px-2 py-2 bg-[var(--surface)]"></td></tr>`
+    }).join('') || '<tr><td colspan="4" class="p-6 text-center text-[var(--muted)]">ไม่มีสมาชิกที่อยู่ในขอบเขตนี้</td></tr>'}</tbody></table></div><button type="submit" ${members.length ? '' : 'disabled'} class="mt-3 w-full md:w-auto px-5 py-3 rounded-xl bg-[var(--primary)] text-white text-sm font-bold disabled:opacity-50">💾 บันทึกผลปฏิบัติหน้าที่</button></form>
+    </section>
+    ${isStaff ? `<section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-4"><h3 class="font-bold">📊 สรุปผลเวรสำหรับประกอบการประเมิน</h3><p class="text-xs text-[var(--muted)] mt-1">อัตรามาปฏิบัติ = (มาปฏิบัติ + มาสาย) ÷ จำนวนเวรที่บันทึก โดยไม่นับรายการลา/ได้รับยกเว้น</p><div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 mt-3">${members.map(member => { const summary = dutySummaryByMember[member.id]; return `<div class="rounded-xl border border-[var(--line-soft)] p-3"><p class="text-xs font-bold">${esc(member.students?.full_name || '—')}</p><p class="text-xs text-[var(--muted)] mt-1">เวรที่บันทึก ${Number(summary?.total_count || 0)} · มาปฏิบัติ ${Number(summary?.present_count || 0)} · สาย ${Number(summary?.late_count || 0)} · ขาด ${Number(summary?.absent_count || 0)}${Number(summary?.excused_count || 0) ? ` · ยกเว้น ${Number(summary.excused_count)}` : ''}</p><p class="text-sm font-bold text-[var(--primary)] mt-1">อัตราปฏิบัติ ${summary?.duty_rate == null ? '—' : `${summary.duty_rate}%`}</p></div>` }).join('')}</div></section>` : ''}
+  </div>`
 }
 
 // ใช้ร่วมกัน 2 จุด: หน้า "ประเมิน/เกียรติบัตร" และแท็บ "เกณฑ์และข้อความ" ของหน้าตั้งค่า
@@ -3649,6 +3748,7 @@ function renderEvalView() {
 
   const memberCard = m => {
     const ev = evaluations[m.id]
+    const duty = dutySummaryByMember[m.id]
     const [decLabel, decCls] = ev?.decision ? DECISION_LABEL[ev.decision] : ['ยังไม่ประเมิน', 'text-[var(--muted-2)] bg-[var(--bg-2)] border-[var(--line)]']
     const isOwn = ctx.role === 'student' && ctx.student && m.student_id === ctx.student.id
     if (!canEvaluate && !isOwn) return ''
@@ -3667,6 +3767,7 @@ function renderEvalView() {
             ${ev?.total_score != null ? `<p class="text-xs text-[var(--muted-2)] mt-0.5">${ev.total_score}/${ev.max_score ?? totalWeight}</p>` : ''}
           </div>
         </div>
+        ${duty ? `<p class="text-[0.6875rem] text-[var(--muted)] rounded-lg bg-[var(--bg-2)] px-2.5 py-2">เวรสภาที่บันทึก ${Number(duty.total_count || 0)} ครั้ง · มาปฏิบัติ ${Number(duty.present_count || 0)} · สาย ${Number(duty.late_count || 0)} · ขาด ${Number(duty.absent_count || 0)} · อัตราปฏิบัติ ${duty.duty_rate == null ? '—' : `${duty.duty_rate}%`}</p>` : ''}
         ${canEvaluate ? `<button type="button" class="btn-toggle-eval text-xs font-bold text-[var(--primary)]" data-id="${m.id}">${open ? '▲ ซ่อนแบบประเมิน' : (ev ? '✏️ แก้ไขคะแนน' : '📝 ให้คะแนน')}</button>` : ''}
         ${canEvaluate && open ? `
           <form class="eval-score-form space-y-2 pt-2 border-t border-[var(--line-soft)]" data-member-id="${m.id}">
@@ -4553,19 +4654,19 @@ function renderSettingsModules() {
 
 // ─── เสนอคณะทำงาน (ประธาน) → แต่งตั้ง (ครูที่ปรึกษาสภา) — สเปคข้อ 8.6 ───────────────────────
 const openPositionsByGender = {} // { M: [...], W: [...] } — undefined = ยังไม่โหลด
-const interviewedByGender = {}
+const nomineesByGender = {}
 const pendingNomsByGender = {}
 const teamProposalsByGender = {}
 
 async function loadChairTeamData(gender) {
-  const [positions, interviewed, noms, teams] = await Promise.all([
-    getOpenPositionsForNomination(gender).catch(() => []),
-    getInterviewedForNomination(gender).catch(() => []),
+  const [positions, nominees, noms, teams] = await Promise.all([
+    getOpenPositionsForNomination(gender, selectedCouncilTermId).catch(() => []),
+    getNomineesForTeamProposal(gender, selectedCouncilTermId).catch(() => []),
     getPendingNominations(gender).catch(() => []),
     getCouncilTeamProposals(selectedCouncilTermId).catch(() => []),
   ])
   openPositionsByGender[gender] = positions
-  interviewedByGender[gender] = interviewed
+  nomineesByGender[gender] = nominees
   pendingNomsByGender[gender] = noms
   teamProposalsByGender[gender] = teams.filter(proposal => proposal.gender === gender)
   render()
@@ -4583,16 +4684,16 @@ function renderChairTeamView() {
     const gender = normalizeGender(ctx.student?.gender)
     if (gender && openPositionsByGender[gender] === undefined) { loadChairTeamData(gender); html += loading }
     else if (gender) {
-      const interviewed = interviewedByGender[gender] || []
+      const nominees = nomineesByGender[gender] || []
       const departments = ctx.positions.filter(p => p.gender === gender && p.is_active && !p.is_elected && p.position_name.startsWith('ฝ่าย') && p.position_name !== UNASSIGNED_POSITION_NAME)
-      const eligibleByPosition = new Map(departments.map(position => [position.id, interviewed.filter(app => Number(app.position_id) === Number(position.id))]))
+      const eligibleByPosition = new Map(departments.map(position => [position.id, nominees.filter(nominee => Number(nominee.position_id) === Number(position.id))]))
       const proposals = teamProposalsByGender[gender] || []
       const pending = proposals.filter(proposal => proposal.status === 'proposed')
       const canBuildTeam = departments.length > 0 && departments.every(position => (eligibleByPosition.get(position.id) || []).length >= 2)
       const statusLabel = { proposed: 'รอตรวจสอบ', approved: 'อนุมัติแล้ว', rejected: 'ส่งกลับแก้ไข' }
       const teamOptions = position => {
         const applicants = eligibleByPosition.get(position.id) || []
-        return applicants.map(app => `<option value="${app.id}">${esc(app.students?.full_name ?? '—')} · ${esc(app.students?.main_room ?? '')}</option>`).join('')
+        return applicants.map(nominee => `<option value="${nominee.nominee_key}">${esc(nominee.students?.full_name ?? '—')} · ${esc(nominee.students?.main_room ?? '')}${nominee.nominee_source === 'member' ? ' · สมาชิกสภา' : ' · ผ่านสัมภาษณ์'}</option>`).join('')
       }
       html += `
         <section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 mb-5">
@@ -4602,15 +4703,15 @@ function renderChairTeamView() {
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">${departments.map(position => {
               const applicants = eligibleByPosition.get(position.id) || []
               return `<fieldset class="min-w-0 rounded-xl border border-[var(--line-soft)] bg-[var(--surface-2)] p-4" data-team-position="${position.id}">
-                <legend class="px-1 text-sm font-bold text-[var(--ink)]">${esc(position.position_name)} <span class="text-[var(--muted)] font-normal">· ${applicants.length} คนผ่านสัมภาษณ์ · รับได้ ${position.seats_count} คน</span></legend>
-                ${applicants.length < 2 ? `<p class="text-xs text-[var(--bad)] mt-2">ฝ่ายนี้มีผู้ผ่านสัมภาษณ์ไม่ครบ 2 คน จึงยังส่งคณะทำงานทั้งชุดไม่ได้</p>` : `<div class="grid sm:grid-cols-2 gap-3 mt-2">
+                <legend class="px-1 text-sm font-bold text-[var(--ink)]">${esc(position.position_name)} <span class="text-[var(--muted)] font-normal">· ${applicants.length} รายชื่อที่เลือกได้ · รับได้ ${position.seats_count} คน</span></legend>
+                ${applicants.length < 2 ? `<p class="text-xs text-[var(--bad)] mt-2">ฝ่ายนี้มีรายชื่อให้เลือกไม่ครบ 2 คน จึงยังส่งคณะทำงานทั้งชุดไม่ได้</p>` : `<div class="grid sm:grid-cols-2 gap-3 mt-2">
                   <label class="text-xs font-bold text-[var(--muted)]">หัวหน้าฝ่าย<select name="head_${position.id}" required class="mt-1 w-full border border-[var(--line)] rounded-lg px-2.5 py-2 text-sm bg-[var(--surface)] text-[var(--ink)]"><option value="">เลือกหัวหน้าฝ่าย</option>${teamOptions(position)}</select></label>
-                  <fieldset class="min-w-0"><legend class="text-xs font-bold text-[var(--muted)]">สมาชิกฝ่าย (เลือกอย่างน้อย 1 คน)</legend><div class="mt-1 max-h-32 overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 space-y-1">${applicants.map(app => `<label class="flex items-center gap-2 text-xs text-[var(--ink-2)]"><input type="checkbox" name="members_${position.id}" value="${app.id}" class="team-member-choice" data-position="${position.id}" data-head-select="head_${position.id}"><span>${esc(app.students?.full_name ?? '—')} · ${esc(app.students?.main_room ?? '')}</span></label>`).join('')}</div></fieldset>
+                  <fieldset class="min-w-0"><legend class="text-xs font-bold text-[var(--muted)]">สมาชิกฝ่าย (เลือกอย่างน้อย 1 คน)</legend><div class="mt-1 max-h-32 overflow-y-auto rounded-lg border border-[var(--line)] bg-[var(--surface)] p-2 space-y-1">${applicants.map(nominee => `<label class="flex items-center gap-2 text-xs text-[var(--ink-2)]"><input type="checkbox" name="members_${position.id}" value="${nominee.nominee_key}" class="team-member-choice" data-position="${position.id}" data-head-select="head_${position.id}"><span>${esc(nominee.students?.full_name ?? '—')} · ${esc(nominee.students?.main_room ?? '')}${nominee.nominee_source === 'member' ? ' · สมาชิกสภา' : ' · ผ่านสัมภาษณ์'}</span></label>`).join('')}</div></fieldset>
                 </div>`}
               </fieldset>`
             }).join('')}</div>
             <button type="submit" class="rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-bold text-white hover:bg-[var(--primary-dark)]">ส่งคณะทำงานครบทุกฝ่ายให้ครูตรวจสอบ</button>
-          </form>` : departments.length ? `<p class="rounded-xl bg-[var(--gold-soft)] px-4 py-3 text-xs text-[var(--gold-ink)]">ยังเสนอไม่ได้: ทุกฝ่ายต้องมีผู้ผ่านสัมภาษณ์อย่างน้อย 2 คน เพื่อเลือกหัวหน้าฝ่ายและสมาชิกให้ครบ</p>` : `<p class="text-xs text-[var(--muted)]">ยังไม่มีการตั้งค่าฝ่ายสำหรับสภา${GENDER_LABEL[gender]}</p>`}
+          </form>` : departments.length ? `<p class="rounded-xl bg-[var(--gold-soft)] px-4 py-3 text-xs text-[var(--gold-ink)]">ยังเสนอไม่ได้: ทุกฝ่ายต้องมีรายชื่อสมาชิกสภาหรือผู้ผ่านสัมภาษณ์อย่างน้อย 2 คน เพื่อเลือกหัวหน้าฝ่ายและสมาชิกให้ครบ</p>` : `<p class="text-xs text-[var(--muted)]">ยังไม่มีการตั้งค่าฝ่ายสำหรับสภา${GENDER_LABEL[gender]}</p>`}
         </section>`
       if (proposals.length) html += `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 mb-5"><h3 class="text-sm font-bold text-[var(--ink)] mb-3">ประวัติข้อเสนอคณะทำงานของสภา${GENDER_LABEL[gender]}</h3><div class="space-y-2">${proposals.map(proposal => `<article class="rounded-xl border border-[var(--line-soft)] p-3"><div class="flex items-center justify-between gap-2"><span class="text-sm font-bold text-[var(--ink)]">${proposal.council_team_proposal_members?.length ?? 0} รายชื่อ</span><span class="rounded-full px-2.5 py-1 text-xs font-bold ${proposal.status === 'approved' ? 'bg-[var(--ok-soft)] text-[#106143]' : proposal.status === 'rejected' ? 'bg-[var(--bad-soft)] text-[var(--bad)]' : 'bg-[var(--gold-soft)] text-[var(--gold-ink)]'}">${statusLabel[proposal.status] || proposal.status}</span></div>${proposal.comment ? `<p class="text-xs text-[var(--muted)] mt-1">${esc(proposal.comment)}</p>` : ''}</article>`).join('')}</div></section>`
     }
@@ -4628,7 +4729,7 @@ function renderChairTeamView() {
         const entries = [...(proposal.council_team_proposal_members ?? [])].sort((a,b) => (a.council_positions?.sort_order ?? 99) - (b.council_positions?.sort_order ?? 99) || (a.position_role === 'head' ? -1 : 1))
         const groups = new Map()
         entries.forEach(entry => { const key = entry.position_id ?? entry.council_positions?.position_name; if (!groups.has(key)) groups.set(key, { name: entry.council_positions?.position_name ?? 'ฝ่าย', people: [] }); groups.get(key).people.push(entry) })
-        return `<article class="rounded-xl border border-[var(--line-soft)] bg-[var(--surface-2)] p-4" data-team-proposal-card="${proposal.id}"><div class="flex items-center justify-between gap-2 mb-3"><h3 class="font-bold text-[var(--ink)]">คณะทำงานสภา${GENDER_LABEL[proposal.gender]}</h3><span class="text-xs text-[var(--muted)]">${entries.length} คน</span></div><div class="space-y-3">${[...groups.values()].map(group => `<div><p class="text-xs font-bold text-[var(--primary)]">${esc(group.name)}</p><div class="mt-1 space-y-1">${group.people.map(entry => `<div class="flex items-center gap-2 text-xs text-[var(--ink-2)]">${studentPhoto(entry.council_applications?.students, 'w-7 h-9')}<span class="font-bold">${entry.position_role === 'head' ? 'หัวหน้า' : 'สมาชิก'}:</span><span>${esc(entry.council_applications?.students?.full_name ?? '—')} · ${esc(entry.council_applications?.students?.main_room ?? '')}</span></div>`).join('')}</div></div>`).join('')}</div><textarea class="team-proposal-comment mt-3 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--ink)]" rows="2" placeholder="ความเห็น (ถ้าไม่อนุมัติ กรุณาระบุเหตุผล)"></textarea><div class="mt-2 flex flex-wrap gap-2"><button type="button" class="btn-decide-team flex-1 rounded-lg bg-[var(--ok)] px-3 py-2 text-xs font-bold text-white" data-id="${proposal.id}" data-approve="true">อนุมัติทั้งชุดและแต่งตั้ง</button><button type="button" class="btn-decide-team flex-1 rounded-lg border border-[var(--bad-soft-line)] px-3 py-2 text-xs font-bold text-[var(--bad)]" data-id="${proposal.id}" data-approve="false">ส่งกลับแก้ไข</button></div></article>`
+        return `<article class="rounded-xl border border-[var(--line-soft)] bg-[var(--surface-2)] p-4" data-team-proposal-card="${proposal.id}"><div class="flex items-center justify-between gap-2 mb-3"><h3 class="font-bold text-[var(--ink)]">คณะทำงานสภา${GENDER_LABEL[proposal.gender]}</h3><span class="text-xs text-[var(--muted)]">${entries.length} คน</span></div><div class="space-y-3">${[...groups.values()].map(group => `<div><p class="text-xs font-bold text-[var(--primary)]">${esc(group.name)}</p><div class="mt-1 space-y-1">${group.people.map(entry => `<div class="flex items-center gap-2 text-xs text-[var(--ink-2)]">${studentPhoto(entry.students, 'w-7 h-9')}<span class="font-bold">${entry.position_role === 'head' ? 'หัวหน้า' : 'สมาชิก'}:</span><span>${esc(entry.students?.full_name ?? '—')} · ${esc(entry.students?.main_room ?? '')}</span></div>`).join('')}</div></div>`).join('')}</div><textarea class="team-proposal-comment mt-3 w-full rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--ink)]" rows="2" placeholder="ความเห็น (ถ้าไม่อนุมัติ กรุณาระบุเหตุผล)"></textarea><div class="mt-2 flex flex-wrap gap-2"><button type="button" class="btn-decide-team flex-1 rounded-lg bg-[var(--ok)] px-3 py-2 text-xs font-bold text-white" data-id="${proposal.id}" data-approve="true">อนุมัติทั้งชุดและแต่งตั้ง</button><button type="button" class="btn-decide-team flex-1 rounded-lg border border-[var(--bad-soft-line)] px-3 py-2 text-xs font-bold text-[var(--bad)]" data-id="${proposal.id}" data-approve="false">ส่งกลับแก้ไข</button></div></article>`
       }).join('')}</div></section>`
       else html += `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 mb-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><h2 class="text-lg font-bold text-[var(--ink)]">ตรวจสอบข้อเสนอคณะทำงาน</h2><p class="text-xs text-[var(--muted)] mt-1">หน้านี้ใช้ตรวจและอนุมัติข้อเสนอจากประธานสภา ปุ่มอนุมัติหรือส่งกลับจะแสดงเมื่อมีข้อเสนอเข้ามา</p></div><span class="rounded-full bg-[var(--surface-2)] px-3 py-1 text-xs font-bold text-[var(--muted)]">ไม่มีรายการรอตรวจ</span></div><p class="mt-4 rounded-xl border border-[var(--line-soft)] bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--ink-2)]">ขณะนี้ยังไม่มีข้อเสนอคณะทำงานในวาระนี้ ให้ประธานสภาส่งรายชื่อหัวหน้าฝ่ายและสมาชิกให้ครบทุกฝ่ายก่อน</p><div class="mt-3 flex flex-wrap gap-2"><button type="button" class="goto-view rounded-xl border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-view="interview">ดูผลสัมภาษณ์ผู้สมัคร</button><button type="button" class="goto-view rounded-xl border border-[var(--line)] px-4 py-2 text-xs font-bold text-[var(--ink-2)] hover:bg-[var(--surface-2)]" data-view="apps">ดูใบสมัคร</button></div></section>`
     }
@@ -5344,6 +5445,7 @@ function openHistoricalCouncilAttendanceEditor(term, members) {
     roster_row_height: saved.roster_row_height || 34,
     roster_page_size: saved.roster_page_size || 'portrait',
     roster_sort_order: saved.roster_sort_order || 'name_asc',
+    roster_gender: saved.roster_gender || 'all',
     roster_columns: saved.roster_columns || null,
   }
   const participants = members.map(member => ({ student_id: member.student_id, students: member.students }))
@@ -5363,6 +5465,7 @@ const VIEW_RENDERERS = {
   news: renderNewsView,
   activities: renderActivitiesView,
   eval: renderEvalView,
+  dutyTracker: renderDailyDutyTracker,
   docs: renderDocsView,
   candidates: renderCandidatesView,
   myCampaign: renderMyCampaignView,
@@ -5448,6 +5551,38 @@ function renderFullscreenFlow() {
 
 function wireContentEvents() {
   document.getElementById('council-term-switcher')?.addEventListener('change', e => switchCouncilTerm(e.target.value))
+
+  const reloadDutyForSelection = () => {
+    dailyDutyDate = document.getElementById('council-duty-date')?.value || dailyDutyDate
+    dailyDutyType = document.getElementById('council-duty-type')?.value || dailyDutyType
+    dailyDutyRecords = null
+    loadDailyDutyRecords()
+  }
+  document.getElementById('council-duty-date')?.addEventListener('change', reloadDutyForSelection)
+  document.getElementById('council-duty-type')?.addEventListener('change', reloadDutyForSelection)
+  document.querySelectorAll('.council-duty-mark-all').forEach(button => button.addEventListener('click', () => {
+    document.querySelectorAll('#council-duty-attendance-form select[name^="status_"]').forEach(select => { select.value = button.dataset.status })
+  }))
+  document.getElementById('council-duty-attendance-form')?.addEventListener('submit', async event => {
+    event.preventDefault()
+    const form = event.currentTarget
+    const entries = [...form.querySelectorAll('select[name^="status_"]')].filter(input => input.value).map(input => {
+      const membershipId = Number(input.name.slice('status_'.length))
+      return { membership_id: membershipId, status: input.value, note: form.elements[`note_${membershipId}`]?.value?.trim() || null }
+    })
+    if (!entries.length) { showToast('เลือกผลการปฏิบัติอย่างน้อยหนึ่งคนก่อนบันทึก', 'warning'); return }
+    const button = form.querySelector('button[type="submit"]'); button.disabled = true; button.textContent = 'กำลังบันทึก…'
+    try {
+      const savedCount = await saveCouncilDailyDutyAttendance({ termId: selectedCouncilTermId, dutyDate: dailyDutyDate, dutyType: dailyDutyType, entries })
+      dailyDutyRecords = await getCouncilDailyDutyAttendance(selectedCouncilTermId, dailyDutyDate, dailyDutyType)
+      if (ctx.isAdmin || ctx.isCouncilAdvisor) dutySummaryByMember = Object.fromEntries((await getCouncilDailyDutySummary(selectedCouncilTermId).catch(() => [])).map(row => [row.membership_id, row]))
+      showToast(`บันทึกผลปฏิบัติหน้าที่แล้ว ${savedCount} รายการ ✅`, 'success')
+      render()
+    } catch (err) {
+      showToast('บันทึกผลเวรไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+      button.disabled = false; button.textContent = '💾 บันทึกผลปฏิบัติหน้าที่'
+    }
+  })
 
   document.getElementById('campaign-video-file')?.addEventListener('change', async e => {
     const input = e.target, file = input.files?.[0], form = input.closest('form')
@@ -6127,23 +6262,28 @@ function wireChairTeamEvents() {
     const form = e.currentTarget
     const gender = normalizeGender(ctx.student?.gender)
     const teams = []
-    const selectedApplicants = new Set()
+    const selectedStudents = new Set()
+    const nomineeByKey = new Map((nomineesByGender[gender] || []).map(nominee => [nominee.nominee_key, nominee]))
     for (const position of ctx.positions.filter(p => p.gender === gender && p.is_active && !p.is_elected && p.position_name.startsWith('ฝ่าย') && p.position_name !== UNASSIGNED_POSITION_NAME)) {
-      const headApplicationId = Number(form.elements[`head_${position.id}`]?.value || 0)
-      const memberApplicationIds = [...form.querySelectorAll(`input[name="members_${position.id}"]:checked`)].map(input => Number(input.value))
-      if (!headApplicationId || memberApplicationIds.length < 1) {
+      const headKey = form.elements[`head_${position.id}`]?.value || ''
+      const memberKeys = [...form.querySelectorAll(`input[name="members_${position.id}"]:checked`)].map(input => input.value)
+      const head = nomineeByKey.get(headKey)
+      const members = memberKeys.map(key => nomineeByKey.get(key)).filter(Boolean)
+      if (!head || members.length < 1) {
         showToast(`กรุณาเลือกหัวหน้าและสมาชิกอย่างน้อย 1 คนใน${position.position_name}`, 'warning')
         return
       }
-      if (memberApplicationIds.includes(headApplicationId) || memberApplicationIds.length + 1 > Number(position.seats_count)) {
+      const selected = [head, ...members]
+      const selectedIds = selected.map(nominee => Number(nominee.student_id))
+      if (new Set(selectedIds).size !== selectedIds.length || selectedIds.some(id => selectedStudents.has(id)) || members.length + 1 > Number(position.seats_count)) {
         showToast(`ตรวจสอบรายชื่อหรือจำนวนคนของ${position.position_name}`, 'warning')
         return
       }
-      for (const id of [headApplicationId, ...memberApplicationIds]) {
-        if (selectedApplicants.has(id)) { showToast('นักเรียนหนึ่งคนเลือกได้เพียงหนึ่งฝ่ายในข้อเสนอชุดนี้', 'warning'); return }
-        selectedApplicants.add(id)
-      }
-      teams.push({ positionId: position.id, headApplicationId, memberApplicationIds })
+      selectedIds.forEach(id => selectedStudents.add(id))
+      const asReference = nominee => nominee.nominee_source === 'member'
+        ? { member_id: Number(nominee.id) }
+        : { application_id: Number(nominee.id) }
+      teams.push({ positionId: position.id, headNominee: asReference(head), memberNominees: members.map(asReference) })
     }
     if (!teams.length) { showToast('ไม่พบฝ่ายที่สามารถเสนอได้', 'warning'); return }
     const btn = form.querySelector('button[type="submit"]')
@@ -6190,7 +6330,7 @@ function wireChairTeamEvents() {
       showToast('เสนอคณะทำงานแล้ว รอครูที่ปรึกษาสภาอนุมัติ ✅', 'success')
       const gender = normalizeGender(ctx.student.gender)
       delete pendingNomsByGender[gender]
-      delete interviewedByGender[gender]
+      delete nomineesByGender[gender]
       render()
     } catch (err) {
       showToast('เสนอไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
@@ -6210,7 +6350,7 @@ function wireChairTeamEvents() {
         await decideNomination({ nominationId: id, approve, teacherId: ctx.teacher?.id ?? null, comment })
         showToast(approve ? 'อนุมัติแล้ว ✅' : 'ไม่อนุมัติแล้ว', 'success')
         delete openPositionsByGender.M; delete openPositionsByGender.W
-        delete interviewedByGender.M; delete interviewedByGender.W
+        delete nomineesByGender.M; delete nomineesByGender.W
         delete pendingNomsByGender.M; delete pendingNomsByGender.W
         ctx.members = await getCouncilMembers(null, selectedCouncilTermId).catch(() => ctx.members)
         render()

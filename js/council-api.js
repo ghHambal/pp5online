@@ -646,10 +646,10 @@ export async function publishElectionResults({ electionConfigId }) {
 
 // ─── เสนอคณะทำงาน (ประธาน) → แต่งตั้ง (ครูที่ปรึกษาสภา) — สเปคข้อ 8.6 ───────────────────────
 // ตำแหน่งที่ยังว่าง — ไม่นับตำแหน่งประธาน (มาจากการเลือกตั้งเท่านั้น ไม่ใช่การเสนอ)
-export async function getOpenPositionsForNomination(gender) {
+export async function getOpenPositionsForNomination(gender, termId) {
   const [{ data: positions, error: e1 }, { data: members, error: e2 }] = await Promise.all([
     supabase.from('council_positions').select('*').eq('gender', gender).eq('is_active', true).eq('is_elected', false).order('sort_order'),
-    supabase.from('council_members').select('position_id').eq('status', 'active'),
+    supabase.from('council_members').select('position_id').eq('term_id', Number(termId)).eq('status', 'active'),
   ])
   if (e1) throw e1
   if (e2) throw e2
@@ -659,16 +659,39 @@ export async function getOpenPositionsForNomination(gender) {
 }
 
 // ผู้สมัครที่ผ่านสัมภาษณ์แล้ว (ตำแหน่งที่ไม่ใช่ประธาน) — กรองคนที่มีการเสนอค้างอยู่แล้วฝั่ง UI
-export async function getInterviewedForNomination(gender) {
-  const { data, error } = await supabase.from('council_applications')
+export async function getNomineesForTeamProposal(gender, termId) {
+  const [{ data: applications, error: applicationError }, { data: members, error: memberError }] = await Promise.all([
+    supabase.from('council_applications')
     .select(`id, position_id, motivation, photo_url, student_id,
       students(id, full_name, student_code, main_room, image_url, photo_url),
       council_positions!inner(id, position_name, gender, is_elected),
       council_interviews(score, comment)`)
     .eq('status', 'interviewed').is('deleted_at', null)
-    .eq('council_positions.gender', gender).eq('council_positions.is_elected', false)
-  if (error) throw error
-  return data ?? []
+    .eq('term_id', Number(termId))
+    .eq('council_positions.gender', gender).eq('council_positions.is_elected', false),
+    supabase.from('council_members')
+      .select(`id, term_id, position_id, student_id, academic_year, position_role, appointment_method,
+        students(id, full_name, student_code, main_room, image_url, photo_url),
+        council_positions!inner(id, position_name, gender, is_elected)`)
+      .eq('term_id', Number(termId)).eq('status', 'active')
+      .eq('council_positions.gender', gender).eq('council_positions.is_elected', false),
+  ])
+  if (applicationError) throw applicationError
+  if (memberError) throw memberError
+
+  // An advisor-appointed active member is eligible even when no application exists.
+  // Prefer the roster record when the same student also has an interviewed application.
+  const nominees = new Map()
+  ;(applications ?? []).forEach(application => {
+    const key = `${application.position_id}:${application.student_id}`
+    nominees.set(key, { ...application, nominee_key: `application:${application.id}`, nominee_source: 'application' })
+  })
+  ;(members ?? []).forEach(member => {
+    if (!member.council_positions?.position_name?.startsWith('ฝ่าย') || member.council_positions.position_name === 'ยังไม่ระบุฝ่าย') return
+    const key = `${member.position_id}:${member.student_id}`
+    nominees.set(key, { ...member, nominee_key: `member:${member.id}`, nominee_source: 'member' })
+  })
+  return [...nominees.values()]
 }
 
 export async function proposeNomination({ applicationId, positionId, proposedByStudentId }) {
@@ -712,9 +735,9 @@ export async function decideNomination({ nominationId, approve, teacherId, comme
 // เสนอคณะทำงานครบทุกฝ่ายเป็นชุดเดียว; RPC ตรวจผู้สมัคร/จำนวนที่นั่งและบันทึกแบบ atomic
 export async function submitCouncilTeamProposal({ termId, gender, teams }) {
   const p_teams = teams.flatMap(team => [
-    { position_id: Number(team.positionId), application_id: Number(team.headApplicationId), role: 'head' },
-    ...(team.memberApplicationIds ?? []).map(applicationId => ({
-      position_id: Number(team.positionId), application_id: Number(applicationId), role: 'member',
+    { position_id: Number(team.positionId), ...team.headNominee, role: 'head' },
+    ...(team.memberNominees ?? []).map(nominee => ({
+      position_id: Number(team.positionId), ...nominee, role: 'member',
     })),
   ])
   const { data, error } = await supabase.rpc('propose_council_team', {
@@ -729,7 +752,7 @@ export async function getCouncilTeamProposals(termId) {
     .select(`id, term_id, gender, status, comment, created_at, decided_at,
       proposed_by_student_id, council_team_proposal_members(id, position_id, position_role,
         council_positions(position_name, sort_order),
-        council_applications(id, students(full_name, student_code, main_room, image_url, photo_url)))`)
+        students(full_name, student_code, main_room, image_url, photo_url))`)
     .eq('term_id', termId).order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
@@ -1005,6 +1028,52 @@ export async function getCouncilEvaluations(academicYear, termId) {
   let q = supabase.from('council_evaluations').select('*').eq('academic_year', academicYear)
   if (termId) q = q.eq('term_id', termId)
   const { data, error } = await q
+  if (error) throw error
+  return data ?? []
+}
+
+// ─── แบบใบรายชื่อที่บันทึกเป็นชื่อ — เรียกใช้ซ้ำได้ข้ามอุปกรณ์ ─────────────
+export async function getCouncilRosterTemplates(templateScope) {
+  const { data, error } = await supabase.from('council_roster_templates')
+    .select('id, name, settings, updated_at').eq('template_scope', templateScope)
+    .order('name', { ascending: true })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function saveCouncilRosterTemplate({ templateScope, name, settings }) {
+  const { data, error } = await supabase.from('council_roster_templates')
+    .upsert({ template_scope: templateScope, name: String(name || '').trim(), settings, updated_at: new Date().toISOString() },
+      { onConflict: 'owner_profile_id,template_scope,name' })
+    .select('id, name, settings, updated_at').single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteCouncilRosterTemplate(id) {
+  const { error } = await supabase.from('council_roster_templates').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ─── บันทึกเวร/การปฏิบัติหน้าที่สภารายวัน (รายชื่อรับรองและสิทธิ์ตรวจใน RPC) ──
+export async function getCouncilDailyDutyAttendance(termId, dutyDate, dutyType) {
+  const { data, error } = await supabase.rpc('get_council_daily_duty_attendance', {
+    p_term_id: Number(termId), p_duty_date: dutyDate, p_duty_type: dutyType,
+  })
+  if (error) throw error
+  return data ?? []
+}
+
+export async function saveCouncilDailyDutyAttendance({ termId, dutyDate, dutyType, entries }) {
+  const { data, error } = await supabase.rpc('save_council_daily_duty_attendance', {
+    p_term_id: Number(termId), p_duty_date: dutyDate, p_duty_type: dutyType, p_entries: entries,
+  })
+  if (error) throw error
+  return Number(data) || 0
+}
+
+export async function getCouncilDailyDutySummary(termId) {
+  const { data, error } = await supabase.rpc('get_council_daily_duty_summary', { p_term_id: Number(termId) })
   if (error) throw error
   return data ?? []
 }

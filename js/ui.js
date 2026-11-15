@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1079'
+import { APP_VERSION } from './version.js?v=10.22.1080'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,11 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1080': [
+    'เพิ่มหน้าบันทึกเวรสภารายวันสำหรับกิจกรรมเข้าแถว ดุฮรี และอัศรี พร้อมจำกัดรายชื่อและสิทธิ์บันทึกตามฝ่ายที่ครูดูแลหรือเพศของประธาน',
+    'แสดงสถิติการมาปฏิบัติ สาย ขาด และอัตราปฏิบัติในหน้าประเมินสมาชิกสภา',
+    'บันทึกแบบใบรายชื่อเป็นชุดตั้งชื่อในบัญชีผู้ใช้ และเรียกใช้หรือจัดการชุดเดิมได้ภายหลัง',
+  ],
   '10.22.1079': [
     'เปิดให้ครูที่ปรึกษาฝ่ายอีบาดัตและหัวหน้าฝ่ายกำหนดวันเวรสแกนของสมาชิกสภาที่ได้รับสิทธิ์ได้ โดยจำกัดการบันทึกไว้เฉพาะสมาชิกสภาวาระปัจจุบัน',
   ],
