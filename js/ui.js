@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1083'
+import { APP_VERSION } from './version.js?v=10.22.1084'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1084': [
+    'เพิ่มปุ่มสแกน QR ในหน้าเช็คชื่อเวร เลือกสถานะก่อนสแกนและบันทึกทันที พร้อมป้องกันการบันทึกซ้ำสถานะเดิมระหว่างสแกนรอบเดียวกัน',
+  ],
   '10.22.1083': [
     'ปรับหน้าต่างเช็คชื่อเวรให้แสดงรูปนักเรียนและปุ่มสถานะมีสีตามผล เหมือนหน้าเช็คชื่อในห้องเรียน',
   ],

@@ -45,8 +45,20 @@ function _esc(s) {
 
 // opts: { activityId, activityTitle, members: [{ id, student_id, students:{full_name, student_code, image_url, photo_url} }],
 //   alreadyChecked: Set<studentId>, onCheckedIn: (studentId) => void, openToGeneral: boolean }
+// Duty mode accepts onDutyScanned({member,status}) and saves through the caller's scoped duty RPC.
 export function openCouncilCheckinScanner(opts) {
-  const { activityId, activityTitle, members, alreadyChecked, onCheckedIn, onUndo, openToGeneral } = opts
+  const { activityId, activityTitle, members = [], alreadyChecked, onCheckedIn, onUndo, openToGeneral } = opts
+  const dutyMode = opts.mode === 'duty'
+  const onDutyScanned = opts.onDutyScanned
+  const onClose = opts.onClose
+  const dutyStatuses = [
+    ['present', 'มา', 'bg-emerald-500 text-white'],
+    ['late', 'สาย', 'bg-amber-400 text-white'],
+    ['absent', 'ขาด', 'bg-red-500 text-white'],
+    ['excused', 'ลา', 'bg-blue-500 text-white'],
+  ]
+  let selectedDutyStatus = dutyStatuses.some(([key]) => key === opts.initialStatus) ? opts.initialStatus : 'present'
+  const dutyStatusLabel = status => dutyStatuses.find(([key]) => key === status)?.[1] || 'มา'
   document.getElementById('council-checkin-overlay')?.remove()
 
   const overlay = document.createElement('div')
@@ -61,12 +73,13 @@ export function openCouncilCheckinScanner(opts) {
     </style>
     <div class="flex items-center gap-3 px-4 py-3 border-b border-slate-800 flex-shrink-0">
       <div class="flex-1 min-w-0">
-        <h3 class="text-slate-100 font-bold text-sm">📷 สแกนเช็คอินกิจกรรม</h3>
+        <h3 class="text-slate-100 font-bold text-sm">📷 ${dutyMode ? 'สแกนเช็คชื่อเวร' : 'สแกนเช็คอินกิจกรรม'}</h3>
         <p class="text-xs text-slate-400 truncate">${_esc(activityTitle ?? '')}</p>
       </div>
       <button id="ccs-close" class="text-slate-400 hover:text-white text-2xl leading-none px-2">&times;</button>
     </div>
     <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4 max-w-md mx-auto w-full">
+      ${dutyMode ? `<section class="bg-slate-900 border border-slate-800 rounded-2xl p-3"><p class="text-[10px] text-slate-400 font-bold mb-2">เลือกสถานะที่จะบันทึก</p><div class="grid grid-cols-4 gap-1.5">${dutyStatuses.map(([key, label, color]) => `<button type="button" data-ccs-duty-status="${key}" class="rounded-lg border px-2 py-2 text-xs font-bold transition ${selectedDutyStatus === key ? `${color} border-transparent shadow-sm` : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}">${label}</button>`).join('')}</div></section>` : ''}
       <div id="ccs-camera-container" class="relative w-full aspect-square bg-black rounded-2xl overflow-hidden">
         <div id="ccs-camera-reader" class="w-full h-full"></div>
         <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
@@ -82,16 +95,16 @@ export function openCouncilCheckinScanner(opts) {
       </div>
       <div id="ccs-feedback" class="min-h-[70px]">
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center text-xs text-slate-400">
-          ยกกล้องส่อง QR ของ${openToGeneral ? 'นักเรียน' : 'สมาชิกสภา'}เพื่อเช็คอิน
+          ${dutyMode ? 'ยกกล้องส่อง QR ของสมาชิกสภาเพื่อบันทึกสถานะเวร' : `ยกกล้องส่อง QR ของ${openToGeneral ? 'นักเรียน' : 'สมาชิกสภา'}เพื่อเช็คอิน`}
         </div>
       </div>
       <form id="ccs-manual-form" class="flex gap-2">
         <input id="ccs-manual-code" type="text" inputmode="numeric" placeholder="หรือพิมพ์รหัสนักเรียนแล้วกด Enter" class="flex-1 min-w-0 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500" />
-        <button type="submit" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex-shrink-0">เช็คอิน</button>
+        <button type="submit" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold flex-shrink-0">${dutyMode ? 'บันทึกสถานะ' : 'เช็คอิน'}</button>
       </form>
       <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3">
         <div class="flex items-center justify-between gap-2 mb-2">
-          <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">เช็คอินแล้วรอบนี้</p>
+          <p class="text-[10px] text-slate-400 font-bold uppercase tracking-wider">${dutyMode ? 'บันทึกแล้วรอบนี้' : 'เช็คอินแล้วรอบนี้'}</p>
           <span id="ccs-history-count" class="text-[10px] font-bold text-sky-400">0 คน</span>
         </div>
         <div id="ccs-history-list" class="space-y-1.5 text-xs max-h-40 overflow-y-auto pr-1">
@@ -106,6 +119,8 @@ export function openCouncilCheckinScanner(opts) {
   let lastCode = null
   let lastTime = 0
   const checked = new Set(alreadyChecked ?? [])
+  const processingDutyStudentIds = new Set()
+  const recentDutyStatusByStudent = new Map()
 
   const renderHistory = () => {
     const list = overlay.querySelector('#ccs-history-list')
@@ -115,8 +130,7 @@ export function openCouncilCheckinScanner(opts) {
     list.innerHTML = recentList.map(r => `
       <div class="flex items-center gap-2 text-xs py-1.5 border-b border-slate-800/60 last:border-b-0">
         <span class="font-medium text-slate-200 truncate flex-1 min-w-0">${_esc(r.name)}</span>
-        <span class="text-emerald-400 font-bold text-[11px] flex-shrink-0">✓ เช็คอินแล้ว</span>
-        <button data-ccs-undo="${_esc(r.studentId)}" class="px-2 py-0.5 rounded-md border border-red-800/60 bg-red-950/40 text-red-400 text-[10.5px] font-bold flex-shrink-0">✕ ยกเลิก</button>
+        ${dutyMode ? `<span class="text-emerald-400 font-bold text-[11px] flex-shrink-0">✓ ${_esc(dutyStatusLabel(r.status))}</span>` : '<span class="text-emerald-400 font-bold text-[11px] flex-shrink-0">✓ เช็คอินแล้ว</span><button data-ccs-undo="' + _esc(r.studentId) + '" class="px-2 py-0.5 rounded-md border border-red-800/60 bg-red-950/40 text-red-400 text-[10.5px] font-bold flex-shrink-0">✕ ยกเลิก</button>'}
       </div>`).join('')
   }
 
@@ -124,7 +138,7 @@ export function openCouncilCheckinScanner(opts) {
   // กิจกรรมเปิดให้นักเรียนทั่วไป ค่อยค้นหาเพิ่มทีละคน (ไม่โหลดรายชื่อนักเรียนทั้งโรงเรียนมาล่วงหน้า)
   async function resolveStudentByCode(studentCode) {
     const member = members.find(m => m.students?.student_code === studentCode)
-    if (member) return { studentId: member.student_id, name: member.students?.full_name ?? '—' }
+    if (member) return { studentId: member.student_id, membershipId: member.id, member, name: member.students?.full_name ?? '—' }
     if (!openToGeneral) return null
     const results = await searchStudentsForCouncil(studentCode).catch(() => [])
     const exact = results.find(s => s.student_code === studentCode)
@@ -145,24 +159,41 @@ export function openCouncilCheckinScanner(opts) {
       feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">ไม่พบ${openToGeneral ? 'นักเรียน' : 'สมาชิกสภา'}รหัสนี้</div>`
       return
     }
-    if (checked.has(resolved.studentId)) {
+    const statusForThisScan = selectedDutyStatus
+    if (!dutyMode && checked.has(resolved.studentId)) {
       _playScanBeep('error'); flash(false)
       feedback.innerHTML = `<div class="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-3 text-center text-xs text-amber-400">${_esc(resolved.name)} เช็คอินไปแล้ว</div>`
       return
     }
+    if (dutyMode && recentDutyStatusByStudent.get(resolved.studentId) === statusForThisScan) {
+      feedback.innerHTML = `<div class="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-3 text-center text-xs text-amber-300">${_esc(resolved.name)} บันทึกสถานะ “${_esc(dutyStatusLabel(statusForThisScan))}” แล้ว</div>`
+      return
+    }
+    if (dutyMode && processingDutyStudentIds.has(resolved.studentId)) return
+    if (dutyMode) processingDutyStudentIds.add(resolved.studentId)
 
     try {
-      await checkInAttendance({ activityId, studentId: resolved.studentId })
+      if (dutyMode) {
+        if (!resolved.membershipId || !onDutyScanned) throw new Error('ไม่สามารถระบุสมาชิกที่ต้องบันทึกเวรได้')
+        await onDutyScanned({ member: resolved.member, status: statusForThisScan })
+      } else {
+        await checkInAttendance({ activityId, studentId: resolved.studentId })
+      }
       checked.add(resolved.studentId)
+      if (dutyMode) recentDutyStatusByStudent.set(resolved.studentId, statusForThisScan)
       _playScanBeep('success'); flash(true)
-      feedback.innerHTML = `<div class="bg-emerald-950/40 border border-emerald-800/80 rounded-2xl p-3 text-center text-xs text-emerald-300">✓ เช็คอิน ${_esc(resolved.name)} สำเร็จ</div>`
-      recentList.unshift({ name: resolved.name, studentId: resolved.studentId })
+      feedback.innerHTML = `<div class="bg-emerald-950/40 border border-emerald-800/80 rounded-2xl p-3 text-center text-xs text-emerald-300">✓ ${dutyMode ? `บันทึก ${_esc(resolved.name)} เป็น “${_esc(dutyStatusLabel(statusForThisScan))}” แล้ว` : `เช็คอิน ${_esc(resolved.name)} สำเร็จ`}</div>`
+      const previousIndex = dutyMode ? recentList.findIndex(item => item.studentId === resolved.studentId) : -1
+      if (previousIndex !== -1) recentList.splice(previousIndex, 1)
+      recentList.unshift({ name: resolved.name, studentId: resolved.studentId, status: statusForThisScan })
       renderHistory()
-      onCheckedIn?.(resolved.studentId)
+      onCheckedIn?.(resolved.studentId, selectedDutyStatus, resolved.member)
     } catch (err) {
       _playScanBeep('error'); flash(false)
       feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">บันทึกไม่สำเร็จ: ${_esc(getFriendlyErrorMessage(err))}</div>`
       showToast('เช็คอินไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
+    } finally {
+      if (dutyMode) processingDutyStudentIds.delete(resolved.studentId)
     }
   }
 
@@ -193,6 +224,15 @@ export function openCouncilCheckinScanner(opts) {
     input.focus()
   })
 
+  overlay.querySelectorAll('[data-ccs-duty-status]').forEach(button => button.addEventListener('click', () => {
+    selectedDutyStatus = button.dataset.ccsDutyStatus
+    overlay.querySelectorAll('[data-ccs-duty-status]').forEach(option => {
+      const selected = option.dataset.ccsDutyStatus === selectedDutyStatus
+      const color = dutyStatuses.find(([key]) => key === option.dataset.ccsDutyStatus)?.[2] || ''
+      option.className = `rounded-lg border px-2 py-2 text-xs font-bold transition ${selected ? `${color} border-transparent shadow-sm` : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}`
+    })
+  }))
+
   overlay.querySelector('#ccs-history-list').addEventListener('click', async e => {
     const btn = e.target.closest('[data-ccs-undo]')
     if (!btn) return
@@ -214,6 +254,7 @@ export function openCouncilCheckinScanner(opts) {
   overlay.querySelector('#ccs-close').addEventListener('click', async () => {
     if (html5Qrcode) { try { await html5Qrcode.stop() } catch { /* กล้องอาจปิดไปแล้ว ไม่ต้องแจ้งเตือนซ้ำ */ } }
     overlay.remove()
+    onClose?.()
   })
 
   ;(async () => {
@@ -233,6 +274,7 @@ export function openCouncilCheckinScanner(opts) {
     } catch (err) {
       showToast('ไม่สามารถเปิดกล้องได้: ' + (getFriendlyErrorMessage(err)), 'error')
       overlay.remove()
+      onClose?.()
     }
   })()
 }
