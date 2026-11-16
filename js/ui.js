@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1088'
+import { APP_VERSION } from './version.js?v=10.22.1089'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1089': [
+    'แก้ชื่อสมาชิกในพรีวิวมอบสิทธิ์สแกนละหมาดให้แสดงชื่อจริง และเพิ่มปุ่มเลือก/ยกเลิกรายชื่อทั้งหมดที่กำลังกรองอยู่',
+    'เพิ่มค้นหาสมาชิกและตัวกรองฝ่ายในหน้าทำเนียบ พร้อมแสดงรายชื่อชายและหญิงในมุมมองเดียวได้',
+  ],
   '10.22.1088': [
     'ปรับหน้ามอบสิทธิ์สแกนละหมาดให้เลือกสมาชิกสภาทุกฝ่าย พร้อมแถบชาย/หญิงและตัวกรองฝ่าย',
     'เพิ่มตัวกรองเพศและฝ่ายในหน้าต่างเช็คชื่อรายวัน และเลือกกิจกรรมของวันเพื่อเช็คชื่อหรือสแกน QR ได้',

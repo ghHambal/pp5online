@@ -2974,27 +2974,53 @@ function membersVisibleToCouncilAdvisor(members = ctx.members) {
   return members.filter(member => assigned.has(Number(member.position_id)))
 }
 
-let rosterGenderTab = 'M'
+let rosterGenderTab = 'all'
+let rosterSearch = ''
+let rosterDepartmentId = 'all'
 
 function renderRosterView() {
-  if (rosterGenderTab !== 'M' && rosterGenderTab !== 'W') rosterGenderTab = 'M'
+  if (!['all', 'M', 'W'].includes(rosterGenderTab)) rosterGenderTab = 'all'
   const scopedMembers = membersVisibleToCouncilAdvisor()
-  const list = scopedMembers.filter(m => m.council_positions?.gender === rosterGenderTab)
-    .sort((a, b) => (a.council_positions?.sort_order ?? 99) - (b.council_positions?.sort_order ?? 99))
+  const departmentOptions = [...new Map(scopedMembers
+    .filter(member => member.position_id && member.council_positions?.position_name)
+    .map(member => [Number(member.position_id), member.council_positions.position_name]))]
+    .sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'th'))
+  const query = rosterSearch.trim().toLocaleLowerCase()
+  const list = scopedMembers.filter(member => {
+    if (rosterGenderTab !== 'all' && member.council_positions?.gender !== rosterGenderTab) return false
+    if (rosterDepartmentId !== 'all' && Number(member.position_id) !== Number(rosterDepartmentId)) return false
+    if (!query) return true
+    const searchable = [
+      member.students?.full_name, member.students?.student_code, member.students?.main_room,
+      member.council_positions?.position_name, member.position_role === 'head' ? 'หัวหน้าฝ่าย' : 'สมาชิกฝ่าย',
+      member.status === 'designate' ? 'ว่าที่สมาชิก' : member.status === 'active' ? 'ปัจจุบัน' : 'หมดวาระ',
+      GENDER_LABEL[member.council_positions?.gender],
+    ].filter(Boolean).join(' ').toLocaleLowerCase()
+    return searchable.includes(query)
+  }).sort((a, b) => {
+    if (rosterGenderTab === 'all') {
+      const genderOrder = String(a.council_positions?.gender || '').localeCompare(String(b.council_positions?.gender || ''))
+      if (genderOrder) return genderOrder
+    }
+    return (a.council_positions?.sort_order ?? 99) - (b.council_positions?.sort_order ?? 99)
+  })
 
   const tabs = `
-    <div class="flex gap-2 mb-4">
-      ${['M', 'W'].map(g => `
-        <button type="button" class="roster-gender-tab-btn flex-1 py-2.5 rounded-full text-sm font-bold transition ${g === rosterGenderTab ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-gender="${g}">สภา${GENDER_LABEL[g]}</button>`).join('')}
-    </div>`
+    <div class="flex gap-2 mb-3">
+      ${[['all','ทั้งหมด'],['M',`สภา${GENDER_LABEL.M}`],['W',`สภา${GENDER_LABEL.W}`]].map(([g,label]) => `
+        <button type="button" class="roster-gender-tab-btn flex-1 py-2.5 rounded-full text-sm font-bold transition ${g === rosterGenderTab ? 'bg-[var(--primary)] text-white' : 'bg-[var(--surface)] border border-[var(--line)] text-[var(--muted)]'}" data-gender="${g}">${label}</button>`).join('')}
+    </div>
+    <div class="mb-4 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_240px] gap-2">
+      <input id="roster-search" type="search" value="${esc(rosterSearch)}" placeholder="ค้นหาชื่อ รหัส ห้อง ฝ่าย หรือตำแหน่ง" class="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]">
+      <select id="roster-department-filter" class="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"><option value="all">ทุกฝ่าย</option>${departmentOptions.map(([id,name]) => `<option value="${id}" ${String(rosterDepartmentId) === String(id) ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select>
+    </div>
+    <p class="mb-3 text-xs text-[var(--muted)]">พบ ${list.length} รายชื่อ${query ? ` จากคำค้น “${esc(rosterSearch.trim())}”` : ''}</p>`
 
   const addBtn = (ctx.isAdmin || ctx.isCouncilAdvisor) && termIsEditable()
-    ? `<button type="button" id="btn-add-council-member" class="w-full py-2.5 rounded-xl border border-dashed border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold mb-4 hover:bg-[var(--primary-soft)]">＋ เพิ่มสมาชิกสภา${GENDER_LABEL[rosterGenderTab]}</button>`
+    ? rosterGenderTab === 'all'
+      ? `<div class="mb-4 grid grid-cols-2 gap-2">${['M','W'].map(gender => `<button type="button" class="btn-add-council-member-gender py-2.5 rounded-xl border border-dashed border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold hover:bg-[var(--primary-soft)]" data-gender="${gender}">＋ เพิ่มสมาชิกสภา${GENDER_LABEL[gender]}</button>`).join('')}</div>`
+      : `<button type="button" id="btn-add-council-member" class="w-full py-2.5 rounded-xl border border-dashed border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold mb-4 hover:bg-[var(--primary-soft)]">＋ เพิ่มสมาชิกสภา${GENDER_LABEL[rosterGenderTab]}</button>`
     : ''
-
-  // มอบสิทธิ์ "สร้างกิจกรรมเอง" — แอดมินมอบให้ใครก็ได้ ประธานสภามอบได้เฉพาะสมาชิกเพศเดียวกับตัวเอง
-  // (ตรงกับที่ RPC set_council_member_can_create เช็คซ้ำอีกชั้นฝั่ง DB อยู่แล้ว)
-  const canGrantCreate = ctx.isAdmin || (ctx.isChair && ctx.chairGender === rosterGenderTab)
 
   const memberCard = m => `
     <div class="rounded-xl border border-[var(--line-soft)] p-3 bg-[var(--surface)] text-center">
@@ -3004,7 +3030,7 @@ function renderRosterView() {
       <p class="text-[0.6875rem] text-[var(--primary)] font-semibold truncate mt-0.5">${esc(m.council_positions?.position_name ?? '—')}</p>
       ${m.position_role ? `<span class="inline-block mt-1 rounded-full px-2 py-0.5 text-[0.625rem] font-bold ${m.position_role === 'head' ? 'bg-[var(--gold-soft)] text-[var(--gold-ink)]' : 'bg-[var(--surface-2)] text-[var(--muted)]'}">${m.position_role === 'head' ? 'หัวหน้าฝ่าย' : 'สมาชิกฝ่าย'}</span>` : ''}
       ${m.status !== 'active' ? `<span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[0.625rem] font-bold ${m.status === 'designate' ? 'bg-[var(--gold-soft)] text-[var(--gold-ink)]' : 'bg-[var(--surface-2)] text-[var(--muted)]'}">${m.status === 'designate' ? 'ว่าที่สมาชิก' : 'หมดวาระ'}</span>` : ''}
-      ${canGrantCreate ? `
+      ${(ctx.isAdmin || (ctx.isChair && ctx.chairGender === m.council_positions?.gender)) ? `
         <button type="button" class="btn-toggle-can-create w-full mt-2 text-[0.625rem] font-bold py-1 rounded-[8px] border ${m.can_create_activities ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)] text-[#106143]' : 'border-[var(--line)] text-[var(--muted)]'}" data-id="${m.id}" data-value="${m.can_create_activities ? '' : '1'}">${m.can_create_activities ? '✅ สร้างกิจกรรมได้' : '➕ ให้สิทธิ์สร้างกิจกรรม'}</button>` : ''}
       ${(ctx.isAdmin || ctx.isCouncilAdvisor) && termIsEditable() ? `
         <div class="flex gap-1.5 mt-2 pt-2 border-t border-[var(--line-soft)]">
@@ -3013,19 +3039,20 @@ function renderRosterView() {
         </div>` : ''}
     </div>`
 
-  const groups = ROSTER_CATEGORIES.map(cat => {
-    const members = list.filter(m => cat.match(m.council_positions))
-    if (!members.length) return ''
-    return `
-      <div class="mb-4">
-        <p class="text-xs font-bold text-[var(--muted-2)] mb-2">${cat.label}</p>
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${members.map(memberCard).join('')}</div>
-      </div>`
+  const groups = (rosterGenderTab === 'all' ? ['M', 'W'] : [rosterGenderTab]).map(gender => {
+    const genderMembers = list.filter(member => member.council_positions?.gender === gender)
+    if (!genderMembers.length) return ''
+    const categoryGroups = ROSTER_CATEGORIES.map(cat => {
+      const categoryMembers = genderMembers.filter(member => cat.match(member.council_positions))
+      if (!categoryMembers.length) return ''
+      return `<div class="mb-4"><p class="text-xs font-bold text-[var(--muted-2)] mb-2">${cat.label}</p><div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${categoryMembers.map(memberCard).join('')}</div></div>`
+    }).join('')
+    return `${rosterGenderTab === 'all' ? `<h2 class="mb-3 mt-5 text-base font-bold text-[var(--primary)]">สภา${GENDER_LABEL[gender]}</h2>` : ''}${categoryGroups}`
   }).join('')
 
   const scopeNote = ctx.isCouncilAdvisor && !ctx.isAdmin
     ? `<p class="mb-3 rounded-xl border border-[var(--primary-soft-line)] bg-[var(--primary-soft)] px-4 py-3 text-xs text-[var(--primary-dark)]">แสดงรายชื่อเฉพาะฝ่ายที่ได้รับมอบหมาย (${scopedMembers.length} รายการ) · ครูแอดมินเป็นผู้กำหนดฝ่ายในหน้า มอบสิทธิ์</p>` : ''
-  return `${scopeNote}${addBtn}${tabs}${groups || `<p class="text-xs text-[var(--muted-2)] text-center py-10">${ctx.isCouncilAdvisor && !ctx.isAdmin && !ctx.advisorPositionIds?.length ? 'ยังไม่มีฝ่ายที่ได้รับมอบหมาย กรุณาติดต่อผู้ดูแลระบบ' : `ยังไม่มีข้อมูลสมาชิกสภา${GENDER_LABEL[rosterGenderTab]}`}</p>`}`
+  return `${scopeNote}${tabs}${addBtn}${groups || `<p class="text-xs text-[var(--muted-2)] text-center py-10">${ctx.isCouncilAdvisor && !ctx.isAdmin && !ctx.advisorPositionIds?.length ? 'ยังไม่มีฝ่ายที่ได้รับมอบหมาย กรุณาติดต่อผู้ดูแลระบบ' : 'ไม่พบรายชื่อที่ตรงกับตัวกรอง'}</p>`}`
 }
 
 // ─── เพิ่ม/แก้ไขสมาชิกสภาโดยตรง (แอดมิน/ครูที่ปรึกษาสภา) ────────────────────────────
@@ -6129,7 +6156,26 @@ function wireContentEvents() {
     btn.addEventListener('click', () => { setActiveView(btn.dataset.view); render() })
   })
   document.querySelectorAll('.roster-gender-tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => { rosterGenderTab = btn.dataset.gender; render() })
+    btn.addEventListener('click', () => {
+      rosterGenderTab = btn.dataset.gender
+      rosterDepartmentId = 'all'
+      render()
+    })
+  })
+  document.getElementById('roster-search')?.addEventListener('input', e => {
+    rosterSearch = e.target.value
+    const cursor = e.target.selectionStart
+    render()
+    const nextSearch = document.getElementById('roster-search')
+    nextSearch?.focus()
+    nextSearch?.setSelectionRange(cursor, cursor)
+  })
+  document.getElementById('roster-department-filter')?.addEventListener('change', e => {
+    rosterDepartmentId = e.target.value
+    render()
+  })
+  document.querySelectorAll('.btn-add-council-member-gender').forEach(btn => {
+    btn.addEventListener('click', () => openMemberModal({ mode: 'add', gender: btn.dataset.gender }))
   })
   document.querySelectorAll('.btn-view-my-app-detail').forEach(btn => {
     btn.addEventListener('click', () => { myAppDetailId = Number(btn.dataset.id); render() })

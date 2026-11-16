@@ -8845,7 +8845,10 @@ export async function renderPrayerAdmin(teacher, options = {}) {
                   <p class="text-xs font-semibold text-emerald-800">เลือกรายชื่อสมาชิกสภาเพื่อมอบสิทธิ์สแกน</p>
                   <p class="text-[11px] text-gray-500">รายชื่อสมาชิกสภาทุกฝ่ายในวาระปัจจุบัน เลือกกรองตามเพศและฝ่ายได้</p>
                 </div>
-                <button type="button" id="btn-add-ibadat-scanner-candidates" class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800">เพิ่มรายชื่อที่เลือก</button>
+                <div class="flex gap-2">
+                  <button type="button" id="btn-select-all-ibadat-scanner-candidates" class="rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-800 hover:bg-emerald-50">เลือกทั้งหมดที่แสดง</button>
+                  <button type="button" id="btn-add-ibadat-scanner-candidates" class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800">เพิ่มรายชื่อที่เลือก</button>
+                </div>
               </div>
               <div class="mb-2 flex flex-wrap items-center gap-2">
                 <div class="flex gap-1" role="group" aria-label="กรองเพศสมาชิก">${[['all','ทั้งหมด'],['M','ชาย'],['W','หญิง']].map(([value,label]) => `<button type="button" class="ibadat-scanner-gender rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold ${value === 'all' ? 'bg-emerald-700 text-white' : 'bg-white text-emerald-800'}" data-gender="${value}">${label}</button>`).join('')}</div>
@@ -8932,6 +8935,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
       let candidateGender = 'all'
       let candidateDepartment = 'all'
       let candidateQuery = ''
+      const selectVisibleButton = document.getElementById('btn-select-all-ibadat-scanner-candidates')
       const normalizeScannerGender = value => {
         const gender = String(value || '').trim().toLowerCase()
         return ['m', 'male', 'ชาย'].includes(gender) ? 'M' : ['w', 'f', 'female', 'หญิง'].includes(gender) ? 'W' : ''
@@ -8943,7 +8947,20 @@ export async function renderPrayerAdmin(teacher, options = {}) {
           const searchMatch = !candidateQuery || label.dataset.search.includes(candidateQuery)
           label.classList.toggle('hidden', !(genderMatch && departmentMatch && searchMatch))
         })
+        const visibleChecks = [...(candidateList?.querySelectorAll('.ibadat-scanner-candidate:not(.hidden) .ibadat-scanner-candidate-check') || [])]
+        const allVisibleSelected = visibleChecks.length > 0 && visibleChecks.every(input => input.checked)
+        if (selectVisibleButton) {
+          selectVisibleButton.disabled = visibleChecks.length === 0
+          selectVisibleButton.textContent = allVisibleSelected ? 'ยกเลิกที่แสดง' : 'เลือกทั้งหมดที่แสดง'
+        }
       }
+      selectVisibleButton?.addEventListener('click', () => {
+        const visibleChecks = [...(candidateList?.querySelectorAll('.ibadat-scanner-candidate:not(.hidden) .ibadat-scanner-candidate-check') || [])]
+        const selectVisible = !visibleChecks.length || !visibleChecks.every(input => input.checked)
+        visibleChecks.forEach(input => { input.checked = selectVisible })
+        applyCandidateFilters()
+      })
+      candidateList?.querySelectorAll('.ibadat-scanner-candidate-check').forEach(input => input.addEventListener('change', applyCandidateFilters))
       document.getElementById('ibadat-scanner-candidate-search')?.addEventListener('input', event => {
         candidateQuery = event.target.value.trim().toLowerCase()
         applyCandidateFilters()
@@ -8962,14 +8979,17 @@ export async function renderPrayerAdmin(teacher, options = {}) {
         if (!selectedIds.size) return showToast('เลือกรายชื่อสมาชิกก่อน', 'warning')
         const additions = councilScannerCandidates.filter(student => selectedIds.has(Number(student.id))).map(student => ({
           ...student,
+          full_name: student.name,
           type: 'student',
           display_info: `รหัส ${student.code} · ห้อง ${student.room || '—'} · ${student.gender || 'ไม่ระบุเพศ'} · ${student.position_name || 'ไม่ระบุฝ่าย'}`,
         }))
         const existing = new Set(_foundScanners.map(student => Number(student.id)))
-        _foundScanners.push(...additions.filter(student => !existing.has(Number(student.id))))
+        const newAdditions = additions.filter(student => !existing.has(Number(student.id)))
+        _foundScanners.push(...newAdditions)
         candidateList.querySelectorAll('.ibadat-scanner-candidate-check').forEach(input => { input.checked = false })
+        applyCandidateFilters()
         _renderScannerPreview()
-        showToast(`เพิ่มรายชื่อ ${additions.length} คนในรายการตรวจสอบ`, 'success')
+        showToast(`เพิ่มรายชื่อ ${newAdditions.length} คนในรายการตรวจสอบ`, 'success')
       })
     }
 
