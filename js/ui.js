@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1092'
+import { APP_VERSION } from './version.js?v=10.22.1093'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1093': [
+    'เพิ่มระบบเงินออมสภา สมาชิกดูยอดรวมและประวัติของตนเอง ส่วนครูที่ปรึกษาและหัวหน้าฝ่ายเหรัญญิกบันทึก ติดตาม และตรวจสอบประวัติของสมาชิกทุกคนได้',
+  ],
   '10.22.1092': [
     'ปรับหน้าทำเนียบสภาเป็นผังองค์กร วางประธานและรองประธานไว้ด้านบน จัดสมาชิกตามฝ่าย และเพิ่มแท็บฝ่ายพร้อมแสดงหัวหน้าฝ่ายเหนือสมาชิก',
   ],

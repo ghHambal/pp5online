@@ -20,6 +20,7 @@ import {
   getCouncilConfig, updateCouncilConfig, getCouncilTerms, createCouncilTerm, previewCouncilTermActivation, activateCouncilTerm,
   getCouncilRosterTemplates, saveCouncilRosterTemplate, deleteCouncilRosterTemplate,
   getCouncilDailyDutyCalendar, saveCouncilDailyDutyAttendance,
+  getCouncilSavingsOverview, recordCouncilSavingsDeposit, reverseCouncilSavingsDeposit,
   getCouncilPositions, getCouncilMembers,
   createCouncilPosition, updateCouncilPosition, deleteCouncilPosition,
   getCouncilElectionConfigs, getMyCouncilApplications, getMyCouncilMembership,
@@ -215,6 +216,12 @@ let candidateAdminGender = 'M'
 let myCouncilCampaign = null
 let campaignVideoBusy = false
 let activities = null // null = ยังไม่โหลด
+let councilSavingsSnapshot = null
+let councilSavingsLoading = false
+let councilSavingsTermId = null
+let councilSavingsLoadError = false
+let councilSavingsSearch = ''
+let councilSavingsBusy = false
 const attendanceByActivity = {} // { [activityId]: Set<studentId> }
 let ylaEvents = null
 let ylaEventsLoading = false
@@ -367,6 +374,8 @@ async function init() {
   // ประธานสภา (chair) — นักเรียนที่ล็อกอินอยู่และมีสมาชิกภาพ active ในตำแหน่งที่ is_elected=true
   // ได้สิทธิ์จัดการกิจกรรม/ประกาศเท่าแอดมิน (RLS คุมไว้แล้ว ดู patch_council_phase3_activities_news.sql)
   const isChair = role === 'student' && membership.some(m => m.status === 'active' && m.council_positions?.is_elected)
+  const isSavingsTreasurer = role === 'student' && membership.some(m => m.status === 'active'
+    && m.position_role === 'head' && (m.council_positions?.position_name ?? '').includes('เหรัญญิก'))
   // สิทธิ์สร้างกิจกรรม/การประชุมเองได้ทันที (ไม่ใช่แค่จัดการกิจกรรมที่มีอยู่แล้วผ่าน owner_member_id)
   // — ประธานสภาได้เสมอ + สมาชิกที่แอดมิน/ประธานมอบสิทธิ์ can_create_activities ไว้ล่วงหน้า
   // เพศของสภาที่ตัวเองเป็นประธานอยู่ — ใช้จำกัดขอบเขตตอนมอบสิทธิ์สร้างกิจกรรมให้สมาชิกคนอื่น
@@ -398,7 +407,7 @@ async function init() {
     (teacher.position === 'executive' || (teacher.positions ?? []).includes('executive'))
 
   ctx = {
-    role, isAdmin, isChair, isCouncilAdvisor, isStudentAffairsHead, isSchoolDirector, isExecutive,
+    role, isAdmin, isChair, isCouncilAdvisor, isSavingsTreasurer, isStudentAffairsHead, isSchoolDirector, isExecutive,
     canCreateActivities, chairGender, canScanIbadatPrayer,
     student, applications, membership, positions, members, elections, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases, advisorPositionIds,
@@ -424,6 +433,9 @@ async function switchCouncilTerm(termId) {
   const term = councilTerms.find(t => String(t.id) === String(termId))
   if (!term || String(term.id) === String(selectedCouncilTermId)) return
   selectedCouncilTermId = term.id
+  councilSavingsSnapshot = null
+  councilSavingsTermId = null
+  councilSavingsLoadError = false
   const termDateRange = councilTermDateRange(term)
   const startMonth = termDateRange.start.slice(0, 7)
   const endMonth = termDateRange.end.slice(0, 7)
@@ -535,6 +547,9 @@ function getNavItems() {
   if (ctx.canScanIbadatPrayer) items.push({ id: 'ibadatScanner', icon: '🕌', label: 'ผู้สแกนละหมาด', group: 'council' })
   if (ctx.isAdmin || ctx.isChair || (ctx.isCouncilAdvisor && ctx.advisorPositionIds?.length)) items.push({ id: 'dutyTracker', icon: '🗓️', label: 'บันทึกเวรรายวัน', group: 'council' })
   items.push({ id: 'activities', icon: '📅', label: 'กิจกรรม/การเข้าร่วม', group: 'council' })
+  if (ctx.isAdmin || ctx.isCouncilAdvisor || ctx.isSavingsTreasurer || ctx.membership.some(m => m.status === 'active')) {
+    items.push({ id: 'savings', icon: '💰', label: 'เงินออมสภา', group: 'council' })
+  }
   if (ctx.isChair || ctx.isAdmin || ctx.isCouncilAdvisor) items.push({ id: 'chairteam', icon: '👔', label: 'เสนอคณะทำงาน', group: 'council' })
   if (ctx.isChair) items.push({ id: 'assignments', icon: '📌', label: 'มอบหมายงาน', group: 'council' })
   if (ctx.membership.length) items.push({ id: 'myduty', icon: '🎫', label: 'หน้าที่/งานของฉัน', group: 'council' })
@@ -3086,6 +3101,71 @@ function membersVisibleToCouncilAdvisor(members = ctx.members) {
   if (!ctx.isCouncilAdvisor || ctx.isAdmin) return members
   const assigned = new Set((ctx.advisorPositionIds ?? []).map(Number))
   return members.filter(member => assigned.has(Number(member.position_id)))
+}
+
+function savingsMoney(value) {
+  return Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function loadCouncilSavingsSnapshot() {
+  if (councilSavingsLoading || !selectedCouncilTermId) return
+  const termId = selectedCouncilTermId
+  councilSavingsLoading = true
+  councilSavingsLoadError = false
+  getCouncilSavingsOverview(termId).then(snapshot => {
+    councilSavingsSnapshot = snapshot
+    councilSavingsTermId = termId
+  }).catch(error => {
+    if (String(selectedCouncilTermId) === String(termId)) {
+      councilSavingsTermId = termId
+      councilSavingsLoadError = true
+    }
+    showToast(getFriendlyErrorMessage(error), 'error')
+  }).finally(() => {
+    councilSavingsLoading = false
+    render()
+  })
+}
+
+function renderCouncilSavingsView() {
+  const isManager = !!(ctx.isAdmin || ctx.isCouncilAdvisor || ctx.isSavingsTreasurer)
+  if (!isManager && !ctx.membership.some(member => member.status === 'active')) {
+    return '<div class="py-16 text-center text-sm text-[var(--muted)]">หน้านี้สำหรับสมาชิกสภานักเรียนและผู้ดูแลเงินออม</div>'
+  }
+  if (!selectedCouncilTermId) return '<div class="py-16 text-center text-sm text-[var(--muted)]">ยังไม่มีวาระสภาให้แสดง</div>'
+  if (councilSavingsTermId !== selectedCouncilTermId || !councilSavingsSnapshot) {
+    if (councilSavingsLoadError && councilSavingsTermId === selectedCouncilTermId) {
+      return '<div class="py-16 text-center"><p class="text-sm text-[var(--muted)]">โหลดข้อมูลเงินออมไม่สำเร็จ</p><button id="council-savings-retry" type="button" class="mt-3 rounded-xl bg-[var(--primary)] px-4 py-2 text-xs font-bold text-white">ลองอีกครั้ง</button></div>'
+    }
+    if (!councilSavingsLoading) loadCouncilSavingsSnapshot()
+    return '<div class="py-16 text-center text-sm text-[var(--muted)]">กำลังโหลดข้อมูลเงินออม…</div>'
+  }
+
+  const snapshot = councilSavingsSnapshot
+  const members = snapshot.members ?? []
+  const transactions = snapshot.transactions ?? []
+  const reversed = new Set(transactions.filter(row => row.entry_type === 'reversal').map(row => Number(row.reversal_of_id)))
+  const filter = councilSavingsSearch.trim().toLocaleLowerCase()
+  const visibleMembers = members.filter(member => !filter || [member.full_name, member.student_code, member.main_room, member.position_name]
+    .some(value => String(value ?? '').toLocaleLowerCase().includes(filter)))
+  const today = localDateString(new Date())
+  const summaryCard = (label, value, hint = '') => `<div class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4"><p class="text-xs text-[var(--muted)]">${label}</p><p class="mt-1 text-2xl font-extrabold text-[var(--primary)]">${value}</p>${hint ? `<p class="mt-1 text-[0.6875rem] text-[var(--muted-2)]">${hint}</p>` : ''}</div>`
+  const transactionRows = transactions.slice(0, 80).map(row => {
+    const isReversal = row.entry_type === 'reversal'
+    const sign = isReversal ? '−' : '+'
+    const alreadyReversed = reversed.has(Number(row.id))
+    return `<tr class="border-t border-[var(--line-soft)] align-top"><td class="px-3 py-2.5 whitespace-nowrap">${esc(row.deposit_date)}<div class="text-[0.625rem] text-[var(--muted-2)]">สัปดาห์ ${esc(row.week_start)}</div></td>${snapshot.is_manager ? `<td class="px-3 py-2.5"><div class="font-semibold">${esc(row.student_name)}</div><div class="text-[0.625rem] text-[var(--muted-2)]">${esc(row.student_code)}</div></td>` : ''}<td class="px-3 py-2.5"><span class="font-bold ${isReversal ? 'text-[var(--danger)]' : 'text-[var(--ok)]'}">${sign}${savingsMoney(row.amount)} บาท</span><div class="text-[0.625rem] text-[var(--muted-2)]">${row.payment_method === 'cash' ? 'เงินสด' : row.payment_method === 'transfer' ? 'โอนเงิน' : 'อื่น ๆ'}${row.note ? ` · ${esc(row.note)}` : ''}</div><div class="text-[0.625rem] text-[var(--muted-2)]">บันทึกโดย ${esc(row.recorded_by_name)} · ${new Date(row.created_at).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}</div></td>${snapshot.is_manager ? `<td class="px-3 py-2.5 text-right">${!isReversal && !alreadyReversed ? `<button type="button" class="btn-reverse-savings rounded-lg border border-[var(--line)] px-2.5 py-1.5 text-[0.625rem] font-bold text-[var(--muted)] hover:bg-[var(--surface-2)]" data-id="${row.id}">ยกเลิก</button>` : alreadyReversed ? '<span class="text-[0.625rem] text-[var(--muted-2)]">ยกเลิกแล้ว</span>' : ''}</td>` : ''}</tr>`
+  }).join('')
+  const memberRows = visibleMembers.map(member => `<tr class="border-t border-[var(--line-soft)]"><td class="px-3 py-2.5"><div class="font-semibold">${esc(member.full_name)}</div><div class="text-[0.625rem] text-[var(--muted-2)]">${esc(member.student_code)} · ${esc(member.main_room ?? 'ไม่ระบุห้อง')} · ${esc(member.position_name)}</div></td><td class="px-3 py-2.5 text-right font-bold">${savingsMoney(member.this_week_amount)} บาท</td><td class="px-3 py-2.5 text-right font-bold text-[var(--primary)]">${savingsMoney(member.total_amount)} บาท</td></tr>`).join('')
+
+  return `<div class="space-y-5">
+    <header><h2 class="text-xl font-extrabold text-[var(--ink)]">💰 เงินออมสภานักเรียน</h2><p class="mt-1 text-xs text-[var(--muted)]">${esc(selectedCouncilTerm()?.term_label ?? '')} · ยอดประจำสัปดาห์คิดตามสัปดาห์วันจันทร์ถึงวันอาทิตย์</p></header>
+    <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">${summaryCard('ยอดออมสะสมทั้งวาระ', `${savingsMoney(snapshot.total_amount)} บาท`)}${summaryCard('ยอดออมสัปดาห์นี้', `${savingsMoney(snapshot.this_week_amount)} บาท`, `เริ่มสัปดาห์ ${esc(snapshot.week_start)}`)}${summaryCard('สมาชิกที่มีรายการสัปดาห์นี้', `${snapshot.contributors_this_week ?? 0} คน`, `จากสมาชิกทั้งหมด ${snapshot.member_count ?? 0} คน`)}</div>
+    ${snapshot.is_manager ? `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4"><h3 class="mb-3 text-sm font-extrabold text-[var(--ink)]">บันทึกเงินออม</h3><form id="council-savings-form" class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6"><label class="text-xs font-bold text-[var(--muted)] lg:col-span-2">สมาชิก<select name="membership_id" required class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"><option value="">เลือกสมาชิก</option>${members.map(member => `<option value="${member.membership_id}">${esc(member.full_name)} · ${esc(member.student_code)} · ${esc(member.position_name)}</option>`).join('')}</select></label><label class="text-xs font-bold text-[var(--muted)]">จำนวนเงิน (บาท)<input name="amount" type="number" min="0.01" max="100000" step="0.01" required class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]" placeholder="เช่น 20"></label><label class="text-xs font-bold text-[var(--muted)]">วันที่รับเงิน<input name="deposit_date" type="date" value="${today}" required class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"></label><label class="text-xs font-bold text-[var(--muted)]">วิธีรับ<select name="payment_method" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"><option value="cash">เงินสด</option><option value="transfer">โอนเงิน</option><option value="other">อื่น ๆ</option></select></label><label class="text-xs font-bold text-[var(--muted)] lg:col-span-2">หมายเหตุ (ถ้ามี)<input name="note" maxlength="500" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]" placeholder="หมายเหตุหรือเลขอ้างอิง"></label><div class="flex items-end lg:col-span-2"><button type="submit" class="w-full rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50" ${councilSavingsBusy || !members.length ? 'disabled' : ''}>บันทึกรายการออม</button></div></form><p class="mt-2 text-[0.6875rem] text-[var(--muted-2)]">รายการที่บันทึกแล้วแก้ทับไม่ได้ หากผิดให้ยกเลิกรายการพร้อมระบุเหตุผล แล้วบันทึกรายการที่ถูกต้อง</p></section>
+    <section class="overflow-hidden rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)]"><div class="flex flex-wrap items-center justify-between gap-2 p-4"><div><h3 class="text-sm font-extrabold text-[var(--ink)]">ยอดออมรายสมาชิก</h3><p class="mt-1 text-[0.6875rem] text-[var(--muted)]">ข้อมูลส่วนนี้เห็นได้เฉพาะผู้ดูแลเงินออม</p></div><input id="council-savings-search" type="search" value="${esc(councilSavingsSearch)}" placeholder="ค้นหาชื่อ รหัส ฝ่าย ห้อง" class="min-w-48 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--ink)]"></div><div class="overflow-x-auto"><table class="w-full min-w-[540px] text-xs"><thead class="bg-[var(--surface-2)] text-[var(--muted)]"><tr><th class="px-3 py-2 text-left">สมาชิก</th><th class="px-3 py-2 text-right">สัปดาห์นี้</th><th class="px-3 py-2 text-right">สะสม</th></tr></thead><tbody>${memberRows || '<tr><td colspan="3" class="px-3 py-8 text-center text-[var(--muted)]">ไม่พบสมาชิกที่ค้นหา</td></tr>'}</tbody></table></div></section>` : `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4"><h3 class="text-sm font-extrabold text-[var(--ink)]">ยอดออมของฉัน</h3><p class="mt-1 text-xs text-[var(--muted)]">สมาชิกทั่วไปเห็นรายละเอียดของตนเองและยอดรวมสภา</p></section>`}
+    <section class="overflow-hidden rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)]"><div class="p-4"><h3 class="text-sm font-extrabold text-[var(--ink)]">ประวัติการออม${snapshot.is_manager ? 'ล่าสุด' : 'ของฉัน'}</h3><p class="mt-1 text-[0.6875rem] text-[var(--muted)]">แสดงรายการล่าสุดไม่เกิน 80 รายการ</p></div><div class="overflow-x-auto"><table class="w-full min-w-[520px] text-xs"><thead class="bg-[var(--surface-2)] text-[var(--muted)]"><tr><th class="px-3 py-2 text-left">วันที่ / สัปดาห์</th>${snapshot.is_manager ? '<th class="px-3 py-2 text-left">สมาชิก</th>' : ''}<th class="px-3 py-2 text-left">รายการ</th>${snapshot.is_manager ? '<th class="px-3 py-2 text-right">จัดการ</th>' : ''}</tr></thead><tbody>${transactionRows || `<tr><td colspan="${snapshot.is_manager ? 4 : 2}" class="px-3 py-8 text-center text-[var(--muted)]">ยังไม่มีรายการออมในวาระนี้</td></tr>`}</tbody></table></div></section>
+    ${transactions.length > 80 ? '<p class="text-center text-[0.6875rem] text-[var(--muted-2)]">กำลังแสดง 80 รายการล่าสุด</p>' : ''}
+    </div>`
 }
 
 let rosterGenderTab = 'all'
@@ -6117,6 +6197,7 @@ const VIEW_RENDERERS = {
   candidates: renderCandidatesView,
   myCampaign: renderMyCampaignView,
   roster: renderRosterView,
+  savings: renderCouncilSavingsView,
   result: renderElectionView,
   settings: renderSettingsView,
   chairteam: renderChairTeamView,
@@ -6198,6 +6279,65 @@ function renderFullscreenFlow() {
 
 function wireContentEvents() {
   document.getElementById('council-term-switcher')?.addEventListener('change', e => switchCouncilTerm(e.target.value))
+  document.getElementById('council-savings-retry')?.addEventListener('click', () => {
+    councilSavingsLoadError = false
+    councilSavingsSnapshot = null
+    councilSavingsTermId = null
+    loadCouncilSavingsSnapshot()
+    render()
+  })
+  document.getElementById('council-savings-form')?.addEventListener('submit', async event => {
+    event.preventDefault()
+    if (councilSavingsBusy) return
+    const form = event.currentTarget
+    councilSavingsBusy = true
+    render()
+    try {
+      await recordCouncilSavingsDeposit({
+        termId: selectedCouncilTermId,
+        membershipId: form.elements.membership_id.value,
+        amount: form.elements.amount.value,
+        depositDate: form.elements.deposit_date.value,
+        paymentMethod: form.elements.payment_method.value,
+        note: form.elements.note.value.trim(),
+      })
+      councilSavingsSnapshot = await getCouncilSavingsOverview(selectedCouncilTermId)
+      councilSavingsTermId = selectedCouncilTermId
+      showToast('บันทึกเงินออมแล้ว', 'success')
+    } catch (error) {
+      showToast(getFriendlyErrorMessage(error), 'error')
+    } finally {
+      councilSavingsBusy = false
+      render()
+    }
+  })
+  document.getElementById('council-savings-search')?.addEventListener('input', event => {
+    councilSavingsSearch = event.target.value
+    const cursor = event.target.selectionStart
+    render()
+    const nextInput = document.getElementById('council-savings-search')
+    nextInput?.focus()
+    nextInput?.setSelectionRange(cursor, cursor)
+  })
+  document.querySelectorAll('.btn-reverse-savings').forEach(button => button.addEventListener('click', async () => {
+    const reason = window.prompt('ระบุเหตุผลที่ยกเลิกรายการออมนี้')
+    if (reason == null) return
+    if (reason.trim().length < 3) { showToast('กรุณาระบุเหตุผลอย่างน้อย 3 ตัวอักษร', 'warning'); return }
+    if (councilSavingsBusy) return
+    councilSavingsBusy = true
+    render()
+    try {
+      await reverseCouncilSavingsDeposit(button.dataset.id, reason.trim())
+      councilSavingsSnapshot = await getCouncilSavingsOverview(selectedCouncilTermId)
+      councilSavingsTermId = selectedCouncilTermId
+      showToast('ยกเลิกรายการและเก็บประวัติไว้แล้ว', 'success')
+    } catch (error) {
+      showToast(getFriendlyErrorMessage(error), 'error')
+    } finally {
+      councilSavingsBusy = false
+      render()
+    }
+  }))
   document.getElementById('council-duty-print-monthly')?.addEventListener('click', printCouncilMonthlyDutyRoster)
   document.getElementById('council-duty-type')?.addEventListener('change', event => { dailyDutyType = event.target.value; render() })
   document.querySelectorAll('.council-duty-view').forEach(button => button.addEventListener('click', () => { dutyCalendarMode = button.dataset.view; render() }))

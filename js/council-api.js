@@ -1114,6 +1114,30 @@ export async function getCouncilDailyDutySummary(termId) {
   return data ?? []
 }
 
+// ─── บัญชีออมเงินสภา (สิทธิ์อ่าน/บันทึกถูกตรวจใน RPC ฝั่งฐานข้อมูล) ───────────
+export async function getCouncilSavingsOverview(termId) {
+  const { data, error } = await supabase.rpc('get_council_savings_overview', { p_term_id: Number(termId) })
+  if (error) throw error
+  return data ?? {}
+}
+
+export async function recordCouncilSavingsDeposit({ termId, membershipId, amount, depositDate, paymentMethod, note }) {
+  const { data, error } = await supabase.rpc('record_council_savings_deposit', {
+    p_term_id: Number(termId), p_membership_id: Number(membershipId), p_amount: Number(amount),
+    p_deposit_date: depositDate, p_payment_method: paymentMethod, p_note: note ?? '',
+  })
+  if (error) throw error
+  return Number(data)
+}
+
+export async function reverseCouncilSavingsDeposit(transactionId, reason) {
+  const { data, error } = await supabase.rpc('reverse_council_savings_deposit', {
+    p_transaction_id: Number(transactionId), p_reason: reason,
+  })
+  if (error) throw error
+  return Number(data)
+}
+
 export async function saveEvaluation({ memberId, academicYear, termId, scores, totalScore, maxScore, decision, comment, evaluatorTeacherId }) {
   const { error } = await supabase.from('council_evaluations').upsert({
     member_id: memberId, academic_year: academicYear, term_id: termId, scores, total_score: totalScore, max_score: maxScore,
