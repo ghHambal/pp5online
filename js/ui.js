@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1085'
+import { APP_VERSION } from './version.js?v=10.22.1086'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,10 +1015,13 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
-  '10.22.1085': [
+  '10.22.1086': [
+    'เอารายการผลการเรียนรายวิชาออกจากหน้าคะแนนประกอบ และแก้หน้าคะแนนละหมาดให้ค้นข้อมูลสแกนด้วยช่วงวันที่ภาคเรียน รองรับระเบียนเดิมที่ไม่มีปี/ภาคกำกับ',
+  ],
+  '10.22.1086': [
     'แก้หน้าคะแนนนักเรียนไม่ให้ผลการเรียนรายวิชาซ้ำในแท็บละหมาดและอ่านฯ และแจ้งเตือนเมื่อโหลดคะแนนละหมาดไม่สำเร็จ',
   ],
-  '10.22.1085': [
+  '10.22.1086': [
     'เพิ่มปุ่มสแกน QR ในหน้าเช็คชื่อเวร เลือกสถานะก่อนสแกนและบันทึกทันที พร้อมป้องกันการบันทึกซ้ำสถานะเดิมระหว่างสแกนรอบเดียวกัน',
   ],
   '10.22.1083': [

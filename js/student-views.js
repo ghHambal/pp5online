@@ -25,7 +25,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1085'
+import { APP_VERSION } from './version.js?v=10.22.1086'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -1444,13 +1444,12 @@ export async function renderStudentMyScores(student, activeTab = 'life', selecte
     semester_start: activeTerm.start_date ?? cfg.semester_start,
     semester_end: activeTerm.end_date ?? cfg.semester_end,
   }
-  const [life, reading, prayerResult, gpaData] = await Promise.all([
+  const [life, reading, prayerResult] = await Promise.all([
     getMyLifeSkillScores(student.id, year, sem).catch(err => ({ columns: [], scores: [], error: err })),
     getMyReadingScores(student.id, year, sem).catch(err => ({ columns: [], scores: [], error: err })),
-    getMyPrayerRecords(student.id, year, sem)
+    getMyPrayerRecords(student.id, year, sem, termCfg.semester_start, termCfg.semester_end)
       .then(records => ({ records, error: null }))
       .catch(error => ({ records: [], error })),
-    getStudentGPA(student.id, year, sem).catch(err => ({ samai: [], sasana: [], error: err })),
   ])
   const prayers = prayerResult.records
 
@@ -1466,29 +1465,6 @@ export async function renderStudentMyScores(student, activeTab = 'life', selecte
   const prayerEarned = allPrayerDays.reduce((sum, d) => sum + (PRAYER_SCORE[prayerMap[d.ds]]?.score ?? 0), 0)
   const prayerMax = allPrayerDays.length * 2
   const prayerScore = prayerMax ? Math.max(0, Math.round((prayerEarned / prayerMax) * 100) / 10) : 0
-  const subjectRows = [...(gpaData.samai ?? []), ...(gpaData.sasana ?? [])]
-  const subjectGradeCard = `
-    <section class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
-      <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between gap-3">
-        <div>
-          <h3 class="font-bold text-gray-800 text-sm">🎓 ผลการเรียนรายวิชา</h3>
-          <p class="text-[11px] text-gray-400 mt-0.5">ข้อมูลตามภาคเรียนที่เลือก</p>
-        </div>
-        <span class="text-[11px] text-gray-400">${subjectRows.length} วิชา</span>
-      </div>
-      ${subjectRows.length ? `<div class="divide-y divide-gray-50">
-        ${subjectRows.map(row => `
-          <button type="button" class="student-score-course w-full px-4 py-3 flex items-center justify-between gap-3 text-left hover:bg-gray-50 transition" data-class-id="${row.classId}" data-term-year="${year}" data-term-semester="${sem}">
-            <div class="min-w-0">
-              <p class="text-[10px] text-gray-400 font-mono truncate">${_esc(row.subjectCode ?? '')}</p>
-              <p class="text-sm font-semibold text-gray-700 truncate">${_esc(row.subjectName ?? '—')}</p>
-              <p class="text-[11px] text-gray-400">${_esc(row.teacherName ?? '—')} · ${row.score != null && row.maxScore != null ? `${row.score}/${row.maxScore}` : `รอคะแนน ${row.scoredCount ?? 0}/${row.totalCols ?? 0}`}</p>
-            </div>
-            <span class="text-lg font-extrabold ${row.grade == null ? 'text-gray-300' : 'text-indigo-600'}">${row.grade == null ? '—' : Number(row.grade).toFixed(1)}</span>
-          </button>`).join('')}
-      </div>` : `<div class="py-8 text-center text-gray-300 text-sm">ยังไม่มีผลการเรียนในภาคเรียนนี้</div>`}
-    </section>`
-
   const scoreCard = (title, icon, rows, color) => `
     <section class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
       <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
@@ -1593,7 +1569,7 @@ export async function renderStudentMyScores(student, activeTab = 'life', selecte
     <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
       <div>
         <h2 class="font-bold text-gray-800">📊 คะแนนของฉัน</h2>
-        <p class="text-xs text-gray-400 mt-1">ผลการเรียนและคะแนนประกอบรายภาคเรียน</p>
+        <p class="text-xs text-gray-400 mt-1">คะแนนประกอบรายภาคเรียน</p>
       </div>
       <label class="flex items-center gap-2 text-xs font-semibold text-indigo-700">
         <span>ภาคเรียน</span>
@@ -1608,19 +1584,12 @@ export async function renderStudentMyScores(student, activeTab = 'life', selecte
     </div>
     <p class="text-xs text-gray-400 mb-2">ข้อมูลภาค ${sem || '—'} / ${year || '—'} · ${activeKey === currentKey ? 'ภาคเรียนปัจจุบัน' : 'ข้อมูลย้อนหลัง'}</p>
     <p class="text-sm font-semibold text-gray-700 mb-4">${tabTitle}</p>
-    ${activeTab === 'life' ? subjectGradeCard : ''}
     ${content}
   `)
   document.getElementById('student-score-term')?.addEventListener('change', event => {
     const [nextYear, nextSemester] = String(event.target.value).split(':').map(Number)
     localStorage.setItem(`pp5_student_score_term_${student.id}`, `${nextYear}:${nextSemester}`)
     renderStudentMyScores(student, activeTab, { academicYear: nextYear, semester: nextSemester })
-  })
-  document.querySelectorAll('.student-score-course').forEach(button => {
-    button.addEventListener('click', () => {
-      window._stuPendingClassTerm = { academicYear: Number(button.dataset.termYear), semester: Number(button.dataset.termSemester) }
-      window._stuOpenClass?.(Number(button.dataset.classId))
-    })
   })
 }
 

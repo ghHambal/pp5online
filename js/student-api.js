@@ -265,12 +265,18 @@ export async function getMyReadingScores(studentId, academicYear, semester) {
   return { columns, scores: scores ?? [] }
 }
 
-export async function getMyPrayerRecords(studentId, academicYear = null, semester = null) {
+export async function getMyPrayerRecords(studentId, academicYear = null, semester = null, startDate = null, endDate = null) {
   let query = supabase.from('prayer_records')
     .select('check_date, status, week_number, location')
     .eq('student_id', studentId)
-  if (academicYear != null) query = query.eq('academic_year', Number(academicYear))
-  if (semester != null) query = query.eq('semester', Number(semester))
+  // Older/scanner-created rows may not have academic_year/semester populated.
+  // The term date range is the reliable scope for those records.
+  if (startDate && endDate) {
+    query = query.gte('check_date', startDate).lte('check_date', endDate)
+  } else {
+    if (academicYear != null) query = query.eq('academic_year', Number(academicYear))
+    if (semester != null) query = query.eq('semester', Number(semester))
+  }
   const { data, error } = await query.order('check_date')
   if (error) throw error
   return data ?? []
