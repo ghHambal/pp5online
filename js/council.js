@@ -5043,6 +5043,103 @@ const openPositionsByGender = {} // { M: [...], W: [...] } — undefined = ย�
 const nomineesByGender = {}
 const pendingNomsByGender = {}
 const teamProposalsByGender = {}
+const teamDraftByGender = {}
+const teamStepByGender = {}
+
+function openTeamNomineePicker({ gender, position, candidates, mode, selectedKeys = [], usedStudentIds = [] }) {
+  document.getElementById('team-nominee-picker-modal')?.remove()
+  const selected = new Set(selectedKeys)
+  const used = new Set(usedStudentIds.map(Number))
+  const modal = document.createElement('div')
+  modal.id = 'team-nominee-picker-modal'
+  modal.className = 'fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4'
+  modal.innerHTML = `
+    <section class="flex max-h-[96vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl bg-[var(--surface)] shadow-2xl">
+      <header class="border-b border-[var(--line-soft)] p-4 sm:p-5">
+        <div class="flex items-start justify-between gap-3">
+          <div><h2 class="text-base font-bold text-[var(--ink)]">${mode === 'head' ? 'เลือกหัวหน้าฝ่าย' : 'เพิ่มสมาชิกฝ่าย'}</h2><p class="mt-1 text-xs text-[var(--muted)]">${esc(position.position_name)} · ค้นหาจากชื่อ รหัส ห้อง หรือฝ่ายเดิม</p></div>
+          <button type="button" data-close-team-picker class="rounded-lg px-2 py-1 text-2xl leading-none text-[var(--muted)] hover:bg-[var(--surface-2)]" aria-label="ปิด">×</button>
+        </div>
+        <input id="team-nominee-search" type="search" autocomplete="off" placeholder="พิมพ์อะไรก็เจอ เช่น ชื่อ รหัสนักเรียน ห้อง หรือฝ่าย" class="mt-3 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-3 text-sm text-[var(--ink)]">
+        <p class="mt-2 text-xs text-[var(--muted)]">${mode === 'head' ? 'เลือกหัวหน้าฝ่ายหนึ่งคน แล้วกดยืนยัน' : `เลือกสมาชิกได้หลายคน · รวมกับหัวหน้าไม่เกิน ${position.seats_count} ที่นั่ง`}</p>
+      </header>
+      <div id="team-nominee-results" class="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 sm:p-4"></div>
+      <footer class="flex items-center justify-between gap-3 border-t border-[var(--line-soft)] p-3 sm:p-4">
+        <span id="team-nominee-selection-count" class="text-xs font-semibold text-[var(--muted)]"></span>
+        <div class="flex gap-2"><button type="button" data-close-team-picker class="rounded-xl border border-[var(--line)] px-4 py-2 text-sm font-bold text-[var(--ink-2)]">ยกเลิก</button><button type="button" id="btn-confirm-team-nominee-selection" class="rounded-xl bg-[var(--primary)] px-5 py-2 text-sm font-bold text-white">${mode === 'head' ? 'ยืนยันหัวหน้าฝ่าย' : 'ยืนยันเพิ่มสมาชิก'}</button></div>
+      </footer>
+    </section>`
+  document.body.appendChild(modal)
+
+  const results = modal.querySelector('#team-nominee-results')
+  const countLabel = modal.querySelector('#team-nominee-selection-count')
+  const confirmButton = modal.querySelector('#btn-confirm-team-nominee-selection')
+  const close = () => modal.remove()
+  modal.querySelectorAll('[data-close-team-picker]').forEach(button => button.addEventListener('click', close))
+  modal.addEventListener('click', event => { if (event.target === modal) close() })
+  const update = () => {
+    const query = modal.querySelector('#team-nominee-search').value.trim().toLocaleLowerCase()
+    const visibleCandidates = candidates.filter(nominee => {
+      const text = [nominee.students?.full_name, nominee.students?.student_code, nominee.students?.main_room,
+        nominee.council_positions?.position_name, nominee.nominee_source === 'member' ? 'สมาชิกสภา' : 'ผ่านสัมภาษณ์']
+        .filter(Boolean).join(' ').toLocaleLowerCase()
+      return !query || text.includes(query)
+    })
+    results.innerHTML = visibleCandidates.length ? visibleCandidates.map(nominee => {
+      const alreadyUsed = used.has(Number(nominee.student_id)) && !selected.has(nominee.nominee_key)
+      const isSelected = selected.has(nominee.nominee_key)
+      const full = mode === 'member' && !isSelected && selected.size >= Math.max(0, Number(position.seats_count) - 1)
+      const control = mode === 'head'
+        ? `<input type="radio" name="team-head-choice" value="${esc(nominee.nominee_key)}" ${isSelected ? 'checked' : ''} ${alreadyUsed ? 'disabled' : ''}>`
+        : `<input type="checkbox" class="team-nominee-choice" value="${esc(nominee.nominee_key)}" ${isSelected ? 'checked' : ''} ${alreadyUsed || full ? 'disabled' : ''}>`
+      const currentDept = nominee.council_positions?.position_name || (nominee.nominee_source === 'member' ? 'สมาชิกสภา' : position.position_name)
+      return `<label class="flex cursor-pointer items-center gap-3 rounded-xl border ${isSelected ? 'border-[var(--primary)] bg-[var(--primary-soft)]' : 'border-[var(--line-soft)] bg-[var(--surface)]'} ${alreadyUsed ? 'opacity-50' : ''} p-3 hover:border-[var(--primary-45)]">
+        ${studentPhoto(nominee.students, 'w-11 h-14 shrink-0')}
+        <span class="min-w-0 flex-1"><span class="block truncate text-sm font-bold text-[var(--ink)]">${esc(nominee.students?.full_name ?? 'ไม่ระบุชื่อ')}</span><span class="mt-0.5 block truncate text-xs text-[var(--muted)]">${esc(nominee.students?.student_code ?? '')} · ${esc(nominee.students?.main_room ?? 'ไม่ระบุห้อง')} · ${esc(currentDept)}${alreadyUsed ? ' · เพิ่มในฝ่ายอื่นแล้ว' : ''}</span></span>${control}
+      </label>`
+    }).join('') : `<p class="py-10 text-center text-sm text-[var(--muted)]">ไม่พบรายชื่อที่ตรงกับคำค้น</p>`
+    const checked = mode === 'head' ? [...results.querySelectorAll('input[name="team-head-choice"]:checked')] : [...results.querySelectorAll('.team-nominee-choice:checked')]
+    countLabel.textContent = mode === 'head' ? (checked.length ? 'เลือกหัวหน้าแล้ว 1 คน' : 'ยังไม่ได้เลือกหัวหน้าฝ่าย') : `เลือกสมาชิก ${selected.size} คน`
+    confirmButton.disabled = selected.size === 0
+    confirmButton.classList.toggle('opacity-50', confirmButton.disabled)
+    confirmButton.classList.toggle('cursor-not-allowed', confirmButton.disabled)
+  }
+  results.addEventListener('change', event => {
+    if (mode === 'head') {
+      selected.clear()
+      if (event.target.checked) selected.add(event.target.value)
+    } else if (event.target.matches('.team-nominee-choice')) {
+      if (event.target.checked) selected.add(event.target.value)
+      else selected.delete(event.target.value)
+    }
+    update()
+  })
+  modal.querySelector('#team-nominee-search').addEventListener('input', update)
+  confirmButton.addEventListener('click', () => {
+    const checkedHead = results.querySelector('input[name="team-head-choice"]:checked')?.value
+    if (mode === 'head' && !checkedHead) return
+    const draft = teamDraftByGender[gender]?.[position.id]
+    if (!draft) return close()
+    if (mode === 'head') {
+      draft.headKey = checkedHead
+      draft.memberKeys = draft.memberKeys.filter(key => key !== checkedHead)
+    } else {
+      draft.memberKeys = [...selected].filter(key => key !== draft.headKey)
+      if (draft.headKey && draft.memberKeys.length) {
+        const departments = ctx.positions.filter(item => item.gender === gender && item.is_active && !item.is_elected && item.position_name.startsWith('ฝ่าย') && item.position_name !== UNASSIGNED_POSITION_NAME)
+        const currentIndex = departments.findIndex(item => Number(item.id) === Number(position.id))
+        const orderedNext = [...departments.slice(currentIndex + 1), ...departments.slice(0, currentIndex)]
+        const nextPosition = orderedNext.find(item =>
+          !teamDraftByGender[gender]?.[item.id]?.headKey || !(teamDraftByGender[gender]?.[item.id]?.memberKeys?.length))
+        if (nextPosition) teamStepByGender[gender] = nextPosition.id
+      }
+    }
+    close()
+    render()
+  })
+  update()
+  modal.querySelector('#team-nominee-search').focus()
+}
 
 async function loadChairTeamData(gender) {
   const [positions, nominees, noms, teams] = await Promise.all([
@@ -5075,29 +5172,59 @@ function renderChairTeamView() {
       const eligibleByPosition = new Map(departments.map(position => [position.id, nominees.filter(nominee => nominee.nominee_source === 'member' || Number(nominee.position_id) === Number(position.id))]))
       const proposals = teamProposalsByGender[gender] || []
       const pending = proposals.filter(proposal => proposal.status === 'proposed')
-      const readyDepartments = departments.filter(position =>
-        (eligibleByPosition.get(position.id) || []).length >= 2 && Number(position.seats_count) >= 2)
-      const canBuildTeam = departments.length > 0 && readyDepartments.length === departments.length
       const statusLabel = { proposed: 'รอตรวจสอบ', approved: 'อนุมัติแล้ว', rejected: 'ส่งกลับแก้ไข' }
+      const nomineeByKey = new Map(nominees.map(nominee => [nominee.nominee_key, nominee]))
+      const draft = teamDraftByGender[gender] ||= Object.fromEntries(departments.map(position => [position.id, { headKey: '', memberKeys: [] }]))
+      departments.forEach(position => { draft[position.id] ||= { headKey: '', memberKeys: [] } })
+      let currentPositionId = teamStepByGender[gender]
+      if (!departments.some(position => Number(position.id) === Number(currentPositionId))) {
+        currentPositionId = departments.find(position => !draft[position.id]?.headKey || (draft[position.id]?.memberKeys?.length ?? 0) < 1)?.id ?? departments[0]?.id
+        teamStepByGender[gender] = currentPositionId
+      }
+      const completedDepartments = departments.filter(position => {
+        const selected = draft[position.id] || {}
+        return !!selected.headKey && (selected.memberKeys?.length ?? 0) >= 1
+          && (selected.memberKeys.length + 1) <= Number(position.seats_count)
+      })
+      const canBuildTeam = departments.length > 0 && completedDepartments.length === departments.length
+      const activePosition = departments.find(position => Number(position.id) === Number(currentPositionId))
+      const activeDraft = activePosition ? (draft[activePosition.id] ||= { headKey: '', memberKeys: [] }) : null
+      const activeCandidates = activePosition ? (eligibleByPosition.get(activePosition.id) || []) : []
+      const selectedHead = nomineeByKey.get(activeDraft?.headKey)
+      const selectedMembers = (activeDraft?.memberKeys || []).map(key => nomineeByKey.get(key)).filter(Boolean)
+      const usedStudentIds = departments.filter(position => Number(position.id) !== Number(currentPositionId)).flatMap(position => {
+        const selected = draft[position.id] || {}
+        return [selected.headKey, ...(selected.memberKeys || [])].map(key => nomineeByKey.get(key)?.student_id).filter(Boolean)
+      })
+      const departmentSteps = departments.map((position, index) => {
+        const selected = draft[position.id] || {}
+        const done = !!selected.headKey && (selected.memberKeys?.length ?? 0) >= 1
+          && (selected.memberKeys.length + 1) <= Number(position.seats_count)
+        const isCurrent = Number(position.id) === Number(currentPositionId)
+        return `<button type="button" class="btn-team-step flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-xs font-bold ${isCurrent ? 'border-[var(--primary)] bg-[var(--primary-soft)] text-[var(--primary)]' : done ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)] text-[#106143]' : 'border-[var(--line-soft)] bg-[var(--surface)] text-[var(--ink-2)]'}" data-position="${position.id}"><span class="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/70">${done ? '✓' : index + 1}</span><span class="min-w-0 flex-1 truncate">${esc(position.position_name)}</span><span class="shrink-0 font-normal">${done ? `${selected.memberKeys.length + 1} คน` : 'รอเลือก'}</span></button>`
+      }).join('')
+      const selectedCard = (nominee, role) => `<div class="flex items-center gap-3 rounded-xl border border-[var(--line-soft)] bg-[var(--surface)] p-3">${studentPhoto(nominee.students, 'w-10 h-12 shrink-0')}<div class="min-w-0 flex-1"><p class="truncate text-sm font-bold text-[var(--ink)]">${esc(nominee.students?.full_name ?? 'ไม่ระบุชื่อ')}</p><p class="truncate text-xs text-[var(--muted)]">${esc(nominee.students?.student_code ?? '')} · ${esc(nominee.students?.main_room ?? '')}</p></div><span class="rounded-full px-2.5 py-1 text-[10px] font-bold ${role === 'head' ? 'bg-[var(--gold-soft)] text-[var(--gold-ink)]' : 'bg-[var(--surface-2)] text-[var(--muted)]'}">${role === 'head' ? 'หัวหน้าฝ่าย' : 'สมาชิก'}</span>${role === 'member' ? `<button type="button" class="btn-remove-team-member rounded-lg px-2 py-1 text-sm font-bold text-[var(--bad)]" data-key="${esc(nominee.nominee_key)}" aria-label="นำสมาชิกออก">×</button>` : ''}</div>`
+      const pendingBlock = pending.length
+        ? `<p class="rounded-xl border border-[var(--gold-soft-line)] bg-[var(--gold-soft)] px-3 py-2 text-xs font-bold text-[var(--gold-ink)]">มีข้อเสนอรอตรวจสอบอยู่ ${pending.length} ชุด</p><p class="rounded-xl bg-[var(--surface-2)] px-4 py-3 text-xs text-[var(--muted)]">โปรดรอครูที่ปรึกษาตรวจสอบข้อเสนอชุดนี้ก่อนเริ่มชุดใหม่</p>`
+        : departments.length && activePosition
+          ? `<div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(220px,0.8fr)_minmax(0,2fr)]">
+              <nav class="space-y-2" aria-label="เลือกฝ่าย">${departmentSteps}</nav>
+              <section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface-2)] p-4 sm:p-5" data-team-position="${activePosition.id}">
+                <div class="mb-4 flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-semibold text-[var(--muted)]">ฝ่ายที่ ${departments.findIndex(position => position.id === activePosition.id) + 1} จาก ${departments.length}</p><h3 class="mt-1 text-lg font-bold text-[var(--ink)]">${esc(activePosition.position_name)}</h3></div><span class="rounded-full bg-[var(--surface)] px-3 py-1 text-xs font-bold text-[var(--muted)]">${selectedMembers.length + (selectedHead ? 1 : 0)} / ${activePosition.seats_count} คน</span></div>
+                ${activeCandidates.length < 2 ? `<p class="mb-3 rounded-xl bg-[var(--gold-soft)] px-3 py-2 text-xs text-[var(--gold-ink)]">ฝ่ายนี้มีรายชื่อให้เลือก ${activeCandidates.length} คน ต้องมีอย่างน้อย 2 คนและที่นั่งอย่างน้อย 2 ที่นั่งจึงจะเสนอได้</p>` : ''}
+                <div class="space-y-2">${selectedHead ? selectedCard(selectedHead, 'head') : `<div class="rounded-xl border border-dashed border-[var(--gold-soft-line)] bg-[var(--surface)] px-4 py-5 text-center text-sm text-[var(--muted)]">เริ่มจากเลือกหัวหน้าฝ่ายก่อน</div>`}${selectedMembers.map(member => selectedCard(member, 'member')).join('')}</div>
+                <div class="mt-4 flex flex-wrap gap-2"><button type="button" class="btn-pick-team-head rounded-xl border border-[var(--line)] bg-[var(--surface)] px-4 py-2.5 text-sm font-bold text-[var(--ink-2)]" data-position="${activePosition.id}">👑 ${selectedHead ? 'เปลี่ยนหัวหน้าฝ่าย' : 'เลือกหัวหน้าฝ่าย'}</button><button type="button" class="btn-add-team-members rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50" data-position="${activePosition.id}" ${!selectedHead || selectedMembers.length + 1 >= Number(activePosition.seats_count) ? 'disabled' : ''}>＋ เพิ่มสมาชิก</button></div>
+                ${!selectedHead ? `<p class="mt-2 text-xs text-[var(--muted)]">เลือกหัวหน้าฝ่ายก่อน แล้วจึงเพิ่มสมาชิกได้</p>` : selectedMembers.length === 0 ? `<p class="mt-2 text-xs text-[var(--muted)]">เพิ่มสมาชิกอย่างน้อย 1 คนเพื่อบันทึกฝ่ายนี้</p>` : ''}
+              </section>
+            </div>
+            <div class="mt-4 flex flex-wrap items-center justify-between gap-3"><span class="text-xs font-semibold text-[var(--muted)]">จัดครบแล้ว ${completedDepartments.length}/${departments.length} ฝ่าย · รายชื่อที่เลือกจะยังเป็นฉบับร่างจนกว่าจะยืนยันส่งให้ครู</span><button type="button" id="btn-submit-council-team" class="rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-50" ${canBuildTeam ? '' : 'disabled'}>ยืนยันรายชื่อและส่งให้ครูตรวจสอบ</button></div>`
+          : departments.length ? `<p class="rounded-xl bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--muted)]">กำลังเตรียมรายชื่อฝ่าย…</p>`
+            : `<p class="rounded-xl bg-[var(--surface-2)] px-4 py-3 text-sm text-[var(--muted)]">ยังไม่มีการตั้งค่าฝ่ายสำหรับสภา${GENDER_LABEL[gender]}</p>`
       html += `
         <section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 mb-5">
-          <div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><p class="text-sm font-bold text-[var(--ink-2)]">👔 เสนอคณะทำงานสภา${GENDER_LABEL[gender]}ทั้งชุด</p><p class="text-xs text-[var(--muted)] mt-1">เลือกหัวหน้าฝ่ายและสมาชิกอย่างน้อยฝ่ายละ 1 คน ให้ครบทุกฝ่าย ระบบจะส่งให้ครูที่ปรึกษาตรวจพร้อมกัน</p></div><span class="rounded-full bg-[var(--primary-soft)] px-3 py-1 text-xs font-bold text-[var(--primary)]">${departments.length} ฝ่าย</span></div>
-          <div class="mb-4 flex flex-wrap items-center gap-2 text-xs"><span class="rounded-full bg-[var(--ok-soft)] px-3 py-1 font-bold text-[#106143]">พร้อมเสนอ ${readyDepartments.length}/${departments.length} ฝ่าย</span><span class="text-[var(--muted)]">เลือกได้จากสมาชิกสภาชาย/หญิงทุกฝ่าย หรือผู้สมัครที่ผ่านสัมภาษณ์ในฝ่ายนั้น · ประธานไม่อยู่ในตัวเลือก</span></div>
-          ${pending.length ? `<p class="mb-3 rounded-xl border border-[var(--gold-soft-line)] bg-[var(--gold-soft)] px-3 py-2 text-xs font-bold text-[var(--gold-ink)]">มีข้อเสนอรอตรวจสอบอยู่ ${pending.length} ชุด</p>` : ''}
-          ${pending.length ? `<p class="rounded-xl bg-[var(--surface-2)] px-4 py-3 text-xs text-[var(--muted)]">โปรดรอครูที่ปรึกษาตรวจสอบข้อเสนอชุดนี้ก่อนส่งคณะทำงานรอบใหม่</p>` : canBuildTeam ? `<form id="council-team-proposal-form" class="space-y-4">
-            <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">${departments.map(position => {
-              const applicants = eligibleByPosition.get(position.id) || []
-              return `<fieldset class="min-w-0 rounded-xl border border-[var(--line-soft)] bg-[var(--surface-2)] p-4" data-team-position="${position.id}">
-                <legend class="px-1 text-sm font-bold text-[var(--ink)]">${esc(position.position_name)} <span class="text-[var(--muted)] font-normal">· ${applicants.length} รายชื่อที่เลือกได้ · รับได้ ${position.seats_count} คน</span></legend>
-                ${applicants.length < 2 ? `<p class="text-xs text-[var(--bad)] mt-2">ฝ่ายนี้มีรายชื่อให้เลือกไม่ครบ 2 คน จึงยังส่งคณะทำงานทั้งชุดไม่ได้</p>` : `<fieldset class="mt-2"><legend class="text-xs font-bold text-[var(--muted)]">เลือกรายชื่อแล้วกำหนดบทบาท · ต้องเลือกหัวหน้า 1 คนและสมาชิกอย่างน้อย 1 คน</legend><div class="mt-2 max-h-80 overflow-y-auto space-y-2">${applicants.map(nominee => `<div class="flex flex-wrap items-center gap-2 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-2">${studentPhoto(nominee.students, 'w-9 h-11')}<div class="min-w-[130px] flex-1"><p class="truncate text-xs font-bold text-[var(--ink)]">${esc(nominee.students?.full_name ?? '—')}</p><p class="text-[10px] text-[var(--muted)]">${esc(nominee.students?.student_code ?? '')} · ${esc(nominee.students?.main_room ?? '')} · ${nominee.nominee_source === 'member' ? 'สมาชิกสภา' : 'ผ่านสัมภาษณ์'}</p></div><label class="flex items-center gap-1.5 rounded-lg bg-[var(--primary-soft)] px-2.5 py-2 text-xs font-bold text-[var(--primary)]"><input type="radio" name="head_${position.id}" value="${nominee.nominee_key}" required>หัวหน้า</label><label class="flex items-center gap-1.5 rounded-lg bg-[var(--surface-2)] px-2.5 py-2 text-xs font-bold text-[var(--ink-2)]"><input type="checkbox" name="members_${position.id}" value="${nominee.nominee_key}" class="team-member-choice" data-position="${position.id}" data-head-select="head_${position.id}">สมาชิก</label></div>`).join('')}</div></fieldset>`}
-              </fieldset>`
-            }).join('')}</div>
-            <button type="submit" class="rounded-xl bg-[var(--primary)] px-5 py-3 text-sm font-bold text-white hover:bg-[var(--primary-dark)]">ส่งคณะทำงานครบทุกฝ่ายให้ครูตรวจสอบ</button>
-          </form>` : departments.length ? `<div><p class="rounded-xl bg-[var(--gold-soft)] px-4 py-3 text-xs text-[var(--gold-ink)]">ยังส่งข้อเสนอไม่ได้: ต้องมีรายชื่ออย่างน้อย 2 คนครบทุกฝ่าย (${readyDepartments.length}/${departments.length} ฝ่ายพร้อม) เพื่อเลือกหัวหน้าและสมาชิก</p><div class="mt-3 grid grid-cols-1 xl:grid-cols-2 gap-3">${departments.map(position => {
-            const applicants = eligibleByPosition.get(position.id) || []
-            const ready = applicants.length >= 2 && Number(position.seats_count) >= 2
-            return `<section class="rounded-xl border ${ready ? 'border-[var(--ok-soft-line)]' : 'border-[var(--gold-soft-line)]'} bg-[var(--surface-2)] p-3"><div class="flex items-center justify-between gap-2"><h3 class="text-sm font-bold text-[var(--ink)]">${esc(position.position_name)}</h3><span class="rounded-full px-2.5 py-1 text-[10px] font-bold ${ready ? 'bg-[var(--ok-soft)] text-[#106143]' : 'bg-[var(--gold-soft)] text-[var(--gold-ink)]'}">${applicants.length} รายชื่อ · ${ready ? 'พร้อม' : 'ยังขาด'}</span></div>${applicants.length ? `<div class="mt-2 space-y-1.5">${applicants.map(nominee => `<div class="flex items-center gap-2 rounded-lg bg-[var(--surface)] p-2">${studentPhoto(nominee.students, 'w-8 h-10')}<span class="min-w-0 flex-1 truncate text-xs font-bold text-[var(--ink)]">${esc(nominee.students?.full_name ?? '—')} <small class="font-normal text-[var(--muted)]">· ${esc(nominee.students?.main_room ?? '')}</small></span><span class="shrink-0 text-[10px] text-[var(--muted)]">${nominee.nominee_source === 'member' ? 'สมาชิกสภา' : 'ผ่านสัมภาษณ์'}</span></div>`).join('')}</div>` : `<p class="mt-2 rounded-lg bg-[var(--surface)] p-2 text-xs leading-5 text-[var(--muted)]">ยังไม่มีสมาชิกสภาหรือผู้ผ่านสัมภาษณ์ในฝ่ายนี้ · แจ้งครูที่ปรึกษาตรวจสอบสถานะใบสมัครหรือเพิ่มสมาชิก</p>`}${Number(position.seats_count) < 2 ? `<p class="mt-2 rounded-lg bg-[var(--surface)] p-2 text-xs font-bold text-[var(--gold-ink)]">ตั้งจำนวนที่นั่งไว้ ${position.seats_count} คน แต่ต้องมีหัวหน้าและสมาชิกอย่างน้อย 2 คน</p>` : ''}</section>`
-          }).join('')}</div></div>` : `<p class="text-xs text-[var(--muted)]">ยังไม่มีการตั้งค่าฝ่ายสำหรับสภา${GENDER_LABEL[gender]}</p>`}
+          <div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><p class="text-sm font-bold text-[var(--ink-2)]">👔 จัดคณะทำงานสภา${GENDER_LABEL[gender]}ทีละฝ่าย</p><p class="text-xs text-[var(--muted)] mt-1">เลือกหัวหน้าฝ่ายก่อน จากนั้นเพิ่มสมาชิกผ่านช่องค้นหา ระบบเตรียมชื่อฝ่ายไว้ให้และเก็บเป็นฉบับร่างจนกว่าจะยืนยันส่งครบทุกฝ่าย</p></div><span class="rounded-full bg-[var(--primary-soft)] px-3 py-1 text-xs font-bold text-[var(--primary)]">${departments.length} ฝ่าย</span></div>
+          <div class="mb-4 flex flex-wrap items-center gap-2 text-xs"><span class="rounded-full bg-[var(--ok-soft)] px-3 py-1 font-bold text-[#106143]">เลือกครบ ${completedDepartments.length}/${departments.length} ฝ่าย</span><span class="text-[var(--muted)]">เลือกจากสมาชิกสภาปัจจุบันทุกฝ่าย หรือผู้สมัครที่ผ่านสัมภาษณ์ในฝ่ายนั้น · ประธานไม่อยู่ในตัวเลือก</span></div>
+          ${pendingBlock}
         </section>`
       if (proposals.length) html += `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 mb-5"><h3 class="text-sm font-bold text-[var(--ink)] mb-3">ประวัติข้อเสนอคณะทำงานของสภา${GENDER_LABEL[gender]}</h3><div class="space-y-2">${proposals.map(proposal => `<article class="rounded-xl border border-[var(--line-soft)] p-3"><div class="flex items-center justify-between gap-2"><span class="text-sm font-bold text-[var(--ink)]">${proposal.council_team_proposal_members?.length ?? 0} รายชื่อ</span><span class="rounded-full px-2.5 py-1 text-xs font-bold ${proposal.status === 'approved' ? 'bg-[var(--ok-soft)] text-[#106143]' : proposal.status === 'rejected' ? 'bg-[var(--bad-soft)] text-[var(--bad)]' : 'bg-[var(--gold-soft)] text-[var(--gold-ink)]'}">${statusLabel[proposal.status] || proposal.status}</span></div>${proposal.comment ? `<p class="text-xs text-[var(--muted)] mt-1">${esc(proposal.comment)}</p>` : ''}</article>`).join('')}</div></section>`
     }
@@ -6659,16 +6786,49 @@ function wireAssignmentsEvents() {
 
 // ─── เสนอคณะทำงาน (ประธาน) → แต่งตั้ง (ครูที่ปรึกษาสภา) ──────────────────────────────────
 function wireChairTeamEvents() {
-  document.getElementById('council-team-proposal-form')?.addEventListener('submit', async e => {
-    e.preventDefault()
-    const form = e.currentTarget
+  const gender = normalizeGender(ctx.student?.gender)
+  document.querySelectorAll('.btn-team-step').forEach(button => button.addEventListener('click', () => {
+    teamStepByGender[gender] = Number(button.dataset.position)
+    render()
+  }))
+  const openPicker = (positionId, mode) => {
+    const position = ctx.positions.find(item => Number(item.id) === Number(positionId))
+    const allCandidates = nomineesByGender[gender] || []
+    const candidates = allCandidates.filter(nominee => nominee.nominee_source === 'member' || Number(nominee.position_id) === Number(positionId))
+    const draft = teamDraftByGender[gender]?.[positionId]
+    if (!position || !draft) return
+    const usedStudentIds = Object.entries(teamDraftByGender[gender] || {})
+      .filter(([id]) => Number(id) !== Number(positionId))
+      .flatMap(([, selected]) => [selected.headKey, ...(selected.memberKeys || [])])
+      .map(key => allCandidates.find(nominee => nominee.nominee_key === key)?.student_id)
+      .filter(Boolean)
+    openTeamNomineePicker({
+      gender, position,
+      candidates: candidates.filter(nominee => mode !== 'member' || nominee.nominee_key !== draft.headKey),
+      mode,
+      selectedKeys: mode === 'head' ? (draft.headKey ? [draft.headKey] : []) : draft.memberKeys,
+      usedStudentIds,
+    })
+  }
+  document.querySelectorAll('.btn-pick-team-head').forEach(button => button.addEventListener('click', () => openPicker(button.dataset.position, 'head')))
+  document.querySelectorAll('.btn-add-team-members').forEach(button => button.addEventListener('click', () => openPicker(button.dataset.position, 'member')))
+  document.querySelectorAll('.btn-remove-team-member').forEach(button => button.addEventListener('click', () => {
+    const positionId = teamStepByGender[gender]
+    const draft = teamDraftByGender[gender]?.[positionId]
+    if (!draft) return
+    draft.memberKeys = draft.memberKeys.filter(key => key !== button.dataset.key)
+    render()
+  }))
+  document.getElementById('btn-submit-council-team')?.addEventListener('click', async buttonEvent => {
+    const btn = buttonEvent.currentTarget
     const gender = normalizeGender(ctx.student?.gender)
     const teams = []
     const selectedStudents = new Set()
     const nomineeByKey = new Map((nomineesByGender[gender] || []).map(nominee => [nominee.nominee_key, nominee]))
     for (const position of ctx.positions.filter(p => p.gender === gender && p.is_active && !p.is_elected && p.position_name.startsWith('ฝ่าย') && p.position_name !== UNASSIGNED_POSITION_NAME)) {
-      const headKey = form.elements[`head_${position.id}`]?.value || ''
-      const memberKeys = [...form.querySelectorAll(`input[name="members_${position.id}"]:checked`)].map(input => input.value)
+      const departmentDraft = teamDraftByGender[gender]?.[position.id] || {}
+      const headKey = departmentDraft.headKey || ''
+      const memberKeys = departmentDraft.memberKeys || []
       const head = nomineeByKey.get(headKey)
       const members = memberKeys.map(key => nomineeByKey.get(key)).filter(Boolean)
       if (!head || members.length < 1) {
@@ -6688,16 +6848,25 @@ function wireChairTeamEvents() {
       teams.push({ positionId: position.id, headNominee: asReference(head), memberNominees: members.map(asReference) })
     }
     if (!teams.length) { showToast('ไม่พบฝ่ายที่สามารถเสนอได้', 'warning'); return }
-    const btn = form.querySelector('button[type="submit"]')
+    const summary = teams.map(team => {
+      const position = ctx.positions.find(item => Number(item.id) === Number(team.positionId))
+      const draft = teamDraftByGender[gender]?.[team.positionId]
+      const headName = nomineeByKey.get(draft.headKey)?.students?.full_name ?? 'หัวหน้า'
+      const memberNames = draft.memberKeys.map(key => nomineeByKey.get(key)?.students?.full_name).filter(Boolean).join(', ')
+      return `${position?.position_name}: ${headName} (หัวหน้า) + ${memberNames}`
+    }).join('\n')
+    if (!confirm(`ยืนยันส่งรายชื่อคณะทำงานสภา${GENDER_LABEL[gender]}ให้ครูที่ปรึกษาตรวจสอบหรือไม่?\n\n${summary}`)) return
     btn.disabled = true; btn.textContent = 'กำลังส่งข้อเสนอ…'
     try {
       await submitCouncilTeamProposal({ termId: selectedCouncilTermId, gender, teams })
       showToast('ส่งคณะทำงานครบทุกฝ่ายให้ครูที่ปรึกษาตรวจสอบแล้ว ✅', 'success')
+      delete teamDraftByGender[gender]
+      delete teamStepByGender[gender]
       delete teamProposalsByGender[gender]
       await loadChairTeamData(gender)
     } catch (err) {
       showToast('ส่งข้อเสนอไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
-      btn.disabled = false; btn.textContent = 'ส่งคณะทำงานครบทุกฝ่ายให้ครูตรวจสอบ'
+      btn.disabled = false; btn.textContent = 'ยืนยันรายชื่อและส่งให้ครูตรวจสอบ'
     }
   })
   document.querySelectorAll('.btn-decide-team').forEach(btn => btn.addEventListener('click', async () => {

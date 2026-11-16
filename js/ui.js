@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1089'
+import { APP_VERSION } from './version.js?v=10.22.1090'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1090': [
+    'ปรับหน้าเสนอคณะทำงานให้จัดทีละฝ่าย เลือกหัวหน้าก่อน เพิ่มสมาชิกผ่านหน้าต่างค้นหา และยืนยันส่งครบทั้งชุด',
+  ],
   '10.22.1089': [
     'แก้ชื่อสมาชิกในพรีวิวมอบสิทธิ์สแกนละหมาดให้แสดงชื่อจริง และเพิ่มปุ่มเลือก/ยกเลิกรายชื่อทั้งหมดที่กำลังกรองอยู่',
     'เพิ่มค้นหาสมาชิกและตัวกรองฝ่ายในหน้าทำเนียบ พร้อมแสดงรายชื่อชายและหญิงในมุมมองเดียวได้',
