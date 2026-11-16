@@ -222,6 +222,7 @@ let ylaSelectedEventId = null
 let ylaDetail = null
 let ylaDetailLoadingId = null
 let ylaParticipantGenderTab = 'M'
+let ylaAttendanceModalState = null
 let ylaShowEventForm = false
 let ylaEditingEventId = null
 let ylaAdminAppsLoading = false
@@ -1596,6 +1597,115 @@ async function loadIvTeachers() {
 const YLA_STATUS_LABEL = { draft: 'ร่าง', planned: 'วางแผนแล้ว', active: 'กำลังดำเนินการ', completed: 'เสร็จสิ้น', cancelled: 'ยกเลิก' }
 const YLA_ATTENDANCE_LABEL = { present: 'มา', late: 'มาสาย', excused_leave: 'ลาโดยมีเหตุผล', unexcused_absence: 'ขาด' }
 const YLA_RESULT_LABEL = { pending: 'รอสรุป', pass: 'ผ่าน', fail: 'ไม่ผ่าน', withdrawn: 'ถอนตัว' }
+const YLA_DAILY_STATUS = [
+  ['present', 'มา', 'bg-emerald-500 text-white'],
+  ['late', 'สาย', 'bg-amber-400 text-white'],
+  ['unexcused_absence', 'ขาด', 'bg-red-500 text-white'],
+  ['excused_leave', 'ลา', 'bg-blue-500 text-white'],
+]
+
+function ylaAttendanceParticipantDivision(participant) {
+  const member = (ctx.members ?? []).find(row => Number(row.student_id) === Number(participant.student_id))
+  return member?.council_positions?.position_name || member?.council_positions?.division_name || 'ผู้เข้าร่วม'
+}
+
+function renderYlaAttendanceModal() {
+  const state = ylaAttendanceModalState
+  if (!state) return
+  const participants = (ylaDetail?.participants ?? []).filter(row => row.status !== 'removed')
+  const divisions = [...new Set(participants.map(ylaAttendanceParticipantDivision))].sort((a, b) => a.localeCompare(b, 'th'))
+  const rows = participants.map((participant, index) => {
+    const student = participant.students ?? {}
+    const status = state.statuses[participant.student_id] || ''
+    const controls = YLA_DAILY_STATUS.map(([key, label, color]) => `<button type="button" class="yla-day-status rounded-lg border px-3 py-2 text-xs font-bold transition ${status === key ? `${color} border-transparent` : 'border-[var(--line)] bg-[var(--surface)] text-[var(--muted)] hover:border-[var(--primary-45)]'}" data-student-id="${participant.student_id}" data-status="${key}" aria-pressed="${status === key}">${label}</button>`).join('')
+    return `<article class="yla-day-row flex flex-wrap items-center gap-3 border-t border-[var(--line-soft)] py-3" data-name="${esc(`${student.full_name ?? ''} ${student.student_code ?? ''} ${student.main_room ?? ''} ${ylaAttendanceParticipantDivision(participant)}`.toLocaleLowerCase())}" data-gender="${normalizeGender(student.gender) ?? 'U'}" data-division="${esc(ylaAttendanceParticipantDivision(participant))}"><span class="w-6 text-right text-xs text-[var(--muted)]">${index + 1}</span>${studentPhoto(student, 'w-10 h-12 sm:w-12 sm:h-14')}<div class="min-w-[150px] flex-1"><b class="block text-sm text-[var(--ink)]">${esc(student.full_name ?? '—')}</b><small class="text-[10px] text-[var(--muted)]">${esc(student.student_code ?? '')} · ${esc(student.main_room ?? 'ไม่ระบุห้อง')} · ${esc(ylaAttendanceParticipantDivision(participant))}</small></div><div class="flex flex-wrap gap-1.5">${controls}</div><input data-note-student-id="${participant.student_id}" maxlength="500" value="${esc(state.notes[participant.student_id] ?? '')}" placeholder="หมายเหตุ (ถ้ามี)" class="w-full xl:w-52 border border-[var(--line)] rounded-lg px-3 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></article>`
+  }).join('')
+  const genderTabs = [['all', 'ทั้งหมด'], ['M', 'ชาย'], ['W', 'หญิง'], ['U', 'ไม่ระบุเพศ']].map(([key, label]) => `<button type="button" class="yla-attendance-gender rounded-lg px-3 py-2 text-xs font-bold ${state.gender === key ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)] text-[var(--ink-2)]'}" data-gender="${key}">${label}</button>`).join('')
+  const divisionOptions = divisions.map(name => `<option value="${esc(name)}" ${state.division === name ? 'selected' : ''}>${esc(name)}</option>`).join('')
+  const modal = document.createElement('div')
+  modal.id = 'yla-attendance-modal'
+  modal.className = 'fixed inset-0 z-[220] flex flex-col bg-[var(--surface)] text-[var(--ink)]'
+  modal.setAttribute('role', 'dialog')
+  modal.setAttribute('aria-modal', 'true')
+  modal.innerHTML = `<header class="flex items-center gap-3 border-b border-[var(--line-soft)] px-3 sm:px-6 py-3 shrink-0"><button type="button" data-yla-attendance-close class="rounded-xl border border-[var(--line)] px-3 py-2 text-sm font-bold">← กลับ</button><div class="min-w-0 flex-1"><h2 class="font-bold text-sm sm:text-base">เช็คชื่อกิจกรรม · ${esc(state.event.title)}</h2><p class="text-[10px] sm:text-xs text-[var(--muted)]">${esc(ylaDateRange(state.event))} · ${participants.length} ผู้เข้าร่วม</p></div><button type="button" data-yla-attendance-close aria-label="ปิด" class="rounded-xl border border-[var(--line)] px-3 py-2 text-lg">×</button></header><div class="flex-1 overflow-y-auto p-3 sm:p-5"><div class="mx-auto max-w-6xl space-y-3"><section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--bg-2)] p-3 sm:p-4"><div class="flex flex-wrap items-end gap-3"><label class="flex-1 min-w-[220px] text-xs font-bold text-[var(--muted)]">ช่วง/ชื่อการเช็คชื่อ<input data-yla-session value="${esc(state.session)}" maxlength="120" placeholder="เช่น กิจกรรมหลัก หรือ ฐานที่ 1" class="mt-1 w-full border border-[var(--line)] rounded-xl px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]"></label><button type="button" data-yla-scan class="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white">📷 สแกน QR</button><button type="button" data-yla-fill="present" class="rounded-xl border border-[var(--line)] px-3 py-2.5 text-xs font-bold">มาทุกคน</button><button type="button" data-yla-fill="unexcused_absence" class="rounded-xl border border-[var(--line)] px-3 py-2.5 text-xs font-bold">ขาดทุกคน</button></div><div class="mt-3 flex flex-wrap items-center gap-2">${genderTabs}<select data-yla-division class="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs font-bold text-[var(--ink)]"><option value="all">ทุกฝ่าย</option>${divisionOptions}</select><input data-yla-search value="${esc(state.search || '')}" placeholder="ค้นหาชื่อ รหัส ห้อง หรือฝ่าย" class="min-w-[220px] flex-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs"></div></section><section class="rounded-2xl border border-[var(--line-soft)] px-3 sm:px-4">${rows || '<p class="py-8 text-center text-sm text-[var(--muted)]">กิจกรรมนี้ยังไม่มีผู้เข้าร่วม</p>'}</section></div></div><footer class="shrink-0 border-t border-[var(--line-soft)] bg-[var(--surface)] p-3 sm:px-6 sm:py-4"><div class="mx-auto flex max-w-6xl items-center gap-3"><span data-yla-attendance-count class="text-xs text-[var(--muted)]">ยังไม่ได้เลือกสถานะ</span><button type="button" data-yla-attendance-save class="ml-auto rounded-xl bg-[var(--primary)] px-6 py-3 text-sm font-bold text-white disabled:opacity-50">💾 บันทึกการเช็คชื่อ</button></div></footer>`
+  document.getElementById('yla-attendance-modal')?.remove()
+  document.body.appendChild(modal)
+  const collectNotes = () => modal.querySelectorAll('[data-note-student-id]').forEach(input => { state.notes[input.dataset.noteStudentId] = input.value })
+  const filterRows = () => {
+    const q = modal.querySelector('[data-yla-search]').value.trim().toLocaleLowerCase()
+    modal.querySelectorAll('.yla-day-row').forEach(row => {
+      row.hidden = !((state.gender === 'all' || row.dataset.gender === state.gender) && (state.division === 'all' || row.dataset.division === state.division) && (!q || row.dataset.name.includes(q)))
+    })
+  }
+  const updateCount = () => {
+    const selected = Object.values(state.statuses).filter(Boolean).length
+    modal.querySelector('[data-yla-attendance-count]').textContent = `เลือกสถานะแล้ว ${selected}/${participants.length} คน`
+    modal.querySelector('[data-yla-attendance-save]').disabled = selected === 0
+  }
+  modal.querySelectorAll('.yla-attendance-gender').forEach(button => button.addEventListener('click', () => { collectNotes(); state.gender = button.dataset.gender; renderYlaAttendanceModal() }))
+  modal.querySelector('[data-yla-division]').addEventListener('change', event => { collectNotes(); state.division = event.target.value; renderYlaAttendanceModal() })
+  modal.querySelector('[data-yla-session]').addEventListener('change', event => {
+    collectNotes()
+    state.session = event.target.value.trim() || 'กิจกรรมหลัก'
+    const records = (ylaDetail?.attendance ?? []).filter(row => row.session_label === state.session)
+    state.statuses = Object.fromEntries(records.map(row => [row.student_id, row.attendance_state]))
+    state.notes = Object.fromEntries(records.map(row => [row.student_id, row.note || '']))
+    renderYlaAttendanceModal()
+  })
+  modal.querySelector('[data-yla-search]').addEventListener('input', event => { state.search = event.target.value; filterRows() })
+  modal.querySelectorAll('.yla-day-status').forEach(button => button.addEventListener('click', () => {
+    collectNotes(); state.statuses[button.dataset.studentId] = button.dataset.status; renderYlaAttendanceModal()
+  }))
+  modal.querySelectorAll('[data-yla-fill]').forEach(button => button.addEventListener('click', () => {
+    collectNotes()
+    modal.querySelectorAll('.yla-day-row:not([hidden])').forEach(row => { state.statuses[row.querySelector('.yla-day-status').dataset.studentId] = button.dataset.ylaFill })
+    renderYlaAttendanceModal()
+  }))
+  modal.querySelectorAll('[data-yla-attendance-close]').forEach(button => button.addEventListener('click', closeYlaAttendanceModal))
+  modal.querySelector('[data-yla-scan]').addEventListener('click', () => {
+    collectNotes()
+    state.session = modal.querySelector('[data-yla-session]').value.trim() || 'กิจกรรมหลัก'
+    const scannerMembers = participants.map(participant => ({ id: participant.id, student_id: participant.student_id, students: participant.students }))
+    openCouncilCheckinScanner({ mode: 'duty', activityTitle: `${state.event.title} · ${state.session}`, members: scannerMembers, initialStatus: 'present', onDutyScanned: async ({ member, status }) => {
+      const attendanceState = { present: 'present', late: 'late', absent: 'unexcused_absence', excused: 'excused_leave' }[status] || 'present'
+      await saveCouncilYlaAttendance({ eventId: Number(state.event.id), studentId: Number(member.student_id), sessionLabel: state.session, attendanceState, note: state.notes[member.student_id] || '', recordedByTeacherId: ctx.teacher?.id })
+      state.statuses[member.student_id] = attendanceState
+    }, onClose: renderYlaAttendanceModal })
+  })
+  modal.querySelector('[data-yla-attendance-save]').addEventListener('click', async event => {
+    collectNotes()
+    state.session = modal.querySelector('[data-yla-session]').value.trim() || 'กิจกรรมหลัก'
+    const button = event.currentTarget
+    const selected = participants.filter(row => state.statuses[row.student_id])
+    if (!selected.length) return
+    button.disabled = true
+    try {
+      for (const participant of selected) await saveCouncilYlaAttendance({ eventId: Number(state.event.id), studentId: Number(participant.student_id), sessionLabel: state.session, attendanceState: state.statuses[participant.student_id], note: state.notes[participant.student_id] || '', recordedByTeacherId: ctx.teacher?.id })
+      ylaDetail = await getCouncilYlaEventDetail(Number(state.event.id))
+      showToast(`บันทึกเช็คชื่อแล้ว ${selected.length} คน`, 'success')
+      closeYlaAttendanceModal()
+      render()
+    } catch (err) { showToast('บันทึกเช็คชื่อไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); button.disabled = false }
+  })
+  updateCount()
+  filterRows()
+}
+
+function closeYlaAttendanceModal() {
+  document.getElementById('yla-attendance-modal')?.remove()
+  ylaAttendanceModalState = null
+}
+
+function openYlaAttendanceModal(event) {
+  if (!isYlaManager() || !ylaDetail?.participants?.length) return
+  const session = ylaDetail.attendance?.[0]?.session_label || 'กิจกรรมหลัก'
+  const records = (ylaDetail.attendance ?? []).filter(row => row.session_label === session)
+  ylaAttendanceModalState = {
+    event, session, gender: 'all', division: 'all', search: '', statuses: Object.fromEntries(records.map(row => [row.student_id, row.attendance_state])),
+    notes: Object.fromEntries(records.map(row => [row.student_id, row.note || ''])),
+  }
+  renderYlaAttendanceModal()
+}
 
 function isYlaManager() {
   return !!(ctx?.isAdmin || ctx?.isCouncilAdvisor || ctx?.isStudentAffairsHead)
@@ -1806,11 +1916,15 @@ function renderYlaView() {
   const eventCards = ylaEvents.length ? ylaEvents.map(row => `<button type="button" class="yla-event-select text-left rounded-2xl border p-4 space-y-2 ${Number(row.id) === Number(ylaSelectedEventId) ? 'border-[var(--primary)] bg-[var(--primary-soft)]' : 'border-[var(--line-soft)] bg-[var(--surface)]'}" data-event-id="${row.id}"><div class="flex items-start gap-2"><span class="flex-1 text-sm font-bold text-[var(--ink)]">${esc(row.title)}</span><span class="text-[0.6875rem] font-bold rounded-full px-2 py-1 ${statusBadge(row.status)}">${esc(YLA_STATUS_LABEL[row.status] ?? row.status)}</span></div><p class="text-xs text-[var(--muted)]">${esc(ylaDateRange(row))}${row.location ? ` · ${esc(row.location)}` : ''}</p></button>`).join('') : '<div class="rounded-2xl border border-dashed border-[var(--line)] p-8 text-center text-sm text-[var(--muted)]">ยังไม่มีกิจกรรม YLA ในปีการศึกษานี้</div>'
   const eventForm = ylaShowEventForm ? `<form id="yla-event-form" class="rounded-2xl border border-[var(--primary-45)] bg-[var(--primary-soft)] p-4 space-y-3"><div class="flex items-center justify-between"><h2 class="font-bold text-[var(--ink)]">สร้างกิจกรรม YLA</h2><button type="button" id="yla-event-cancel" class="text-xs font-bold text-[var(--muted)]">ยกเลิก</button></div><input name="title" required placeholder="ชื่อกิจกรรม เช่น YLA รุ่นที่ 1" class="w-full border border-[var(--line)] rounded-[10px] px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]"><textarea name="description" rows="2" placeholder="วัตถุประสงค์หรือรายละเอียดกิจกรรม" class="w-full border border-[var(--line)] rounded-[10px] px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]"></textarea><div class="grid grid-cols-2 gap-2"><input type="date" name="start_date" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="date" name="end_date" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div><div class="grid grid-cols-2 gap-2"><input name="location" placeholder="สถานที่" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="number" min="1" name="capacity" placeholder="จำนวนรับ (ไม่บังคับ)" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div><button type="submit" class="w-full py-2.5 rounded-[10px] bg-[var(--primary)] text-white text-sm font-bold">สร้างกิจกรรมและเกณฑ์ประเมินเริ่มต้น</button></form>` : ''
   const ylaEditForm = event && isYlaManager() && Number(ylaEditingEventId) === Number(event.id) ? `<form id="yla-event-edit-form" data-event-id="${event.id}" class="rounded-xl border border-[var(--primary-45)] bg-[var(--primary-soft)] p-4 space-y-3"><div class="flex items-center justify-between"><h3 class="text-sm font-bold text-[var(--ink)]">แก้ไขรายละเอียดกิจกรรม YLA</h3><button type="button" id="yla-event-edit-cancel" class="text-xs font-bold text-[var(--muted)]">ปิด</button></div><input name="title" required value="${esc(event.title)}" placeholder="ชื่อกิจกรรม" class="w-full border border-[var(--line)] rounded-[10px] px-3 py-2.5 text-sm bg-[var(--surface)] text-[var(--ink)]"><textarea name="description" rows="2" placeholder="รายละเอียด" class="w-full border border-[var(--line)] rounded-[10px] px-3 py-2.5 text-sm resize-none bg-[var(--surface)] text-[var(--ink)]">${esc(event.description || '')}</textarea><div class="grid grid-cols-2 gap-2"><input type="date" name="start_date" value="${esc(event.start_date || '')}" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="date" name="end_date" value="${esc(event.end_date || '')}" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div><div class="grid grid-cols-2 gap-2"><input name="location" value="${esc(event.location || '')}" placeholder="สถานที่" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"><input type="number" min="1" name="capacity" value="${esc(event.capacity || '')}" placeholder="จำนวนรับ (ไม่บังคับ)" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></div><div class="rounded-xl border border-[var(--line-soft)] bg-[var(--surface)] p-3 space-y-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-sm font-bold text-[var(--ink)]">ตั้งค่าเช็คอิน GPS</p><p class="text-xs text-[var(--muted)]">เช็คอินจะบันทึกการเข้าร่วมเป็น “มา” โดยอัตโนมัติ เมื่ออยู่ในช่วงเวลาและรัศมีนี้</p></div><input type="hidden" name="checkin_enabled" value="${event.checkin_enabled ? 'true' : 'false'}"><button type="button" id="yla-checkin-enable" class="px-3 py-2 rounded-lg text-xs font-bold ${event.checkin_enabled ? 'bg-[var(--ok-soft)] text-[var(--ok)]' : 'border border-[var(--line)] text-[var(--muted)]'}">${event.checkin_enabled ? 'ปิดรับเช็คอิน' : 'เปิดรับเช็คอิน'}</button></div><div class="grid grid-cols-1 sm:grid-cols-2 gap-2"><label class="text-xs font-bold text-[var(--muted)]">เริ่มเช็คอิน<input type="datetime-local" name="checkin_opens_at" value="${esc(ylaDateTimeLocalValue(event.checkin_opens_at))}" class="mt-1 w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></label><label class="text-xs font-bold text-[var(--muted)]">ปิดเช็คอิน<input type="datetime-local" name="checkin_closes_at" value="${esc(ylaDateTimeLocalValue(event.checkin_closes_at))}" class="mt-1 w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></label></div><div class="grid grid-cols-1 sm:grid-cols-3 gap-2"><label class="text-xs font-bold text-[var(--muted)]">ละติจูด<input type="number" step="any" name="checkin_latitude" value="${esc(event.checkin_latitude ?? '')}" placeholder="เช่น 6.69" class="mt-1 w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></label><label class="text-xs font-bold text-[var(--muted)]">ลองจิจูด<input type="number" step="any" name="checkin_longitude" value="${esc(event.checkin_longitude ?? '')}" placeholder="เช่น 101.13" class="mt-1 w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></label><label class="text-xs font-bold text-[var(--muted)]">รัศมี (เมตร)<input type="number" min="10" max="1000" name="checkin_radius_meters" value="${Number(event.checkin_radius_meters) || 100}" class="mt-1 w-full border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]"></label></div><button type="button" id="yla-set-checkin-location" class="px-3 py-2 rounded-lg border border-[var(--primary-45)] text-[var(--primary)] text-xs font-bold">📍 ใช้ตำแหน่งปัจจุบันของผู้ดูแล</button><p class="text-[11px] text-[var(--muted)]">กำหนดเวลาและจุดศูนย์กลาง แล้วบันทึกกิจกรรมก่อนเปิดให้เช็คอิน</p></div><button type="submit" class="w-full py-2.5 rounded-[10px] bg-[var(--primary)] text-white text-sm font-bold">บันทึกรายละเอียดกิจกรรม</button></form>` : ''
-  const detailBlock = event ? `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 space-y-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold text-[var(--primary)]">🌱 YLA · ปีการศึกษา ${electionYear}</p><h2 class="text-xl font-bold text-[var(--ink)] mt-1">${esc(event.title)}</h2><p class="text-sm text-[var(--muted)] mt-1">${esc(event.description ?? 'กิจกรรมพัฒนาภาวะผู้นำและทักษะการทำงานของนักเรียน')}</p><p class="text-xs text-[var(--muted)] mt-2">${esc(ylaDateRange(event))}${event.location ? ` · ${esc(event.location)}` : ''}</p></div><div class="flex flex-wrap gap-2 items-center"><span class="text-xs font-bold rounded-full px-3 py-1.5 ${statusBadge(event.status)}">${esc(YLA_STATUS_LABEL[event.status] ?? event.status)}</span>${isYlaManager() ? '<button type="button" id="yla-event-edit-open" class="text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)]">✏️ แก้ไขกิจกรรม</button>' : ''}<button type="button" id="yla-print-event" class="text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)]">🖨️ พิมพ์สรุป</button></div></div>${isYlaManager() ? `<form id="yla-event-status-form" class="flex flex-wrap gap-2 items-center border-t border-[var(--line-soft)] pt-3" data-event-id="${event.id}"><span class="text-xs text-[var(--muted)]">สถานะกิจกรรม</span><select name="status" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">${Object.entries(YLA_STATUS_LABEL).map(([value, label]) => `<option value="${value}" ${event.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button type="submit" class="px-3 py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกสถานะ</button></form>` : ''}${ylaEditForm}${ylaDetailLoadingId === event.id ? '<p class="text-sm text-[var(--muted)] text-center py-8">กำลังโหลด...</p>' : ylaDetail?.error ? '<p class="text-sm text-[var(--bad)] text-center py-8">โหลดข้อมูล YLA ไม่สำเร็จ</p>' : isYlaManager() ? renderYlaParticipantManager({ event, detail: ylaDetail }) : renderYlaStudentProgress({ event, detail: ylaDetail })}</section>` : '<div class="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center text-sm text-[var(--muted)]">เลือกกิจกรรมเพื่อดูรายละเอียดและติดตามผล</div>'
+  const detailBlock = event ? `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 space-y-4"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold text-[var(--primary)]">🌱 YLA · ปีการศึกษา ${electionYear}</p><h2 class="text-xl font-bold text-[var(--ink)] mt-1">${esc(event.title)}</h2><p class="text-sm text-[var(--muted)] mt-1">${esc(event.description ?? 'กิจกรรมพัฒนาภาวะผู้นำและทักษะการทำงานของนักเรียน')}</p><p class="text-xs text-[var(--muted)] mt-2">${esc(ylaDateRange(event))}${event.location ? ` · ${esc(event.location)}` : ''}</p></div><div class="flex flex-wrap gap-2 items-center"><span class="text-xs font-bold rounded-full px-3 py-1.5 ${statusBadge(event.status)}">${esc(YLA_STATUS_LABEL[event.status] ?? event.status)}</span>${isYlaManager() ? '<button type="button" id="yla-event-edit-open" class="text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--primary-45)] text-[var(--primary)]">✏️ แก้ไขกิจกรรม</button>' : ''}${isYlaManager() && ylaDetail?.participants?.length ? '<button type="button" id="yla-event-attendance-open" class="text-xs font-bold px-3 py-1.5 rounded-[10px] bg-[var(--primary)] text-white">✅ เช็คชื่อกิจกรรม</button>' : ''}<button type="button" id="yla-print-event" class="text-xs font-bold px-3 py-1.5 rounded-[10px] border border-[var(--line)] text-[var(--ink-2)]">🖨️ พิมพ์สรุป</button></div></div>${isYlaManager() ? `<form id="yla-event-status-form" class="flex flex-wrap gap-2 items-center border-t border-[var(--line-soft)] pt-3" data-event-id="${event.id}"><span class="text-xs text-[var(--muted)]">สถานะกิจกรรม</span><select name="status" class="border border-[var(--line)] rounded-[10px] px-2.5 py-2 text-xs bg-[var(--surface)] text-[var(--ink)]">${Object.entries(YLA_STATUS_LABEL).map(([value, label]) => `<option value="${value}" ${event.status === value ? 'selected' : ''}>${label}</option>`).join('')}</select><button type="submit" class="px-3 py-2 rounded-[10px] bg-[var(--primary)] text-white text-xs font-bold">บันทึกสถานะ</button></form>` : ''}${ylaEditForm}${ylaDetailLoadingId === event.id ? '<p class="text-sm text-[var(--muted)] text-center py-8">กำลังโหลด...</p>' : ylaDetail?.error ? '<p class="text-sm text-[var(--bad)] text-center py-8">โหลดข้อมูล YLA ไม่สำเร็จ</p>' : isYlaManager() ? renderYlaParticipantManager({ event, detail: ylaDetail }) : renderYlaStudentProgress({ event, detail: ylaDetail })}</section>` : '<div class="rounded-2xl border border-[var(--line)] bg-[var(--surface)] p-8 text-center text-sm text-[var(--muted)]">เลือกกิจกรรมเพื่อดูรายละเอียดและติดตามผล</div>'
   return `<div class="space-y-4"><section class="bg-[var(--surface)] border border-[var(--line-soft)] rounded-2xl p-5"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-bold text-[var(--primary)]">🌱 กิจกรรม YLA · Youth Leadership For Azizstan</p><h1 class="text-xl font-bold text-[var(--ink)] mt-1">ติดตามกิจกรรมและพัฒนาการรายบุคคล</h1><p class="text-sm text-[var(--muted)] mt-2 leading-6">นักเรียนดูสถานะ การเข้าร่วม คะแนน และผลสรุปของตนเองได้ ส่วนผู้ดูแลจัดกิจกรรม เพิ่มผู้เข้าร่วม เช็กชื่อ และบันทึกผลได้ในหน้าเดียว</p></div>${isYlaManager() ? '<button type="button" id="yla-event-open" class="px-4 py-2.5 rounded-xl bg-[var(--primary)] text-white text-sm font-bold">＋ สร้างกิจกรรม YLA</button>' : ''}</div><div class="flex flex-wrap gap-2 mt-4 text-xs"><a href="https://docs.google.com/document/d/1lX7v3BkGBID-xRBDB0MFDDqPvT5YAVmaF540MUGY7RI/edit?tab=t.gq6dk28nkqg8" target="_blank" rel="noopener" class="px-3 py-2 rounded-[10px] border border-[var(--line)] font-bold text-[var(--primary)]">🔗 เปิดชุดเอกสาร YLA ต้นฉบับ</a><span class="px-3 py-2 rounded-[10px] bg-[var(--bg-2)] text-[var(--muted)]">เก็บข้อมูลตามกิจกรรม ไม่ปะปนกับสารบัญเอกสาร</span></div></section>${eventForm}<section class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">${eventCards}</section>${detailBlock}<details class="mt-2"><summary class="cursor-pointer text-sm font-bold text-[var(--primary)]">📚 ดูสารบัญเอกสาร YLA YLA-00 ถึง YLA-10</summary><div class="mt-4">${renderCouncilResourceCenter({ kind: 'yla', esc })}</div></details></div>`
 }
 
 function wireYlaEvents() {
+  document.getElementById('yla-event-attendance-open')?.addEventListener('click', () => {
+    const selected = eventForPrint()
+    if (selected) openYlaAttendanceModal(selected)
+  })
   document.querySelectorAll('.yla-gender-tab').forEach(tab => tab.addEventListener('click', () => {
     const activeGender = tab.dataset.ylaGenderTab
     ylaParticipantGenderTab = activeGender

@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1090'
+import { APP_VERSION } from './version.js?v=10.22.1091'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1091': [
+    'เพิ่มหน้าต่างเช็คชื่อเต็มจอในรายละเอียดกิจกรรม YLA ใช้รูปนักเรียน ปุ่มสถานะสี ตัวกรองเพศ/ฝ่าย ค้นหา เลือกสถานะเป็นชุด และสแกน QR พร้อมบันทึกแยกตามช่วงกิจกรรม',
+  ],
   '10.22.1090': [
     'ปรับหน้าเสนอคณะทำงานให้จัดทีละฝ่าย เลือกหัวหน้าก่อน เพิ่มสมาชิกผ่านหน้าต่างค้นหา และยืนยันส่งครบทั้งชุด',
   ],
