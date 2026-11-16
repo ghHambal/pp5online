@@ -8801,6 +8801,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
 
   // ─── Tab: มอบสิทธิ์สแกนเนอร์ ──────────────────────────────────────────
   const _showScanners = () => {
+    const scannerDepartments = [...new Map(councilScannerCandidates.map(student => [String(student.position_id), student.position_name]).filter(([id, name]) => id && name)).entries()]
     document.getElementById('pr-tab-actions').innerHTML = ''
     document.getElementById('pr-tab-content').innerHTML = `
       <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
@@ -8841,18 +8842,22 @@ export async function renderPrayerAdmin(teacher, options = {}) {
             <section class="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
               <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p class="text-xs font-semibold text-emerald-800">เลือกรายชื่อสมาชิกฝ่ายอีบาดัต</p>
-                  <p class="text-[11px] text-gray-500">รายชื่อจากสมาชิกสภาฝ่ายอีบาดัตในวาระปัจจุบัน</p>
+                  <p class="text-xs font-semibold text-emerald-800">เลือกรายชื่อสมาชิกสภาเพื่อมอบสิทธิ์สแกน</p>
+                  <p class="text-[11px] text-gray-500">รายชื่อสมาชิกสภาทุกฝ่ายในวาระปัจจุบัน เลือกกรองตามเพศและฝ่ายได้</p>
                 </div>
                 <button type="button" id="btn-add-ibadat-scanner-candidates" class="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800">เพิ่มรายชื่อที่เลือก</button>
+              </div>
+              <div class="mb-2 flex flex-wrap items-center gap-2">
+                <div class="flex gap-1" role="group" aria-label="กรองเพศสมาชิก">${[['all','ทั้งหมด'],['M','ชาย'],['W','หญิง']].map(([value,label]) => `<button type="button" class="ibadat-scanner-gender rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold ${value === 'all' ? 'bg-emerald-700 text-white' : 'bg-white text-emerald-800'}" data-gender="${value}">${label}</button>`).join('')}</div>
+                <select id="ibadat-scanner-department" class="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs"><option value="all">ทุกฝ่าย</option>${scannerDepartments.map(([id,name]) => `<option value="${_esc(id)}">${_esc(name)}</option>`).join('')}</select>
               </div>
               <input id="ibadat-scanner-candidate-search" type="search" placeholder="ค้นหาชื่อ รหัส หรือห้อง" class="mb-2 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-200" />
               <div id="ibadat-scanner-candidate-list" class="grid max-h-64 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2">
                 ${councilScannerCandidates.map(student => `
-                  <label class="ibadat-scanner-candidate flex cursor-pointer items-center gap-2 rounded-lg border border-gray-100 bg-white p-2.5" data-search="${_esc(`${student.name} ${student.code} ${student.room}`.toLowerCase())}">
+                  <label class="ibadat-scanner-candidate flex cursor-pointer items-center gap-2 rounded-lg border border-gray-100 bg-white p-2.5" data-gender="${_esc(student.gender)}" data-position="${_esc(student.position_id)}" data-search="${_esc(`${student.name} ${student.code} ${student.room} ${student.position_name}`.toLowerCase())}">
                     <input type="checkbox" class="ibadat-scanner-candidate-check" value="${_esc(student.id)}" />
-                    <span class="min-w-0"><span class="block truncate text-xs font-semibold text-gray-800">${_esc(student.name || 'ไม่ระบุชื่อ')}</span><span class="block truncate text-[10px] text-gray-500">${_esc(student.code)} · ${_esc(student.room || 'ไม่ระบุห้อง')}</span></span>
-                  </label>`).join('') || '<p class="col-span-full py-4 text-center text-xs text-gray-400">ไม่พบรายชื่อสมาชิกฝ่ายอีบาดัตในวาระปัจจุบัน</p>'}
+                    <span class="min-w-0"><span class="block truncate text-xs font-semibold text-gray-800">${_esc(student.name || 'ไม่ระบุชื่อ')}</span><span class="block truncate text-[10px] text-gray-500">${_esc(student.code)} · ${_esc(student.room || 'ไม่ระบุห้อง')} · ${_esc(student.position_name || 'ไม่ระบุฝ่าย')}</span></span>
+                  </label>`).join('') || '<p class="col-span-full py-4 text-center text-xs text-gray-400">ไม่พบรายชื่อสมาชิกสภาในวาระปัจจุบัน</p>'}
               </div>
             </section>` : ''}
           <div>
@@ -8924,19 +8929,41 @@ export async function renderPrayerAdmin(teacher, options = {}) {
 
     if (councilPrayerAccess) {
       const candidateList = document.getElementById('ibadat-scanner-candidate-list')
-      document.getElementById('ibadat-scanner-candidate-search')?.addEventListener('input', event => {
-        const query = event.target.value.trim().toLowerCase()
+      let candidateGender = 'all'
+      let candidateDepartment = 'all'
+      let candidateQuery = ''
+      const normalizeScannerGender = value => {
+        const gender = String(value || '').trim().toLowerCase()
+        return ['m', 'male', 'ชาย'].includes(gender) ? 'M' : ['w', 'f', 'female', 'หญิง'].includes(gender) ? 'W' : ''
+      }
+      const applyCandidateFilters = () => {
         candidateList?.querySelectorAll('.ibadat-scanner-candidate').forEach(label => {
-          label.classList.toggle('hidden', query && !label.dataset.search.includes(query))
+          const genderMatch = candidateGender === 'all' || normalizeScannerGender(label.dataset.gender) === candidateGender
+          const departmentMatch = candidateDepartment === 'all' || label.dataset.position === candidateDepartment
+          const searchMatch = !candidateQuery || label.dataset.search.includes(candidateQuery)
+          label.classList.toggle('hidden', !(genderMatch && departmentMatch && searchMatch))
         })
+      }
+      document.getElementById('ibadat-scanner-candidate-search')?.addEventListener('input', event => {
+        candidateQuery = event.target.value.trim().toLowerCase()
+        applyCandidateFilters()
+      })
+      document.querySelectorAll('.ibadat-scanner-gender').forEach(button => button.addEventListener('click', () => {
+        candidateGender = button.dataset.gender
+        document.querySelectorAll('.ibadat-scanner-gender').forEach(tab => tab.className = `ibadat-scanner-gender rounded-lg border border-emerald-200 px-3 py-2 text-xs font-semibold ${tab === button ? 'bg-emerald-700 text-white' : 'bg-white text-emerald-800'}`)
+        applyCandidateFilters()
+      }))
+      document.getElementById('ibadat-scanner-department')?.addEventListener('change', event => {
+        candidateDepartment = event.target.value
+        applyCandidateFilters()
       })
       document.getElementById('btn-add-ibadat-scanner-candidates')?.addEventListener('click', () => {
         const selectedIds = new Set([...candidateList.querySelectorAll('.ibadat-scanner-candidate-check:checked')].map(input => Number(input.value)))
-        if (!selectedIds.size) return showToast('เลือกรายชื่อฝ่ายอีบาดัตก่อน', 'warning')
+        if (!selectedIds.size) return showToast('เลือกรายชื่อสมาชิกก่อน', 'warning')
         const additions = councilScannerCandidates.filter(student => selectedIds.has(Number(student.id))).map(student => ({
           ...student,
           type: 'student',
-          display_info: `รหัส ${student.code} · ห้อง ${student.room || '—'} · ${student.gender || 'ไม่ระบุเพศ'} · ฝ่ายอีบาดัต`,
+          display_info: `รหัส ${student.code} · ห้อง ${student.room || '—'} · ${student.gender || 'ไม่ระบุเพศ'} · ${student.position_name || 'ไม่ระบุฝ่าย'}`,
         }))
         const existing = new Set(_foundScanners.map(student => Number(student.id)))
         _foundScanners.push(...additions.filter(student => !existing.has(Number(student.id))))

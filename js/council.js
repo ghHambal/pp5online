@@ -3833,6 +3833,14 @@ function councilDutyVisibleMembers() {
     .filter(member => !managerGender || normalizeGender(member.council_positions?.gender) === normalizeGender(managerGender))
 }
 
+function councilDutyDayVisibleMembers(current = dutyAttendanceDayModal) {
+  const gender = current?.gender || 'all'
+  const positionId = current?.positionId || 'all'
+  return councilDutyVisibleMembers()
+    .filter(member => gender === 'all' || normalizeGender(member.council_positions?.gender) === gender)
+    .filter(member => positionId === 'all' || Number(member.position_id) === Number(positionId))
+}
+
 const COUNCIL_DUTY_STATUSES = [
   ['present', 'มา', 'bg-emerald-500 text-white shadow-sm'],
   ['late', 'สาย', 'bg-amber-400 text-white shadow-sm'],
@@ -3843,13 +3851,24 @@ const COUNCIL_DUTY_STATUSES = [
 function syncCouncilDutyDayModalFields(root) {
   if (!dutyAttendanceDayModal || !root) return
   const current = dutyAttendanceDayModal
-  current.notesByType[current.type] = Object.fromEntries([...root.querySelectorAll('[data-duty-note]')].map(input => [input.dataset.dutyNote, input.value]))
+  if (current.type.startsWith('activity:')) return
+  current.notesByType[current.type] = {
+    ...(current.notesByType[current.type] || {}),
+    ...Object.fromEntries([...root.querySelectorAll('[data-duty-note]')].map(input => [input.dataset.dutyNote, input.value])),
+  }
 }
 
 function renderCouncilAttendanceDayModal() {
   if (!dutyAttendanceDayModal) return ''
   const { date, type } = dutyAttendanceDayModal
-  const members = councilDutyVisibleMembers()
+  const allMembers = councilDutyVisibleMembers()
+  const allowedGenders = [...new Set(allMembers.map(member => normalizeGender(member.council_positions?.gender)).filter(Boolean))].sort()
+  const selectedGender = dutyAttendanceDayModal.gender || 'all'
+  const genderFilteredMembers = allMembers.filter(member => selectedGender === 'all' || normalizeGender(member.council_positions?.gender) === selectedGender)
+  const allowedPositions = [...new Map(genderFilteredMembers.map(member => [Number(member.position_id), member.council_positions]).filter(([id, position]) => id && position)).values()]
+    .sort((a, b) => (a.sort_order ?? 99) - (b.sort_order ?? 99) || String(a.position_name).localeCompare(String(b.position_name), 'th'))
+  const selectedPositionId = dutyAttendanceDayModal.positionId || 'all'
+  const members = councilDutyDayVisibleMembers()
   const dateLabel = dateFromKey(date).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const rows = dutyCalendarRecords.filter(row => row.duty_date === date && row.duty_type === type)
   const byId = new Map(rows.map(row => [Number(row.membership_id), row]))
@@ -3857,22 +3876,30 @@ function renderCouncilAttendanceDayModal() {
   const notes = dutyAttendanceDayModal.notesByType[type] || {}
   const activitiesToday = dutyCalendarActivities.filter(activity => activity.activity_date === date && activity.status !== 'cancelled')
   const typeLabels = { assembly: 'กิจกรรมเข้าแถว', dhuhr: 'เวรช่วงละหมาดดุฮรี', asr: 'เวรช่วงละหมาดอัศรี' }
-  const activitySections = activitiesToday.map(activity => {
-    const eventMembers = members.filter(member => !activity.gender || normalizeGender(activity.gender) === normalizeGender(member.council_positions?.gender))
-    const checked = dutyCalendarActivityAttendance[activity.id] || new Set()
-    const manageable = canManageActivity(activity)
+  const selectedActivity = type.startsWith('activity:') ? activitiesToday.find(activity => Number(activity.id) === Number(type.slice(9))) : null
+  const activityTabs = activitiesToday.map(activity => `<button type="button" class="council-duty-day-type rounded-lg px-3 py-2 text-xs font-bold whitespace-nowrap ${type === `activity:${activity.id}` ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)]'}" data-type="activity:${activity.id}">🎯 ${esc(activity.title)}</button>`).join('')
+  const activitySection = selectedActivity ? (() => {
+    const eventMembers = members.filter(member => !selectedActivity.gender || normalizeGender(selectedActivity.gender) === normalizeGender(member.council_positions?.gender))
+    const checked = dutyCalendarActivityAttendance[selectedActivity.id] || new Set()
+    const manageable = canManageActivity(selectedActivity)
     const checkedCount = eventMembers.filter(member => checked.has(member.student_id)).length
-    return `<section class="rounded-xl border border-[var(--line-soft)] p-3"><div class="flex flex-wrap justify-between gap-2"><div><h3 class="font-bold text-sm">🎯 ${esc(activity.title)}</h3><p class="text-[10px] text-[var(--muted)] mt-0.5">${esc(activity.location || '')}${activity.owner_text ? ` · ${esc(activity.owner_text)}` : ''} · เช็คอิน ${checkedCount}/${eventMembers.length}</p></div><span class="self-start text-[10px] rounded-full px-2 py-1 bg-[var(--gold-soft)] text-[var(--gold-ink)]">กิจกรรม</span></div><div class="mt-3 space-y-1">${eventMembers.map((member, index) => {
+    const activityRows = eventMembers.map((member, index) => {
       const done = checked.has(member.student_id)
-      return `<div class="flex items-center gap-2 border-t border-[var(--line-soft)] py-2"><span class="text-[10px] text-[var(--muted)] w-5 text-right">${index + 1}</span>${studentPhoto(member.students, 'w-10 h-10')}<span class="min-w-0 flex-1"><b class="block truncate text-xs">${esc(member.students?.full_name || '—')}</b><small class="text-[10px] text-[var(--muted)]">${esc(member.students?.student_code || '')}</small></span>${manageable ? `<button type="button" class="council-day-activity-toggle rounded-lg border px-3 py-2 text-[10px] font-bold transition ${done ? 'border-transparent bg-emerald-500 text-white shadow-sm' : 'border-[var(--line)] bg-[var(--surface)] text-[var(--muted)] hover:border-emerald-400 hover:text-emerald-700'}" data-activity-id="${activity.id}" data-student-id="${member.student_id}" data-checked="${done ? '1' : '0'}">${done ? '✓ เช็คแล้ว · ยกเลิก' : '＋ เช็คชื่อ'}</button>` : `<span class="text-[10px] ${done ? 'text-emerald-700' : 'text-[var(--muted)]'}">${done ? '✓ เช็คแล้ว' : 'ยังไม่เช็ค'}</span>`}</div>`
-    }).join('') || '<p class="py-3 text-xs text-[var(--muted)]">ไม่พบสมาชิกที่เกี่ยวข้องกับกิจกรรมนี้</p>'}</div></section>`
-  }).join('')
+      return `<div class="flex items-center gap-2 border-t border-[var(--line-soft)] py-2"><span class="w-5 text-right text-[10px] text-[var(--muted)]">${index + 1}</span>${studentPhoto(member.students, 'w-10 h-10')}<span class="min-w-0 flex-1"><b class="block truncate text-xs">${esc(member.students?.full_name || '—')}</b><small class="text-[10px] text-[var(--muted)]">${esc(member.students?.student_code || '')} · ${esc(member.council_positions?.position_name || '')}</small></span>${manageable ? `<button type="button" class="council-day-activity-toggle rounded-lg border px-3 py-2 text-[10px] font-bold ${done ? 'border-transparent bg-emerald-500 text-white' : 'border-[var(--line)] bg-[var(--surface)] text-[var(--muted)]'}" data-activity-id="${selectedActivity.id}" data-student-id="${member.student_id}" data-checked="${done ? '1' : '0'}">${done ? '✓ เช็คแล้ว · ยกเลิก' : '＋ เช็คชื่อ'}</button>` : `<span class="text-[10px] ${done ? 'text-emerald-700' : 'text-[var(--muted)]'}">${done ? '✓ เช็คแล้ว' : 'ยังไม่เช็ค'}</span>`}</div>`
+    }).join('')
+    return `<section class="rounded-xl border border-[var(--line-soft)] p-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><h3 class="font-bold text-sm">🎯 ${esc(selectedActivity.title)}</h3><p class="text-[10px] text-[var(--muted)]">${esc(selectedActivity.location || '')}${selectedActivity.owner_text ? ` · ${esc(selectedActivity.owner_text)}` : ''} · เช็คแล้ว ${checkedCount}/${eventMembers.length}</p></div>${manageable ? `<button type="button" id="council-duty-activity-scan" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">📷 สแกน QR</button>` : ''}</div><div class="mt-3">${activityRows || '<p class="py-6 text-center text-xs text-[var(--muted)]">ไม่มีสมาชิกตามตัวกรองนี้</p>'}</div></section>`
+  })() : ''
   const statusButtons = member => {
     const selectedStatus = statuses[member.id] ?? byId.get(Number(member.id))?.status ?? 'present'
     return COUNCIL_DUTY_STATUSES.map(([key, label, activeClass]) => `<button type="button" aria-pressed="${selectedStatus === key}" class="council-day-duty-status min-w-12 rounded-lg border px-3 py-2 text-xs font-bold transition ${selectedStatus === key ? `${activeClass} border-transparent` : 'border-[var(--line)] bg-[var(--surface)] text-[var(--muted)] hover:border-[var(--primary-45)]'}" data-member-id="${member.id}" data-status="${key}">${label}</button>`).join('')
   }
   const memberRows = members.map((member, index) => `<div class="flex flex-wrap items-center gap-2 sm:gap-3 border-t border-[var(--line-soft)] py-3"><span class="w-5 shrink-0 text-right text-xs text-[var(--muted)]">${index + 1}</span>${studentPhoto(member.students, 'w-10 h-10 sm:w-12 sm:h-12')}<div class="min-w-[150px] flex-1"><b class="block truncate text-sm">${esc(member.students?.full_name || '—')}</b><small class="text-[10px] text-[var(--muted)]">${esc(member.students?.student_code || '')} · ${esc(member.council_positions?.position_name || '—')}</small></div><div class="flex flex-wrap gap-1.5" role="group" aria-label="สถานะ ${esc(member.students?.full_name || '')}">${statusButtons(member)}</div><input data-duty-note="${member.id}" maxlength="500" value="${esc(notes[member.id] ?? byId.get(Number(member.id))?.note ?? '')}" placeholder="หมายเหตุ (ถ้ามี)" class="w-full xl:w-52 border border-[var(--line)] rounded-lg px-3 py-2 text-xs bg-[var(--surface)]"></div>`).join('')
-  return `<div id="council-duty-day-modal" class="fixed inset-0 z-[220] flex flex-col bg-[var(--surface)] text-[var(--ink)]" role="dialog" aria-modal="true" aria-label="เช็คชื่อกิจกรรมและเวร"><header class="flex items-center gap-3 border-b border-[var(--line-soft)] px-3 sm:px-6 py-3 shrink-0"><button type="button" id="council-duty-day-close" class="rounded-xl border border-[var(--line)] px-3 py-2 text-sm font-bold">← กลับ</button><div class="min-w-0 flex-1"><h2 class="font-bold text-sm sm:text-base">เช็คชื่อรายวัน</h2><p class="text-[10px] sm:text-xs text-[var(--muted)] truncate">${esc(dateLabel)}</p></div><span class="hidden sm:inline rounded-full bg-[var(--primary-soft)] px-3 py-1.5 text-xs font-bold text-[var(--primary)]">${members.length} สมาชิก</span></header><div class="flex gap-2 overflow-x-auto border-b border-[var(--line-soft)] px-3 sm:px-6 py-2 shrink-0">${Object.entries(typeLabels).map(([key,label]) => `<button type="button" class="council-duty-day-type rounded-lg px-3 py-2 text-xs font-bold whitespace-nowrap ${type === key ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)]'}" data-type="${key}">${label}</button>`).join('')}</div><main class="flex-1 overflow-y-auto px-3 sm:px-6 py-4 space-y-5"><section class="rounded-xl border border-[var(--line-soft)] p-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><h3 class="font-bold text-sm">👥 ${typeLabels[type]}</h3><p class="text-[10px] text-[var(--muted)]">เลือกสถานะรายชื่อ หรือสแกน QR เพื่อบันทึกทันที</p></div><div class="flex flex-wrap gap-1.5"><button type="button" id="council-duty-day-scan" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white shadow-sm hover:bg-slate-800">📷 สแกน QR</button>${[['present','มาทุกคน'],['absent','ขาดทุกคน']].map(([key,label]) => `<button type="button" class="council-day-duty-fill rounded-lg border border-[var(--line)] px-2.5 py-2 text-[10px] font-bold" data-status="${key}">${label}</button>`).join('')}</div></div><div class="mt-3">${memberRows || '<p class="py-8 text-center text-xs text-[var(--muted)]">ไม่มีสมาชิกในขอบเขตนี้</p>'}</div><button type="button" id="council-duty-day-save" ${members.length ? '' : 'disabled'} class="mt-3 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">💾 บันทึกผล${rows.length ? ` · บันทึกแล้ว ${rows.length} คน` : ''}</button></section><section class="space-y-3"><div><h3 class="font-bold text-sm">กิจกรรมในวันนี้</h3><p class="text-[10px] text-[var(--muted)]">เช็คชื่อหรือยกเลิกเช็คอินได้ตามสิทธิ์ของกิจกรรม</p></div>${activitySections || '<div class="rounded-xl border border-dashed border-[var(--line)] p-5 text-center text-xs text-[var(--muted)]">วันนี้ไม่มีกิจกรรมสภาที่กำหนดไว้</div>'}</section></main></div>`
+  const dutyTab = !type.startsWith('activity:')
+  const selectedCountLabel = `${members.length} คน`
+  const genderTabs = allowedGenders.map(gender => `<button type="button" class="council-duty-day-gender rounded-lg px-3 py-2 text-xs font-bold ${selectedGender === gender ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)]'}" data-gender="${gender}">${gender === 'M' ? 'ชาย' : 'หญิง'}</button>`).join('')
+  const positionOptions = allowedPositions.map(position => `<option value="${position.id}" ${String(selectedPositionId) === String(position.id) ? 'selected' : ''}>${esc(position.position_name)}</option>`).join('')
+  const mainSection = dutyTab ? `<section class="rounded-xl border border-[var(--line-soft)] p-3"><div class="flex flex-wrap items-center justify-between gap-2"><div><h3 class="font-bold text-sm">👥 ${typeLabels[type]}</h3><p class="text-[10px] text-[var(--muted)]">เลือกสถานะรายชื่อ หรือสแกน QR เพื่อบันทึกทันที</p></div><div class="flex flex-wrap gap-1.5"><button type="button" id="council-duty-day-scan" class="rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">📷 สแกน QR</button>${[['present','มาทุกคน'],['absent','ขาดทุกคน']].map(([key,label]) => `<button type="button" class="council-day-duty-fill rounded-lg border border-[var(--line)] px-2.5 py-2 text-[10px] font-bold" data-status="${key}">${label}</button>`).join('')}</div></div><div class="mt-3">${memberRows || '<p class="py-8 text-center text-xs text-[var(--muted)]">ไม่มีสมาชิกตามตัวกรองนี้</p>'}</div><button type="button" id="council-duty-day-save" ${members.length ? '' : 'disabled'} class="mt-3 w-full rounded-xl bg-[var(--primary)] px-4 py-3 text-sm font-bold text-white disabled:opacity-50">💾 บันทึกผล${rows.length ? ` · บันทึกแล้ว ${rows.length} คน` : ''}</button></section>` : activitySection
+  return `<div id="council-duty-day-modal" class="fixed inset-0 z-[220] flex flex-col bg-[var(--surface)] text-[var(--ink)]" role="dialog" aria-modal="true" aria-label="เช็คชื่อกิจกรรมและเวร"><header class="flex items-center gap-3 border-b border-[var(--line-soft)] px-3 sm:px-6 py-3 shrink-0"><button type="button" id="council-duty-day-close" class="rounded-xl border border-[var(--line)] px-3 py-2 text-sm font-bold">← กลับ</button><div class="min-w-0 flex-1"><h2 class="font-bold text-sm sm:text-base">เช็คชื่อรายวัน</h2><p class="text-[10px] sm:text-xs text-[var(--muted)] truncate">${esc(dateLabel)}</p></div><span class="rounded-full bg-[var(--primary-soft)] px-3 py-1.5 text-xs font-bold text-[var(--primary)]">${selectedCountLabel}</span></header><div class="flex gap-2 overflow-x-auto border-b border-[var(--line-soft)] px-3 sm:px-6 py-2 shrink-0">${Object.entries(typeLabels).map(([key,label]) => `<button type="button" class="council-duty-day-type rounded-lg px-3 py-2 text-xs font-bold whitespace-nowrap ${type === key ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)]'}" data-type="${key}">${label}</button>`).join('')}${activityTabs}</div><div class="flex flex-wrap items-center gap-2 border-b border-[var(--line-soft)] px-3 sm:px-6 py-2 shrink-0"><span class="text-[10px] font-bold text-[var(--muted)]">เพศ:</span>${genderTabs}<label class="ml-auto flex items-center gap-2 text-[10px] font-bold text-[var(--muted)]">ฝ่าย<select id="council-duty-day-position" class="rounded-lg border border-[var(--line)] bg-[var(--surface)] px-2 py-2 text-xs text-[var(--ink)]"><option value="all">ทุกฝ่าย</option>${positionOptions}</select></label></div><main class="flex-1 overflow-y-auto px-3 sm:px-6 py-4 space-y-5">${mainSection || '<div class="rounded-xl border border-dashed border-[var(--line)] p-5 text-center text-xs text-[var(--muted)]">ไม่พบกิจกรรม</div>'}</main></div>`
 }
 
 function openCouncilAttendanceDay(date) {
@@ -3885,7 +3912,7 @@ function openCouncilAttendanceDay(date) {
     statusesByType[type] = Object.fromEntries(entries.map(row => [Number(row.membership_id), row.status]))
     notesByType[type] = Object.fromEntries(entries.map(row => [Number(row.membership_id), row.note || '']))
   }
-  dutyAttendanceDayModal = { date, type: dailyDutyType, statusesByType, notesByType }
+  dutyAttendanceDayModal = { date, type: dailyDutyType, gender: 'all', positionId: 'all', statusesByType, notesByType }
   document.body.insertAdjacentHTML('beforeend', renderCouncilAttendanceDayModal())
   wireCouncilAttendanceDayModal()
 }
@@ -3902,7 +3929,7 @@ function wireCouncilAttendanceDayModal() {
     openCouncilCheckinScanner({
       mode: 'duty',
       activityTitle: `${dateFromKey(scanDate).toLocaleDateString('th-TH', { day: 'numeric', month: 'long', year: 'numeric' })} · ${({ assembly: 'กิจกรรมเข้าแถว', dhuhr: 'เวรช่วงละหมาดดุฮรี', asr: 'เวรช่วงละหมาดอัศรี' })[scanType]}`,
-      members: councilDutyVisibleMembers(),
+      members: councilDutyDayVisibleMembers(),
       initialStatus: 'present',
       onDutyScanned: async ({ member, status }) => {
         const membershipId = Number(member.id)
@@ -3930,7 +3957,39 @@ function wireCouncilAttendanceDayModal() {
     root.outerHTML = renderCouncilAttendanceDayModal()
     wireCouncilAttendanceDayModal()
   }))
+  root.querySelectorAll('.council-duty-day-gender').forEach(button => button.addEventListener('click', () => {
+    syncCouncilDutyDayModalFields(root)
+    dutyAttendanceDayModal.gender = button.dataset.gender
+    dutyAttendanceDayModal.positionId = 'all'
+    root.outerHTML = renderCouncilAttendanceDayModal()
+    wireCouncilAttendanceDayModal()
+  }))
+  root.querySelector('#council-duty-day-position')?.addEventListener('change', event => {
+    syncCouncilDutyDayModalFields(root)
+    dutyAttendanceDayModal.positionId = event.target.value
+    root.outerHTML = renderCouncilAttendanceDayModal()
+    wireCouncilAttendanceDayModal()
+  })
+  root.querySelector('#council-duty-activity-scan')?.addEventListener('click', () => {
+    const current = dutyAttendanceDayModal
+    const activity = dutyCalendarActivities.find(item => Number(item.id) === Number(current?.type.slice(9)))
+    if (!activity) return
+    const activityMembers = councilDutyDayVisibleMembers().filter(member => !activity.gender || normalizeGender(activity.gender) === normalizeGender(member.council_positions?.gender))
+    openCouncilCheckinScanner({
+      activityId: activity.id, activityTitle: activity.title, members: activityMembers,
+      alreadyChecked: dutyCalendarActivityAttendance[activity.id] || new Set(),
+      onCheckedIn: studentId => { (dutyCalendarActivityAttendance[activity.id] ||= new Set()).add(studentId) },
+      onUndo: studentId => { dutyCalendarActivityAttendance[activity.id]?.delete(studentId) },
+      onClose: () => {
+        const modalRoot = document.getElementById('council-duty-day-modal')
+        if (!modalRoot || !dutyAttendanceDayModal) return
+        modalRoot.outerHTML = renderCouncilAttendanceDayModal()
+        wireCouncilAttendanceDayModal()
+      },
+    })
+  })
   root.querySelectorAll('.council-day-duty-status').forEach(button => button.addEventListener('click', () => {
+    syncCouncilDutyDayModalFields(root)
     const { type, statusesByType } = dutyAttendanceDayModal
     statusesByType[type][button.dataset.memberId] = button.dataset.status
     root.outerHTML = renderCouncilAttendanceDayModal()
@@ -3939,7 +3998,7 @@ function wireCouncilAttendanceDayModal() {
   root.querySelectorAll('.council-day-duty-fill').forEach(button => button.addEventListener('click', () => {
     syncCouncilDutyDayModalFields(root)
     const statuses = dutyAttendanceDayModal.statusesByType[dutyAttendanceDayModal.type]
-    for (const member of councilDutyVisibleMembers()) statuses[member.id] = button.dataset.status
+    for (const member of councilDutyDayVisibleMembers()) statuses[member.id] = button.dataset.status
     root.outerHTML = renderCouncilAttendanceDayModal()
     wireCouncilAttendanceDayModal()
   }))
@@ -3966,7 +4025,8 @@ function wireCouncilAttendanceDayModal() {
   root.querySelector('#council-duty-day-save')?.addEventListener('click', async buttonEvent => {
     syncCouncilDutyDayModalFields(root)
     const { type, date, statusesByType, notesByType } = dutyAttendanceDayModal
-    const entries = Object.entries(statusesByType[type] || {}).filter(([, status]) => status).map(([membershipId, status]) => ({
+    const visibleMembershipIds = new Set(councilDutyDayVisibleMembers().map(member => Number(member.id)))
+    const entries = Object.entries(statusesByType[type] || {}).filter(([membershipId, status]) => status && visibleMembershipIds.has(Number(membershipId))).map(([membershipId, status]) => ({
       membership_id: Number(membershipId), status, note: String(notesByType[type]?.[membershipId] || '').trim() || null,
     }))
     if (!entries.length) { showToast('เลือกผลการปฏิบัติอย่างน้อยหนึ่งคนก่อนบันทึก', 'warning'); return }
@@ -4985,7 +5045,7 @@ function renderChairTeamView() {
     else if (gender) {
       const nominees = nomineesByGender[gender] || []
       const departments = ctx.positions.filter(p => p.gender === gender && p.is_active && !p.is_elected && p.position_name.startsWith('ฝ่าย') && p.position_name !== UNASSIGNED_POSITION_NAME)
-      const eligibleByPosition = new Map(departments.map(position => [position.id, nominees.filter(nominee => Number(nominee.position_id) === Number(position.id))]))
+      const eligibleByPosition = new Map(departments.map(position => [position.id, nominees.filter(nominee => nominee.nominee_source === 'member' || Number(nominee.position_id) === Number(position.id))]))
       const proposals = teamProposalsByGender[gender] || []
       const pending = proposals.filter(proposal => proposal.status === 'proposed')
       const readyDepartments = departments.filter(position =>
@@ -4995,7 +5055,7 @@ function renderChairTeamView() {
       html += `
         <section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-5 mb-5">
           <div class="flex flex-wrap items-start justify-between gap-3 mb-4"><div><p class="text-sm font-bold text-[var(--ink-2)]">👔 เสนอคณะทำงานสภา${GENDER_LABEL[gender]}ทั้งชุด</p><p class="text-xs text-[var(--muted)] mt-1">เลือกหัวหน้าฝ่ายและสมาชิกอย่างน้อยฝ่ายละ 1 คน ให้ครบทุกฝ่าย ระบบจะส่งให้ครูที่ปรึกษาตรวจพร้อมกัน</p></div><span class="rounded-full bg-[var(--primary-soft)] px-3 py-1 text-xs font-bold text-[var(--primary)]">${departments.length} ฝ่าย</span></div>
-          <div class="mb-4 flex flex-wrap items-center gap-2 text-xs"><span class="rounded-full bg-[var(--ok-soft)] px-3 py-1 font-bold text-[#106143]">พร้อมเสนอ ${readyDepartments.length}/${departments.length} ฝ่าย</span><span class="text-[var(--muted)]">เลือกได้จากสมาชิกสภาปัจจุบัน หรือผู้สมัครที่ผ่านสัมภาษณ์แล้ว</span></div>
+          <div class="mb-4 flex flex-wrap items-center gap-2 text-xs"><span class="rounded-full bg-[var(--ok-soft)] px-3 py-1 font-bold text-[#106143]">พร้อมเสนอ ${readyDepartments.length}/${departments.length} ฝ่าย</span><span class="text-[var(--muted)]">เลือกได้จากสมาชิกสภาชาย/หญิงทุกฝ่าย หรือผู้สมัครที่ผ่านสัมภาษณ์ในฝ่ายนั้น · ประธานไม่อยู่ในตัวเลือก</span></div>
           ${pending.length ? `<p class="mb-3 rounded-xl border border-[var(--gold-soft-line)] bg-[var(--gold-soft)] px-3 py-2 text-xs font-bold text-[var(--gold-ink)]">มีข้อเสนอรอตรวจสอบอยู่ ${pending.length} ชุด</p>` : ''}
           ${pending.length ? `<p class="rounded-xl bg-[var(--surface-2)] px-4 py-3 text-xs text-[var(--muted)]">โปรดรอครูที่ปรึกษาตรวจสอบข้อเสนอชุดนี้ก่อนส่งคณะทำงานรอบใหม่</p>` : canBuildTeam ? `<form id="council-team-proposal-form" class="space-y-4">
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">${departments.map(position => {
@@ -5093,13 +5153,15 @@ async function openCouncilIbadatPrayerAdmin() {
     const { renderPrayerAdmin } = await import('./views.js')
     const councilStudentIds = new Set(councilMembers.map(member => Number(member.student_id)).filter(Number.isFinite))
     const ibadatScannerCandidates = councilMembers
-      .filter(member => member.council_positions?.position_name === 'ฝ่ายอีบาดัต' && member.students?.id)
+      .filter(member => !member.council_positions?.is_elected && member.students?.id)
       .map(member => ({
         id: Number(member.students.id),
         code: String(member.students.student_code ?? ''),
         name: member.students.full_name ?? '',
         room: member.students.main_room ?? '',
-        gender: member.students.gender ?? '',
+        gender: member.council_positions.gender ?? member.students.gender ?? '',
+        position_id: Number(member.position_id),
+        position_name: member.council_positions?.position_name ?? 'ไม่ระบุฝ่าย',
         image_url: member.students.image_url || member.students.photo_url || '',
       }))
     await renderPrayerAdmin(ctx.teacher ?? null, {

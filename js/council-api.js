@@ -678,7 +678,7 @@ export async function getNomineesForTeamProposal(gender, termId) {
         students(id, full_name, student_code, main_room, image_url, photo_url),
         council_positions!inner(id, position_name, gender, is_elected)`)
       .eq('term_id', Number(termId)).eq('status', 'active')
-      .eq('council_positions.gender', gender).eq('council_positions.is_elected', false),
+      .eq('council_positions.gender', gender).eq('council_positions.is_elected', false).order('id'),
   ])
   if (applicationError) throw applicationError
   if (memberError) throw memberError
@@ -686,14 +686,16 @@ export async function getNomineesForTeamProposal(gender, termId) {
   // An advisor-appointed active member is eligible even when no application exists.
   // Prefer the roster record when the same student also has an interviewed application.
   const nominees = new Map()
-  ;(applications ?? []).forEach(application => {
-    const key = `${application.position_id}:${application.student_id}`
-    nominees.set(key, { ...application, nominee_key: `application:${application.id}`, nominee_source: 'application' })
-  })
+  // Current active members are eligible for any department; dedupe legacy
+  // duplicate active assignments by student so the same person appears once.
   ;(members ?? []).forEach(member => {
-    if (!member.council_positions?.position_name?.startsWith('ฝ่าย') || member.council_positions.position_name === 'ยังไม่ระบุฝ่าย') return
-    const key = `${member.position_id}:${member.student_id}`
-    nominees.set(key, { ...member, nominee_key: `member:${member.id}`, nominee_source: 'member' })
+    if (!nominees.has(Number(member.student_id))) {
+      nominees.set(Number(member.student_id), { ...member, nominee_key: `member:${member.id}`, nominee_source: 'member' })
+    }
+  })
+  ;(applications ?? []).forEach(application => {
+    const key = Number(application.student_id)
+    if (!nominees.has(key)) nominees.set(key, { ...application, nominee_key: `application:${application.id}`, nominee_source: 'application' })
   })
   return [...nominees.values()]
 }
