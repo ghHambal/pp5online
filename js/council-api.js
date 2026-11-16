@@ -659,7 +659,8 @@ export async function getOpenPositionsForNomination(gender, termId) {
   return (positions ?? []).filter(p => (occupied[p.id] ?? 0) < p.seats_count)
 }
 
-// ผู้สมัครที่ผ่านสัมภาษณ์แล้ว (ตำแหน่งที่ไม่ใช่ประธาน) — กรองคนที่มีการเสนอค้างอยู่แล้วฝั่ง UI
+// ผู้สมัครสถานะหลังสัมภาษณ์ (ตำแหน่งที่ไม่ใช่ประธาน) และสมาชิกสภาปัจจุบัน
+// สอดคล้องกับ appPipelineStage() ที่นับ interviewed/candidate/appointed ว่าผ่านสัมภาษณ์แล้ว
 export async function getNomineesForTeamProposal(gender, termId) {
   const [{ data: applications, error: applicationError }, { data: members, error: memberError }] = await Promise.all([
     supabase.from('council_applications')
@@ -667,7 +668,9 @@ export async function getNomineesForTeamProposal(gender, termId) {
       students(id, full_name, student_code, main_room, image_url, photo_url),
       council_positions!inner(id, position_name, gender, is_elected),
       council_interviews(score, comment)`)
-    .eq('status', 'interviewed').is('deleted_at', null)
+    // The application pipeline treats interviewed, candidate, and appointed as
+    // post-interview states; keep team nomination eligibility aligned with it.
+    .in('status', ['interviewed', 'candidate', 'appointed']).is('deleted_at', null)
     .eq('term_id', Number(termId))
     .eq('council_positions.gender', gender).eq('council_positions.is_elected', false),
     supabase.from('council_members')
