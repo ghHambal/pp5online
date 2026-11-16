@@ -25,7 +25,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1084'
+import { APP_VERSION } from './version.js?v=10.22.1085'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -1444,12 +1444,15 @@ export async function renderStudentMyScores(student, activeTab = 'life', selecte
     semester_start: activeTerm.start_date ?? cfg.semester_start,
     semester_end: activeTerm.end_date ?? cfg.semester_end,
   }
-  const [life, reading, prayers, gpaData] = await Promise.all([
+  const [life, reading, prayerResult, gpaData] = await Promise.all([
     getMyLifeSkillScores(student.id, year, sem).catch(err => ({ columns: [], scores: [], error: err })),
     getMyReadingScores(student.id, year, sem).catch(err => ({ columns: [], scores: [], error: err })),
-    getMyPrayerRecords(student.id, year, sem).catch(err => Object.assign([], { error: err })),
+    getMyPrayerRecords(student.id, year, sem)
+      .then(records => ({ records, error: null }))
+      .catch(error => ({ records: [], error })),
     getStudentGPA(student.id, year, sem).catch(err => ({ samai: [], sasana: [], error: err })),
   ])
+  const prayers = prayerResult.records
 
   const lifeRows = _scoreRows(life.columns, life.scores)
   const readingRows = _scoreRows(reading.columns, reading.scores)
@@ -1509,6 +1512,7 @@ export async function renderStudentMyScores(student, activeTab = 'life', selecte
 
   const prayerCard = `
     <section class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-4">
+      ${prayerResult.error ? `<div class="px-4 py-3 bg-amber-50 border-b border-amber-100 text-xs text-amber-800">โหลดคะแนนละหมาดไม่สำเร็จ กรุณากดรีเฟรชหรือลองใหม่อีกครั้ง</div>` : ''}
       <div class="px-4 py-3 border-b border-gray-50 flex items-center justify-between">
         <div>
           <h3 class="font-bold text-gray-800 text-sm">🕌 คะแนนละหมาด</h3>
@@ -1604,7 +1608,7 @@ export async function renderStudentMyScores(student, activeTab = 'life', selecte
     </div>
     <p class="text-xs text-gray-400 mb-2">ข้อมูลภาค ${sem || '—'} / ${year || '—'} · ${activeKey === currentKey ? 'ภาคเรียนปัจจุบัน' : 'ข้อมูลย้อนหลัง'}</p>
     <p class="text-sm font-semibold text-gray-700 mb-4">${tabTitle}</p>
-    ${subjectGradeCard}
+    ${activeTab === 'life' ? subjectGradeCard : ''}
     ${content}
   `)
   document.getElementById('student-score-term')?.addEventListener('change', event => {
