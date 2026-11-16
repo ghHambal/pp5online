@@ -49,7 +49,9 @@ function _esc(s) {
 export function openCouncilCheckinScanner(opts) {
   const { activityId, activityTitle, members = [], alreadyChecked, onCheckedIn, onUndo, openToGeneral } = opts
   const dutyMode = opts.mode === 'duty'
+  const lookupMode = opts.mode === 'lookup'
   const onDutyScanned = opts.onDutyScanned
+  const onLookupScanned = opts.onLookupScanned
   const onClose = opts.onClose
   const dutyStatuses = [
     ['present', 'มา', 'bg-emerald-500 text-white'],
@@ -73,7 +75,7 @@ export function openCouncilCheckinScanner(opts) {
     </style>
     <div class="flex items-center gap-3 px-4 py-3 border-b border-slate-800 flex-shrink-0">
       <div class="flex-1 min-w-0">
-        <h3 class="text-slate-100 font-bold text-sm">📷 ${dutyMode ? 'สแกนเช็คชื่อเวร' : 'สแกนเช็คอินกิจกรรม'}</h3>
+        <h3 class="text-slate-100 font-bold text-sm">📷 ${dutyMode ? 'สแกนเช็คชื่อเวร' : lookupMode ? 'สแกนค้นหาสมาชิก' : 'สแกนเช็คอินกิจกรรม'}</h3>
         <p class="text-xs text-slate-400 truncate">${_esc(activityTitle ?? '')}</p>
       </div>
       <button id="ccs-close" class="text-slate-400 hover:text-white text-2xl leading-none px-2">&times;</button>
@@ -95,7 +97,7 @@ export function openCouncilCheckinScanner(opts) {
       </div>
       <div id="ccs-feedback" class="min-h-[70px]">
         <div class="bg-slate-900 border border-slate-800 rounded-2xl p-4 text-center text-xs text-slate-400">
-          ${dutyMode ? 'ยกกล้องส่อง QR ของสมาชิกสภาเพื่อบันทึกสถานะเวร' : `ยกกล้องส่อง QR ของ${openToGeneral ? 'นักเรียน' : 'สมาชิกสภา'}เพื่อเช็คอิน`}
+          ${dutyMode ? 'ยกกล้องส่อง QR ของสมาชิกสภาเพื่อบันทึกสถานะเวร' : lookupMode ? 'สแกน QR นักเรียนเพื่อเลือกสมาชิกสำหรับบันทึกเงินออม' : `ยกกล้องส่อง QR ของ${openToGeneral ? 'นักเรียน' : 'สมาชิกสภา'}เพื่อเช็คอิน`}
         </div>
       </div>
       <form id="ccs-manual-form" class="flex gap-2">
@@ -157,6 +159,20 @@ export function openCouncilCheckinScanner(opts) {
     if (!resolved) {
       _playScanBeep('error'); flash(false)
       feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">ไม่พบ${openToGeneral ? 'นักเรียน' : 'สมาชิกสภา'}รหัสนี้</div>`
+      return
+    }
+    if (lookupMode) {
+      try {
+        if (!resolved.member || !onLookupScanned) throw new Error('ไม่สามารถระบุสมาชิกสภาจาก QR นี้ได้')
+        _playScanBeep('success'); flash(true)
+        feedback.innerHTML = `<div class="bg-emerald-950/40 border border-emerald-800/80 rounded-2xl p-3 text-center text-xs text-emerald-300">พบ ${_esc(resolved.name)} กำลังเลือกสมาชิก…</div>`
+        onLookupScanned(resolved.member)
+        if (html5Qrcode) { try { await html5Qrcode.stop() } catch { /* กล้องอาจหยุดไปแล้ว */ } }
+        overlay.remove()
+      } catch (err) {
+        _playScanBeep('error'); flash(false)
+        feedback.innerHTML = `<div class="bg-red-950/40 border border-red-800/80 rounded-2xl p-3 text-center text-xs text-red-400">เลือกสมาชิกไม่สำเร็จ: ${_esc(getFriendlyErrorMessage(err))}</div>`
+      }
       return
     }
     const statusForThisScan = selectedDutyStatus

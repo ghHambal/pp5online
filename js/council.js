@@ -221,6 +221,8 @@ let councilSavingsLoading = false
 let councilSavingsTermId = null
 let councilSavingsLoadError = false
 let councilSavingsSearch = ''
+let councilSavingsMemberSearch = ''
+let councilSavingsSelectedMemberId = null
 let councilSavingsBusy = false
 const attendanceByActivity = {} // { [activityId]: Set<studentId> }
 let ylaEvents = null
@@ -436,6 +438,8 @@ async function switchCouncilTerm(termId) {
   councilSavingsSnapshot = null
   councilSavingsTermId = null
   councilSavingsLoadError = false
+  councilSavingsMemberSearch = ''
+  councilSavingsSelectedMemberId = null
   const termDateRange = councilTermDateRange(term)
   const startMonth = termDateRange.start.slice(0, 7)
   const endMonth = termDateRange.end.slice(0, 7)
@@ -3143,6 +3147,10 @@ function renderCouncilSavingsView() {
 
   const snapshot = councilSavingsSnapshot
   const members = snapshot.members ?? []
+  const selectedSavingsMember = members.find(member => String(member.membership_id) === String(councilSavingsSelectedMemberId)) ?? null
+  const memberQuery = councilSavingsMemberSearch.trim().toLocaleLowerCase()
+  const matchingSavingsMembers = memberQuery ? members.filter(member => [member.full_name, member.student_code, member.main_room, member.position_name]
+    .some(value => String(value ?? '').toLocaleLowerCase().includes(memberQuery))).slice(0, 12) : []
   const transactions = snapshot.transactions ?? []
   const reversed = new Set(transactions.filter(row => row.entry_type === 'reversal').map(row => Number(row.reversal_of_id)))
   const filter = councilSavingsSearch.trim().toLocaleLowerCase()
@@ -3161,7 +3169,7 @@ function renderCouncilSavingsView() {
   return `<div class="space-y-5">
     <header><h2 class="text-xl font-extrabold text-[var(--ink)]">💰 เงินออมสภานักเรียน</h2><p class="mt-1 text-xs text-[var(--muted)]">${esc(selectedCouncilTerm()?.term_label ?? '')} · ยอดประจำสัปดาห์คิดตามสัปดาห์วันจันทร์ถึงวันอาทิตย์</p></header>
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">${summaryCard('ยอดออมสะสมทั้งวาระ', `${savingsMoney(snapshot.total_amount)} บาท`)}${summaryCard('ยอดออมสัปดาห์นี้', `${savingsMoney(snapshot.this_week_amount)} บาท`, `เริ่มสัปดาห์ ${esc(snapshot.week_start)}`)}${summaryCard('สมาชิกที่มีรายการสัปดาห์นี้', `${snapshot.contributors_this_week ?? 0} คน`, `จากสมาชิกทั้งหมด ${snapshot.member_count ?? 0} คน`)}</div>
-    ${snapshot.is_manager ? `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4"><h3 class="mb-3 text-sm font-extrabold text-[var(--ink)]">บันทึกเงินออม</h3><form id="council-savings-form" class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6"><label class="text-xs font-bold text-[var(--muted)] lg:col-span-2">สมาชิก<select name="membership_id" required class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"><option value="">เลือกสมาชิก</option>${members.map(member => `<option value="${member.membership_id}">${esc(member.full_name)} · ${esc(member.student_code)} · ${esc(member.position_name)}</option>`).join('')}</select></label><label class="text-xs font-bold text-[var(--muted)]">จำนวนเงิน (บาท)<input name="amount" type="number" min="0.01" max="100000" step="0.01" required class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]" placeholder="เช่น 20"></label><label class="text-xs font-bold text-[var(--muted)]">วันที่รับเงิน<input name="deposit_date" type="date" value="${today}" required class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"></label><label class="text-xs font-bold text-[var(--muted)]">วิธีรับ<select name="payment_method" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"><option value="cash">เงินสด</option><option value="transfer">โอนเงิน</option><option value="other">อื่น ๆ</option></select></label><label class="text-xs font-bold text-[var(--muted)] lg:col-span-2">หมายเหตุ (ถ้ามี)<input name="note" maxlength="500" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]" placeholder="หมายเหตุหรือเลขอ้างอิง"></label><div class="flex items-end lg:col-span-2"><button type="submit" class="w-full rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50" ${councilSavingsBusy || !members.length ? 'disabled' : ''}>บันทึกรายการออม</button></div></form><p class="mt-2 text-[0.6875rem] text-[var(--muted-2)]">รายการที่บันทึกแล้วแก้ทับไม่ได้ หากผิดให้ยกเลิกรายการพร้อมระบุเหตุผล แล้วบันทึกรายการที่ถูกต้อง</p></section>
+    ${snapshot.is_manager ? `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4"><h3 class="mb-3 text-sm font-extrabold text-[var(--ink)]">บันทึกเงินออม</h3><form id="council-savings-form" class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-6"><div class="text-xs font-bold text-[var(--muted)] lg:col-span-2"><label for="council-savings-member-search">สมาชิก</label><div class="mt-1 flex gap-2"><input id="council-savings-member-search" type="search" autocomplete="off" value="${esc(councilSavingsMemberSearch)}" placeholder="ค้นหาชื่อ รหัส ฝ่าย หรือห้อง" class="min-w-0 flex-1 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"><button id="council-savings-scan" type="button" class="shrink-0 rounded-xl border border-[var(--primary-soft-line)] bg-[var(--primary-soft)] px-3 py-2 text-xs font-bold text-[var(--primary)]">📷 สแกน QR</button></div><input type="hidden" name="membership_id" value="${esc(selectedSavingsMember?.membership_id ?? '')}">${selectedSavingsMember ? `<div class="mt-2 flex items-center justify-between gap-2 rounded-xl bg-[var(--surface-2)] px-3 py-2"><span class="truncate text-xs font-semibold text-[var(--ink)]">✓ ${esc(selectedSavingsMember.full_name)} · ${esc(selectedSavingsMember.student_code)}</span><button id="council-savings-clear-member" type="button" class="shrink-0 rounded-lg border border-[var(--line)] px-2 py-1 text-[0.625rem] font-bold text-[var(--muted)]">เปลี่ยน</button></div>` : ''}${memberQuery ? `<div class="mt-1 max-h-56 overflow-y-auto rounded-xl border border-[var(--line)] bg-[var(--surface)] shadow-lg">${matchingSavingsMembers.length ? matchingSavingsMembers.map(member => `<button type="button" data-savings-select-member="${member.membership_id}" class="block w-full border-b border-[var(--line-soft)] px-3 py-2.5 text-left last:border-0 hover:bg-[var(--surface-2)]"><span class="block truncate text-xs font-bold text-[var(--ink)]">${esc(member.full_name)}</span><span class="mt-0.5 block truncate text-[0.625rem] text-[var(--muted)]">${esc(member.student_code)} · ${esc(member.position_name)} · ${esc(member.main_room ?? 'ไม่ระบุห้อง')}</span></button>`).join('') : '<p class="px-3 py-3 text-xs font-normal text-[var(--muted)]">ไม่พบสมาชิกที่ตรงกับคำค้น</p>'}</div>` : '<p class="mt-1 text-[0.625rem] font-normal text-[var(--muted-2)]">ค้นจากชื่อ รหัสนักเรียน ฝ่าย หรือห้อง หรือสแกน QR</p>'}</div><label class="text-xs font-bold text-[var(--muted)]">จำนวนเงิน (บาท)<input name="amount" type="number" min="0.01" max="100000" step="0.01" required class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]" placeholder="เช่น 20"></label><label class="text-xs font-bold text-[var(--muted)]">วันที่รับเงิน<input name="deposit_date" type="date" value="${today}" required class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"></label><label class="text-xs font-bold text-[var(--muted)]">วิธีรับ<select name="payment_method" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"><option value="cash">เงินสด</option><option value="transfer">โอนเงิน</option><option value="other">อื่น ๆ</option></select></label><label class="text-xs font-bold text-[var(--muted)] lg:col-span-2">หมายเหตุ (ถ้ามี)<input name="note" maxlength="500" class="mt-1 w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]" placeholder="หมายเหตุหรือเลขอ้างอิง"></label><div class="flex items-end lg:col-span-2"><button type="submit" class="w-full rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50" ${councilSavingsBusy || !members.length ? 'disabled' : ''}>บันทึกรายการออม</button></div></form><p class="mt-2 text-[0.6875rem] text-[var(--muted-2)]">รายการที่บันทึกแล้วแก้ทับไม่ได้ หากผิดให้ยกเลิกรายการพร้อมระบุเหตุผล แล้วบันทึกรายการที่ถูกต้อง</p></section>
     <section class="overflow-hidden rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)]"><div class="flex flex-wrap items-center justify-between gap-2 p-4"><div><h3 class="text-sm font-extrabold text-[var(--ink)]">ยอดออมรายสมาชิก</h3><p class="mt-1 text-[0.6875rem] text-[var(--muted)]">ข้อมูลส่วนนี้เห็นได้เฉพาะผู้ดูแลเงินออม</p></div><input id="council-savings-search" type="search" value="${esc(councilSavingsSearch)}" placeholder="ค้นหาชื่อ รหัส ฝ่าย ห้อง" class="min-w-48 rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-xs text-[var(--ink)]"></div><div class="overflow-x-auto"><table class="w-full min-w-[540px] text-xs"><thead class="bg-[var(--surface-2)] text-[var(--muted)]"><tr><th class="px-3 py-2 text-left">สมาชิก</th><th class="px-3 py-2 text-right">สัปดาห์นี้</th><th class="px-3 py-2 text-right">สะสม</th></tr></thead><tbody>${memberRows || '<tr><td colspan="3" class="px-3 py-8 text-center text-[var(--muted)]">ไม่พบสมาชิกที่ค้นหา</td></tr>'}</tbody></table></div></section>` : `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)] p-4"><h3 class="text-sm font-extrabold text-[var(--ink)]">ยอดออมของฉัน</h3><p class="mt-1 text-xs text-[var(--muted)]">สมาชิกทั่วไปเห็นรายละเอียดของตนเองและยอดรวมสภา</p></section>`}
     <section class="overflow-hidden rounded-2xl border border-[var(--line-soft)] bg-[var(--surface)]"><div class="p-4"><h3 class="text-sm font-extrabold text-[var(--ink)]">ประวัติการออม${snapshot.is_manager ? 'ล่าสุด' : 'ของฉัน'}</h3><p class="mt-1 text-[0.6875rem] text-[var(--muted)]">แสดงรายการล่าสุดไม่เกิน 80 รายการ</p></div><div class="overflow-x-auto"><table class="w-full min-w-[520px] text-xs"><thead class="bg-[var(--surface-2)] text-[var(--muted)]"><tr><th class="px-3 py-2 text-left">วันที่ / สัปดาห์</th>${snapshot.is_manager ? '<th class="px-3 py-2 text-left">สมาชิก</th>' : ''}<th class="px-3 py-2 text-left">รายการ</th>${snapshot.is_manager ? '<th class="px-3 py-2 text-right">จัดการ</th>' : ''}</tr></thead><tbody>${transactionRows || `<tr><td colspan="${snapshot.is_manager ? 4 : 2}" class="px-3 py-8 text-center text-[var(--muted)]">ยังไม่มีรายการออมในวาระนี้</td></tr>`}</tbody></table></div></section>
     ${transactions.length > 80 ? '<p class="text-center text-[0.6875rem] text-[var(--muted-2)]">กำลังแสดง 80 รายการล่าสุด</p>' : ''}
@@ -6286,16 +6294,50 @@ function wireContentEvents() {
     loadCouncilSavingsSnapshot()
     render()
   })
+  document.getElementById('council-savings-member-search')?.addEventListener('input', event => {
+    councilSavingsMemberSearch = event.target.value
+    councilSavingsSelectedMemberId = null
+    const cursor = event.target.selectionStart
+    render()
+    const nextInput = document.getElementById('council-savings-member-search')
+    nextInput?.focus()
+    nextInput?.setSelectionRange(cursor, cursor)
+  })
+  document.querySelectorAll('[data-savings-select-member]').forEach(button => button.addEventListener('click', () => {
+    councilSavingsSelectedMemberId = button.dataset.savingsSelectMember
+    councilSavingsMemberSearch = ''
+    render()
+  }))
+  document.getElementById('council-savings-clear-member')?.addEventListener('click', () => {
+    councilSavingsSelectedMemberId = null
+    councilSavingsMemberSearch = ''
+    render()
+  })
+  document.getElementById('council-savings-scan')?.addEventListener('click', () => {
+    const scanMembers = (ctx.members ?? []).filter(member => member.status === 'active')
+    if (!scanMembers.length) { showToast('ไม่พบสมาชิกสภาในวาระนี้', 'warning'); return }
+    openCouncilCheckinScanner({
+      mode: 'lookup', activityTitle: 'สแกน QR เพื่อเลือกสมาชิกออมเงิน', members: scanMembers,
+      onLookupScanned: member => {
+        councilSavingsSelectedMemberId = member.id
+        councilSavingsMemberSearch = ''
+        showToast(`เลือก ${member.students?.full_name ?? 'สมาชิก'} แล้ว`, 'success')
+        render()
+      },
+    })
+  })
   document.getElementById('council-savings-form')?.addEventListener('submit', async event => {
     event.preventDefault()
     if (councilSavingsBusy) return
     const form = event.currentTarget
+    const membershipId = form.elements.membership_id.value
+    if (!membershipId) { showToast('กรุณาค้นหาและเลือกสมาชิกก่อนบันทึก', 'warning'); return }
     councilSavingsBusy = true
     render()
     try {
       await recordCouncilSavingsDeposit({
         termId: selectedCouncilTermId,
-        membershipId: form.elements.membership_id.value,
+        membershipId,
         amount: form.elements.amount.value,
         depositDate: form.elements.deposit_date.value,
         paymentMethod: form.elements.payment_method.value,
