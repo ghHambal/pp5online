@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1091'
+import { APP_VERSION } from './version.js?v=10.22.1092'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1092': [
+    'ปรับหน้าทำเนียบสภาเป็นผังองค์กร วางประธานและรองประธานไว้ด้านบน จัดสมาชิกตามฝ่าย และเพิ่มแท็บฝ่ายพร้อมแสดงหัวหน้าฝ่ายเหนือสมาชิก',
+  ],
   '10.22.1091': [
     'เพิ่มหน้าต่างเช็คชื่อเต็มจอในรายละเอียดกิจกรรม YLA ใช้รูปนักเรียน ปุ่มสถานะสี ตัวกรองเพศ/ฝ่าย ค้นหา เลือกสถานะเป็นชุด และสแกน QR พร้อมบันทึกแยกตามช่วงกิจกรรม',
   ],

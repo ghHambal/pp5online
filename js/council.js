@@ -3095,14 +3095,22 @@ let rosterDepartmentId = 'all'
 function renderRosterView() {
   if (!['all', 'M', 'W'].includes(rosterGenderTab)) rosterGenderTab = 'all'
   const scopedMembers = membersVisibleToCouncilAdvisor()
-  const departmentOptions = [...new Map(scopedMembers
-    .filter(member => member.position_id && member.council_positions?.position_name)
-    .map(member => [Number(member.position_id), member.council_positions.position_name]))]
-    .sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'th'))
+  const genderMembers = scopedMembers.filter(member => rosterGenderTab === 'all' || member.council_positions?.gender === rosterGenderTab)
+  const assignedPositionIds = new Set((ctx.advisorPositionIds ?? []).map(Number))
+  const departmentOrder = new Map()
+  const departmentPositions = (ctx.positions ?? []).filter(position => position.is_active && (rosterGenderTab === 'all' || position.gender === rosterGenderTab)
+    && (position.position_name ?? '').startsWith('ฝ่าย') && position.position_name !== UNASSIGNED_POSITION_NAME
+    && (!ctx.isCouncilAdvisor || ctx.isAdmin || assignedPositionIds.has(Number(position.id))))
+  departmentPositions.forEach(position => {
+    const name = position.position_name
+    const order = Number(position.sort_order) || 99
+    departmentOrder.set(name, Math.min(departmentOrder.get(name) ?? 99, order))
+  })
+  const departmentOptions = [...departmentOrder.keys()].sort((a, b) => (departmentOrder.get(a) - departmentOrder.get(b)) || String(a).localeCompare(String(b), 'th'))
+  if (rosterDepartmentId !== 'all' && !departmentOptions.includes(rosterDepartmentId)) rosterDepartmentId = 'all'
   const query = rosterSearch.trim().toLocaleLowerCase()
-  const list = scopedMembers.filter(member => {
-    if (rosterGenderTab !== 'all' && member.council_positions?.gender !== rosterGenderTab) return false
-    if (rosterDepartmentId !== 'all' && Number(member.position_id) !== Number(rosterDepartmentId)) return false
+  const list = genderMembers.filter(member => {
+    if (rosterDepartmentId !== 'all' && member.council_positions?.position_name !== rosterDepartmentId) return false
     if (!query) return true
     const searchable = [
       member.students?.full_name, member.students?.student_code, member.students?.main_room,
@@ -3126,8 +3134,8 @@ function renderRosterView() {
     </div>
     <div class="mb-4 grid grid-cols-1 sm:grid-cols-[minmax(0,1fr)_240px] gap-2">
       <input id="roster-search" type="search" value="${esc(rosterSearch)}" placeholder="ค้นหาชื่อ รหัส ห้อง ฝ่าย หรือตำแหน่ง" class="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]">
-      <select id="roster-department-filter" class="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]"><option value="all">ทุกฝ่าย</option>${departmentOptions.map(([id,name]) => `<option value="${id}" ${String(rosterDepartmentId) === String(id) ? 'selected' : ''}>${esc(name)}</option>`).join('')}</select>
     </div>
+    <div class="mb-4 flex gap-2 overflow-x-auto pb-1"><button type="button" class="roster-department-tab shrink-0 rounded-full px-4 py-2 text-xs font-bold ${rosterDepartmentId === 'all' ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)] bg-[var(--surface)] text-[var(--ink-2)]'}" data-department="all">ทั้งหมด</button>${departmentOptions.map(name => `<button type="button" class="roster-department-tab shrink-0 rounded-full px-4 py-2 text-xs font-bold ${rosterDepartmentId === name ? 'bg-[var(--primary)] text-white' : 'border border-[var(--line)] bg-[var(--surface)] text-[var(--ink-2)]'}" data-department="${esc(name)}">${esc(name)}</button>`).join('')}</div>
     <p class="mb-3 text-xs text-[var(--muted)]">พบ ${list.length} รายชื่อ${query ? ` จากคำค้น “${esc(rosterSearch.trim())}”` : ''}</p>`
 
   const addBtn = (ctx.isAdmin || ctx.isCouncilAdvisor) && termIsEditable()
@@ -3136,13 +3144,13 @@ function renderRosterView() {
       : `<button type="button" id="btn-add-council-member" class="w-full py-2.5 rounded-xl border border-dashed border-[var(--primary-45)] text-[var(--primary)] text-sm font-bold mb-4 hover:bg-[var(--primary-soft)]">＋ เพิ่มสมาชิกสภา${GENDER_LABEL[rosterGenderTab]}</button>`
     : ''
 
-  const memberCard = m => `
-    <div class="rounded-xl border border-[var(--line-soft)] p-3 bg-[var(--surface)] text-center">
-      ${studentPhoto(m.students, 'w-16 h-20 mx-auto')}
+  const memberCard = (m, featured = false) => `
+    <div class="rounded-2xl border border-[var(--line-soft)] p-4 bg-[var(--surface)] text-center ${featured ? 'mx-auto w-full max-w-sm shadow-sm' : 'h-full'}">
+      ${studentPhoto(m.students, featured ? 'w-24 h-32 mx-auto' : 'w-16 h-20 mx-auto')}
       <p class="text-sm font-bold text-[var(--ink)] truncate mt-2">${esc(m.students?.full_name ?? '—')}</p>
       <p class="text-[0.6875rem] text-[var(--muted)] truncate">${esc(m.students?.main_room ?? '')}</p>
       <p class="text-[0.6875rem] text-[var(--primary)] font-semibold truncate mt-0.5">${esc(m.council_positions?.position_name ?? '—')}</p>
-      ${m.position_role ? `<span class="inline-block mt-1 rounded-full px-2 py-0.5 text-[0.625rem] font-bold ${m.position_role === 'head' ? 'bg-[var(--gold-soft)] text-[var(--gold-ink)]' : 'bg-[var(--surface-2)] text-[var(--muted)]'}">${m.position_role === 'head' ? 'หัวหน้าฝ่าย' : 'สมาชิกฝ่าย'}</span>` : ''}
+      ${m.council_positions?.is_elected ? '<span class="inline-block mt-1 rounded-full bg-[var(--gold-soft)] px-2.5 py-1 text-[0.625rem] font-bold text-[var(--gold-ink)]">ประธานสภานักเรียน</span>' : m.council_positions?.position_name === 'รองประธานสภานักเรียน' ? '<span class="inline-block mt-1 rounded-full bg-[var(--primary-soft)] px-2.5 py-1 text-[0.625rem] font-bold text-[var(--primary)]">รองประธานสภานักเรียน</span>' : m.position_role ? `<span class="inline-block mt-1 rounded-full px-2 py-0.5 text-[0.625rem] font-bold ${m.position_role === 'head' ? 'bg-[var(--gold-soft)] text-[var(--gold-ink)]' : 'bg-[var(--surface-2)] text-[var(--muted)]'}">${m.position_role === 'head' ? 'หัวหน้าฝ่าย' : 'สมาชิกฝ่าย'}</span>` : ''}
       ${m.status !== 'active' ? `<span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[0.625rem] font-bold ${m.status === 'designate' ? 'bg-[var(--gold-soft)] text-[var(--gold-ink)]' : 'bg-[var(--surface-2)] text-[var(--muted)]'}">${m.status === 'designate' ? 'ว่าที่สมาชิก' : 'หมดวาระ'}</span>` : ''}
       ${(ctx.isAdmin || (ctx.isChair && ctx.chairGender === m.council_positions?.gender)) ? `
         <button type="button" class="btn-toggle-can-create w-full mt-2 text-[0.625rem] font-bold py-1 rounded-[8px] border ${m.can_create_activities ? 'border-[var(--ok-soft-line)] bg-[var(--ok-soft)] text-[#106143]' : 'border-[var(--line)] text-[var(--muted)]'}" data-id="${m.id}" data-value="${m.can_create_activities ? '' : '1'}">${m.can_create_activities ? '✅ สร้างกิจกรรมได้' : '➕ ให้สิทธิ์สร้างกิจกรรม'}</button>` : ''}
@@ -3153,20 +3161,30 @@ function renderRosterView() {
         </div>` : ''}
     </div>`
 
-  const groups = (rosterGenderTab === 'all' ? ['M', 'W'] : [rosterGenderTab]).map(gender => {
-    const genderMembers = list.filter(member => member.council_positions?.gender === gender)
-    if (!genderMembers.length) return ''
-    const categoryGroups = ROSTER_CATEGORIES.map(cat => {
-      const categoryMembers = genderMembers.filter(member => cat.match(member.council_positions))
-      if (!categoryMembers.length) return ''
-      return `<div class="mb-4"><p class="text-xs font-bold text-[var(--muted-2)] mb-2">${cat.label}</p><div class="grid grid-cols-2 sm:grid-cols-3 gap-3">${categoryMembers.map(memberCard).join('')}</div></div>`
-    }).join('')
-    return `${rosterGenderTab === 'all' ? `<h2 class="mb-3 mt-5 text-base font-bold text-[var(--primary)]">สภา${GENDER_LABEL[gender]}</h2>` : ''}${categoryGroups}`
+  const presidentMembers = list.filter(member => member.council_positions?.is_elected)
+  const vicePresidents = list.filter(member => member.council_positions?.position_name === 'รองประธานสภานักเรียน')
+  const departmentSections = (rosterDepartmentId === 'all' ? departmentOptions : departmentOptions.filter(name => name === rosterDepartmentId)).map(name => {
+    const visibleMembers = list.filter(member => member.council_positions?.position_name === name)
+    if (query && !visibleMembers.length) return ''
+    const heads = genderMembers.filter(member => member.council_positions?.position_name === name && member.position_role === 'head')
+    const teamMembers = visibleMembers.filter(member => member.position_role !== 'head')
+    return `<section class="rounded-2xl border border-[var(--primary-soft-line)] bg-[var(--bg-2)] p-4 sm:p-5"><h2 class="mb-4 text-center text-base font-extrabold text-[var(--primary)]">${esc(name)}</h2><div class="mb-4"><p class="mb-2 text-center text-xs font-bold text-[var(--muted)]">หัวหน้าฝ่าย</p>${heads.length ? `<div class="flex flex-wrap justify-center gap-3">${heads.map(member => memberCard(member, true)).join('')}</div>` : '<p class="mx-auto max-w-sm rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] p-4 text-center text-xs text-[var(--muted)]">ยังไม่ได้กำหนดหัวหน้าฝ่าย</p>'}</div>${teamMembers.length ? `<p class="mb-2 text-center text-xs font-bold text-[var(--muted)]">สมาชิกฝ่าย</p><div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">${teamMembers.map(member => memberCard(member)).join('')}</div>` : '<p class="text-center text-xs text-[var(--muted)]">ยังไม่มีสมาชิกฝ่ายเพิ่มเติม</p>'}</section>`
   }).join('')
+  const ungroupedMembers = list.filter(member => !member.council_positions?.is_elected && member.council_positions?.position_name !== 'รองประธานสภานักเรียน' && !(member.council_positions?.position_name ?? '').startsWith('ฝ่าย'))
+  const supportGroups = rosterDepartmentId === 'all' ? ROSTER_CATEGORIES.filter(category => ['สำนักงานสภา', 'ยังไม่ระบุฝ่าย'].includes(category.label)).map(category => {
+    const members = ungroupedMembers.filter(member => category.match(member.council_positions))
+    return members.length ? `<section class="rounded-2xl border border-[var(--line-soft)] bg-[var(--bg-2)] p-4"><h2 class="mb-3 text-center text-sm font-bold text-[var(--muted)]">${category.label}</h2><div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">${members.map(member => memberCard(member)).join('')}</div></section>` : ''
+  }).join('') : ''
+  const presidentSection = presidentMembers.length ? `<h2 class="mb-3 text-center text-sm font-bold text-[var(--muted)]">ประธานสภานักเรียน</h2><div class="flex flex-wrap justify-center gap-3">${presidentMembers.map(member => memberCard(member, true)).join('')}</div>` : !query ? '<h2 class="mb-3 text-center text-sm font-bold text-[var(--muted)]">ประธานสภานักเรียน</h2><p class="mx-auto max-w-sm rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] p-4 text-center text-xs text-[var(--muted)]">ยังไม่มีประธานสภานักเรียน</p>' : ''
+  const viceSection = vicePresidents.length ? `<h2 class="mb-3 mt-1 text-center text-sm font-bold text-[var(--muted)]">รองประธานสภานักเรียน</h2><div class="flex flex-wrap justify-center gap-3">${vicePresidents.map(member => memberCard(member, true)).join('')}</div>` : !query ? '<h2 class="mb-3 mt-1 text-center text-sm font-bold text-[var(--muted)]">รองประธานสภานักเรียน</h2><p class="mx-auto max-w-sm rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] p-4 text-center text-xs text-[var(--muted)]">ยังไม่มีรองประธานสภานักเรียน</p>' : ''
+  const leadership = rosterDepartmentId === 'all' ? `<section class="mb-6">${presidentSection}${presidentSection && viceSection ? '<div class="mx-auto h-6 w-px bg-[var(--line)]"></div>' : ''}${viceSection}${viceSection && departmentSections ? '<div class="mx-auto h-6 w-px bg-[var(--line)]"></div>' : ''}</section>` : ''
+  const selectedDepartmentContent = rosterDepartmentId === 'all'
+    ? `${leadership}<div class="space-y-4">${departmentSections}${supportGroups}</div>`
+    : departmentSections || '<p class="py-10 text-center text-xs text-[var(--muted-2)]">ไม่พบสมาชิกในฝ่ายนี้ตามตัวกรอง</p>'
 
   const scopeNote = ctx.isCouncilAdvisor && !ctx.isAdmin
     ? `<p class="mb-3 rounded-xl border border-[var(--primary-soft-line)] bg-[var(--primary-soft)] px-4 py-3 text-xs text-[var(--primary-dark)]">แสดงรายชื่อเฉพาะฝ่ายที่ได้รับมอบหมาย (${scopedMembers.length} รายการ) · ครูแอดมินเป็นผู้กำหนดฝ่ายในหน้า มอบสิทธิ์</p>` : ''
-  return `${scopeNote}${tabs}${addBtn}${groups || `<p class="text-xs text-[var(--muted-2)] text-center py-10">${ctx.isCouncilAdvisor && !ctx.isAdmin && !ctx.advisorPositionIds?.length ? 'ยังไม่มีฝ่ายที่ได้รับมอบหมาย กรุณาติดต่อผู้ดูแลระบบ' : 'ไม่พบรายชื่อที่ตรงกับตัวกรอง'}</p>`}`
+  return `${scopeNote}${tabs}${addBtn}${query && !list.length ? `<p class="text-xs text-[var(--muted-2)] text-center py-10">ไม่พบรายชื่อที่ตรงกับตัวกรอง</p>` : selectedDepartmentContent}`
 }
 
 // ─── เพิ่ม/แก้ไขสมาชิกสภาโดยตรง (แอดมิน/ครูที่ปรึกษาสภา) ────────────────────────────
@@ -6411,10 +6429,10 @@ function wireContentEvents() {
     nextSearch?.focus()
     nextSearch?.setSelectionRange(cursor, cursor)
   })
-  document.getElementById('roster-department-filter')?.addEventListener('change', e => {
-    rosterDepartmentId = e.target.value
+  document.querySelectorAll('.roster-department-tab').forEach(btn => btn.addEventListener('click', () => {
+    rosterDepartmentId = btn.dataset.department || 'all'
     render()
-  })
+  }))
   document.querySelectorAll('.btn-add-council-member-gender').forEach(btn => {
     btn.addEventListener('click', () => openMemberModal({ mode: 'add', gender: btn.dataset.gender }))
   })
