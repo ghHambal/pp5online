@@ -26,7 +26,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1100'
+import { APP_VERSION } from './version.js?v=10.22.1101'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -3150,52 +3150,45 @@ export async function renderStudentProfile(student, onLogout) {
 
   setContent(`
     <h2 class="font-bold text-gray-800 mb-4">👤 โปรไฟล์ของฉัน</h2>
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4 flex items-center gap-4 relative overflow-hidden min-h-[17rem]">
-      <!-- Specular vertical frame with 3D shadow and sheen -->
-      <div class="relative w-[72px] h-[96px] rounded-2xl overflow-hidden flex-shrink-0 bg-gradient-to-b from-gray-100 to-gray-200 border-2 border-white shadow-[0_8px_16px_rgba(0,0,0,0.12),inset_0_1px_2px_rgba(255,255,255,0.7)] flex items-center justify-center">
-        <!-- Glass sheen overlay for 3D look -->
-        <div class="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/35 pointer-events-none z-10"></div>
-        <div class="absolute inset-0 border border-black/5 rounded-2xl pointer-events-none z-20"></div>
-        
-        ${student.image_url
-          ? `<img src="${student.image_url}" class="w-full h-full object-cover relative z-0"/>`
-          : `<span class="text-white text-3xl font-bold bg-gradient-to-tr from-emerald-400 to-teal-400 w-full h-full flex items-center justify-center select-none relative z-0">
-               ${(student.full_name??'น').charAt(0)}
-             </span>`
-        }
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4 flex flex-col gap-4 relative overflow-hidden min-h-[15rem]">
+      <div class="flex w-full items-center gap-4">
+        <!-- Specular vertical frame with 3D shadow and sheen -->
+        <div class="relative w-[84px] h-[112px] sm:w-24 sm:h-32 rounded-2xl overflow-hidden flex-shrink-0 bg-gradient-to-b from-gray-100 to-gray-200 border-2 border-white shadow-[0_8px_16px_rgba(0,0,0,0.12),inset_0_1px_2px_rgba(255,255,255,0.7)] flex items-center justify-center">
+          <div class="absolute inset-0 bg-gradient-to-tr from-transparent via-white/10 to-white/35 pointer-events-none z-10"></div>
+          <div class="absolute inset-0 border border-black/5 rounded-2xl pointer-events-none z-20"></div>
+          ${student.image_url
+            ? `<img src="${student.image_url}" class="w-full h-full object-cover relative z-0"/>`
+            : `<span class="text-white text-3xl font-bold bg-gradient-to-tr from-emerald-400 to-teal-400 w-full h-full flex items-center justify-center select-none relative z-0">${(student.full_name??'น').charAt(0)}</span>`
+          }
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="font-bold text-gray-800 text-lg sm:text-xl leading-snug break-words">${student.full_name}</p>
+          <p class="text-sm text-gray-400 mt-1">รหัส ${student.student_code}</p>
+          <p class="text-sm text-gray-500 mt-0.5">ห้อง ${student.main_room ?? '—'}</p>
+          ${student.religion_room ? `<p class="text-sm text-gray-500 mt-0.5">ห้องศาสนา ${student.religion_room}</p>` : ''}
+        </div>
       </div>
-      <div class="flex-1 min-w-0">
-        <p class="font-bold text-gray-800 text-base leading-snug truncate">${student.full_name}</p>
-        <p class="text-xs text-gray-400 mt-1">รหัส ${student.student_code}</p>
-        <p class="text-xs text-gray-500 mt-0.5">ห้อง ${student.main_room ?? '—'}</p>
-        ${student.religion_room ? `<p class="text-xs text-gray-500 mt-0.5">ห้องศาสนา ${student.religion_room}</p>` : ''}
-      </div>
-      <!-- Profile actions: QR, classroom pass, leave request, and QR card request -->
-      <div class="flex flex-col gap-2 flex-shrink-0">
-        <button id="btn-show-my-qr"
-          class="w-12 h-12 rounded-2xl bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-600 flex items-center justify-center shadow-sm border border-emerald-100/50 transition-all"
-          title="แสดง QR Code ของฉัน">
-          <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+      <div class="grid w-full grid-cols-4 gap-2 border-t border-gray-100 pt-4">
+        <button id="btn-show-my-qr" class="flex min-h-16 w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-emerald-100 bg-emerald-50 px-1 py-2 text-emerald-600 shadow-sm transition hover:bg-emerald-100 active:scale-95" title="แสดง QR Code ของฉัน">
+          <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path d="M3 3h6v6H3V3zm2 2v2h2V5H5z"/>
             <path d="M15 3h6v6h-6V3zm2 2v2h2V5h-2z"/>
             <path d="M3 15h6v6H3v-6zm2 2v2h2v-2H5z"/>
             <path d="M10 3h2v2h-2V3zm0 4h2v2h-2V7zm3 0h2v2h-2V7zm0-4h2v2h-2V3zm5 8h2v2h-2v-2zm-3 2h2v2h-2v-2zm3 3h2v2h-2v-2zm-3 3h2v2h-2v-2zm-3-3h2v2h-2v-2zm-3 3h2v2h-2v-2zm6-3h2v2h-2v-2zm3-3h2v2h-2v-2z"/>
           </svg>
+          <span class="text-center text-[9px] font-semibold leading-tight sm:text-[11px]">QR Code</span>
         </button>
-        <button id="btn-show-my-leave"
-          class="w-12 h-12 rounded-2xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-600 flex items-center justify-center shadow-sm border border-amber-100/50 transition-all text-xl"
-          title="ใบอนุญาตออกนอกห้อง" aria-label="ใบอนุญาตออกนอกห้อง">
-          🚪
+        <button id="btn-show-my-leave" class="flex min-h-16 w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-amber-100 bg-amber-50 px-1 py-2 text-amber-600 shadow-sm transition hover:bg-amber-100 active:scale-95" title="ใบอนุญาตออกนอกห้อง" aria-label="ใบอนุญาตออกนอกห้อง">
+          <span class="text-xl leading-none" aria-hidden="true">🚪</span>
+          <span class="text-center text-[9px] font-semibold leading-tight sm:text-[11px]">ออกนอกห้อง</span>
         </button>
-        <button id="btn-stu-leave-request"
-          class="w-12 h-12 rounded-2xl bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-600 flex items-center justify-center shadow-sm border border-indigo-100/50 transition-all text-xl"
-          title="แจ้งลา / ลาป่วย" aria-label="แจ้งลา / ลาป่วย">
-          📄
+        <button id="btn-stu-leave-request" class="flex min-h-16 w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-indigo-100 bg-indigo-50 px-1 py-2 text-indigo-600 shadow-sm transition hover:bg-indigo-100 active:scale-95" title="แจ้งลา / ลาป่วย" aria-label="แจ้งลา / ลาป่วย">
+          <span class="text-xl leading-none" aria-hidden="true">📄</span>
+          <span class="text-center text-[9px] font-semibold leading-tight sm:text-[11px]">แจ้งลา/ลาป่วย</span>
         </button>
-        <button id="btn-request-qr-card"
-          class="w-12 h-12 rounded-2xl bg-pink-50 hover:bg-pink-100 active:scale-95 text-pink-600 flex items-center justify-center shadow-sm border border-pink-100/50 transition-all text-xl"
-          title="แจ้งขอทำบัตร QR Code">
-          🎫
+        <button id="btn-request-qr-card" class="flex min-h-16 w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-pink-100 bg-pink-50 px-1 py-2 text-pink-600 shadow-sm transition hover:bg-pink-100 active:scale-95" title="แจ้งขอทำบัตร QR Code">
+          <span class="text-xl leading-none" aria-hidden="true">🎫</span>
+          <span class="text-center text-[9px] font-semibold leading-tight sm:text-[11px]">ขอบัตร QR</span>
         </button>
       </div>
     </div>

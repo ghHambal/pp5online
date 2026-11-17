@@ -50,13 +50,59 @@ export async function renderStudentLeaveRequests(teacher, { container = null, fo
   }
 
   let filter = 'pending'
-  const render = () => {
-    const rows = all.filter(r => filter === 'all' || r.status === filter)
+  let search = ''
+  let leaveTypeFilter = 'all'
+  let leaveDateFrom = ''
+  let leaveDateTo = ''
+  const render = ({ searchSelection = null } = {}) => {
+    const needle = search.trim().toLocaleLowerCase()
+    const rows = all.filter(r => {
+      if (filter !== 'all' && r.status !== filter) return false
+      if (leaveTypeFilter !== 'all' && r.leave_type !== leaveTypeFilter) return false
+      // แสดงคำขอที่มีช่วงวันลาทับกับช่วงวันที่เลือก
+      if (leaveDateFrom && r.end_date < leaveDateFrom) return false
+      if (leaveDateTo && r.start_date > leaveDateTo) return false
+      if (!needle) return true
+      const student = r.students ?? {}
+      const room = [student.main_room, student.religion_room].filter(Boolean).join(' ')
+      const searchable = [
+        r.id, r.student_id, student.full_name, student.student_code, room,
+        TYPE_LABEL[r.leave_type], r.leave_type, STATUS[r.status]?.[0], r.status,
+        r.start_date, r.end_date, _fmtDate(r.start_date), _fmtDate(r.end_date),
+        r.reason, r.teacher_comment, r.attendance_rows_count,
+        r.created_at ? new Date(r.created_at).toLocaleDateString('th-TH') : '',
+      ].join(' ').toLocaleLowerCase()
+      return searchable.includes(needle)
+    })
     putContent(`<div class="animate-fade">
       <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div><h2 class="text-lg font-bold text-gray-800">📄 ใบลาและใบลาป่วย</h2><p class="mt-1 text-xs text-gray-500">ตรวจเฉพาะใบลาที่ผ่านการอนุมัติจากฝ่ายปกครองแล้ว</p></div>
         <span class="text-xs text-gray-400">${all.filter(r => r.status === 'pending').length} รายการรอตรวจ</span>
       </div>
+      <section class="mb-4 space-y-3 rounded-2xl border border-gray-200 bg-white p-3 sm:p-4">
+        <label class="block text-xs font-semibold text-gray-600">ค้นหาทุกอย่าง
+          <input id="student-leave-search" type="search" value="${_htmlEsc(search)}" placeholder="ชื่อนักเรียน รหัส ห้อง ประเภทลา วันที่ หรือรายละเอียด" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal text-gray-800 placeholder:text-gray-400 focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-100">
+        </label>
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label class="text-xs font-semibold text-gray-600">ประเภทการลา
+            <select id="student-leave-type-filter" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal text-gray-800">
+              <option value="all" ${leaveTypeFilter === 'all' ? 'selected' : ''}>ทุกประเภท</option>
+              <option value="excused" ${leaveTypeFilter === 'excused' ? 'selected' : ''}>ก · ลากิจ</option>
+              <option value="sick" ${leaveTypeFilter === 'sick' ? 'selected' : ''}>ป · ลาป่วย</option>
+            </select>
+          </label>
+          <label class="text-xs font-semibold text-gray-600">วันลาตั้งแต่
+            <input id="student-leave-date-from" type="date" value="${_htmlEsc(leaveDateFrom)}" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal text-gray-800">
+          </label>
+          <label class="text-xs font-semibold text-gray-600">ถึงวันที่
+            <input id="student-leave-date-to" type="date" value="${_htmlEsc(leaveDateTo)}" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal text-gray-800">
+          </label>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="text-xs text-gray-500">พบ ${rows.length} จาก ${all.filter(r => filter === 'all' || r.status === filter).length} รายการในสถานะนี้</span>
+          <button type="button" id="student-leave-clear-filters" class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50">ล้างตัวกรองและคำค้น</button>
+        </div>
+      </section>
       <div class="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1 sm:grid-cols-5">
         ${[['pending','รอตรวจ'],['approved','ยืนยันแล้ว'],['rejected','ไม่อนุมัติ'],['expired','หมดอายุ'],['all','ทั้งหมด']].map(([key,label]) => `<button type="button" data-leave-filter="${key}" class="rounded-lg px-2 py-2 text-xs font-semibold ${filter === key ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500'}">${label} (${all.filter(r => key === 'all' || r.status === key).length})</button>`).join('')}
       </div>
@@ -85,10 +131,29 @@ export async function renderStudentLeaveRequests(teacher, { container = null, fo
               ${r.status === 'pending' ? `<button type="button" class="leave-approve-btn ml-auto rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700" data-id="${r.id}">ยืนยันและบันทึกเช็คชื่อ</button><button type="button" class="leave-reject-btn rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50" data-id="${r.id}">ปฏิเสธ</button>` : ''}
             </div>
           </article>`
-        }).join('') : '<div class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-400">ไม่มีรายการในหมวดนี้</div>'}
+        }).join('') : '<div class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-400">ไม่พบรายการตามคำค้นหาหรือตัวกรอง</div>'}
       </div>
     </div>`)
 
+    const searchInput = queryRoot.querySelector('#student-leave-search')
+    searchInput?.addEventListener('input', event => {
+      search = event.currentTarget.value
+      if (event.isComposing) return
+      const start = event.currentTarget.selectionStart
+      const end = event.currentTarget.selectionEnd
+      render({ searchSelection: { start, end } })
+    })
+    if (searchSelection) {
+      const nextSearchInput = queryRoot.querySelector('#student-leave-search')
+      nextSearchInput?.focus()
+      nextSearchInput?.setSelectionRange(searchSelection.start, searchSelection.end)
+    }
+    queryRoot.querySelector('#student-leave-type-filter')?.addEventListener('change', event => { leaveTypeFilter = event.currentTarget.value; render() })
+    queryRoot.querySelector('#student-leave-date-from')?.addEventListener('change', event => { leaveDateFrom = event.currentTarget.value; render() })
+    queryRoot.querySelector('#student-leave-date-to')?.addEventListener('change', event => { leaveDateTo = event.currentTarget.value; render() })
+    queryRoot.querySelector('#student-leave-clear-filters')?.addEventListener('click', () => {
+      search = ''; leaveTypeFilter = 'all'; leaveDateFrom = ''; leaveDateTo = ''; filter = 'pending'; render()
+    })
     queryRoot.querySelectorAll('[data-leave-filter]').forEach(button => button.addEventListener('click', () => { filter = button.dataset.leaveFilter; render() }))
     queryRoot.querySelectorAll('.leave-proof-btn').forEach(button => button.addEventListener('click', async () => {
       try {

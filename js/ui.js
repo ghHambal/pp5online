@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1100'
+import { APP_VERSION } from './version.js?v=10.22.1101'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,7 +1015,8 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
-  '10.22.1100': [
+  '10.22.1101': [
+    'ครูที่ปรึกษาหน้าใบลา/ลาป่วยค้นหาทุกข้อมูลได้ และกรองตามประเภทลา ช่วงวันที่ลา และสถานะรายการได้; โปรไฟล์นักเรียนจัดรูป/ข้อมูลเต็มแถวและย้ายปุ่มใช้งานมาเรียงแนวนอนด้านล่าง',
     'นักเรียนเปิดหน้าแจ้งลา/ลาป่วยจากโปรไฟล์ได้แล้ว พร้อมถอดปุ่มแจ้งลาออกจากแถบนำทางและตัดการ์ดรหัส/ห้องที่ซ้ำออก; ครูเห็นป๊อบอัพกลางจอพร้อมรูป กดแล้วเปิดและไฮไลต์คำขอของนักเรียนคนนั้น',
   ],
   '10.22.1099': [
