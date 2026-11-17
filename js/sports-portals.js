@@ -648,7 +648,7 @@ async function openShirtVoteModal(student,event,cfg) {
   } catch(e) { console.error(e); body.innerHTML='<p class="text-xs text-red-500 text-center py-8">โหลดข้อมูลไม่สำเร็จ</p>' }
 }
 
-export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category=null) {
+export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category=null,focusLeaveRequestId=null) {
   if (typeof window._cleanupAdvisorShirtPaymentScanner === 'function') {
     await window._cleanupAdvisorShirtPaymentScanner()
   }
@@ -690,7 +690,7 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   el.querySelectorAll('[data-advisor-tab]').forEach(b=>b.addEventListener('click',()=>renderAdvisorStudents(teacher,rooms,b.dataset.advisorTab,cat)))
   el.querySelectorAll('[data-advisor-cat]').forEach(b=>b.addEventListener('click',()=>renderAdvisorStudents(teacher,rooms,'list',b.dataset.advisorCat)))
   const body=el.querySelector('#advisor-tab-body')
-  if(tab==='leaves') await import('./teacher-views-student-leaves.js').then(m => m.renderStudentLeaveRequests(teacher, { container: body }))
+  if(tab==='leaves') await import('./teacher-views-student-leaves.js').then(m => m.renderStudentLeaveRequests(teacher, { container: body, focusRequestId: focusLeaveRequestId }))
   else if(tab==='vote') await _renderAdvisorVoteTab(body,teacher,rooms,roomNames)
   else if(tab==='size') await _renderAdvisorSizeTab(body,teacher,rooms,roomNames)
   else if(tab==='shirt-payment') await _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames)

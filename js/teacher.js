@@ -22,7 +22,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1099'
+import { APP_VERSION } from './version.js?v=10.22.1100'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -43,6 +43,7 @@ import { initCouncilElectionResultsPopup } from './council-election-results-popu
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
 let _openAdvisorLeaveTabOnce = false
+let _openAdvisorLeaveRequestId = null
 let _isAlsoAdmin   = false
 let _isQrReissueManager = false // ครูที่แอดมินมอบสิทธิ์ให้เข้าหน้าพิมพ์/จัดการคำขอ QR Code ได้เหมือนแอดมิน
 let _hasAdminAccess = false
@@ -322,7 +323,9 @@ const ROUTES = {
   'advisor-students': () => {
     const tab = _openAdvisorLeaveTabOnce ? 'leaves' : 'list'
     _openAdvisorLeaveTabOnce = false
-    return renderAdvisorStudents(_teacher, _homeroomRooms, tab)
+    const focusRequestId = _openAdvisorLeaveRequestId
+    _openAdvisorLeaveRequestId = null
+    return renderAdvisorStudents(_teacher, _homeroomRooms, tab, null, focusRequestId)
   },
   'shirt-summary': () => renderShirtSummary(),
   'sports-fund-admin': () => renderSportsFundAdmin(),
@@ -998,7 +1001,7 @@ window._openReadingScorePicker = (roomsJson) => {
 }
 
 let _lastPendingCount = null
-let _lastLeavePendingCount = null
+let _knownPendingLeaveIds = null
 let _lastRegradePendingCount = null
 let _teacherPollingTimer = null
 let _teacherPollingVisibilityHandler = null
@@ -1006,10 +1009,11 @@ let _teacherPollingVisibilityHandler = null
 async function _updateRequestsBadge() {
   if (!_teacher) return
   try {
-    const [count, leaveCount] = await Promise.all([
+    const [count, leaveRequests] = await Promise.all([
       getPendingExamRequestCount(_teacher.id),
-      import('./student-leave-api.js').then(m => m.getPendingAdvisorStudentLeaveCount()).catch(() => 0),
+      import('./student-leave-api.js').then(m => m.getPendingAdvisorStudentLeaveRequests()).catch(() => []),
     ])
+    const leaveCount = leaveRequests.length
     const badge = document.getElementById('badge-requests')
     if (badge) {
       if (count > 0) {
@@ -1026,29 +1030,111 @@ async function _updateRequestsBadge() {
       showToast(`🔔 มีคำร้องนักเรียนใหม่ ${diff} รายการ`, 'info')
     }
     _lastPendingCount = count
-    if (_lastLeavePendingCount !== null && leaveCount > _lastLeavePendingCount) {
-      const diff = leaveCount - _lastLeavePendingCount
-      _showStudentLeaveNotice(diff)
+    const pendingIds = new Set(leaveRequests.map(request => Number(request.id)))
+    if (_knownPendingLeaveIds !== null) {
+      const newRequests = leaveRequests.filter(request => !_knownPendingLeaveIds.has(Number(request.id)))
+      if (newRequests.length) _showStudentLeaveNotice(newRequests)
     }
-    _lastLeavePendingCount = leaveCount
+    _knownPendingLeaveIds = pendingIds
   } catch { /* ไม่ crash */ }
 }
 
-function _showStudentLeaveNotice(count) {
-  if (!count) return
-  const notice = document.createElement('button')
-  notice.type = 'button'
-  notice.dataset.studentLeaveNotice = ''
-  notice.style.cssText = 'position:fixed;right:16px;top:20px;z-index:99999;max-width:calc(100% - 32px);width:370px;text-align:left;background:#4f46e5;color:white;border:0;border-radius:16px;padding:16px 20px;box-shadow:0 8px 32px #0003;cursor:pointer;font:inherit;'
-  notice.textContent = `📄 มีนักเรียนแจ้งลา/ลาป่วยใหม่ ${count} รายการ · แตะเพื่อตรวจสอบ`
-  notice.onclick = () => {
-    notice.remove()
-    _openAdvisorLeaveTabOnce = true
-    navigate('advisor-students')
+function _showStudentLeaveNotice(requests) {
+  if (!requests.length) return
+  document.getElementById('student-leave-notice-overlay')?.remove()
+  const overlay = document.createElement('div')
+  overlay.id = 'student-leave-notice-overlay'
+  overlay.setAttribute('role', 'presentation')
+  overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.56);display:flex;align-items:center;justify-content:center;padding:16px;'
+
+  const dialog = document.createElement('section')
+  dialog.setAttribute('role', 'dialog')
+  dialog.setAttribute('aria-modal', 'true')
+  dialog.setAttribute('aria-labelledby', 'student-leave-notice-title')
+  dialog.style.cssText = 'width:min(100%,520px);max-height:min(82dvh,680px);overflow:auto;background:white;color:#0f172a;border-radius:22px;box-shadow:0 24px 80px rgba(0,0,0,.28);padding:22px;'
+
+  const header = document.createElement('header')
+  header.style.cssText = 'display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;'
+  const heading = document.createElement('div')
+  heading.style.flex = '1'
+  const title = document.createElement('h2')
+  title.id = 'student-leave-notice-title'
+  title.style.cssText = 'font-size:20px;font-weight:800;margin:0;'
+  title.textContent = '📄 มีนักเรียนแจ้งลา / ลาป่วย'
+  const subtitle = document.createElement('p')
+  subtitle.style.cssText = 'font-size:13px;color:#64748b;margin:5px 0 0;'
+  subtitle.textContent = `มีคำขอใหม่ ${requests.length} รายการ กดเพื่อเปิดคำขอของนักเรียน`
+  heading.append(title, subtitle)
+  const close = document.createElement('button')
+  close.type = 'button'
+  close.setAttribute('aria-label', 'ปิดการแจ้งเตือน')
+  close.textContent = '✕'
+  close.style.cssText = 'width:36px;height:36px;border:0;border-radius:10px;background:#f1f5f9;color:#475569;font-size:17px;cursor:pointer;'
+  header.append(heading, close)
+
+  const list = document.createElement('div')
+  list.style.cssText = 'display:grid;gap:10px;'
+  for (const request of requests) {
+    const student = Array.isArray(request.students) ? request.students[0] : request.students
+    const item = document.createElement('div')
+    item.style.cssText = 'display:flex;align-items:center;gap:12px;border:1px solid #e2e8f0;border-radius:16px;padding:13px;'
+    const photoUrl = student?.image_url || student?.photo_url
+    const photo = document.createElement(photoUrl ? 'img' : 'div')
+    photo.style.cssText = 'width:48px;height:60px;flex-shrink:0;border:1px solid #e2e8f0;border-radius:11px;background:#eef2ff;object-fit:cover;display:grid;place-items:center;color:#4f46e5;font-weight:700;'
+    if (photoUrl) {
+      photo.src = photoUrl
+      photo.alt = `รูป ${student?.full_name || 'นักเรียน'}`
+      photo.loading = 'lazy'
+      photo.addEventListener('error', () => {
+        const fallback = document.createElement('div')
+        fallback.style.cssText = photo.style.cssText
+        fallback.textContent = (student?.full_name || '?').charAt(0)
+        photo.replaceWith(fallback)
+      }, { once: true })
+    } else {
+      photo.textContent = (student?.full_name || '?').charAt(0)
+    }
+    const details = document.createElement('div')
+    details.style.cssText = 'min-width:0;flex:1;'
+    const name = document.createElement('p')
+    name.style.cssText = 'font-weight:700;margin:0;overflow-wrap:anywhere;'
+    name.textContent = student?.full_name || 'ไม่พบชื่อนักเรียน'
+    const meta = document.createElement('p')
+    meta.style.cssText = 'font-size:12px;color:#64748b;margin:4px 0 0;'
+    const kind = request.leave_type === 'sick' ? 'ป · ลาป่วย' : 'ก · ลากิจ'
+    const dateRange = request.start_date === request.end_date
+      ? request.start_date
+      : `${request.start_date} – ${request.end_date}`
+    meta.textContent = `${kind} · ${dateRange} · ${student?.student_code || ''} · ${student?.main_room || student?.religion_room || ''}`
+    details.append(name, meta)
+    const open = document.createElement('button')
+    open.type = 'button'
+    open.textContent = 'เปิดคำขอ'
+    open.style.cssText = 'flex-shrink:0;border:0;border-radius:11px;background:#4f46e5;color:white;font-size:12px;font-weight:700;padding:10px 12px;cursor:pointer;'
+    open.addEventListener('click', () => {
+      overlay.remove()
+      _openAdvisorLeaveTabOnce = true
+      _openAdvisorLeaveRequestId = Number(request.id)
+      navigate('advisor-students')
+    })
+    item.append(photo, details, open)
+    list.append(item)
   }
-  document.querySelector('[data-student-leave-notice]')?.remove()
-  document.body.append(notice)
-  setTimeout(() => notice.remove(), 15000)
+
+  const footer = document.createElement('footer')
+  footer.style.cssText = 'display:flex;justify-content:flex-end;margin-top:16px;'
+  const dismiss = document.createElement('button')
+  dismiss.type = 'button'
+  dismiss.textContent = 'ปิด'
+  dismiss.style.cssText = 'border:1px solid #cbd5e1;border-radius:11px;background:white;color:#334155;font-size:13px;font-weight:700;padding:10px 18px;cursor:pointer;'
+  footer.append(dismiss)
+  dialog.append(header, list, footer)
+  overlay.append(dialog)
+  close.addEventListener('click', () => overlay.remove())
+  dismiss.addEventListener('click', () => overlay.remove())
+  overlay.addEventListener('click', event => { if (event.target === overlay) overlay.remove() })
+  document.body.append(overlay)
+  close.focus()
 }
 
 function _renderLiveRegradeBadge(count) {

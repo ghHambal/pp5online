@@ -26,7 +26,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1099'
+import { APP_VERSION } from './version.js?v=10.22.1100'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -3150,7 +3150,7 @@ export async function renderStudentProfile(student, onLogout) {
 
   setContent(`
     <h2 class="font-bold text-gray-800 mb-4">👤 โปรไฟล์ของฉัน</h2>
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4 flex items-center gap-4 relative overflow-hidden">
+    <div class="bg-white rounded-2xl border border-gray-200 shadow-md p-4 mb-4 flex items-center gap-4 relative overflow-hidden min-h-[17rem]">
       <!-- Specular vertical frame with 3D shadow and sheen -->
       <div class="relative w-[72px] h-[96px] rounded-2xl overflow-hidden flex-shrink-0 bg-gradient-to-b from-gray-100 to-gray-200 border-2 border-white shadow-[0_8px_16px_rgba(0,0,0,0.12),inset_0_1px_2px_rgba(255,255,255,0.7)] flex items-center justify-center">
         <!-- Glass sheen overlay for 3D look -->
@@ -3168,8 +3168,9 @@ export async function renderStudentProfile(student, onLogout) {
         <p class="font-bold text-gray-800 text-base leading-snug truncate">${student.full_name}</p>
         <p class="text-xs text-gray-400 mt-1">รหัส ${student.student_code}</p>
         <p class="text-xs text-gray-500 mt-0.5">ห้อง ${student.main_room ?? '—'}</p>
+        ${student.religion_room ? `<p class="text-xs text-gray-500 mt-0.5">ห้องศาสนา ${student.religion_room}</p>` : ''}
       </div>
-      <!-- QR Code + Leave Permission trigger icons inside card -->
+      <!-- Profile actions: QR, classroom pass, leave request, and QR card request -->
       <div class="flex flex-col gap-2 flex-shrink-0">
         <button id="btn-show-my-qr"
           class="w-12 h-12 rounded-2xl bg-emerald-50 hover:bg-emerald-100 active:scale-95 text-emerald-600 flex items-center justify-center shadow-sm border border-emerald-100/50 transition-all"
@@ -3183,8 +3184,13 @@ export async function renderStudentProfile(student, onLogout) {
         </button>
         <button id="btn-show-my-leave"
           class="w-12 h-12 rounded-2xl bg-amber-50 hover:bg-amber-100 active:scale-95 text-amber-600 flex items-center justify-center shadow-sm border border-amber-100/50 transition-all text-xl"
-          title="ใบอนุญาตออกนอกห้อง">
+          title="ใบอนุญาตออกนอกห้อง" aria-label="ใบอนุญาตออกนอกห้อง">
           🚪
+        </button>
+        <button id="btn-stu-leave-request"
+          class="w-12 h-12 rounded-2xl bg-indigo-50 hover:bg-indigo-100 active:scale-95 text-indigo-600 flex items-center justify-center shadow-sm border border-indigo-100/50 transition-all text-xl"
+          title="แจ้งลา / ลาป่วย" aria-label="แจ้งลา / ลาป่วย">
+          📄
         </button>
         <button id="btn-request-qr-card"
           class="w-12 h-12 rounded-2xl bg-pink-50 hover:bg-pink-100 active:scale-95 text-pink-600 flex items-center justify-center shadow-sm border border-pink-100/50 transition-all text-xl"
@@ -3192,22 +3198,6 @@ export async function renderStudentProfile(student, onLogout) {
           🎫
         </button>
       </div>
-    </div>
-
-    <div class="bg-white rounded-2xl border border-gray-200 shadow-md overflow-hidden mb-6">
-      <div class="px-5 py-3.5 border-b border-gray-50 flex justify-between">
-        <span class="text-sm text-gray-500">รหัสนักเรียน</span>
-        <span class="text-sm font-medium text-gray-800">${student.student_code}</span>
-      </div>
-      <div class="px-5 py-3.5 border-b border-gray-50 flex justify-between">
-        <span class="text-sm text-gray-500">ห้องเรียน</span>
-        <span class="text-sm font-medium text-gray-800">${student.main_room ?? '—'}</span>
-      </div>
-      ${student.religion_room ? `
-      <div class="px-5 py-3.5 flex justify-between">
-        <span class="text-sm text-gray-500">ห้องศาสนา</span>
-        <span class="text-sm font-medium text-gray-800">${student.religion_room}</span>
-      </div>` : ''}
     </div>
 
     <button type="button" id="btn-stu-my-certificates-profile" class="relative overflow-hidden bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl border border-amber-400 shadow-md p-4 sm:p-5 mb-4 text-white flex items-center justify-between gap-4 hover:opacity-95 active:scale-[0.98] transition-all w-full text-left">
@@ -3236,6 +3226,7 @@ export async function renderStudentProfile(student, onLogout) {
   `)
 
   document.getElementById('btn-stu-my-certificates-profile')?.addEventListener('click', () => openMyCertificatesModal(student))
+  document.getElementById('btn-stu-leave-request')?.addEventListener('click', () => renderStudentLeaveRequests(student))
   document.getElementById('btn-stu-contact-admin')?.addEventListener('click', () => {
     window._openFeedbackWidget?.()
   })

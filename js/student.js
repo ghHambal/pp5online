@@ -386,7 +386,6 @@ function _renderMainNav(activeView = 'overview') {
     _navButtonHTML('overview', '🏠', 'ภาพรวม'),
     _navButtonHTML('subjects', '📚', 'รายวิชา'),
     _navButtonHTML('scores', '📊', 'คะแนน'),
-    _navButtonHTML('student-leaves', '📄', 'แจ้งลา'),
   ]
   items.push(_navButtonHTML('profile', '👤', 'โปรไฟล์'))
   nav.innerHTML = items.join('')

@@ -19,7 +19,7 @@ export async function getAdvisorStudentLeaveRequests() {
   const { data, error } = await supabase.from('student_leave_requests')
     .select(`id, student_id, leave_type, start_date, end_date, reason, proof_path,
       status, teacher_comment, reviewed_at, attendance_rows_count, created_at,
-      students ( full_name, student_code, main_room, profile_id )`)
+      students ( full_name, student_code, main_room, religion_room, image_url, photo_url, profile_id )`)
     .order('created_at', { ascending: false })
   if (error) throw error
   return data ?? []
@@ -30,6 +30,15 @@ export async function getPendingAdvisorStudentLeaveCount() {
     .select('id', { count: 'exact', head: true }).eq('status', 'pending')
   if (error) throw error
   return count ?? 0
+}
+
+export async function getPendingAdvisorStudentLeaveRequests() {
+  const { data, error } = await supabase.from('student_leave_requests')
+    .select(`id, student_id, leave_type, start_date, end_date, created_at,
+      students ( full_name, student_code, main_room, religion_room, image_url, photo_url )`)
+    .eq('status', 'pending').order('created_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
 }
 
 export async function getStudentLeaveProofUrl(path) {

@@ -33,7 +33,7 @@ async function _notifyStudent(request, status) {
   } catch { /* แจ้งเตือนเป็นส่วนเสริม ไม่ขัดขวางการบันทึก */ }
 }
 
-export async function renderStudentLeaveRequests(teacher, { container = null } = {}) {
+export async function renderStudentLeaveRequests(teacher, { container = null, focusRequestId = null } = {}) {
   const putContent = html => container ? (container.innerHTML = html) : setContent(html)
   const queryRoot = container || document
   if (!container) {
@@ -64,9 +64,13 @@ export async function renderStudentLeaveRequests(teacher, { container = null } =
         ${rows.length ? rows.map(r => {
           const s = STATUS[r.status] ?? STATUS.pending
           const stu = r.students ?? {}
+          const photo = stu.image_url || stu.photo_url
           return `<article class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm" data-leave-card="${r.id}">
             <header class="flex items-start justify-between gap-3">
-              <div class="min-w-0"><h3 class="truncate font-bold text-gray-800">${_htmlEsc(stu.full_name ?? 'ไม่พบชื่อนักเรียน')}</h3><p class="mt-0.5 text-xs text-gray-500">${_htmlEsc(stu.student_code ?? '')} · ${_htmlEsc(stu.main_room ?? '')}</p></div>
+              <div class="flex min-w-0 items-center gap-3">
+                ${photo ? `<img data-leave-student-photo src="${_htmlEsc(photo)}" alt="รูป ${_htmlEsc(stu.full_name ?? 'นักเรียน')}" class="h-14 w-12 flex-shrink-0 rounded-xl border border-gray-200 bg-gray-100 object-cover" loading="lazy">` : `<div class="grid h-14 w-12 flex-shrink-0 place-items-center rounded-xl border border-gray-200 bg-indigo-50 font-bold text-indigo-500">${_htmlEsc((stu.full_name ?? '?').charAt(0))}</div>`}
+                <div class="min-w-0"><h3 class="truncate font-bold text-gray-800">${_htmlEsc(stu.full_name ?? 'ไม่พบชื่อนักเรียน')}</h3><p class="mt-0.5 text-xs text-gray-500">${_htmlEsc(stu.student_code ?? '')} · ${_htmlEsc(stu.main_room ?? stu.religion_room ?? '')}</p></div>
+              </div>
               <span class="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${s[1]}">${s[0]}</span>
             </header>
             <div class="mt-3 rounded-xl bg-gray-50 p-3 text-xs text-gray-600">
@@ -94,6 +98,21 @@ export async function renderStudentLeaveRequests(teacher, { container = null } =
     }))
     queryRoot.querySelectorAll('.leave-approve-btn').forEach(button => button.addEventListener('click', () => _review(button, 'approved')))
     queryRoot.querySelectorAll('.leave-reject-btn').forEach(button => button.addEventListener('click', () => _review(button, 'rejected')))
+    queryRoot.querySelectorAll('[data-leave-student-photo]').forEach(image => image.addEventListener('error', () => {
+      const fallback = document.createElement('div')
+      fallback.className = 'grid h-14 w-12 flex-shrink-0 place-items-center rounded-xl border border-gray-200 bg-indigo-50 font-bold text-indigo-500'
+      fallback.textContent = (image.alt.replace(/^รูป\s*/, '') || '?').charAt(0)
+      image.replaceWith(fallback)
+    }, { once: true }))
+    if (focusRequestId) {
+      const card = queryRoot.querySelector(`[data-leave-card="${Number(focusRequestId)}"]`)
+      if (card) {
+        card.classList.add('ring-4', 'ring-indigo-300', 'ring-offset-2')
+        setTimeout(() => card.scrollIntoView({ behavior: 'smooth', block: 'center' }), 0)
+        setTimeout(() => card.classList.remove('ring-4', 'ring-indigo-300', 'ring-offset-2'), 5000)
+      }
+      focusRequestId = null
+    }
   }
 
   const _review = async (button, status) => {
