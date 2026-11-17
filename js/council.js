@@ -21,7 +21,7 @@ import {
   getCouncilRosterTemplates, saveCouncilRosterTemplate, deleteCouncilRosterTemplate,
   getCouncilDailyDutyCalendar, saveCouncilDailyDutyAttendance,
   getCouncilSavingsOverview, recordCouncilSavingsDeposit, reverseCouncilSavingsDeposit,
-  getCouncilPositions, getCouncilMembers,
+  getCouncilPositions, getCouncilMembers, getCouncilOfficerAssignments, assignCouncilOfficer,
   createCouncilPosition, updateCouncilPosition, deleteCouncilPosition,
   getCouncilElectionConfigs, getMyCouncilApplications, getMyCouncilMembership,
   submitCouncilApplication, getPendingEndorsements, getEndorsementPhrases,
@@ -224,6 +224,7 @@ let councilSavingsSearch = ''
 let councilSavingsMemberSearch = ''
 let councilSavingsSelectedMemberId = null
 let councilSavingsBusy = false
+let councilOfficerModalRole = null
 const attendanceByActivity = {} // { [activityId]: Set<studentId> }
 let ylaEvents = null
 let ylaEventsLoading = false
@@ -323,8 +324,9 @@ async function init() {
     || councilTerms[0]
   selectedCouncilTermId = defaultTerm?.id ?? null
   const electionYearForTerm = Number(defaultTerm?.academic_year || cfg.academicYear) || (new Date().getFullYear() + 543)
-  const [members, elections] = await Promise.all([
+  const [members, elections, officers] = await Promise.all([
     getCouncilMembers(null, selectedCouncilTermId), getCouncilElectionConfigs(null, selectedCouncilTermId),
+    getCouncilOfficerAssignments(selectedCouncilTermId).catch(() => []),
   ])
   applyBranding(cfg)
 
@@ -376,8 +378,10 @@ async function init() {
   // ประธานสภา (chair) — นักเรียนที่ล็อกอินอยู่และมีสมาชิกภาพ active ในตำแหน่งที่ is_elected=true
   // ได้สิทธิ์จัดการกิจกรรม/ประกาศเท่าแอดมิน (RLS คุมไว้แล้ว ดู patch_council_phase3_activities_news.sql)
   const isChair = role === 'student' && membership.some(m => m.status === 'active' && m.council_positions?.is_elected)
-  const isSavingsTreasurer = role === 'student' && membership.some(m => m.status === 'active'
-    && m.position_role === 'head' && (m.council_positions?.position_name ?? '').includes('เหรัญญิก'))
+  const isSavingsTreasurer = role === 'student' && (
+    membership.some(m => m.status === 'active' && m.position_role === 'head' && (m.council_positions?.position_name ?? '').includes('เหรัญญิก'))
+    || officers.some(assignment => assignment.role_key === 'treasurer' && Number(assignment.student_id) === Number(student?.id))
+  )
   // สิทธิ์สร้างกิจกรรม/การประชุมเองได้ทันที (ไม่ใช่แค่จัดการกิจกรรมที่มีอยู่แล้วผ่าน owner_member_id)
   // — ประธานสภาได้เสมอ + สมาชิกที่แอดมิน/ประธานมอบสิทธิ์ can_create_activities ไว้ล่วงหน้า
   // เพศของสภาที่ตัวเองเป็นประธานอยู่ — ใช้จำกัดขอบเขตตอนมอบสิทธิ์สร้างกิจกรรมให้สมาชิกคนอื่น
@@ -411,7 +415,7 @@ async function init() {
   ctx = {
     role, isAdmin, isChair, isCouncilAdvisor, isSavingsTreasurer, isStudentAffairsHead, isSchoolDirector, isExecutive,
     canCreateActivities, chairGender, canScanIbadatPrayer,
-    student, applications, membership, positions, members, elections, cfg,
+    student, applications, membership, positions, members, elections, officers, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases, advisorPositionIds,
   }
   electionYear = electionYearForTerm
@@ -446,15 +450,18 @@ async function switchCouncilTerm(termId) {
   if (dutyCalendarMonth < startMonth) dutyCalendarMonth = startMonth
   if (dutyCalendarMonth > endMonth) dutyCalendarMonth = endMonth
   electionYear = Number(term.academic_year)
-  const [members, elections, applications, membership] = await Promise.all([
+  const [members, elections, applications, membership, officers] = await Promise.all([
     getCouncilMembers(null, term.id).catch(() => []),
     getCouncilElectionConfigs(null, term.id).catch(() => []),
     ctx.student ? getMyCouncilApplications(ctx.student.id, term.id).catch(() => []) : Promise.resolve([]),
     ctx.student ? getMyCouncilMembership(ctx.student.id, term.id).catch(() => []) : Promise.resolve([]),
+    getCouncilOfficerAssignments(term.id).catch(() => []),
   ])
-  ctx.members = members; ctx.elections = elections
+  ctx.members = members; ctx.elections = elections; ctx.officers = officers
   if (ctx.student) {
     ctx.applications = applications; ctx.membership = membership
+    ctx.isSavingsTreasurer = membership.some(m => m.status === 'active' && m.position_role === 'head' && (m.council_positions?.position_name ?? '').includes('เหรัญญิก'))
+      || officers.some(assignment => assignment.role_key === 'treasurer' && Number(assignment.student_id) === Number(ctx.student.id))
     ctx.isChair = membership.some(m => m.status === 'active' && m.council_positions?.is_elected)
     ctx.canCreateActivities = ctx.isChair || membership.some(m => m.status === 'active' && m.can_create_activities)
     ctx.chairGender = membership.find(m => m.status === 'active' && m.council_positions?.is_elected)?.council_positions?.gender ?? null
@@ -3097,7 +3104,7 @@ const ROSTER_CATEGORIES = [
   { label: 'ประธาน', match: p => !!p?.is_elected },
   { label: 'รองประธาน', match: p => p?.position_name === 'รองประธานสภานักเรียน' },
   { label: 'ฝ่ายงาน', match: p => (p?.position_name ?? '').startsWith('ฝ่าย') },
-  { label: 'สำนักงานสภา', match: p => !p?.is_elected && p?.position_name !== 'รองประธานสภานักเรียน' && p?.position_name !== UNASSIGNED_POSITION_NAME && !(p?.position_name ?? '').startsWith('ฝ่าย') },
+  { label: 'สำนักงานสภา', match: p => !p?.is_elected && !['รองประธานสภานักเรียน', 'เลขานุการ', 'เหรัญญิก', UNASSIGNED_POSITION_NAME].includes(p?.position_name) && !(p?.position_name ?? '').startsWith('ฝ่าย') },
   { label: 'ยังไม่ระบุฝ่าย', match: p => p?.position_name === UNASSIGNED_POSITION_NAME },
 ]
 
@@ -3180,6 +3187,67 @@ let rosterGenderTab = 'all'
 let rosterSearch = ''
 let rosterDepartmentId = 'all'
 
+function openCouncilOfficerModal(roleKey) {
+  if (!(ctx.isAdmin || ctx.isCouncilAdvisor) || !termIsEditable()) return
+  const roleNames = { secretary: 'เลขานุการ', treasurer: 'เหรัญญิก' }
+  const roleName = roleNames[roleKey]
+  if (!roleName) return
+  document.getElementById('council-officer-modal')?.remove()
+  let selectedStudentId = null
+  let query = ''
+  const currentOfficerId = (ctx.officers ?? []).find(row => row.role_key === roleKey)?.student_id
+  const activeMembers = [...new Map((ctx.members ?? []).filter(member => member.status === 'active')
+    .sort((a, b) => (a.council_positions?.sort_order ?? 99) - (b.council_positions?.sort_order ?? 99))
+    .map(member => [Number(member.student_id), member])).values()]
+  const modal = document.createElement('div')
+  modal.id = 'council-officer-modal'
+  modal.className = 'fixed inset-0 z-[300] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4'
+  modal.innerHTML = `<div class="bg-[var(--surface)] rounded-2xl shadow-2xl w-full max-w-xl p-5 max-h-[88vh] flex flex-col">
+    <div class="flex items-center justify-between gap-3 mb-3"><div><h2 class="text-base font-extrabold text-[var(--ink)]">เลือก${roleName}</h2><p class="mt-1 text-xs text-[var(--muted)]">เลือกจากสมาชิกสภาปัจจุบันทั้งสองฝั่ง สมาชิกยังอยู่ฝ่ายเดิมได้</p></div><button type="button" data-close-officer-modal class="text-2xl text-[var(--muted)]">×</button></div>
+    <input id="council-officer-search" type="search" placeholder="ค้นหาชื่อ รหัส ห้อง หรือฝ่าย" class="w-full rounded-xl border border-[var(--line)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--ink)]">
+    <div id="council-officer-results" class="mt-3 min-h-0 flex-1 overflow-y-auto space-y-2"></div>
+    <div class="mt-3 flex gap-2"><button type="button" data-close-officer-modal class="flex-1 rounded-xl border border-[var(--line)] px-4 py-2.5 text-sm font-bold text-[var(--ink-2)]">ยกเลิก</button><button type="button" id="council-officer-save" disabled class="flex-1 rounded-xl bg-[var(--primary)] px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">ยืนยันเลือก</button></div>
+  </div>`
+  document.body.appendChild(modal)
+  const results = modal.querySelector('#council-officer-results')
+  const search = modal.querySelector('#council-officer-search')
+  const close = () => modal.remove()
+  modal.querySelectorAll('[data-close-officer-modal]').forEach(button => button.addEventListener('click', close))
+  modal.addEventListener('click', event => { if (event.target === modal) close() })
+  const renderResults = () => {
+    const q = query.trim().toLocaleLowerCase()
+    const choices = activeMembers.filter(member => {
+      if (Number(member.student_id) !== Number(currentOfficerId) && (ctx.officers ?? []).some(row => Number(row.student_id) === Number(member.student_id))) return false
+      return !q || [member.students?.full_name, member.students?.student_code, member.students?.main_room,
+        member.council_positions?.position_name, GENDER_LABEL[member.council_positions?.gender]]
+        .some(value => String(value ?? '').toLocaleLowerCase().includes(q))
+    }).slice(0, 60)
+    results.innerHTML = choices.length ? choices.map(member => `<button type="button" data-officer-student="${member.student_id}" class="w-full rounded-xl border ${Number(selectedStudentId) === Number(member.student_id) ? 'border-[var(--primary)] bg-[var(--primary-soft)]' : 'border-[var(--line-soft)] bg-[var(--surface)]'} p-2.5 text-left flex items-center gap-3 hover:bg-[var(--surface-2)]">${studentPhoto(member.students, 'w-10 h-12')}<span class="min-w-0 flex-1"><span class="block truncate text-sm font-bold text-[var(--ink)]">${esc(member.students?.full_name ?? 'ไม่ระบุชื่อ')}</span><span class="mt-0.5 block truncate text-xs text-[var(--muted)]">${esc(member.students?.student_code ?? '')} · ${esc(member.students?.main_room ?? 'ไม่ระบุห้อง')} · ${esc(member.council_positions?.position_name ?? 'สมาชิกสภา')}</span></span><span class="text-xs font-bold text-[var(--primary)]">${member.council_positions?.gender === 'W' ? 'หญิง' : 'ชาย'}</span></button>`).join('') : '<p class="py-8 text-center text-sm text-[var(--muted)]">ไม่พบสมาชิกสภาที่ตรงกับคำค้น</p>'
+    results.querySelectorAll('[data-officer-student]').forEach(button => button.addEventListener('click', () => {
+      selectedStudentId = Number(button.dataset.officerStudent)
+      modal.querySelector('#council-officer-save').disabled = false
+      renderResults()
+    }))
+  }
+  search.addEventListener('input', () => { query = search.value; renderResults() })
+  modal.querySelector('#council-officer-save').addEventListener('click', async event => {
+    const button = event.currentTarget
+    if (!selectedStudentId) return
+    button.disabled = true; button.textContent = 'กำลังบันทึก…'
+    try {
+      await assignCouncilOfficer({ termId: selectedCouncilTermId, role: roleKey, studentId: selectedStudentId })
+      ctx.officers = await getCouncilOfficerAssignments(selectedCouncilTermId).catch(() => ctx.officers)
+      showToast(`กำหนด${roleName}แล้ว ✅`, 'success')
+      close(); render()
+    } catch (error) {
+      showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+      button.disabled = false; button.textContent = 'ยืนยันเลือก'
+    }
+  })
+  renderResults()
+  search.focus()
+}
+
 function renderRosterView() {
   if (!['all', 'M', 'W'].includes(rosterGenderTab)) rosterGenderTab = 'all'
   const scopedMembers = membersVisibleToCouncilAdvisor()
@@ -3251,6 +3319,14 @@ function renderRosterView() {
 
   const presidentMembers = list.filter(member => member.council_positions?.is_elected)
   const vicePresidents = list.filter(member => member.council_positions?.position_name === 'รองประธานสภานักเรียน')
+  const roleNames = { secretary: 'เลขานุการ', treasurer: 'เหรัญญิก' }
+  const officerSection = rosterDepartmentId === 'all' ? `<section class="mb-5 rounded-2xl border border-[var(--gold-soft-line)] bg-[var(--surface)] p-4 sm:p-5"><h2 class="mb-4 text-center text-base font-extrabold text-[var(--gold-ink)]">ตำแหน่งส่วนกลาง</h2><div class="grid grid-cols-1 gap-3 sm:grid-cols-2">${Object.entries(roleNames).map(([roleKey, roleName]) => {
+    const assignment = (ctx.officers ?? []).find(row => row.role_key === roleKey)
+    const assignedMember = assignment?.student_id ? (ctx.members ?? []).find(member => member.status === 'active' && Number(member.student_id) === Number(assignment.student_id)) : null
+    const visibleMember = assignedMember && (rosterGenderTab === 'all' || assignedMember.council_positions?.gender === rosterGenderTab) ? assignedMember : null
+    const editable = (ctx.isAdmin || ctx.isCouncilAdvisor) && termIsEditable()
+    return `<article class="rounded-xl border border-[var(--line-soft)] bg-[var(--bg-2)] p-4 text-center"><h3 class="text-sm font-extrabold text-[var(--primary)]">${roleName}</h3>${visibleMember ? `<div class="mt-3">${studentPhoto(visibleMember.students, 'w-16 h-20 mx-auto')}<p class="mt-2 text-sm font-bold text-[var(--ink)]">${esc(visibleMember.students?.full_name ?? 'ไม่ระบุชื่อ')}</p><p class="mt-0.5 text-xs text-[var(--muted)]">${esc(visibleMember.students?.student_code ?? '')} · ${esc(visibleMember.students?.main_room ?? 'ไม่ระบุห้อง')}</p><p class="mt-1 text-xs text-[var(--muted)]">สังกัด ${esc(visibleMember.council_positions?.position_name ?? 'สมาชิกสภา')}</p></div>` : `<p class="my-5 rounded-xl border border-dashed border-[var(--line)] p-4 text-xs text-[var(--muted)]">${assignedMember && rosterGenderTab !== 'all' ? `ผู้ดำรงตำแหน่งอยู่ในสภา${GENDER_LABEL[assignedMember.council_positions?.gender]}` : assignment?.student_id ? 'ผู้ดำรงตำแหน่งไม่มีสมาชิกภาพสภาปัจจุบัน' : 'ยังไม่ได้กำหนดผู้ดำรงตำแหน่ง'}</p>`}${editable ? `<div class="mt-3 flex gap-2"><button type="button" class="btn-assign-council-officer flex-1 rounded-lg border border-[var(--primary-soft-line)] bg-[var(--primary-soft)] px-3 py-2 text-xs font-bold text-[var(--primary)]" data-role="${roleKey}">${assignment?.student_id ? 'เปลี่ยนผู้ดำรงตำแหน่ง' : 'เลือกผู้ดำรงตำแหน่ง'}</button>${assignment?.student_id ? `<button type="button" class="btn-clear-council-officer rounded-lg border border-[var(--bad-soft-line)] px-3 py-2 text-xs font-bold text-[var(--bad)]" data-role="${roleKey}" data-name="${roleName}">ถอด</button>` : ''}</div>` : ''}</article>`
+  }).join('')}</div></section>` : ''
   const departmentSections = (rosterDepartmentId === 'all' ? departmentOptions : departmentOptions.filter(name => name === rosterDepartmentId)).map(name => {
     const visibleMembers = list.filter(member => member.council_positions?.position_name === name)
     if (query && !visibleMembers.length) return ''
@@ -3267,7 +3343,7 @@ function renderRosterView() {
   const viceSection = vicePresidents.length ? `<h2 class="mb-3 mt-1 text-center text-sm font-bold text-[var(--muted)]">รองประธานสภานักเรียน</h2><div class="flex flex-wrap justify-center gap-3">${vicePresidents.map(member => memberCard(member, true)).join('')}</div>` : !query ? '<h2 class="mb-3 mt-1 text-center text-sm font-bold text-[var(--muted)]">รองประธานสภานักเรียน</h2><p class="mx-auto max-w-sm rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] p-4 text-center text-xs text-[var(--muted)]">ยังไม่มีรองประธานสภานักเรียน</p>' : ''
   const leadership = rosterDepartmentId === 'all' ? `<section class="mb-6">${presidentSection}${presidentSection && viceSection ? '<div class="mx-auto h-6 w-px bg-[var(--line)]"></div>' : ''}${viceSection}${viceSection && departmentSections ? '<div class="mx-auto h-6 w-px bg-[var(--line)]"></div>' : ''}</section>` : ''
   const selectedDepartmentContent = rosterDepartmentId === 'all'
-    ? `${leadership}<div class="space-y-4">${departmentSections}${supportGroups}</div>`
+    ? `${leadership}${officerSection}<div class="space-y-4">${departmentSections}${supportGroups}</div>`
     : departmentSections || '<p class="py-10 text-center text-xs text-[var(--muted-2)]">ไม่พบสมาชิกในฝ่ายนี้ตามตัวกรอง</p>'
 
   const scopeNote = ctx.isCouncilAdvisor && !ctx.isAdmin
@@ -6615,6 +6691,25 @@ function wireContentEvents() {
     rosterDepartmentId = btn.dataset.department || 'all'
     render()
   }))
+  document.querySelectorAll('.btn-assign-council-officer').forEach(btn => {
+    btn.addEventListener('click', () => openCouncilOfficerModal(btn.dataset.role))
+  })
+  document.querySelectorAll('.btn-clear-council-officer').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const role = btn.dataset.role
+      if (!confirm(`ถอดผู้ดำรงตำแหน่ง${btn.dataset.name}หรือไม่?`)) return
+      btn.disabled = true
+      try {
+        await assignCouncilOfficer({ termId: selectedCouncilTermId, role, studentId: null })
+        ctx.officers = await getCouncilOfficerAssignments(selectedCouncilTermId).catch(() => ctx.officers)
+        showToast('ถอดผู้ดำรงตำแหน่งแล้ว', 'success')
+        render()
+      } catch (error) {
+        showToast('ถอดตำแหน่งไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+        btn.disabled = false
+      }
+    })
+  })
   document.querySelectorAll('.btn-add-council-member-gender').forEach(btn => {
     btn.addEventListener('click', () => openMemberModal({ mode: 'add', gender: btn.dataset.gender }))
   })

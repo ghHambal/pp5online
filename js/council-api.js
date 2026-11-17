@@ -169,6 +169,22 @@ export async function getCouncilPositions() {
   return data ?? []
 }
 
+// ─── บทบาทส่วนกลางของสภา (เลขานุการ/เหรัญญิก) ──────────────────────────────
+export async function getCouncilOfficerAssignments(termId) {
+  if (!termId) return []
+  const { data, error } = await supabase.from('council_officer_assignments')
+    .select('term_id, role_key, student_id').eq('term_id', termId)
+  if (error) throw error
+  return data ?? []
+}
+
+export async function assignCouncilOfficer({ termId, role, studentId }) {
+  const { error } = await supabase.rpc('assign_council_officer', {
+    p_term_id: termId, p_role_key: role, p_student_id: studentId ?? null,
+  })
+  if (error) throw error
+}
+
 // ─── ตำแหน่ง — CRUD (หน้าตั้งค่า > ตำแหน่ง, สเปคข้อ 8.18.2) ─────────────────────
 export async function createCouncilPosition({ gender, positionName, seatsCount, isElected, sortOrder }) {
   const { error } = await supabase.from('council_positions').insert({
