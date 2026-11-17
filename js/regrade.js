@@ -602,7 +602,7 @@ const teacher = {
   catalogExpanded: new Set(), catalogSemesterFilter: {},
   assignedExpanded: new Set(), assignedSemesterFilter: {},
   deptHeadExpanded: new Set(), unassigned: [], deptHeadTeacherOptions: null,
-  deptHeadDept: undefined, deptHeadShowAll: false,
+  deptHeadDept: undefined, deptHeadShowAll: false, deptHeadCategory: 'all',
   deptHeadSelectMode: new Set(), deptHeadSelected: {}, // { [subject_code]: Set<regrade_subjects.id> } — มอบหมายเฉพาะบางคนในวิชาเดียวกัน
 }
 
@@ -613,18 +613,25 @@ function isDeptHead() {
   return ['dept_head', 'religion_group_head', 'religion_subgroup_head'].some(p => positions.includes(p))
 }
 
+function canManageAllRegradeCategories() {
+  return ctx.isAdmin && String(ctx.teacherRow?.teacher_code || '').trim() === '1087'
+}
+
 async function loadTeacherSubjects() {
   teacher.subjects = await getMyTeachingRegradeSubjects(ctx.teacherRow.id)
 }
 
 async function loadDeptHeadData() {
+  const allCategories = canManageAllRegradeCategories()
   const [unassigned, allTeachers] = await Promise.all([
-    getUnassignedRegradeSubjects(ctx.teacherRow.category),
+    getUnassignedRegradeSubjects(allCategories ? 'all' : ctx.teacherRow.category),
     teacher.deptHeadTeacherOptions ? Promise.resolve(teacher.deptHeadTeacherOptions) : getAllTeachersForPicker(),
     teacher.deptHeadDept !== undefined ? Promise.resolve(teacher.deptHeadDept) : getDepartmentById(ctx.teacherRow.position_dept_id).then(d => { teacher.deptHeadDept = d }),
   ])
   teacher.unassigned = unassigned
-  teacher.deptHeadTeacherOptions = allTeachers.filter(t => t.category === ctx.teacherRow.category)
+  teacher.deptHeadTeacherOptions = allTeachers.filter(t => allCategories
+    ? ['สามัญ', 'ศาสนา'].includes(t.category)
+    : t.category === ctx.teacherRow.category)
 }
 
 // กรองเฉพาะกลุ่มสาระของหัวหน้าเอง (ถ้ารู้จักรหัสกลุ่มสาระ + สโคปด้วยรหัสวิชาตัวหน้าได้) — ไม่ใช่ขอบเขตสิทธิ์จริง
@@ -694,11 +701,23 @@ async function renderTeacher() {
   } else if (teacher.subView === 'depthead') {
     const allGroups = groupBySubject(teacher.unassigned)
     const deptCode = teacher.deptHeadDept?.dept_code
+    const crossCategoryAdmin = canManageAllRegradeCategories()
     const canFilterByDept = deptCode && Object.values(SUBJECT_PREFIX_TO_DEPT).includes(deptCode)
-    const groups = deptHeadFilterableGroups(allGroups)
+    const categoryGroups = crossCategoryAdmin && teacher.deptHeadCategory !== 'all'
+      ? allGroups.filter(g => g.category === teacher.deptHeadCategory)
+      : allGroups
+    const groups = crossCategoryAdmin ? categoryGroups : deptHeadFilterableGroups(categoryGroups)
+    const categoryCounts = ['สามัญ', 'ศาสนา'].map(category => ({
+      category,
+      count: allGroups.filter(g => g.category === category).length,
+    }))
     inner = `
-      <div class="rg-card p-3 mb-4 text-xs text-[var(--muted-2)]">🗂️ วิชาในหมวด${escHtml(ctx.teacherRow.category)}ที่ยังไม่มีครูผู้สอน — มอบหมายครูที่สอนอยู่จริงตอนนี้ให้แต่ละวิชาได้เลย</div>
-      ${canFilterByDept ? `
+      <div class="rg-card p-3 mb-4 text-xs text-[var(--muted-2)]">🗂️ ${crossCategoryAdmin ? 'รายการวิชาที่ยังไม่มีครูผู้สอนทุกหมวด' : `วิชาในหมวด${escHtml(ctx.teacherRow.category)}ที่ยังไม่มีครูผู้สอน`} — มอบหมายครูที่สอนอยู่จริงตอนนี้ให้แต่ละวิชาได้เลย</div>
+      ${crossCategoryAdmin ? `<div class="flex gap-2 mb-4 flex-wrap">
+        <button data-depthead-category="all" style="${pill(teacher.deptHeadCategory === 'all')}">ทุกหมวด · ${allGroups.length}</button>
+        ${categoryCounts.map(x => `<button data-depthead-category="${x.category}" style="${pill(teacher.deptHeadCategory === x.category, x.category === 'ศาสนา' ? 'secondary' : undefined)}">${x.category} · ${x.count}</button>`).join('')}
+      </div>` : ''}
+      ${!crossCategoryAdmin && canFilterByDept ? `
       <div class="flex gap-2 mb-4">
         <button data-depthead-scope="own" style="${pill(!teacher.deptHeadShowAll)}">📘 เฉพาะกลุ่มสาระของฉัน (${escHtml(teacher.deptHeadDept.dept_name)}) · ${allGroups.filter(g => SUBJECT_PREFIX_TO_DEPT[g.subject_code.charAt(0)] === deptCode).length}</button>
         <button data-depthead-scope="all" style="${pill(teacher.deptHeadShowAll, 'secondary')}">ดูทั้งหมด · ${allGroups.length}</button>
@@ -933,13 +952,15 @@ async function renderTeacher() {
     if (row) printRegradeSlip(row, ctx.teacherRow?.full_name)
   }))
   content.querySelectorAll('[data-toggle-group]').forEach(btn => btn.addEventListener('click', () => {
-    const [scope, code] = btn.dataset.toggleGroup.split('|')
+    const [scope, ...keyParts] = btn.dataset.toggleGroup.split('|')
+    const code = keyParts.join('|')
     const set = scope === 'catalog' ? teacher.catalogExpanded : scope === 'assigned' ? teacher.assignedExpanded : teacher.deptHeadExpanded
     if (set.has(code)) set.delete(code); else set.add(code)
     renderTeacher()
   }))
   content.querySelectorAll('[data-depthead-assign]').forEach(btn => btn.addEventListener('click', () => handleDeptHeadAssign(btn)))
   content.querySelectorAll('[data-depthead-scope]').forEach(btn => btn.addEventListener('click', () => { teacher.deptHeadShowAll = btn.dataset.deptheadScope === 'all'; renderTeacher() }))
+  content.querySelectorAll('[data-depthead-category]').forEach(btn => btn.addEventListener('click', () => { teacher.deptHeadCategory = btn.dataset.deptheadCategory; renderTeacher() }))
   content.querySelectorAll('[data-depthead-toggle-select]').forEach(btn => btn.addEventListener('click', () => {
     const code = btn.dataset.deptheadToggleSelect
     if (teacher.deptHeadSelectMode.has(code)) teacher.deptHeadSelectMode.delete(code)
@@ -957,13 +978,14 @@ async function renderTeacher() {
   }))
   content.querySelectorAll('[data-depthead-select-all]').forEach(cb => cb.addEventListener('change', () => {
     const code = cb.dataset.deptheadSelectAll
-    const group = groupBySubject(teacher.unassigned).find(g => g.subject_code === code)
+    const group = groupBySubject(teacher.unassigned).find(g => g.key === code)
     teacher.deptHeadSelected[code] = new Set(cb.checked ? (group?.items.map(x => x.id) ?? []) : [])
     renderTeacher()
   }))
   content.querySelectorAll('[data-depthead-assign-selected]').forEach(btn => btn.addEventListener('click', () => handleDeptHeadAssignSelected(btn)))
   content.querySelectorAll('[data-group-sem]').forEach(sel => sel.addEventListener('change', (e) => {
-    const [scope, code] = sel.dataset.groupSem.split('|')
+    const [scope, ...keyParts] = sel.dataset.groupSem.split('|')
+    const code = keyParts.join('|')
     const map = scope === 'catalog' ? teacher.catalogSemesterFilter : teacher.assignedSemesterFilter
     map[code] = e.target.value
     renderTeacher()
@@ -986,14 +1008,15 @@ async function renderTeacher() {
 function groupBySubject(list) {
   const map = new Map()
   list.forEach(x => {
-    if (!map.has(x.subject_code)) map.set(x.subject_code, { subject_code: x.subject_code, subject_name: x.subject_name, category: x.category, items: [] })
-    map.get(x.subject_code).items.push(x)
+    const key = `${x.category || ''}|${x.subject_code}`
+    if (!map.has(key)) map.set(key, { key, subject_code: x.subject_code, subject_name: x.subject_name, category: x.category, items: [] })
+    map.get(key).items.push(x)
   })
   return [...map.values()].sort((a, b) => b.items.length - a.items.length)
 }
 
 function subjectGroupCard(group, { scope, expandedSet, semesterFilterMap, renderRow }) {
-  const code = group.subject_code
+  const code = group.key
   const isOpen = expandedSet.has(code)
   const semesters = [...new Set(group.items.map(x => x.semester).filter(Boolean))].sort().reverse()
   const selectedSem = semesterFilterMap[code] || 'all'
@@ -1003,7 +1026,7 @@ function subjectGroupCard(group, { scope, expandedSet, semesterFilterMap, render
     <button data-toggle-group="${scope}|${escHtml(code)}" class="w-full flex justify-between items-start gap-2 text-left">
       <div class="min-w-0">
         <p class="font-bold text-sm text-[var(--ink)]">${escHtml(group.subject_name)}</p>
-        <p class="text-xs text-[var(--muted-2)] mt-0.5">${escHtml(code)}</p>
+        <p class="text-xs text-[var(--muted-2)] mt-0.5">${escHtml(group.subject_code)}</p>
         <span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(group.category)}">${escHtml(group.category)}</span>
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
@@ -1094,7 +1117,7 @@ function unassignedStudentRowSelectable(x, code, checked) {
 }
 
 function unassignedSubjectGroupCard(group, expandedSet, teacherOptions) {
-  const code = group.subject_code
+  const code = group.key
   const isOpen = expandedSet.has(code)
   const selectMode = teacher.deptHeadSelectMode.has(code)
   const selectedSet = teacher.deptHeadSelected[code] || new Set()
@@ -1103,7 +1126,8 @@ function unassignedSubjectGroupCard(group, expandedSet, teacherOptions) {
     <button data-toggle-group="depthead|${escHtml(code)}" class="w-full flex justify-between items-start gap-2 text-left">
       <div class="min-w-0">
         <p class="font-bold text-sm text-[var(--ink)]">${escHtml(group.subject_name)}</p>
-        <p class="text-xs text-[var(--muted-2)] mt-0.5">${escHtml(code)}</p>
+        <p class="text-xs text-[var(--muted-2)] mt-0.5">${escHtml(group.subject_code)}</p>
+        ${canManageAllRegradeCategories() ? `<span class="inline-block mt-1 px-2 py-0.5 rounded-full text-[9px] font-bold" style="${categoryChipStyle(group.category)}">${escHtml(group.category)}</span>` : ''}
       </div>
       <div class="flex items-center gap-2 flex-shrink-0">
         <span class="px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap" style="background:var(--bad-soft);color:var(--bad);border:1px solid var(--bad-soft-line)">ยังไม่มีครู ${group.items.length} คน</span>
@@ -1157,7 +1181,8 @@ async function handleDeptHeadAssign(btn) {
   const input = document.querySelector(`[data-depthead-input="${CSS.escape(code)}"]`)
   const teacher_ = resolveTeacherFromPickerInput(input.value, teacher.deptHeadTeacherOptions)
   if (!teacher_) { showToast('กรุณาพิมพ์แล้วเลือกชื่อครูจากรายการที่แสดง', 'warning'); return }
-  const group = groupBySubject(teacher.unassigned).find(g => g.subject_code === code)
+  const group = groupBySubject(teacher.unassigned).find(g => g.key === code)
+  if (!group) { showToast('ไม่พบรายการวิชาที่เลือก กรุณาโหลดหน้าใหม่', 'error'); return }
   const ok = await showRegradeConfirm({
     title: 'ยืนยันมอบหมายครูผู้สอน',
     message: `มอบหมาย "${teacher_.full_name}" เป็นครูผู้สอนวิชา "${group?.subject_name || code}" ให้นักเรียนที่ยังไม่มีครูทั้ง ${group?.items.length ?? ''} รายการใช่หรือไม่?`,
@@ -1165,7 +1190,7 @@ async function handleDeptHeadAssign(btn) {
   })
   if (!ok) return
   try {
-    const n = await assignSubjectTeacherBulk(code, ctx.teacherRow.category, teacher_.id)
+    const n = await assignSubjectTeacherBulk(group.subject_code, group.category, teacher_.id)
     showToast(`มอบหมายครูผู้สอนให้ ${n} รายการเรียบร้อย ✅`, 'success')
     renderTeacher()
   } catch (err) { showToast('มอบหมายไม่สำเร็จ: ' + err.message, 'error') }
@@ -1178,7 +1203,8 @@ async function handleDeptHeadAssignSelected(btn) {
   if (!teacher_) { showToast('กรุณาพิมพ์แล้วเลือกชื่อครูจากรายการที่แสดง', 'warning'); return }
   const ids = [...(teacher.deptHeadSelected[code] || [])]
   if (!ids.length) { showToast('กรุณาเลือกนักเรียนอย่างน้อย 1 คน', 'warning'); return }
-  const group = groupBySubject(teacher.unassigned).find(g => g.subject_code === code)
+  const group = groupBySubject(teacher.unassigned).find(g => g.key === code)
+  if (!group) { showToast('ไม่พบรายการวิชาที่เลือก กรุณาโหลดหน้าใหม่', 'error'); return }
   const ok = await showRegradeConfirm({
     title: 'ยืนยันมอบหมายครูผู้สอน',
     message: `มอบหมาย "${teacher_.full_name}" เป็นครูผู้สอนวิชา "${group?.subject_name || code}" ให้นักเรียนที่เลือกไว้ ${ids.length} คนใช่หรือไม่?`,

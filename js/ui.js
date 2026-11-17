@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1094'
+import { APP_VERSION } from './version.js?v=10.22.1095'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1095': [
+    'เพิ่มสิทธิ์แอดมินรหัส 1087 ให้เห็นและมอบหมายรายวิชาค้างที่ยังไม่มีครูได้ทั้งหมวดสามัญและศาสนา',
+  ],
   '10.22.1094': [
     'เพิ่มช่องค้นหาสมาชิกเพื่อเลือกบันทึกเงินออมจากชื่อ รหัส ฝ่าย หรือห้อง และเปิดกล้องสแกน QR เพื่อเลือกสมาชิกได้',
   ],

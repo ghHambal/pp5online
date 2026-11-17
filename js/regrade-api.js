@@ -106,7 +106,7 @@ export async function getMyTeacherRow() {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return null
   const { data, error } = await supabase.from('teachers')
-    .select('id, full_name, category, image_url, position, positions, position_dept_id')
+    .select('id, full_name, teacher_code, category, image_url, position, positions, position_dept_id')
     .eq('profile_id', session.user.id).maybeSingle()
   if (error) throw error
   return data
@@ -342,13 +342,15 @@ export async function getAllTeachersForPicker() {
   return data ?? []
 }
 
-// ─── หัวหน้ากลุ่มสาระ: จัดการวิชาที่ยังไม่มีครูผู้สอน (เฉพาะหมวดของตัวเอง — คุมจริงที่ RLS) ──
+// ─── จัดการวิชาที่ยังไม่มีครูผู้สอน (หัวหน้ากลุ่มสาระตามหมวด หรือแอดมิน 1087 ทุกหมวด — คุมจริงที่ RLS) ──
 export async function getUnassignedRegradeSubjects(category) {
-  const { data, error } = await supabase.from('regrade_subjects')
+  let query = supabase.from('regrade_subjects')
     .select('*, students(full_name, student_code, main_room, religion_room, photo_url, image_url)')
     .is('teacher_id', null)
-    .eq('category', category)
-    .order('subject_code')
+  query = category === 'all'
+    ? query.in('category', ['สามัญ', 'ศาสนา'])
+    : query.eq('category', category)
+  const { data, error } = await query.order('subject_code')
   if (error) throw error
   return data ?? []
 }
