@@ -42,7 +42,7 @@ async function _notifyStudent(request, status) {
   } catch { /* แจ้งเตือนเป็นส่วนเสริม ไม่ขัดขวางการบันทึก */ }
 }
 
-export async function renderStudentLeaveRequests(teacher, { container = null, focusRequestId = null } = {}) {
+export async function renderStudentLeaveRequests(teacher, { container = null, focusRequestId = null, readOnly = false } = {}) {
   const putContent = html => container ? (container.innerHTML = html) : setContent(html)
   const queryRoot = container || document
   if (!container) {
@@ -136,7 +136,7 @@ export async function renderStudentLeaveRequests(teacher, { container = null, fo
             </div>
             <div class="mt-3 flex flex-wrap gap-2">
               <button type="button" class="leave-proof-btn rounded-xl border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50" data-path="${_htmlEsc(r.proof_path ?? '')}" ${r.proof_path ? '' : 'disabled'}>${r.proof_path ? '🔍 เปิดใบลาที่มีตราอนุมัติ' : 'ไฟล์หลักฐานถูกลบแล้ว'}</button>
-              ${r.status === 'pending' ? `<button type="button" class="leave-approve-btn ml-auto rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700" data-id="${r.id}">ยืนยันและบันทึกเช็คชื่อ</button><button type="button" class="leave-reject-btn rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50" data-id="${r.id}">ปฏิเสธ</button>` : ''}
+              ${r.status === 'pending' && !readOnly ? `<button type="button" class="leave-approve-btn ml-auto rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700" data-id="${r.id}">ยืนยันและบันทึกเช็คชื่อ</button><button type="button" class="leave-reject-btn rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50" data-id="${r.id}">ปฏิเสธ</button>` : ''}
             </div>
           </article>`
         }).join('') : '<div class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-400">ไม่พบรายการตามคำค้นหาหรือตัวกรอง</div>'}

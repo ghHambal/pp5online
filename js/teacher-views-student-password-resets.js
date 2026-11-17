@@ -16,7 +16,7 @@ const toast = (message, isError = false) => {
   setTimeout(() => element.remove(), 3200)
 }
 
-export async function renderAdvisorStudentPasswordResets(container) {
+export async function renderAdvisorStudentPasswordResets(container, { readOnly = false } = {}) {
   let activeFilter = 'pending'
 
   const render = async () => {
@@ -27,7 +27,7 @@ export async function renderAdvisorStudentPasswordResets(container) {
       container.innerHTML = `
         <div class="space-y-3">
           <p class="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-relaxed text-amber-800">
-            🔒 ก่อนยืนยัน ต้องพบนักเรียนเจ้าของบัญชีและตรวจสอบความยินยอมด้วยตนเอง แม้เพื่อนจะเป็นผู้ส่งคำขอแทน
+            ${readOnly ? '🔎 หน้านี้สำหรับดูข้อมูลคำร้องและตรวจสอบสถานะ การยืนยันตัวตนและรีเซ็ตรหัสผ่านดำเนินการในหน้าครูที่ปรึกษา' : '🔒 ก่อนยืนยัน ต้องพบนักเรียนเจ้าของบัญชีและตรวจสอบความยินยอมด้วยตนเอง แม้เพื่อนจะเป็นผู้ส่งคำขอแทน'}
           </p>
           <div class="grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1 sm:grid-cols-4">
             ${[['pending','รอตรวจ'],['approved','ยืนยันแล้ว'],['rejected','ไม่อนุมัติ'],['all','ทั้งหมด']].map(([key,label]) =>
@@ -56,7 +56,7 @@ export async function renderAdvisorStudentPasswordResets(container) {
                   ${request.request_kind === 'friend' ? `<div class="mt-2 flex items-center gap-2"><span class="grid h-9 w-8 flex-shrink-0 place-items-center overflow-hidden rounded-lg border border-gray-200 bg-white">${requesterPhoto ? `<img src="${esc(requesterPhoto)}" alt="" class="h-full w-full object-cover">` : esc((requester?.full_name || '?').charAt(0))}</span><p class="min-w-0">ผู้แจ้ง: ${esc(requester?.full_name || 'ไม่พบข้อมูลผู้แจ้ง')} · ${esc(requester?.student_code || '—')} · ${esc(roomOf(requester))}</p></div>` : ''}
                   <p class="mt-1 text-xs text-gray-400">ส่งคำขอ ${new Date(request.created_at).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' })}</p>
                 </div>
-                ${request.status === 'pending' ? `<div class="mt-3 flex flex-wrap justify-end gap-2"><button type="button" data-reset-reject="${request.id}" class="rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50">ไม่อนุมัติ</button><button type="button" data-reset-approve="${request.id}" class="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700">ยืนยันตัวตนและรีเซ็ตรหัส</button></div>` : ''}
+                ${request.status === 'pending' && !readOnly ? `<div class="mt-3 flex flex-wrap justify-end gap-2"><button type="button" data-reset-reject="${request.id}" class="rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50">ไม่อนุมัติ</button><button type="button" data-reset-approve="${request.id}" class="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700">ยืนยันตัวตนและรีเซ็ตรหัส</button></div>` : ''}
               </article>`
             }).join('') : '<div class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-400">ไม่มีคำขอในรายการนี้</div>'}
           </div>

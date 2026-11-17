@@ -23,7 +23,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1103'
+import { APP_VERSION } from './version.js?v=10.22.1104'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
@@ -824,6 +824,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     teachers:    renderTeachers,
     classes:     renderClasses,
     students:    renderStudents,
+    'student-requests-admin': () => import('./admin-student-requests.js').then(({ renderAdminStudentRequests }) => renderAdminStudentRequests()),
     departments: renderDepartments,
     subjects:    renderSubjects,
     'subject-admin': () => import('./admin-subject-management.js').then(({ renderAdminSubjectManagement }) => renderAdminSubjectManagement()),
