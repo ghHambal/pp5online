@@ -72,9 +72,9 @@
         <button id="btn-change-code" class="ml-auto text-xs text-gray-400 hover:text-gray-600 flex-shrink-0">เปลี่ยน</button>
       </div>
 
-      <!-- แจ้งเตือนรหัสผ่านถูกแอดมินรีเซ็ทให้ (โชว์เฉพาะกรณีมี password_reset_notice_at) -->
+      <!-- แจ้งเตือนรหัสผ่านถูกครูที่ปรึกษารีเซ็ตให้ (โชว์เฉพาะกรณีมี password_reset_notice_at) -->
       <div id="pw-reset-notice" class="hidden mb-4 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 leading-relaxed">
-        🔑 แอดมินรีเซ็ทรหัสผ่านของคุณแล้ว — เข้าสู่ระบบด้วย <b>รหัสนักเรียนของคุณ</b> เป็นรหัสผ่าน แล้วค่อยเปลี่ยนใหม่ได้จากหน้าโปรไฟล์
+        🔑 ครูที่ปรึกษารีเซ็ตรหัสผ่านของคุณแล้ว — เข้าสู่ระบบด้วย <b>รหัสนักเรียนตามด้วยเลข 0</b> เป็นรหัสผ่านชั่วคราว แล้วเปลี่ยนรหัสทันทีหลังเข้าสู่ระบบ
       </div>
 
       <div class="space-y-4">
@@ -153,37 +153,23 @@
     <p id="login-stats" class="text-center text-[10px] text-gray-300 mt-1"></p>
   </div>
 
-  <!-- Modal: ลืมรหัสผ่าน (Forgot Password) -->
+  <!-- Modal: ส่งคำขอรีเซ็ตรหัสผ่านให้อาจารย์ที่ปรึกษา -->
   <div id="modal-forgot-pw" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade">
     <div class="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-5 relative">
-      <h3 class="font-bold text-gray-800 text-base mb-4 flex items-center gap-1.5">🔑 ยืนยันข้อมูลนักเรียนเพื่อรีเซ็ต</h3>
+      <h3 class="font-bold text-gray-800 text-base mb-2 flex items-center gap-1.5">🔑 ขอรีเซ็ตรหัสผ่านกับครูที่ปรึกษา</h3>
+      <p class="mb-4 text-xs leading-relaxed text-gray-500">ครูจะรีเซ็ตรหัสให้หลังตรวจสอบตัวคุณต่อหน้า กรุณามาพบครูที่ปรึกษาเพื่อยืนยันคำขอ</p>
       <button id="forgot-pw-close" class="absolute right-4 top-4 text-gray-400 hover:text-gray-600 text-lg">✕</button>
       
       <form id="forgot-pw-form" class="space-y-3">
         <div>
-          <label class="block text-xs font-semibold text-gray-500 mb-1">รหัสนักเรียน</label>
-          <input id="forgot-code" type="text" placeholder="กรอกรหัสนักเรียน" required
-            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-500 mb-1">ชื่อ-นามสกุลจริง</label>
-          <input id="forgot-name" type="text" placeholder="เช่น เด็กชาย สมชาย เรียนดี" required
-            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-500 mb-1">ห้องเรียนประจำ</label>
-          <input id="forgot-room" type="text" placeholder="เช่น ม.4/1" required
-            class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-gray-500 mb-1">อีเมลจริงสำหรับรับลิงก์รีเซ็ต</label>
-          <input id="forgot-email" type="email" placeholder="เช่น name@gmail.com" required autocomplete="email" inputmode="email"
+          <label class="block text-xs font-semibold text-gray-500 mb-1">รหัสนักเรียนของคุณ</label>
+          <input id="forgot-code" type="text" readonly required
             class="input-field w-full border border-gray-300 rounded-xl px-4 py-2.5 text-sm" />
         </div>
         <div id="forgot-pw-msg" class="hidden text-xs text-center py-2.5 rounded-xl"></div>
         <button id="btn-submit-forgot" type="submit"
           class="btn-primary w-full text-white font-semibold py-2.5 rounded-xl text-sm transition">
-          ขอลิงก์รีเซ็ตรหัสผ่าน
+          ส่งคำขอให้ครูที่ปรึกษา
         </button>
       </form>
     </div>
@@ -217,6 +203,7 @@
   <script type="module">
     import { supabase } from '/js/supabase.js'
     import { blockPullToRefresh } from '/js/anti-pull-refresh.js'
+    import { submitStudentPasswordResetRequest } from '/js/student-password-reset-api.js'
 
     blockPullToRefresh()
 
@@ -417,6 +404,9 @@
     document.getElementById('btn-forgot-pw')?.addEventListener('click', () => {
       show('modal-forgot-pw')
       document.getElementById('forgot-code').value = document.getElementById('inp-code').value
+      const requestBtn = document.getElementById('btn-submit-forgot')
+      requestBtn.disabled = false
+      requestBtn.textContent = 'ส่งคำขอให้ครูที่ปรึกษา'
       hide('forgot-pw-msg')
     })
 
@@ -426,39 +416,20 @@
       e.preventDefault()
       const btn = document.getElementById('btn-submit-forgot')
       const code = document.getElementById('forgot-code').value.trim()
-      const name = document.getElementById('forgot-name').value.trim()
-      const room = document.getElementById('forgot-room').value.trim()
-      const email = document.getElementById('forgot-email').value.trim()
 
       btn.disabled = true; btn.textContent = 'กำลังส่งคำขอ...'
       hide('forgot-pw-msg')
 
       try {
-        // 1. เรียก RPC เพื่อยืนยันตัวตนและผูกอีเมลจริงในระบบหลังบ้าน
-        const { data: verified, error: verifyErr } = await supabase.rpc('student_request_password_reset', {
-          p_student_code: code,
-          p_full_name: name,
-          p_main_room: room,
-          p_new_email: email
-        })
-
-        if (verifyErr) throw verifyErr
-        if (!verified) throw new Error('ยืนยันตัวตนไม่สำเร็จ กรุณาตรวจสอบข้อมูลอีกครั้ง')
-
-        // 2. เรียก Supabase Auth ส่งลิงก์รีเซ็ต
-        const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: window.location.origin + window.location.pathname
-        })
-
-        if (resetErr) throw resetErr
-
-        showMsg('forgot-pw-msg', 'ส่งลิงก์ตั้งรหัสผ่านใหม่สำเร็จแล้ว กรุณาเช็คกล่องข้อความ!', 'success')
-        setTimeout(() => hide('modal-forgot-pw'), 4000)
+        await submitStudentPasswordResetRequest(code, 'self')
+        showMsg('forgot-pw-msg', 'ส่งคำขอแล้ว กรุณามาพบครูที่ปรึกษาเพื่อยืนยันตัวตนและรับรหัสชั่วคราว', 'success')
+        btn.textContent = 'ส่งคำขอแล้ว'
+        btn.disabled = true
 
       } catch(err) {
         showMsg('forgot-pw-msg', err.message || 'รีเซ็ตรหัสผ่านไม่สำเร็จ', 'error')
       } finally {
-        btn.disabled = false; btn.textContent = 'ขอลิงก์รีเซ็ตรหัสผ่าน'
+        if (!btn.disabled) btn.textContent = 'ส่งคำขอให้ครูที่ปรึกษา'
       }
     })
 

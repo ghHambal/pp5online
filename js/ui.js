@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1102'
+import { APP_VERSION } from './version.js?v=10.22.1103'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1103': [
+    'เพิ่มคำขอรีเซ็ตรหัสผ่านนักเรียนให้ครูที่ปรึกษาตรวจสอบตัวตนและยืนยันก่อนตั้งรหัสชั่วคราวเป็นรหัสนักเรียนตามด้วย 0; รองรับทั้งขอให้ตนเองและแจ้งแทนเพื่อน',
+  ],
   '10.22.1102': [
     'หน้าใบลา/ลาป่วยเพิ่มตัวกรองวันที่แจ้งลาในระบบและวันลา (วันแรก) แยกจากกัน โดยใช้วันที่แจ้งลาตามเวลาไทย',
   ],

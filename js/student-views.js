@@ -19,6 +19,7 @@ import {
 } from './student-api.js'
 import { getFriendlyErrorMessage } from './ui.js'
 import { getMyStudentLeaveRequests, getStudentLeaveProofUrl, submitStudentLeaveRequest } from './student-leave-api.js'
+import { submitStudentPasswordResetRequest } from './student-password-reset-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig, getAcademicTerms, getMyOpenQrReissueRequest, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
 import { isLifeSkillGroup } from './skill-groups.js'
@@ -26,7 +27,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1102'
+import { APP_VERSION } from './version.js?v=10.22.1103'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -3227,7 +3228,7 @@ export async function renderStudentProfile(student, onLogout) {
     _openPasswordResetChoiceModal()
   })
 
-  // ป๊อบอัพให้เลือก: เปลี่ยนรหัสผ่านด้วยตนเอง หรือ ให้แอดมินรีเซ็ทให้
+  // ป๊อบอัพให้เลือก: เปลี่ยนรหัสผ่านด้วยตนเอง หรือส่งคำขอให้ครูที่ปรึกษาตรวจสอบ
   function _openPasswordResetChoiceModal() {
     document.getElementById('pw-choice-modal')?.remove()
     const m = document.createElement('div')
@@ -3243,7 +3244,7 @@ export async function renderStudentProfile(student, onLogout) {
           </button>
           <button id="pwc-admin" class="w-full py-3 rounded-2xl text-white text-sm font-semibold transition"
             style="background:linear-gradient(135deg,#db2777,#9d174d);">
-            📨 ให้แอดมินรีเซ็ทให้
+            📨 ส่งคำขอให้ครูที่ปรึกษา
           </button>
         </div>
         <button id="pwc-cancel" class="text-xs text-gray-400 hover:text-gray-600">ยกเลิก</button>
@@ -3252,7 +3253,104 @@ export async function renderStudentProfile(student, onLogout) {
     m.addEventListener('click', e => { if (e.target === m) m.remove() })
     m.querySelector('#pwc-cancel').addEventListener('click', () => m.remove())
     m.querySelector('#pwc-self').addEventListener('click', () => { m.remove(); _openSelfChangePasswordModal() })
-    m.querySelector('#pwc-admin').addEventListener('click', () => { m.remove(); window._openPasswordResetRequest?.() })
+    m.querySelector('#pwc-admin').addEventListener('click', () => { m.remove(); _openPasswordResetRequestModal(student) })
+  }
+
+  function _openPasswordResetRequestModal(ownStudent) {
+    document.getElementById('stu-password-reset-request-modal')?.remove()
+    const modal = document.createElement('div')
+    modal.id = 'stu-password-reset-request-modal'
+    modal.className = 'fixed inset-0 z-[500] overflow-y-auto bg-white sm:flex sm:items-center sm:justify-center sm:bg-black/60 sm:p-4'
+    modal.innerHTML = `
+      <div class="mx-auto flex min-h-[100dvh] w-full max-w-xl flex-col sm:min-h-0 sm:max-h-[92dvh] sm:rounded-3xl sm:bg-white sm:shadow-2xl">
+        <header class="flex items-center justify-between border-b border-gray-100 px-5 py-4">
+          <div><h3 class="font-bold text-gray-800">🔑 ขอรีเซ็ตรหัสผ่าน</h3><p class="mt-1 text-xs text-gray-500">ครูที่ปรึกษาต้องตรวจสอบนักเรียนต่อหน้าก่อนยืนยัน</p></div>
+          <button type="button" data-request-close class="rounded-full px-3 py-2 text-2xl leading-none text-gray-400">×</button>
+        </header>
+        <div class="flex-1 space-y-4 overflow-y-auto p-5">
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" data-request-kind="self" class="rounded-xl border px-3 py-3 text-sm font-semibold">🙋 ขอให้ฉันเอง</button>
+            <button type="button" data-request-kind="friend" class="rounded-xl border px-3 py-3 text-sm font-semibold">📣 แจ้งรีเซ็ตให้เพื่อน</button>
+          </div>
+          <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-800" data-request-warning></div>
+          <label class="block text-sm font-semibold text-gray-600">รหัสนักเรียน</label>
+          <div class="flex gap-2"><input data-request-code class="min-w-0 flex-1 rounded-xl border border-gray-300 px-4 py-3 text-base" inputmode="numeric" autocomplete="off"><button type="button" data-request-search class="rounded-xl border border-indigo-200 px-4 text-sm font-semibold text-indigo-700">ค้นหา</button></div>
+          <div data-request-preview class="hidden rounded-2xl border border-gray-200 bg-gray-50 p-4"></div>
+          <div data-request-result class="hidden rounded-xl px-4 py-3 text-sm leading-relaxed"></div>
+        </div>
+        <footer class="border-t border-gray-100 p-5"><button type="button" data-request-submit class="w-full rounded-2xl bg-pink-600 py-3.5 font-bold text-white shadow">ส่งคำขอให้ครูที่ปรึกษา</button></footer>
+      </div>`
+    document.body.appendChild(modal)
+
+    let requestKind = 'self'
+    let targetStudent = ownStudent
+    const codeInput = modal.querySelector('[data-request-code]')
+    const preview = modal.querySelector('[data-request-preview]')
+    const warning = modal.querySelector('[data-request-warning]')
+    const result = modal.querySelector('[data-request-result]')
+    const submit = modal.querySelector('[data-request-submit]')
+    const renderPreview = () => {
+      const target = targetStudent
+      if (!target) { preview.classList.add('hidden'); preview.innerHTML = ''; return }
+      const photo = target.image_url || target.photo_url
+      preview.classList.remove('hidden')
+      preview.innerHTML = `<div class="flex items-center gap-3">${photo ? `<img src="${_esc(photo)}" alt="" class="h-16 w-14 rounded-xl border border-gray-200 object-cover">` : `<div class="grid h-16 w-14 place-items-center rounded-xl bg-indigo-50 font-bold text-indigo-600">${_esc((target.full_name || '?').charAt(0))}</div>`}<div><p class="font-bold text-gray-800">${_esc(target.full_name || '')}</p><p class="text-sm text-gray-500">${_esc(target.student_code || '')} · ${_esc(target.main_room || target.religion_room || '—')}</p></div></div>`
+    }
+    const setKind = kind => {
+      requestKind = kind
+      modal.querySelectorAll('[data-request-kind]').forEach(button => {
+        const selected = button.dataset.requestKind === kind
+        button.className = `rounded-xl border px-3 py-3 text-sm font-semibold ${selected ? 'border-indigo-300 bg-indigo-50 text-indigo-700' : 'border-gray-200 text-gray-500'}`
+      })
+      if (kind === 'self') {
+        targetStudent = ownStudent
+        codeInput.value = ownStudent.student_code || ''
+        codeInput.readOnly = true
+        warning.textContent = 'ครูจะรีเซ็ตรหัสของคุณหลังตรวจสอบตัวตนต่อหน้า และจะแจ้งรหัสชั่วคราวให้คุณโดยตรง'
+        modal.querySelector('[data-request-search]').classList.add('hidden')
+      } else {
+        targetStudent = null
+        codeInput.value = ''
+        codeInput.readOnly = false
+        warning.textContent = 'คุณต้องพาเพื่อนเจ้าของบัญชีมาพบครูที่ปรึกษาด้วยตนเอง ครูจะยืนยันความยินยอมก่อนรีเซ็ต และจะบอกรหัสใหม่กับเพื่อนโดยตรง'
+        modal.querySelector('[data-request-search]').classList.remove('hidden')
+      }
+      result.classList.add('hidden')
+      renderPreview()
+    }
+    modal.querySelectorAll('[data-request-kind]').forEach(button => button.addEventListener('click', () => setKind(button.dataset.requestKind)))
+    modal.querySelector('[data-request-close]').addEventListener('click', () => modal.remove())
+    modal.querySelector('[data-request-search]').addEventListener('click', async () => {
+      const code = codeInput.value.trim()
+      if (!code) { showToast('กรุณากรอกรหัสนักเรียนของเพื่อน', 'warning'); return }
+      try {
+        targetStudent = await findStudentByCode(code)
+        if (!targetStudent) throw new Error('ไม่พบนักเรียนรหัสนี้')
+        renderPreview()
+      } catch (error) { showToast(getFriendlyErrorMessage(error) || 'ค้นหานักเรียนไม่สำเร็จ', 'error') }
+    })
+    submit.addEventListener('click', async () => {
+      if (!targetStudent || codeInput.value.trim() !== String(targetStudent.student_code)) {
+        showToast(requestKind === 'friend' ? 'กรุณาค้นหาเพื่อนก่อนส่งคำขอ' : 'ตรวจสอบรหัสนักเรียนไม่สำเร็จ', 'warning')
+        return
+      }
+      submit.disabled = true
+      submit.textContent = 'กำลังส่งคำขอ...'
+      try {
+        await submitStudentPasswordResetRequest(codeInput.value, requestKind)
+        result.className = 'rounded-xl bg-emerald-50 px-4 py-3 text-sm leading-relaxed text-emerald-800'
+        result.textContent = requestKind === 'friend'
+          ? 'ส่งคำขอแล้ว กรุณาพาเพื่อนเจ้าของบัญชีมาพบครูที่ปรึกษาเพื่อยืนยันตัวตนและความยินยอม'
+          : 'ส่งคำขอแล้ว กรุณามาพบครูที่ปรึกษาเพื่อยืนยันตัวตนและรับรหัสชั่วคราว'
+        result.classList.remove('hidden')
+        submit.textContent = 'ส่งคำขอแล้ว'
+      } catch (error) {
+        showToast(`ส่งคำขอไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error')
+        submit.disabled = false
+        submit.textContent = 'ส่งคำขอให้ครูที่ปรึกษา'
+      }
+    })
+    setKind('self')
   }
 
   // ป๊อบอัพเปลี่ยนรหัสผ่านด้วยตนเอง (ย้ายมาจากการ์ดที่เคยฝังอยู่ในหน้าโปรไฟล์)

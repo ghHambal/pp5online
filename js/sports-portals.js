@@ -662,6 +662,8 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   const hasBoth = samai.length && religion.length
   const leavePendingCount = await import('./student-leave-api.js')
     .then(m => m.getPendingAdvisorStudentLeaveCount()).catch(() => 0)
+  const passwordResetPendingCount = await import('./student-password-reset-api.js')
+    .then(m => m.getPendingAdvisorStudentPasswordResetCount()).catch(() => 0)
   // เช็คชื่อเข้าสีวันแรก: รวมห้องทุกประเภทที่ครูคนนี้เป็นที่ปรึกษาอยู่ (ไม่แยกตามแท็บสามัญ/ศาสนา
   // ที่กำลังดู) เพราะบางห้องเรียนสามัญและศาสนาเป็นห้องเดียวกัน ครูที่ปรึกษาศาสนาต้องเช็คชื่อแทน
   // ครูที่ปรึกษาสามัญที่ลาได้ — เห็นห้องของตัวเองครบทุกห้องไม่ว่าจะสลับแท็บไหนอยู่
@@ -678,6 +680,7 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
     <div class="flex gap-2 flex-wrap">
       <button data-advisor-tab="list" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='list'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👥 รายชื่อ</button>
       <button data-advisor-tab="leaves" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='leaves'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">📄 ใบลา/ลาป่วย${leavePendingCount ? ` <span class="ml-1 inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-red-500 text-white text-[10px]">${leavePendingCount > 99 ? '99+' : leavePendingCount}</span>` : ''}</button>
+      <button data-advisor-tab="password-resets" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='password-resets'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🔑 ขอรีเซ็ตรหัส${passwordResetPendingCount ? ` <span class="ml-1 inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-red-500 text-white text-[10px]">${passwordResetPendingCount > 99 ? '99+' : passwordResetPendingCount}</span>` : ''}</button>
       <button data-advisor-tab="checkin" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='checkin'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🎽 เช็คชื่อเข้าสีวันแรก</button>
       ${cat==='สามัญ'?`
       <button data-advisor-tab="size" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='size'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👕 ไซซ์เสื้อ</button>
@@ -691,6 +694,7 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   el.querySelectorAll('[data-advisor-cat]').forEach(b=>b.addEventListener('click',()=>renderAdvisorStudents(teacher,rooms,'list',b.dataset.advisorCat)))
   const body=el.querySelector('#advisor-tab-body')
   if(tab==='leaves') await import('./teacher-views-student-leaves.js').then(m => m.renderStudentLeaveRequests(teacher, { container: body, focusRequestId: focusLeaveRequestId }))
+  else if(tab==='password-resets') await import('./teacher-views-student-password-resets.js').then(m => m.renderAdvisorStudentPasswordResets(body))
   else if(tab==='vote') await _renderAdvisorVoteTab(body,teacher,rooms,roomNames)
   else if(tab==='size') await _renderAdvisorSizeTab(body,teacher,rooms,roomNames)
   else if(tab==='shirt-payment') await _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames)
@@ -702,7 +706,7 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
 async function _renderAdvisorListTab(body,teacher,rooms,roomNames,category) {
   body.innerHTML='<div class="py-12 text-center text-gray-400">กำลังโหลด...</div>'
   try {
-    const { advisorResetStudentPassword, advisorRemoveStudentFromRoom } = await import('./api.js')
+    const { advisorRemoveStudentFromRoom } = await import('./api.js')
     const roomField = category==='ศาสนา' ? 'religion_room' : 'main_room'
     const { data: students, error } = await supabase.from('students')
       .select('id,student_code,full_name,main_room,religion_room,image_url,photo_url,profile_id')
@@ -730,7 +734,6 @@ async function _renderAdvisorListTab(body,teacher,rooms,roomNames,category) {
               <b class="text-sm">${esc(s.full_name)}</b>
               <p class="text-xs text-gray-500">${esc(s.student_code)} · ${esc(category==='ศาสนา'?s.religion_room:s.main_room)}${s.profile_id?'':' · <span class="text-amber-500">ยังไม่เปิดบัญชี</span>'}</p>
             </div>
-            <button data-advisor-reset="${s.id}" class="px-3 py-1.5 border border-indigo-200 text-indigo-600 rounded-lg text-xs font-semibold hover:bg-indigo-50 transition flex-shrink-0">🔒 รีเซ็ตรหัสผ่าน</button>
             <button data-advisor-remove="${s.id}" data-name="${esc(s.full_name)}" class="px-3 py-1.5 border border-red-100 text-red-500 rounded-lg text-xs font-semibold hover:bg-red-50 transition flex-shrink-0">🗑️ ลบออกจากห้อง</button>
           </div>`
         }).join('') || '<p class="p-8 text-center text-gray-400">ไม่พบนักเรียนในห้องนี้</p>'}
@@ -739,13 +742,6 @@ async function _renderAdvisorListTab(body,teacher,rooms,roomNames,category) {
     body.querySelectorAll('[data-shortcut]').forEach(b=>b.addEventListener('click',()=>{
       const fn = window[b.dataset.shortcut]
       if (typeof fn === 'function') fn(roomNames[0])
-    }))
-
-    body.querySelectorAll('[data-advisor-reset]').forEach(b=>b.addEventListener('click',()=>{
-      const id = Number(b.dataset.advisorReset)
-      _openAdvisorResetPasswordModal(id, async (newPw) => {
-        await advisorResetStudentPassword(id, newPw)
-      })
     }))
 
     body.querySelectorAll('[data-advisor-remove]').forEach(b=>b.addEventListener('click',async()=>{
