@@ -19,6 +19,15 @@ const _fmtDate = value => value
   ? new Date(`${value}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
   : '—'
 
+const _bangkokDate = value => {
+  if (!value) return ''
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(value))
+  const part = type => parts.find(item => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
 async function _notifyStudent(request, status) {
   const profileId = request.students?.profile_id
   if (!profileId) return
@@ -52,16 +61,15 @@ export async function renderStudentLeaveRequests(teacher, { container = null, fo
   let filter = 'pending'
   let search = ''
   let leaveTypeFilter = 'all'
-  let leaveDateFrom = ''
-  let leaveDateTo = ''
+  let submittedDateFilter = ''
+  let leaveDateFilter = ''
   const render = ({ searchSelection = null } = {}) => {
     const needle = search.trim().toLocaleLowerCase()
     const rows = all.filter(r => {
       if (filter !== 'all' && r.status !== filter) return false
       if (leaveTypeFilter !== 'all' && r.leave_type !== leaveTypeFilter) return false
-      // แสดงคำขอที่มีช่วงวันลาทับกับช่วงวันที่เลือก
-      if (leaveDateFrom && r.end_date < leaveDateFrom) return false
-      if (leaveDateTo && r.start_date > leaveDateTo) return false
+      if (submittedDateFilter && _bangkokDate(r.created_at) !== submittedDateFilter) return false
+      if (leaveDateFilter && r.start_date !== leaveDateFilter) return false
       if (!needle) return true
       const student = r.students ?? {}
       const room = [student.main_room, student.religion_room].filter(Boolean).join(' ')
@@ -70,7 +78,7 @@ export async function renderStudentLeaveRequests(teacher, { container = null, fo
         TYPE_LABEL[r.leave_type], r.leave_type, STATUS[r.status]?.[0], r.status,
         r.start_date, r.end_date, _fmtDate(r.start_date), _fmtDate(r.end_date),
         r.reason, r.teacher_comment, r.attendance_rows_count,
-        r.created_at ? new Date(r.created_at).toLocaleDateString('th-TH') : '',
+        r.created_at ? new Date(r.created_at).toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok' }) : '',
       ].join(' ').toLocaleLowerCase()
       return searchable.includes(needle)
     })
@@ -91,11 +99,11 @@ export async function renderStudentLeaveRequests(teacher, { container = null, fo
               <option value="sick" ${leaveTypeFilter === 'sick' ? 'selected' : ''}>ป · ลาป่วย</option>
             </select>
           </label>
-          <label class="text-xs font-semibold text-gray-600">วันลาตั้งแต่
-            <input id="student-leave-date-from" type="date" value="${_htmlEsc(leaveDateFrom)}" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal text-gray-800">
+          <label class="text-xs font-semibold text-gray-600">วันที่แจ้งลาในระบบ
+            <input id="student-leave-submitted-date" type="date" value="${_htmlEsc(submittedDateFilter)}" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal text-gray-800">
           </label>
-          <label class="text-xs font-semibold text-gray-600">ถึงวันที่
-            <input id="student-leave-date-to" type="date" value="${_htmlEsc(leaveDateTo)}" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal text-gray-800">
+          <label class="text-xs font-semibold text-gray-600">วันลา (วันแรก)
+            <input id="student-leave-date" type="date" value="${_htmlEsc(leaveDateFilter)}" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm font-normal text-gray-800">
           </label>
         </div>
         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -149,10 +157,10 @@ export async function renderStudentLeaveRequests(teacher, { container = null, fo
       nextSearchInput?.setSelectionRange(searchSelection.start, searchSelection.end)
     }
     queryRoot.querySelector('#student-leave-type-filter')?.addEventListener('change', event => { leaveTypeFilter = event.currentTarget.value; render() })
-    queryRoot.querySelector('#student-leave-date-from')?.addEventListener('change', event => { leaveDateFrom = event.currentTarget.value; render() })
-    queryRoot.querySelector('#student-leave-date-to')?.addEventListener('change', event => { leaveDateTo = event.currentTarget.value; render() })
+    queryRoot.querySelector('#student-leave-submitted-date')?.addEventListener('change', event => { submittedDateFilter = event.currentTarget.value; render() })
+    queryRoot.querySelector('#student-leave-date')?.addEventListener('change', event => { leaveDateFilter = event.currentTarget.value; render() })
     queryRoot.querySelector('#student-leave-clear-filters')?.addEventListener('click', () => {
-      search = ''; leaveTypeFilter = 'all'; leaveDateFrom = ''; leaveDateTo = ''; filter = 'pending'; render()
+      search = ''; leaveTypeFilter = 'all'; submittedDateFilter = ''; leaveDateFilter = ''; filter = 'pending'; render()
     })
     queryRoot.querySelectorAll('[data-leave-filter]').forEach(button => button.addEventListener('click', () => { filter = button.dataset.leaveFilter; render() }))
     queryRoot.querySelectorAll('.leave-proof-btn').forEach(button => button.addEventListener('click', async () => {
