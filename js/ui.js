@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1104'
+import { APP_VERSION } from './version.js?v=10.22.1105'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1105': [
+    'ปรับเช็คชื่อเวรรายวันให้สถานะที่ยังไม่เลือกว่างจริง และกำหนดให้เลือกสถานะก่อนสแกน QR เพื่อป้องกันการแสดงว่ามาโดยยังไม่ได้บันทึก',
+  ],
   '10.22.1104': [
     'เพิ่มหน้า “คำร้องนักเรียน” ในแดชบอร์ดแอดมิน ดูคำร้องแจ้งลาและรีเซ็ตรหัสผ่านจากทุกห้อง พร้อมจำนวนรายการรอตรวจ',
   ],

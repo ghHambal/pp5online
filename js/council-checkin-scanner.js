@@ -59,8 +59,8 @@ export function openCouncilCheckinScanner(opts) {
     ['absent', 'ขาด', 'bg-red-500 text-white'],
     ['excused', 'ลา', 'bg-blue-500 text-white'],
   ]
-  let selectedDutyStatus = dutyStatuses.some(([key]) => key === opts.initialStatus) ? opts.initialStatus : 'present'
-  const dutyStatusLabel = status => dutyStatuses.find(([key]) => key === status)?.[1] || 'มา'
+  let selectedDutyStatus = dutyStatuses.some(([key]) => key === opts.initialStatus) ? opts.initialStatus : null
+  const dutyStatusLabel = status => dutyStatuses.find(([key]) => key === status)?.[1] || 'ยังไม่เลือก'
   document.getElementById('council-checkin-overlay')?.remove()
 
   const overlay = document.createElement('div')
@@ -81,7 +81,7 @@ export function openCouncilCheckinScanner(opts) {
       <button id="ccs-close" class="text-slate-400 hover:text-white text-2xl leading-none px-2">&times;</button>
     </div>
     <div class="flex-1 overflow-y-auto p-4 flex flex-col gap-4 max-w-md mx-auto w-full">
-      ${dutyMode ? `<section class="bg-slate-900 border border-slate-800 rounded-2xl p-3"><p class="text-[10px] text-slate-400 font-bold mb-2">เลือกสถานะที่จะบันทึก</p><div class="grid grid-cols-4 gap-1.5">${dutyStatuses.map(([key, label, color]) => `<button type="button" data-ccs-duty-status="${key}" class="rounded-lg border px-2 py-2 text-xs font-bold transition ${selectedDutyStatus === key ? `${color} border-transparent shadow-sm` : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}">${label}</button>`).join('')}</div></section>` : ''}
+      ${dutyMode ? `<section class="bg-slate-900 border border-slate-800 rounded-2xl p-3"><p class="text-[10px] text-slate-400 font-bold mb-2">เลือกสถานะที่จะบันทึก · เริ่มต้นยังไม่เลือก</p><div class="grid grid-cols-4 gap-1.5">${dutyStatuses.map(([key, label, color]) => `<button type="button" data-ccs-duty-status="${key}" class="rounded-lg border px-2 py-2 text-xs font-bold transition ${selectedDutyStatus === key ? `${color} border-transparent shadow-sm` : 'border-slate-700 bg-slate-950 text-slate-300 hover:border-slate-500'}">${label}</button>`).join('')}</div></section>` : ''}
       <div id="ccs-camera-container" class="relative w-full aspect-square bg-black rounded-2xl overflow-hidden">
         <div id="ccs-camera-reader" class="w-full h-full"></div>
         <div class="absolute inset-0 pointer-events-none flex items-center justify-center">
@@ -153,6 +153,12 @@ export function openCouncilCheckinScanner(opts) {
     const flash = ok => {
       container.classList.add(ok ? 'ccs-flash-success' : 'ccs-flash-error')
       setTimeout(() => container.classList.remove(ok ? 'ccs-flash-success' : 'ccs-flash-error'), 500)
+    }
+
+    if (dutyMode && !selectedDutyStatus) {
+      _playScanBeep('error')
+      feedback.innerHTML = `<div class="bg-amber-950/40 border border-amber-800/80 rounded-2xl p-3 text-center text-xs text-amber-300">เลือกสถานะเวรก่อนสแกนหรือบันทึก</div>`
+      return
     }
 
     const resolved = await resolveStudentByCode(studentCode)
