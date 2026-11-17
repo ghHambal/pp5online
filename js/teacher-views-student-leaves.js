@@ -1,0 +1,123 @@
+import { supabase } from './supabase.js'
+import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
+import {
+  getAdvisorStudentLeaveRequests,
+  getStudentLeaveProofUrl,
+  reviewStudentLeaveRequest,
+} from './student-leave-api.js'
+
+const TYPE_LABEL = { excused: 'ก · ลากิจ', sick: 'ป · ลาป่วย' }
+const STATUS = {
+  pending: ['รอตรวจ', 'bg-amber-50 text-amber-700 border-amber-200'],
+  approved: ['ยืนยันการลาแล้ว', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
+  rejected: ['ไม่อนุมัติ', 'bg-red-50 text-red-600 border-red-200'],
+  expired: ['หมดอายุ', 'bg-gray-100 text-gray-600 border-gray-200'],
+}
+
+const _fmtDate = value => value
+  ? new Date(`${value}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' })
+  : '—'
+
+async function _notifyStudent(request, status) {
+  const profileId = request.students?.profile_id
+  if (!profileId) return
+  try {
+    await supabase.functions.invoke('send-push', {
+      body: {
+        title: status === 'approved' ? '✅ ยืนยันการลาแล้ว' : '📄 ผลการตรวจใบลา',
+        body: `${TYPE_LABEL[request.leave_type]} · ${_fmtDate(request.start_date)}`,
+        url: 'student.html', profileIds: [profileId],
+      },
+    })
+  } catch { /* แจ้งเตือนเป็นส่วนเสริม ไม่ขัดขวางการบันทึก */ }
+}
+
+export async function renderStudentLeaveRequests(teacher, { container = null } = {}) {
+  const putContent = html => container ? (container.innerHTML = html) : setContent(html)
+  const queryRoot = container || document
+  if (!container) {
+    setActiveNav('advisor-students')
+    setTitle('นักเรียนที่ปรึกษา · ใบลา / ลาป่วย')
+  }
+  putContent('<div class="text-center py-12 text-gray-400">กำลังโหลดคำขอ...</div>')
+
+  let all
+  try { all = await getAdvisorStudentLeaveRequests() }
+  catch (err) {
+    putContent(`<div class="rounded-2xl border border-red-100 bg-white p-5 text-sm text-red-600">โหลดคำขอไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(err))}</div>`)
+    return
+  }
+
+  let filter = 'pending'
+  const render = () => {
+    const rows = all.filter(r => filter === 'all' || r.status === filter)
+    putContent(`<div class="animate-fade">
+      <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <div><h2 class="text-lg font-bold text-gray-800">📄 ใบลาและใบลาป่วย</h2><p class="mt-1 text-xs text-gray-500">ตรวจเฉพาะใบลาที่ผ่านการอนุมัติจากฝ่ายปกครองแล้ว</p></div>
+        <span class="text-xs text-gray-400">${all.filter(r => r.status === 'pending').length} รายการรอตรวจ</span>
+      </div>
+      <div class="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-gray-100 p-1 sm:grid-cols-5">
+        ${[['pending','รอตรวจ'],['approved','ยืนยันแล้ว'],['rejected','ไม่อนุมัติ'],['expired','หมดอายุ'],['all','ทั้งหมด']].map(([key,label]) => `<button type="button" data-leave-filter="${key}" class="rounded-lg px-2 py-2 text-xs font-semibold ${filter === key ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500'}">${label} (${all.filter(r => key === 'all' || r.status === key).length})</button>`).join('')}
+      </div>
+      <div class="space-y-3">
+        ${rows.length ? rows.map(r => {
+          const s = STATUS[r.status] ?? STATUS.pending
+          const stu = r.students ?? {}
+          return `<article class="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm" data-leave-card="${r.id}">
+            <header class="flex items-start justify-between gap-3">
+              <div class="min-w-0"><h3 class="truncate font-bold text-gray-800">${_htmlEsc(stu.full_name ?? 'ไม่พบชื่อนักเรียน')}</h3><p class="mt-0.5 text-xs text-gray-500">${_htmlEsc(stu.student_code ?? '')} · ${_htmlEsc(stu.main_room ?? '')}</p></div>
+              <span class="shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${s[1]}">${s[0]}</span>
+            </header>
+            <div class="mt-3 rounded-xl bg-gray-50 p-3 text-xs text-gray-600">
+              <p class="font-bold text-gray-800">${TYPE_LABEL[r.leave_type] ?? 'ลา'}</p>
+              <p class="mt-1">วันที่ ${_fmtDate(r.start_date)}${r.end_date !== r.start_date ? ` – ${_fmtDate(r.end_date)}` : ''}</p>
+              ${r.reason ? `<p class="mt-1 whitespace-pre-wrap">รายละเอียด: ${_htmlEsc(r.reason)}</p>` : ''}
+              ${r.teacher_comment ? `<p class="mt-2 border-t border-gray-200 pt-2">หมายเหตุ: ${_htmlEsc(r.teacher_comment)}</p>` : ''}
+              ${r.status === 'approved' ? `<p class="mt-2 text-emerald-700">บันทึกสถานะเช็คชื่อแล้ว ${Number(r.attendance_rows_count) || 0} รายการ</p>` : ''}
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button type="button" class="leave-proof-btn rounded-xl border border-indigo-200 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50" data-path="${_htmlEsc(r.proof_path ?? '')}" ${r.proof_path ? '' : 'disabled'}>${r.proof_path ? '🔍 เปิดใบลาที่มีตราอนุมัติ' : 'ไฟล์หลักฐานถูกลบแล้ว'}</button>
+              ${r.status === 'pending' ? `<button type="button" class="leave-approve-btn ml-auto rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700" data-id="${r.id}">ยืนยันและบันทึกเช็คชื่อ</button><button type="button" class="leave-reject-btn rounded-xl border border-red-200 px-4 py-2 text-xs font-bold text-red-600 hover:bg-red-50" data-id="${r.id}">ปฏิเสธ</button>` : ''}
+            </div>
+          </article>`
+        }).join('') : '<div class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-sm text-gray-400">ไม่มีรายการในหมวดนี้</div>'}
+      </div>
+    </div>`)
+
+    queryRoot.querySelectorAll('[data-leave-filter]').forEach(button => button.addEventListener('click', () => { filter = button.dataset.leaveFilter; render() }))
+    queryRoot.querySelectorAll('.leave-proof-btn').forEach(button => button.addEventListener('click', async () => {
+      try {
+        const url = await getStudentLeaveProofUrl(button.dataset.path)
+        if (url) window.open(url, '_blank', 'noopener')
+      } catch (err) { showToast(`เปิดใบลาไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error') }
+    }))
+    queryRoot.querySelectorAll('.leave-approve-btn').forEach(button => button.addEventListener('click', () => _review(button, 'approved')))
+    queryRoot.querySelectorAll('.leave-reject-btn').forEach(button => button.addEventListener('click', () => _review(button, 'rejected')))
+  }
+
+  const _review = async (button, status) => {
+    const request = all.find(r => Number(r.id) === Number(button.dataset.id))
+    if (!request) return
+    const comment = status === 'rejected' ? window.prompt('ระบุเหตุผลที่ปฏิเสธใบลา') : ''
+    if (status === 'rejected' && !String(comment ?? '').trim()) return
+    if (status === 'approved') {
+      const kind = request.leave_type === 'sick' ? 'ป · ลาป่วย' : 'ก · ลากิจ'
+      const msg = `ยืนยันใบลา ${request.students?.full_name ?? ''}?\nระบบจะบันทึก ${kind} ให้ทุกคาบที่มีเรียนระหว่าง ${_fmtDate(request.start_date)} ถึง ${_fmtDate(request.end_date)} โดยไม่เขียนทับสถานะ มา/สาย`
+      if (!window.confirm(msg)) return
+    }
+    button.disabled = true; button.textContent = 'กำลังบันทึก...'
+    try {
+      const result = await reviewStudentLeaveRequest(request, { status, teacherComment: comment })
+      showToast(status === 'approved' ? `ยืนยันการลาแล้ว · บันทึกเช็คชื่อ ${result?.attendance_rows_count ?? 0} รายการ` : 'บันทึกการปฏิเสธแล้ว', 'success')
+      await _notifyStudent(request, status)
+      all = await getAdvisorStudentLeaveRequests()
+      render()
+    } catch (err) {
+      showToast(`ดำเนินการไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error')
+      button.disabled = false; button.textContent = status === 'approved' ? 'ยืนยันและบันทึกเช็คชื่อ' : 'ปฏิเสธ'
+    }
+  }
+
+  render()
+}

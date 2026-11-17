@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1097'
+import { APP_VERSION } from './version.js?v=10.22.1099'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1099': [
+    'ย้ายแท็บตรวจใบลา/ลาป่วยเข้าไว้ในหน้า “นักเรียนที่ปรึกษา” พร้อมเลขรายการรอตรวจ และแจ้งป๊อบอัพกดเข้าแท็บใบลาได้เมื่อมีคำขอใหม่',
+    'เพิ่มระบบแจ้งลา/ลาป่วยด้วยใบลาที่ฝ่ายปกครองอนุมัติ ครูที่ปรึกษาตรวจและยืนยันก่อนลงสถานะในคาบเรียนที่ตรงกับวันลา พร้อมลบไฟล์หลักฐานตามกำหนด',
+  ],
   '10.22.1097': [
     'เพิ่มการตั้งค่าว่าเพศใดรับควบตำแหน่งเลขานุการและเหรัญญิกได้ โดยเริ่มต้นอนุญาตสมาชิกชาย และตรวจสอบสิทธิ์ที่ฐานข้อมูล',
   ],

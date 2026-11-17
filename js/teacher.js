@@ -22,7 +22,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1097'
+import { APP_VERSION } from './version.js?v=10.22.1099'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -42,6 +42,7 @@ import { initCouncilElectionResultsPopup } from './council-election-results-popu
 
 let _teacher       = null  // teacher DB record (from teachers table)
 let _homeroomRooms = []   // [{main_room, category}]
+let _openAdvisorLeaveTabOnce = false
 let _isAlsoAdmin   = false
 let _isQrReissueManager = false // ครูที่แอดมินมอบสิทธิ์ให้เข้าหน้าพิมพ์/จัดการคำขอ QR Code ได้เหมือนแอดมิน
 let _hasAdminAccess = false
@@ -318,7 +319,11 @@ const ROUTES = {
       ? { admin: true, teacherName: _teacher?.full_name, teacherCode: _teacher?.teacher_code }
       : {})
   },
-  'advisor-students': () => renderAdvisorStudents(_teacher, _homeroomRooms),
+  'advisor-students': () => {
+    const tab = _openAdvisorLeaveTabOnce ? 'leaves' : 'list'
+    _openAdvisorLeaveTabOnce = false
+    return renderAdvisorStudents(_teacher, _homeroomRooms, tab)
+  },
   'shirt-summary': () => renderShirtSummary(),
   'sports-fund-admin': () => renderSportsFundAdmin(),
   'sports-overview-admin': () => renderSportsOverviewAdmin(),
@@ -993,6 +998,7 @@ window._openReadingScorePicker = (roomsJson) => {
 }
 
 let _lastPendingCount = null
+let _lastLeavePendingCount = null
 let _lastRegradePendingCount = null
 let _teacherPollingTimer = null
 let _teacherPollingVisibilityHandler = null
@@ -1000,7 +1006,10 @@ let _teacherPollingVisibilityHandler = null
 async function _updateRequestsBadge() {
   if (!_teacher) return
   try {
-    const count = await getPendingExamRequestCount(_teacher.id)
+    const [count, leaveCount] = await Promise.all([
+      getPendingExamRequestCount(_teacher.id),
+      import('./student-leave-api.js').then(m => m.getPendingAdvisorStudentLeaveCount()).catch(() => 0),
+    ])
     const badge = document.getElementById('badge-requests')
     if (badge) {
       if (count > 0) {
@@ -1017,7 +1026,29 @@ async function _updateRequestsBadge() {
       showToast(`🔔 มีคำร้องนักเรียนใหม่ ${diff} รายการ`, 'info')
     }
     _lastPendingCount = count
+    if (_lastLeavePendingCount !== null && leaveCount > _lastLeavePendingCount) {
+      const diff = leaveCount - _lastLeavePendingCount
+      _showStudentLeaveNotice(diff)
+    }
+    _lastLeavePendingCount = leaveCount
   } catch { /* ไม่ crash */ }
+}
+
+function _showStudentLeaveNotice(count) {
+  if (!count) return
+  const notice = document.createElement('button')
+  notice.type = 'button'
+  notice.dataset.studentLeaveNotice = ''
+  notice.style.cssText = 'position:fixed;right:16px;top:20px;z-index:99999;max-width:calc(100% - 32px);width:370px;text-align:left;background:#4f46e5;color:white;border:0;border-radius:16px;padding:16px 20px;box-shadow:0 8px 32px #0003;cursor:pointer;font:inherit;'
+  notice.textContent = `📄 มีนักเรียนแจ้งลา/ลาป่วยใหม่ ${count} รายการ · แตะเพื่อตรวจสอบ`
+  notice.onclick = () => {
+    notice.remove()
+    _openAdvisorLeaveTabOnce = true
+    navigate('advisor-students')
+  }
+  document.querySelector('[data-student-leave-notice]')?.remove()
+  document.body.append(notice)
+  setTimeout(() => notice.remove(), 15000)
 }
 
 function _renderLiveRegradeBadge(count) {

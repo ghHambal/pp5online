@@ -660,6 +660,8 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   const activeRooms = cat==='ศาสนา' ? religion : samai
   const roomNames=activeRooms.map(r=>r.main_room)
   const hasBoth = samai.length && religion.length
+  const leavePendingCount = await import('./student-leave-api.js')
+    .then(m => m.getPendingAdvisorStudentLeaveCount()).catch(() => 0)
   // เช็คชื่อเข้าสีวันแรก: รวมห้องทุกประเภทที่ครูคนนี้เป็นที่ปรึกษาอยู่ (ไม่แยกตามแท็บสามัญ/ศาสนา
   // ที่กำลังดู) เพราะบางห้องเรียนสามัญและศาสนาเป็นห้องเดียวกัน ครูที่ปรึกษาศาสนาต้องเช็คชื่อแทน
   // ครูที่ปรึกษาสามัญที่ลาได้ — เห็นห้องของตัวเองครบทุกห้องไม่ว่าจะสลับแท็บไหนอยู่
@@ -675,6 +677,7 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
     </div>`:''}
     <div class="flex gap-2 flex-wrap">
       <button data-advisor-tab="list" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='list'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👥 รายชื่อ</button>
+      <button data-advisor-tab="leaves" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='leaves'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">📄 ใบลา/ลาป่วย${leavePendingCount ? ` <span class="ml-1 inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-red-500 text-white text-[10px]">${leavePendingCount > 99 ? '99+' : leavePendingCount}</span>` : ''}</button>
       <button data-advisor-tab="checkin" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='checkin'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🎽 เช็คชื่อเข้าสีวันแรก</button>
       ${cat==='สามัญ'?`
       <button data-advisor-tab="size" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='size'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👕 ไซซ์เสื้อ</button>
@@ -687,7 +690,8 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   el.querySelectorAll('[data-advisor-tab]').forEach(b=>b.addEventListener('click',()=>renderAdvisorStudents(teacher,rooms,b.dataset.advisorTab,cat)))
   el.querySelectorAll('[data-advisor-cat]').forEach(b=>b.addEventListener('click',()=>renderAdvisorStudents(teacher,rooms,'list',b.dataset.advisorCat)))
   const body=el.querySelector('#advisor-tab-body')
-  if(tab==='vote') await _renderAdvisorVoteTab(body,teacher,rooms,roomNames)
+  if(tab==='leaves') await import('./teacher-views-student-leaves.js').then(m => m.renderStudentLeaveRequests(teacher, { container: body }))
+  else if(tab==='vote') await _renderAdvisorVoteTab(body,teacher,rooms,roomNames)
   else if(tab==='size') await _renderAdvisorSizeTab(body,teacher,rooms,roomNames)
   else if(tab==='shirt-payment') await _renderAdvisorShirtPaymentTab(body,teacher,rooms,roomNames)
   else if(tab==='checkin') await _renderAdvisorCheckinTab(body,teacher,rooms,allRoomNames)

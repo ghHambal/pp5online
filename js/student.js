@@ -7,6 +7,7 @@ import {
   renderStudentMyScores,
   renderStudentSubjectDetail,
   renderStudentRequests,
+  renderStudentLeaveRequests,
   renderExamRequestForm,
   renderStudentProfile,
   renderStudentPrayerScanner,
@@ -362,6 +363,7 @@ const ROUTES = {
   scores:   () => renderStudentMyScores(_student, _activeScoreTab),
   sports:   () => renderStudentSportsHome(_student, _activeSportsTab),
   requests: () => renderStudentRequests(_student),
+  'student-leaves': () => renderStudentLeaveRequests(_student),
   profile:  () => renderStudentProfile(_student, _handleLogout),
   prayer_scanner: () => renderStudentPrayerScanner(_student),
   prayer_scan_history: () => renderStudentPrayerScanHistory(_student),
@@ -384,6 +386,7 @@ function _renderMainNav(activeView = 'overview') {
     _navButtonHTML('overview', '🏠', 'ภาพรวม'),
     _navButtonHTML('subjects', '📚', 'รายวิชา'),
     _navButtonHTML('scores', '📊', 'คะแนน'),
+    _navButtonHTML('student-leaves', '📄', 'แจ้งลา'),
   ]
   items.push(_navButtonHTML('profile', '👤', 'โปรไฟล์'))
   nav.innerHTML = items.join('')
