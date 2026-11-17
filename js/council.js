@@ -21,7 +21,7 @@ import {
   getCouncilRosterTemplates, saveCouncilRosterTemplate, deleteCouncilRosterTemplate,
   getCouncilDailyDutyCalendar, saveCouncilDailyDutyAttendance,
   getCouncilSavingsOverview, recordCouncilSavingsDeposit, reverseCouncilSavingsDeposit,
-  getCouncilPositions, getCouncilMembers, getCouncilOfficerAssignments, assignCouncilOfficer,
+  getCouncilPositions, getCouncilMembers, getCouncilOfficerAssignments, getCouncilOfficerSettings, saveCouncilOfficerSettings, assignCouncilOfficer,
   createCouncilPosition, updateCouncilPosition, deleteCouncilPosition,
   getCouncilElectionConfigs, getMyCouncilApplications, getMyCouncilMembership,
   submitCouncilApplication, getPendingEndorsements, getEndorsementPhrases,
@@ -324,9 +324,10 @@ async function init() {
     || councilTerms[0]
   selectedCouncilTermId = defaultTerm?.id ?? null
   const electionYearForTerm = Number(defaultTerm?.academic_year || cfg.academicYear) || (new Date().getFullYear() + 543)
-  const [members, elections, officers] = await Promise.all([
+  const [members, elections, officers, officerSettings] = await Promise.all([
     getCouncilMembers(null, selectedCouncilTermId), getCouncilElectionConfigs(null, selectedCouncilTermId),
     getCouncilOfficerAssignments(selectedCouncilTermId).catch(() => []),
+    getCouncilOfficerSettings(selectedCouncilTermId).catch(() => ({ dual_role_genders: ['M'] })),
   ])
   applyBranding(cfg)
 
@@ -415,7 +416,7 @@ async function init() {
   ctx = {
     role, isAdmin, isChair, isCouncilAdvisor, isSavingsTreasurer, isStudentAffairsHead, isSchoolDirector, isExecutive,
     canCreateActivities, chairGender, canScanIbadatPrayer,
-    student, applications, membership, positions, members, elections, officers, cfg,
+    student, applications, membership, positions, members, elections, officers, officerSettings, cfg,
     teacher, homeroomMainRooms, pendingEndorsements, endorsementPhrases, advisorPositionIds,
   }
   electionYear = electionYearForTerm
@@ -439,6 +440,7 @@ async function switchCouncilTerm(termId) {
   const term = councilTerms.find(t => String(t.id) === String(termId))
   if (!term || String(term.id) === String(selectedCouncilTermId)) return
   selectedCouncilTermId = term.id
+  councilDualRoleGenderDraft = null
   councilSavingsSnapshot = null
   councilSavingsTermId = null
   councilSavingsLoadError = false
@@ -450,14 +452,15 @@ async function switchCouncilTerm(termId) {
   if (dutyCalendarMonth < startMonth) dutyCalendarMonth = startMonth
   if (dutyCalendarMonth > endMonth) dutyCalendarMonth = endMonth
   electionYear = Number(term.academic_year)
-  const [members, elections, applications, membership, officers] = await Promise.all([
+  const [members, elections, applications, membership, officers, officerSettings] = await Promise.all([
     getCouncilMembers(null, term.id).catch(() => []),
     getCouncilElectionConfigs(null, term.id).catch(() => []),
     ctx.student ? getMyCouncilApplications(ctx.student.id, term.id).catch(() => []) : Promise.resolve([]),
     ctx.student ? getMyCouncilMembership(ctx.student.id, term.id).catch(() => []) : Promise.resolve([]),
     getCouncilOfficerAssignments(term.id).catch(() => []),
+    getCouncilOfficerSettings(term.id).catch(() => ({ dual_role_genders: ['M'] })),
   ])
-  ctx.members = members; ctx.elections = elections; ctx.officers = officers
+  ctx.members = members; ctx.elections = elections; ctx.officers = officers; ctx.officerSettings = officerSettings
   if (ctx.student) {
     ctx.applications = applications; ctx.membership = membership
     ctx.isSavingsTreasurer = membership.some(m => m.status === 'active' && m.position_role === 'head' && (m.council_positions?.position_name ?? '').includes('เหรัญญิก'))
@@ -3186,6 +3189,7 @@ function renderCouncilSavingsView() {
 let rosterGenderTab = 'all'
 let rosterSearch = ''
 let rosterDepartmentId = 'all'
+let councilDualRoleGenderDraft = null
 
 function openCouncilOfficerModal(roleKey) {
   if (!(ctx.isAdmin || ctx.isCouncilAdvisor) || !termIsEditable()) return
@@ -3196,6 +3200,7 @@ function openCouncilOfficerModal(roleKey) {
   let selectedStudentId = null
   let query = ''
   const currentOfficerId = (ctx.officers ?? []).find(row => row.role_key === roleKey)?.student_id
+  const allowedDualRoleGenders = ctx.officerSettings?.dual_role_genders ?? ['M']
   const activeMembers = [...new Map((ctx.members ?? []).filter(member => member.status === 'active')
     .sort((a, b) => (a.council_positions?.sort_order ?? 99) - (b.council_positions?.sort_order ?? 99))
     .map(member => [Number(member.student_id), member])).values()]
@@ -3217,7 +3222,8 @@ function openCouncilOfficerModal(roleKey) {
   const renderResults = () => {
     const q = query.trim().toLocaleLowerCase()
     const choices = activeMembers.filter(member => {
-      if (Number(member.student_id) !== Number(currentOfficerId) && (ctx.officers ?? []).some(row => Number(row.student_id) === Number(member.student_id))) return false
+      const holdsOtherOfficerRole = (ctx.officers ?? []).some(row => row.role_key !== roleKey && Number(row.student_id) === Number(member.student_id))
+      if (holdsOtherOfficerRole && !allowedDualRoleGenders.includes(member.council_positions?.gender)) return false
       return !q || [member.students?.full_name, member.students?.student_code, member.students?.main_room,
         member.council_positions?.position_name, GENDER_LABEL[member.council_positions?.gender]]
         .some(value => String(value ?? '').toLocaleLowerCase().includes(q))
@@ -3320,7 +3326,13 @@ function renderRosterView() {
   const presidentMembers = list.filter(member => member.council_positions?.is_elected)
   const vicePresidents = list.filter(member => member.council_positions?.position_name === 'รองประธานสภานักเรียน')
   const roleNames = { secretary: 'เลขานุการ', treasurer: 'เหรัญญิก' }
-  const officerSection = rosterDepartmentId === 'all' ? `<section class="mb-5 rounded-2xl border border-[var(--gold-soft-line)] bg-[var(--surface)] p-4 sm:p-5"><h2 class="mb-4 text-center text-base font-extrabold text-[var(--gold-ink)]">ตำแหน่งส่วนกลาง</h2><div class="grid grid-cols-1 gap-3 sm:grid-cols-2">${Object.entries(roleNames).map(([roleKey, roleName]) => {
+  const dualRoleGenders = councilDualRoleGenderDraft ?? ctx.officerSettings?.dual_role_genders ?? ['M']
+  const officerSettingsEditable = (ctx.isAdmin || ctx.isCouncilAdvisor) && termIsEditable()
+  const dualRoleLabel = dualRoleGenders.length ? dualRoleGenders.map(gender => GENDER_LABEL[gender]).join('และ') : 'ไม่มี'
+  const officerSettingsControl = officerSettingsEditable
+    ? `<div class="mb-4 rounded-xl border border-[var(--line-soft)] bg-[var(--bg-2)] p-3"><p class="text-sm font-bold text-[var(--ink)]">อนุญาตให้รับควบสองตำแหน่งได้</p><p class="mt-1 text-xs text-[var(--muted)]">เลือกเพศที่สมาชิกคนเดียวสามารถเป็นทั้งเลขานุการและเหรัญญิกในวาระนี้ได้ · ค่าปัจจุบัน: ${esc(dualRoleLabel)}</p><div class="mt-3 flex flex-wrap items-center justify-center gap-2">${[['M', 'ชาย'], ['W', 'หญิง']].map(([gender, label]) => `<button type="button" class="btn-toggle-council-dual-role rounded-lg border px-4 py-2 text-sm font-bold ${dualRoleGenders.includes(gender) ? 'border-[var(--primary)] bg-[var(--primary)] text-white' : 'border-[var(--line)] bg-[var(--surface)] text-[var(--ink-2)]'}" data-gender="${gender}">${dualRoleGenders.includes(gender) ? '✓ ' : ''}${label}</button>`).join('')}<button type="button" class="btn-save-council-officer-settings rounded-lg bg-[var(--primary)] px-4 py-2 text-sm font-bold text-white">บันทึกการตั้งค่า</button></div></div>`
+    : `<p class="mb-4 rounded-xl bg-[var(--bg-2)] p-3 text-center text-xs text-[var(--muted)]">เพศที่รับควบตำแหน่งได้ในวาระนี้: <strong>${esc(dualRoleLabel)}</strong></p>`
+  const officerSection = rosterDepartmentId === 'all' ? `<section class="mb-5 rounded-2xl border border-[var(--gold-soft-line)] bg-[var(--surface)] p-4 sm:p-5"><h2 class="mb-4 text-center text-base font-extrabold text-[var(--gold-ink)]">ตำแหน่งส่วนกลาง</h2>${officerSettingsControl}<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">${Object.entries(roleNames).map(([roleKey, roleName]) => {
     const assignment = (ctx.officers ?? []).find(row => row.role_key === roleKey)
     const assignedMember = assignment?.student_id ? (ctx.members ?? []).find(member => member.status === 'active' && Number(member.student_id) === Number(assignment.student_id)) : null
     const visibleMember = assignedMember && (rosterGenderTab === 'all' || assignedMember.council_positions?.gender === rosterGenderTab) ? assignedMember : null
@@ -6707,6 +6719,33 @@ function wireContentEvents() {
       } catch (error) {
         showToast('ถอดตำแหน่งไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
         btn.disabled = false
+      }
+    })
+  })
+  document.querySelectorAll('.btn-toggle-council-dual-role').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const selected = councilDualRoleGenderDraft ?? ctx.officerSettings?.dual_role_genders ?? ['M']
+      councilDualRoleGenderDraft = selected.includes(btn.dataset.gender)
+        ? selected.filter(gender => gender !== btn.dataset.gender)
+        : [...selected, btn.dataset.gender]
+      render()
+    })
+  })
+  document.querySelectorAll('.btn-save-council-officer-settings').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const dualRoleGenders = councilDualRoleGenderDraft ?? ctx.officerSettings?.dual_role_genders ?? ['M']
+      btn.disabled = true
+      btn.textContent = 'กำลังบันทึก…'
+      try {
+        await saveCouncilOfficerSettings({ termId: selectedCouncilTermId, dualRoleGenders })
+        ctx.officerSettings = await getCouncilOfficerSettings(selectedCouncilTermId)
+        councilDualRoleGenderDraft = null
+        showToast('บันทึกสิทธิ์รับควบตำแหน่งแล้ว', 'success')
+        render()
+      } catch (error) {
+        showToast('บันทึกการตั้งค่าไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+        btn.disabled = false
+        btn.textContent = 'บันทึกการตั้งค่า'
       }
     })
   })

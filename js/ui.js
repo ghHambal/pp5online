@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1096'
+import { APP_VERSION } from './version.js?v=10.22.1097'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1097': [
+    'เพิ่มการตั้งค่าว่าเพศใดรับควบตำแหน่งเลขานุการและเหรัญญิกได้ โดยเริ่มต้นอนุญาตสมาชิกชาย และตรวจสอบสิทธิ์ที่ฐานข้อมูล',
+  ],
   '10.22.1096': [
     'เพิ่มตำแหน่งเลขานุการและเหรัญญิกส่วนกลาง เลือกสมาชิกสภาปัจจุบันได้จากทั้งสองฝั่งโดยยังคงตำแหน่งฝ่ายเดิม และเชื่อมสิทธิ์เหรัญญิกกับการจัดการเงินออม',
   ],

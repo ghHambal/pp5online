@@ -178,6 +178,21 @@ export async function getCouncilOfficerAssignments(termId) {
   return data ?? []
 }
 
+export async function getCouncilOfficerSettings(termId) {
+  if (!termId) return { dual_role_genders: ['M'] }
+  const { data, error } = await supabase.from('council_officer_settings')
+    .select('term_id, dual_role_genders').eq('term_id', termId).maybeSingle()
+  if (error) throw error
+  return data ?? { term_id: termId, dual_role_genders: ['M'] }
+}
+
+export async function saveCouncilOfficerSettings({ termId, dualRoleGenders }) {
+  const { error } = await supabase.rpc('save_council_officer_settings', {
+    p_term_id: termId, p_dual_role_genders: dualRoleGenders ?? [],
+  })
+  if (error) throw error
+}
+
 export async function assignCouncilOfficer({ termId, role, studentId }) {
   const { error } = await supabase.rpc('assign_council_officer', {
     p_term_id: termId, p_role_key: role, p_student_id: studentId ?? null,
