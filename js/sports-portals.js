@@ -1,6 +1,8 @@
 import { renderAwardsStaff } from './sports-awards-admin.js'
 import { supabase } from './supabase.js'
 import { getFriendlyErrorMessage } from './ui.js'
+import { getSystemConfig } from './api.js'
+import { getFeatureHubFlags } from './feature-hub.js?v=10.22.1106'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openHtmlPrintOverlay } from './print-overlay.js'
 import { uploadSystemAsset, uploadShirtDesignColorImage, uploadShirtDesignHtml, uploadGalleryPhoto } from './storage.js'
@@ -653,6 +655,11 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
     await window._cleanupAdvisorShirtPaymentScanner()
   }
   const el=main(); el.innerHTML='<div class="py-16 text-center">กำลังโหลด...</div>'
+  const config = await getSystemConfig().catch(() => ({}))
+  const featureFlags = getFeatureHubFlags(config)
+  const tabFlags = { leaves: 'advisor_leaves', 'password-resets': 'advisor_password_resets', checkin: 'advisor_sports_checkin', size: 'advisor_shirt_size', vote: 'advisor_shirt_vote', 'council-nominate': 'advisor_council_nominate', 'shirt-payment': 'advisor_shirt_payment' }
+  const tabEnabled = name => !tabFlags[name] || featureFlags[tabFlags[name]] !== false
+  if (tab !== 'list' && !tabEnabled(tab)) tab = 'list'
   const samai=rooms.filter(r=>r.category==='สามัญ')
   const religion=rooms.filter(r=>r.category==='ศาสนา')
   if(!samai.length && !religion.length){el.innerHTML='<div class="text-center py-16 text-gray-500">หน้านี้สำหรับครูที่ปรึกษาเท่านั้น</div>';return}
@@ -660,10 +667,12 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
   const activeRooms = cat==='ศาสนา' ? religion : samai
   const roomNames=activeRooms.map(r=>r.main_room)
   const hasBoth = samai.length && religion.length
-  const leavePendingCount = await import('./student-leave-api.js')
+  const leavePendingCount = tabEnabled('leaves') ? await import('./student-leave-api.js')
     .then(m => m.getPendingAdvisorStudentLeaveCount()).catch(() => 0)
-  const passwordResetPendingCount = await import('./student-password-reset-api.js')
+    : 0
+  const passwordResetPendingCount = tabEnabled('password-resets') ? await import('./student-password-reset-api.js')
     .then(m => m.getPendingAdvisorStudentPasswordResetCount()).catch(() => 0)
+    : 0
   // เช็คชื่อเข้าสีวันแรก: รวมห้องทุกประเภทที่ครูคนนี้เป็นที่ปรึกษาอยู่ (ไม่แยกตามแท็บสามัญ/ศาสนา
   // ที่กำลังดู) เพราะบางห้องเรียนสามัญและศาสนาเป็นห้องเดียวกัน ครูที่ปรึกษาศาสนาต้องเช็คชื่อแทน
   // ครูที่ปรึกษาสามัญที่ลาได้ — เห็นห้องของตัวเองครบทุกห้องไม่ว่าจะสลับแท็บไหนอยู่
@@ -679,14 +688,14 @@ export async function renderAdvisorStudents(teacher,rooms=[],tab='list',category
     </div>`:''}
     <div class="flex gap-2 flex-wrap">
       <button data-advisor-tab="list" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='list'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👥 รายชื่อ</button>
-      <button data-advisor-tab="leaves" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='leaves'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">📄 ใบลา/ลาป่วย${leavePendingCount ? ` <span class="ml-1 inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-red-500 text-white text-[10px]">${leavePendingCount > 99 ? '99+' : leavePendingCount}</span>` : ''}</button>
-      <button data-advisor-tab="password-resets" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='password-resets'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🔑 ขอรีเซ็ตรหัส${passwordResetPendingCount ? ` <span class="ml-1 inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-red-500 text-white text-[10px]">${passwordResetPendingCount > 99 ? '99+' : passwordResetPendingCount}</span>` : ''}</button>
-      <button data-advisor-tab="checkin" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='checkin'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🎽 เช็คชื่อเข้าสีวันแรก</button>
+      ${tabEnabled('leaves') ? `<button data-advisor-tab="leaves" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='leaves'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">📄 ใบลา/ลาป่วย${leavePendingCount ? ` <span class="ml-1 inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-red-500 text-white text-[10px]">${leavePendingCount > 99 ? '99+' : leavePendingCount}</span>` : ''}</button>` : ''}
+      ${tabEnabled('password-resets') ? `<button data-advisor-tab="password-resets" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='password-resets'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🔑 ขอรีเซ็ตรหัส${passwordResetPendingCount ? ` <span class="ml-1 inline-flex min-w-5 h-5 px-1 items-center justify-center rounded-full bg-red-500 text-white text-[10px]">${passwordResetPendingCount > 99 ? '99+' : passwordResetPendingCount}</span>` : ''}</button>` : ''}
+      ${tabEnabled('checkin') ? `<button data-advisor-tab="checkin" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='checkin'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🎽 เช็คชื่อเข้าสีวันแรก</button>` : ''}
       ${cat==='สามัญ'?`
-      <button data-advisor-tab="size" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='size'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👕 ไซซ์เสื้อ</button>
-      <button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>
-      <button data-advisor-tab="council-nominate" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='council-nominate'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🏛️ เสนอชื่อสภา</button>`:`
-      <button data-advisor-tab="shirt-payment" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='shirt-payment'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">💰 รับชำระค่าเสื้อ</button>`}
+      ${tabEnabled('size') ? `<button data-advisor-tab="size" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='size'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">👕 ไซซ์เสื้อ</button>` : ''}
+      ${tabEnabled('vote') ? `<button data-advisor-tab="vote" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='vote'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🗳️ โหวตแบบเสื้อ</button>` : ''}
+      ${tabEnabled('council-nominate') ? `<button data-advisor-tab="council-nominate" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='council-nominate'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">🏛️ เสนอชื่อสภา</button>` : ''}`:`
+      ${tabEnabled('shirt-payment') ? `<button data-advisor-tab="shirt-payment" class="px-4 py-2 rounded-xl text-sm font-bold border ${tab==='shirt-payment'?'bg-indigo-600 text-white border-indigo-600':'bg-white text-gray-500 border-gray-200'}">💰 รับชำระค่าเสื้อ</button>` : ''}`}
     </div>
     <div id="advisor-tab-body"></div>
   </div>`

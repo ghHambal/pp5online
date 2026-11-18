@@ -23,12 +23,13 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1105'
+import { APP_VERSION } from './version.js?v=10.22.1106'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { openRegradeModal } from './regrade-modal.js'
-import { renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.825'
+import { renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsEvaluationWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.1106'
+import { renderFeatureHub } from './feature-hub.js?v=10.22.1106'
 
 // ─── Guard ────────────────────────────────────────────────────────────────────
 async function requireAuth() {
@@ -841,6 +842,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     'reading-admin':       renderReadingAdmin,
     'prayer-admin':        renderPrayerAdmin,
     settings:       renderSettings,
+    'feature-hub':  renderFeatureHub,
     import:         renderImport,
     'admin-profile': renderAdminProfile,
     'usage-stats':   renderUsageStats,

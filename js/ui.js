@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1105'
+import { APP_VERSION } from './version.js?v=10.22.1106'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1106': [
+    'เพิ่มฮับแอดมินสำหรับเปิดหรือซ่อนเมนูครูและแท็บนักเรียนที่ปรึกษา โดยค่าเริ่มต้นเปิดทุกฟีเจอร์และยังคงตรวจสิทธิ์เดิม',
+  ],
   '10.22.1105': [
     'ปรับเช็คชื่อเวรรายวันให้สถานะที่ยังไม่เลือกว่างจริง และกำหนดให้เลือกสถานะก่อนสแกน QR เพื่อป้องกันการแสดงว่ามาโดยยังไม่ได้บันทึก',
   ],

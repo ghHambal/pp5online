@@ -22,7 +22,8 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1105'
+import { APP_VERSION } from './version.js?v=10.22.1106'
+import { getFeatureHubFlags } from './feature-hub.js?v=10.22.1106'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
 import { ensurePushSubscription } from './push-notify.js'
@@ -31,7 +32,7 @@ import { clearSsoPassword, buildWenSsoUrl } from './wen-sso.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
 import { getImpersonationContext, validateImpersonation, endImpersonation, clearImpersonation } from './impersonation.js'
-import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsCompetitionManager, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.868'
+import { renderAdvisorStudents, renderShirtSummary, renderSportsFundAdmin, renderSportsOverviewAdmin, renderSportsCompetitionManager, renderSportsEvaluationWorkspace, openMyTeamWorkspace, renderShirtVoteSettings, renderShirtVoteDashboard } from './sports-portals.js?v=10.22.1106'
 import { renderTutorial } from './tutorial.js'
 import { getMyTerangganuSurveyStatus } from './terangganu-api.js'
 import { getRegradeConfig } from './regrade-api.js'
@@ -762,6 +763,22 @@ async function navigate(view) {
       if (user?.id) _teacher = (await getMyTeacherProfile(user.id).catch(() => null)) ?? _teacher
     } catch {}
   }
+  const guardedRoutes = {
+    'announcements-view': 'teacher_announcements', 'work-calendar-view': 'teacher_work_calendar',
+    'certificates': 'teacher_certificates', 'advisor-students': 'advisor_students',
+    'sports': 'teacher_sports', 'shirt-summary': 'teacher_shirt_summary',
+    'sports-fund-admin': 'teacher_sports_fund', 'sports-overview-admin': 'teacher_sports_overview',
+    'sports-competition-manager': 'teacher_sports_competition', 'sports-evaluation': 'teacher_sports_evaluation',
+    'shirt-vote-dashboard': 'teacher_shirt_vote_results', 'my-team-workspace': 'teacher_my_team',
+    'student-qr-print': 'teacher_qr_reissue', 'life-skill-score': 'teacher_life_skill',
+    'reading-score': 'teacher_reading', 'prayer-score': 'teacher_prayer',
+  }
+  const featureKey = guardedRoutes[view]
+  if (featureKey && window._featureHubFlags?.[featureKey] === false) {
+    showToast('หน้านี้ปิดการใช้งานโดยผู้ดูแลระบบ', 'warning')
+    if (view !== 'overview') return navigate('overview')
+    return
+  }
   document.body.classList.remove('sc-fullscreen') // กันค้างโหมดเต็มจอ Smart Classroom เวลาสลับเมนูด้วยทางอื่น
   if (window._scClockInterval) { clearInterval(window._scClockInterval); window._scClockInterval = null }
   if (window._scQuizPollInterval) { clearInterval(window._scQuizPollInterval); window._scQuizPollInterval = null }
@@ -1242,6 +1259,10 @@ async function _applyRoleMenus() {
   }
   // สำหรับ div ครอบกลุ่มเมนู (ไม่ใช่ flex item เดี่ยวๆ) — toggle แค่ hidden เฉยๆ ไม่แตะ flex
   const toggleBlock = (id, show) => { document.getElementById(id)?.classList.toggle('hidden', !show) }
+  const featureFlags = getFeatureHubFlags(cfg)
+  window._featureHubFlags = featureFlags
+  const featureOn = key => featureFlags[key] !== false
+  const toggleSelector = (selector, show) => document.querySelectorAll(selector).forEach(el => el.classList.toggle('hidden', !show))
   const hasAdvisorRoom = _homeroomRooms.length > 0
   const teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
   // ผู้บริหาร (บทบาทใหม่ทั้งระบบ) — เห็นเมนู "สภานักเรียน" เสมอแม้ปิด council_visible_to_all
@@ -1254,9 +1275,13 @@ async function _applyRoleMenus() {
   toggle('menu-life-skill', hasLifeSkill)
   toggle('menu-reading',    hasReading)
   toggle('menu-prayer',     hasPrayer)
-  toggle('menu-advisor-students', hasAdvisorRoom)
+  toggle('menu-advisor-students', hasAdvisorRoom && featureOn('advisor_students'))
   // ปิดการแสดงผลได้จากหน้าตั้งค่าแอดมิน (council_visible_to_all) — ปิดแล้วเห็นเฉพาะครูที่ is_also_admin/ผู้บริหาร
-  toggle('menu-council', cfg.council_visible_to_all !== 'false' || _isAlsoAdmin || isExecutive)
+  toggle('menu-council', featureOn('teacher_council') && (cfg.council_visible_to_all !== 'false' || _isAlsoAdmin || isExecutive))
+  toggleSelector('[data-nav="announcements-view"]', featureOn('teacher_announcements'))
+  toggleSelector('[data-nav="work-calendar-view"]', featureOn('teacher_work_calendar'))
+  toggle('menu-wen-duty', featureOn('teacher_wen_duty'))
+  toggleSelector('[data-nav="certificates"]', featureOn('teacher_certificates'))
   // ซ่อนเมนูที่เกี่ยวกับการสอน (รายวิชา/ห้องเรียน/งานรายวันทั้งหมด) ให้บัญชี "ผู้บริหาร" ล้วนๆ
   // ที่ไม่มีภาระสอนจริง (v10.22.560 — เจอจริงตอนทดสอบ ทีมผู้บริหาร (1122) ยังเห็นเมนูครูเต็มรูปแบบ)
   toggle('menu-my-courses', !isExecutiveOnly)
@@ -1266,14 +1291,14 @@ async function _applyRoleMenus() {
   toggleBlock('sem-work-section',   !isExecutiveOnly)
 
   const campAccess = campAccessRes?.data
-  toggle('menu-terangganu', campAccess?.is_manager === true || campAccess?.teacher_participant === true)
-  const regradeTeacherMenuVisible = isRegradeMenuOpen(regradeCfg, 'teacher') || _isAlsoAdmin
+  toggle('menu-terangganu', featureOn('teacher_terangganu') && (campAccess?.is_manager === true || campAccess?.teacher_participant === true))
+  const regradeTeacherMenuVisible = featureOn('teacher_regrade') && (isRegradeMenuOpen(regradeCfg, 'teacher') || _isAlsoAdmin)
   toggle('menu-regrade', regradeTeacherMenuVisible)
   const regradePendingCount = Number(regradePendingRes?.count) || 0
   _renderLiveRegradeBadge(regradePendingCount)
 
   const sportsMemberships = sportsMembershipsRes?.data || []
-  toggle('menu-my-team', sportsMemberships.length > 0)
+  toggle('menu-my-team', featureOn('teacher_my_team') && sportsMemberships.length > 0)
 
   const isSportsManager = _hasAdminAccess || _positionPerms.menu_sports_admin || teacherPositions.includes('house_color_admin') || _teacher?.staff_type === 'แอดมิน' || _teacher?.position === 'admin'
   const activeEventId = activeEventRes?.data?.id
@@ -1281,15 +1306,15 @@ async function _applyRoleMenus() {
   // ครูทุกคนที่มีบัญชี ปพ.5 ต้องเห็นหน้านี้เพื่อยื่นคำขอรับผิดชอบได้เอง
   // ส่วนการดู/แก้ไขโปรแกรมจริงยังคุมที่ RPC ตามรายการที่แอดมินอนุมัติแล้ว
   const canRegisterSportsCompetition = _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false && !!activeEventId
-  toggle('menu-sports-competition-manager', !!(isSportsManager || hasSportsCompetitionAssignment || canRegisterSportsCompetition))
-  toggle('menu-sports-checkin', _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false)
+  toggle('menu-sports-competition-manager', featureOn('teacher_sports_competition') && !!(isSportsManager || hasSportsCompetitionAssignment || canRegisterSportsCompetition))
+  toggle('menu-sports-checkin', featureOn('teacher_sports_checkin') && _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false)
   const canViewSportsShirtSummary = isSportsManager || sportsMemberships.some(m => m.role === 'lead_teacher' || m.permissions?.shirt_summary === true)
-  toggle('menu-shirt-summary', !!canViewSportsShirtSummary)
-  toggle('menu-sports-fund-admin', !!isSportsManager)
-  toggle('menu-sports-overview-admin', !!isSportsManager)
+  toggle('menu-shirt-summary', featureOn('teacher_shirt_summary') && !!canViewSportsShirtSummary)
+  toggle('menu-sports-fund-admin', featureOn('teacher_sports_fund') && !!isSportsManager)
+  toggle('menu-sports-overview-admin', featureOn('teacher_sports_overview') && !!isSportsManager)
   const isSportsEvaluator = isSportsManager || (sportsEvaluatorRes?.data?.length > 0)
-  toggle('menu-sports-evaluation', !!isSportsEvaluator)
-  toggleBlock('menu-awards-group', awardsAccessRes?.data?.allowed === true)
+  toggle('menu-sports-evaluation', featureOn('teacher_sports_evaluation') && !!isSportsEvaluator)
+  toggleBlock('menu-awards-group', featureOn('teacher_sports_awards') && awardsAccessRes?.data?.allowed === true)
 
   let isShirtVoteManager = false
   try {
@@ -1298,31 +1323,35 @@ async function _applyRoleMenus() {
       .select('id').eq('event_id', eventId).eq('profile_id', _teacher?.profile_id).maybeSingle()
     isShirtVoteManager = !!manager
   } catch { isShirtVoteManager = false }
-  toggle('menu-shirt-vote-dashboard', !!(isSportsManager || isShirtVoteManager))
+  toggle('menu-shirt-vote-dashboard', featureOn('teacher_shirt_vote_results') && !!(isSportsManager || isShirtVoteManager))
 
   _isQrReissueManager = !!qrManagerRes?.data
-  toggle('menu-qr-reissue-requests', _isQrReissueManager)
+  toggle('menu-qr-reissue-requests', featureOn('teacher_qr_reissue') && _isQrReissueManager)
+  toggle('menu-life-skill', hasLifeSkill && featureOn('teacher_life_skill'))
+  toggle('menu-reading', hasReading && featureOn('teacher_reading'))
+  toggle('menu-prayer', hasPrayer && featureOn('teacher_prayer'))
+  toggle('menu-sports-shortcut', featureOn('teacher_sports') && _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false)
 
   // มิเรอร์รายการเดียวกับเมนูไซด์บาร์ด้านบนนี้ให้กริดไอคอน "ระบบอื่น ๆ" ในหน้าภาพรวม (renderTeacherOverview,
   // js/teacher-views.js) ใช้ตัดสินใจได้เลยโดยไม่ต้อง query ซ้ำ — ต้องคำนวณเสร็จก่อน navigate('overview')
   // เสมอ (ดูจุดเรียก _applyRoleMenus ใน DOMContentLoaded ท้ายไฟล์ ซึ่งอยู่ก่อน navigate('overview') เสมอ)
   const canSeeSports = _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false
   window._teacherOverviewSystems = [
-    { key: 'council',            show: cfg.council_visible_to_all !== 'false' || _isAlsoAdmin || isExecutive, emoji: '🏛️', label: 'สภา<br>นักเรียน',       href: 'council.html' },
-    { key: 'terangganu',         show: campAccess?.is_manager === true || campAccess?.teacher_participant === true, emoji: '⚜️', label: 'ค่าย<br>TERANGGANU', href: 'terangganu.html' },
+    { key: 'council',            show: featureOn('teacher_council') && (cfg.council_visible_to_all !== 'false' || _isAlsoAdmin || isExecutive), emoji: '🏛️', label: 'สภา<br>นักเรียน',       href: 'council.html' },
+    { key: 'terangganu',         show: featureOn('teacher_terangganu') && (campAccess?.is_manager === true || campAccess?.teacher_participant === true), emoji: '⚜️', label: 'ค่าย<br>TERANGGANU', href: 'terangganu.html' },
     { key: 'regrade', id: 'teacher-regrade-overview-tile', show: regradeTeacherMenuVisible, emoji: '📋', label: 'แก้ค้าง<br>เก่า', href: 'regrade.html', badge: regradePendingCount, deadlineMs: regradeMenuDeadlineMs(regradeCfg), config: regradeCfg, forceOpen: _isAlsoAdmin },
-    { key: 'sports',             show: canSeeSports,                          emoji: '🏆', label: 'กีฬาสี',                nav: 'sports' },
-    { key: 'certificates',       show: true,                                  emoji: '🏅', label: 'เกียรติ<br>บัตร',          nav: 'certificates' },
-    { key: 'advisor-students',   show: hasAdvisorRoom,                        emoji: '👥', label: 'นักเรียน<br>ที่ปรึกษา',      nav: 'advisor-students' },
-    { key: 'my-team',            show: sportsMemberships.length > 0,          emoji: '🛡️', label: 'จัดการ<br>สีของฉัน',        nav: 'my-team-workspace' },
-    { key: 'shirt-summary',      show: !!canViewSportsShirtSummary,           emoji: '📦', label: 'สรุปยอด<br>เสื้อกีฬาสี',     nav: 'shirt-summary' },
-    { key: 'sports-fund',        show: !!isSportsManager,                     emoji: '💰', label: 'บัญชีเงิน<br>กีฬาสี',        nav: 'sports-fund-admin' },
-    { key: 'sports-overview',    show: !!isSportsManager,                     emoji: '📊', label: 'ภาพรวม<br>กีฬาสี',          nav: 'sports-overview-admin' },
-    { key: 'sports-competition-manager', show: !!(isSportsManager || hasSportsCompetitionAssignment || canRegisterSportsCompetition), emoji: '🏟️', label: 'รายการแข่งขัน<br>ของฉัน', nav: 'sports-competition-manager' },
-    { key: 'sports-evaluation',  show: !!isSportsEvaluator,                   emoji: '🧑‍⚖️', label: 'ประเมิน<br>กีฬาสี',         nav: 'sports-evaluation' },
-    { key: 'shirt-vote',         show: !!(isSportsManager || isShirtVoteManager), emoji: '🗳️', label: 'ผลโหวต<br>แบบเสื้อ',    nav: 'shirt-vote-dashboard' },
-    { key: 'qr-print',           show: _isQrReissueManager,                   emoji: '🎫', label: 'พิมพ์/คำขอ<br>QR',         nav: 'student-qr-print' },
-    { key: 'prayer-score',       show: hasPrayer,                             emoji: '🕌', label: 'คะแนน<br>ศาสนา',           nav: 'prayer-score' },
+    { key: 'sports',             show: featureOn('teacher_sports') && canSeeSports, emoji: '🏆', label: 'กีฬาสี', nav: 'sports' },
+    { key: 'certificates',       show: featureOn('teacher_certificates'), emoji: '🏅', label: 'เกียรติ<br>บัตร', nav: 'certificates' },
+    { key: 'advisor-students',   show: hasAdvisorRoom && featureOn('advisor_students'), emoji: '👥', label: 'นักเรียน<br>ที่ปรึกษา', nav: 'advisor-students' },
+    { key: 'my-team',            show: featureOn('teacher_my_team') && sportsMemberships.length > 0, emoji: '🛡️', label: 'จัดการ<br>สีของฉัน', nav: 'my-team-workspace' },
+    { key: 'shirt-summary',      show: featureOn('teacher_shirt_summary') && !!canViewSportsShirtSummary, emoji: '📦', label: 'สรุปยอด<br>เสื้อกีฬาสี', nav: 'shirt-summary' },
+    { key: 'sports-fund',        show: featureOn('teacher_sports_fund') && !!isSportsManager, emoji: '💰', label: 'บัญชีเงิน<br>กีฬาสี', nav: 'sports-fund-admin' },
+    { key: 'sports-overview',    show: featureOn('teacher_sports_overview') && !!isSportsManager, emoji: '📊', label: 'ภาพรวม<br>กีฬาสี', nav: 'sports-overview-admin' },
+    { key: 'sports-competition-manager', show: featureOn('teacher_sports_competition') && !!(isSportsManager || hasSportsCompetitionAssignment || canRegisterSportsCompetition), emoji: '🏟️', label: 'รายการแข่งขัน<br>ของฉัน', nav: 'sports-competition-manager' },
+    { key: 'sports-evaluation',  show: featureOn('teacher_sports_evaluation') && !!isSportsEvaluator, emoji: '🧑‍⚖️', label: 'ประเมิน<br>กีฬาสี', nav: 'sports-evaluation' },
+    { key: 'shirt-vote',         show: featureOn('teacher_shirt_vote_results') && !!(isSportsManager || isShirtVoteManager), emoji: '🗳️', label: 'ผลโหวต<br>แบบเสื้อ', nav: 'shirt-vote-dashboard' },
+    { key: 'qr-print',           show: featureOn('teacher_qr_reissue') && _isQrReissueManager, emoji: '🎫', label: 'พิมพ์/คำขอ<br>QR', nav: 'student-qr-print' },
+    { key: 'prayer-score',       show: featureOn('teacher_prayer') && hasPrayer, emoji: '🕌', label: 'คะแนน<br>ศาสนา', nav: 'prayer-score' },
   ]
   _lastRegradePendingCount = regradePendingCount
 }
@@ -3585,7 +3614,7 @@ function _showShirtSizeReminderPopup() {
   document.body.appendChild(wrap)
   wrap.querySelector('#ssrp-go').addEventListener('click', () => {
     wrap.remove()
-    import('./sports-portals.js?v=10.22.868').then(m => m.openTeacherShirtSizeModal?.(_teacher))
+    import('./sports-portals.js?v=10.22.1106').then(m => m.openTeacherShirtSizeModal?.(_teacher))
   })
   wrap.querySelector('#ssrp-close').addEventListener('click', () => wrap.remove())
 }
