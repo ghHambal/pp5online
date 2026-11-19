@@ -4221,14 +4221,14 @@ export async function renderStudentPrayerScanner(student, options = {}) {
         </div>
       </div>
 
-      <div id="scanner-countdown-panel" class="${isOperatorTeacher ? 'bg-indigo-50 border-indigo-100 text-indigo-700' : 'bg-emerald-50 border-emerald-100 text-emerald-800'} rounded-2xl border px-4 py-3 mb-4 flex items-center justify-between gap-3">
+      <div id="scanner-countdown-panel" class="${isOperatorTeacher ? 'bg-indigo-50 border-indigo-100 text-indigo-700' : 'bg-emerald-50 border-emerald-100 text-emerald-800'} rounded-3xl border-2 px-5 py-5 mb-5 flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-4 text-center sm:text-left shadow-md transition-colors">
         <div class="min-w-0">
-          <p class="text-[10px] font-bold uppercase tracking-wider opacity-70">${isOperatorTeacher ? 'สิทธิ์คุณครู' : (hasExtendedScanWindow ? 'สิทธิ์ประธาน/รองประธาน' : 'สิทธิ์นักเรียนแกนนำ')}</p>
-          <p id="scanner-window-label" class="text-xs font-semibold mt-0.5">${isOperatorTeacher ? 'คุณครูเข้าใช้งานได้ตลอดเวลา' : `ช่วงสแกน ${scanWindow.startLabel} - ${scanWindow.endLabel} น.`}</p>
+          <p class="text-xs font-extrabold uppercase tracking-wider opacity-80">${isOperatorTeacher ? 'สิทธิ์คุณครู' : (hasExtendedScanWindow ? 'สิทธิ์ประธาน/รองประธาน' : 'สิทธิ์นักเรียนแกนนำ')}</p>
+          <p id="scanner-window-label" class="text-sm font-bold mt-1">${isOperatorTeacher ? 'คุณครูเข้าใช้งานได้ตลอดเวลา' : `ช่วงสแกน ${scanWindow.startLabel} - ${scanWindow.endLabel} น.`}</p>
         </div>
-        <div class="text-right flex-shrink-0">
-          <p class="text-[10px] font-bold opacity-70">เวลาคงเหลือ</p>
-          <p id="scanner-countdown" class="font-mono text-2xl font-extrabold leading-none">${isOperatorTeacher ? '∞' : '--:--'}</p>
+        <div class="min-w-[190px] rounded-2xl border border-white bg-white/90 px-6 py-3 text-center shadow-inner">
+          <p class="text-xs font-extrabold uppercase tracking-[0.16em] text-slate-500">เวลาคงเหลือ</p>
+          <p id="scanner-countdown" class="mt-1 font-mono text-5xl font-black leading-none tracking-wider ${isOperatorTeacher ? 'text-indigo-700' : 'text-emerald-700'} tabular-nums">${isOperatorTeacher ? '∞' : '--:--'}</p>
         </div>
       </div>
 
@@ -4628,6 +4628,8 @@ export async function renderStudentPrayerScanner(student, options = {}) {
       panelEl.classList.toggle('bg-emerald-50', !warning)
       panelEl.classList.toggle('border-emerald-100', !warning)
       panelEl.classList.toggle('text-emerald-800', !warning)
+      countdownEl.classList.toggle('text-red-700', warning)
+      countdownEl.classList.toggle('text-emerald-700', !warning)
       borderEl.classList.toggle('hidden', !warning)
       if (remaining <= 0) {
         expirePrayerScanWindow()
@@ -4972,7 +4974,8 @@ export async function renderStudentPrayerScanner(student, options = {}) {
         ? `<img src="${escapeHtml(student.image_url)}" alt="รูป${studentName}" class="w-full h-full object-cover object-top" />`
         : `<div class="w-full h-full flex items-center justify-center bg-emerald-50 text-emerald-700 text-7xl font-extrabold">${studentName.charAt(0) || 'น'}</div>`
       resultPopup.innerHTML = `
-        <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white p-5 sm:p-7 text-center shadow-2xl border-4 ${borderStyle}">
+        <div class="relative w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white p-5 pt-14 sm:p-7 sm:pt-14 text-center shadow-2xl border-4 ${borderStyle}">
+          <button id="scanner-result-popup-close" type="button" aria-label="ปิดผลการสแกน" class="absolute right-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-3xl font-bold leading-none text-gray-600 shadow hover:bg-gray-100 active:scale-95">×</button>
           <p class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-extrabold ${badgeStyle}">
             <span class="text-xl">${isSuccess ? '✓' : isDuplicate ? '↻' : '!'}</span>${isSuccess ? 'สแกนสำเร็จ' : isDuplicate ? 'ตรวจพบการสแกนซ้ำ' : 'สแกนไม่ผ่าน'}
           </p>
@@ -4984,6 +4987,10 @@ export async function renderStudentPrayerScanner(student, options = {}) {
         </div>`
       resultPopup.classList.remove('hidden')
       resultPopup.classList.add('flex')
+      resultPopup.querySelector('#scanner-result-popup-close')?.addEventListener('click', () => {
+        resultPopup.classList.add('hidden')
+        resultPopup.classList.remove('flex')
+      })
     } else if (!student && resultPopup) {
       resultPopup.classList.add('hidden')
       resultPopup.classList.remove('flex')
