@@ -4113,6 +4113,7 @@ export async function renderStudentPrayerScanner(student, options = {}) {
   let recordStatus = localStorage.getItem('prayer_scan_record_status') || 'pray'
   let isSyncing = false
   let scannerSystemsStarted = false
+  let scanWindowExpired = false
   const scannerAmanahPosterUrl = `${import.meta.env.BASE_URL || '/'}prayer-scanner-amanah.png`
 
   function renderUI() {
@@ -4121,24 +4122,22 @@ export async function renderStudentPrayerScanner(student, options = {}) {
     const locationOptionsHtml = locationChoices.map(loc => `
       <option value="${loc.id}" ${activeLocation === loc.id ? 'selected' : ''}>${loc.icon} ${loc.label}${loc.detail ? ` (${loc.detail})` : ''}</option>
     `).join('')
-    const locationChoiceCardsHtml = locationChoices.map(loc => `
-      <button type="button" data-location="${loc.id}"
-        class="scanner-location-choice w-full text-left px-4 py-3 rounded-2xl border transition active:scale-[0.99] border-gray-200 bg-white text-gray-700 hover:bg-gray-50">
-        <div class="flex items-center gap-3">
-          <span class="w-10 h-10 rounded-xl bg-emerald-100 text-xl flex items-center justify-center flex-shrink-0">${loc.icon}</span>
-          <span class="min-w-0">
-            <span class="block text-sm font-extrabold">${loc.label}</span>
-            <span class="block text-xs text-gray-500 mt-0.5">${loc.detail || 'จุดสแกนละหมาด'}</span>
-          </span>
-          <span class="scanner-location-check ml-auto w-6 h-6 rounded-full border flex items-center justify-center text-xs font-extrabold border-gray-200 bg-white text-transparent">✓</span>
-        </div>
-      </button>
+    const modalLocationOptionsHtml = locationChoices.map(loc => `
+      <option value="${loc.id}">${loc.icon} ${loc.label}${loc.detail ? ` (${loc.detail})` : ''}</option>
     `).join('')
-    
     const html = `
       <!-- Flash green screen overlay -->
       <div id="scanner-flash" class="fixed inset-0 pointer-events-none z-50 bg-emerald-500 opacity-0 transition-opacity duration-150 hidden"></div>
       <div id="scanner-time-warning-border" class="hidden fixed inset-0 pointer-events-none z-[60] border-4 border-red-500 rounded-[2rem] animate-pulse"></div>
+      <div id="scanner-result-popup" class="hidden fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm items-center justify-center p-4" role="status" aria-live="polite"></div>
+      <div id="scanner-expired-modal" class="hidden fixed inset-0 z-[110] bg-slate-950/85 backdrop-blur-sm items-center justify-center p-5" role="alertdialog" aria-modal="true">
+        <div class="w-full max-w-md rounded-3xl bg-white p-7 text-center shadow-2xl border border-amber-100">
+          <div class="mx-auto mb-4 w-20 h-20 rounded-full bg-amber-50 flex items-center justify-center text-5xl">⏰</div>
+          <h2 class="text-2xl font-extrabold text-slate-900">หมดเวลาสแกน</h2>
+          <p class="mt-3 text-base font-semibold leading-relaxed text-emerald-800">ขอให้องค์อัลลอฮฺทรงตอบรับละหมาดของนักเรียน</p>
+          <p class="mt-3 text-sm text-gray-500">ระบบปิดรับการสแกนแล้ว</p>
+        </div>
+      </div>
 
       ${!isOperatorTeacher ? `
       <div id="scanner-amanah-modal" class="fixed inset-0 z-[90] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center px-4 py-6">
@@ -4196,9 +4195,11 @@ export async function renderStudentPrayerScanner(student, options = {}) {
             <p class="text-xs text-gray-500 leading-relaxed text-center">
               ระบบจะบันทึกจุดนี้ไปพร้อมกับทุกการสแกนในรอบนี้ กรุณาเลือกให้ตรงกับสถานที่จริงก่อนเปิดกล้อง
             </p>
-            <div id="scanner-location-choice-list" class="space-y-2">
-              ${locationChoiceCardsHtml}
-            </div>
+            <label for="scanner-location-modal-select" class="sr-only">เลือกสถานที่สแกน</label>
+            <select id="scanner-location-modal-select" class="w-full min-h-14 appearance-auto rounded-2xl border-2 border-emerald-200 bg-white px-4 py-4 text-base font-bold text-slate-800 focus:border-emerald-600 focus:outline-none focus:ring-4 focus:ring-emerald-100">
+              <option value="" selected>แตะเพื่อเลือกสถานที่</option>
+              ${modalLocationOptionsHtml}
+            </select>
           </div>
           <div class="p-4 bg-gray-50 border-t border-gray-100">
             <button id="btn-confirm-scanner-location" disabled class="w-full py-3 rounded-2xl bg-gray-300 text-white text-sm font-extrabold shadow-sm cursor-not-allowed transition">
@@ -4462,6 +4463,7 @@ export async function renderStudentPrayerScanner(student, options = {}) {
     })
 
     const locationSelect = document.getElementById('opt-active-location')
+    const modalLocationSelect = document.getElementById('scanner-location-modal-select')
     let modalSelectedLocation = ''
     const setLocationConfirmEnabled = (enabled) => {
       const btn = document.getElementById('btn-confirm-scanner-location')
@@ -4471,22 +4473,11 @@ export async function renderStudentPrayerScanner(student, options = {}) {
         ? 'w-full py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-extrabold shadow-lg shadow-emerald-200/60 active:scale-95 transition'
         : 'w-full py-3 rounded-2xl bg-gray-300 text-white text-sm font-extrabold shadow-sm cursor-not-allowed transition'
     }
-    const updateLocationChoiceUI = (selectedLocation = activeLocation) => {
-      document.querySelectorAll('.scanner-location-choice').forEach(btn => {
-        const selected = btn.dataset.location === selectedLocation
-        btn.className = `scanner-location-choice w-full text-left px-4 py-3 rounded-2xl border transition active:scale-[0.99] ${selected ? 'border-emerald-500 bg-emerald-50 text-emerald-900 shadow-sm' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'}`
-        const check = btn.querySelector('.scanner-location-check')
-        if (check) {
-          check.className = `scanner-location-check ml-auto w-6 h-6 rounded-full border flex items-center justify-center text-xs font-extrabold ${selected ? 'border-emerald-500 bg-emerald-600 text-white' : 'border-gray-200 bg-white text-transparent'}`
-        }
-      })
-    }
     const setActiveLocationValue = (value, { toast = false } = {}) => {
       if (!locationChoices.some(loc => loc.id === value)) return
       activeLocation = value
       localStorage.setItem('prayer_scan_active_location', activeLocation)
       if (locationSelect) locationSelect.value = activeLocation
-      updateLocationChoiceUI()
       if (toast) showToast('เปลี่ยนจุดสแกนปัจจุบันสำเร็จ', 'info')
     }
 
@@ -4494,15 +4485,16 @@ export async function renderStudentPrayerScanner(student, options = {}) {
     locationSelect?.addEventListener('change', (e) => {
       setActiveLocationValue(e.target.value, { toast: true })
     })
-
-    document.querySelectorAll('.scanner-location-choice').forEach(btn => {
-      btn.addEventListener('click', () => {
-        modalSelectedLocation = btn.dataset.location || ''
-        setActiveLocationValue(modalSelectedLocation)
-        updateLocationChoiceUI(modalSelectedLocation)
-        setLocationConfirmEnabled(!!modalSelectedLocation)
-      })
+    locationSelect?.addEventListener('input', (e) => {
+      setActiveLocationValue(e.target.value)
     })
+    const updateModalLocation = () => {
+      modalSelectedLocation = modalLocationSelect?.value || ''
+      if (modalSelectedLocation) setActiveLocationValue(modalSelectedLocation)
+      setLocationConfirmEnabled(!!modalSelectedLocation)
+    }
+    modalLocationSelect?.addEventListener('change', updateModalLocation)
+    modalLocationSelect?.addEventListener('input', updateModalLocation)
 
     // Option: Record status (only if female student or teacher)
     if (student.gender === 'หญิง' || !!student.teacher_code) {
@@ -4516,6 +4508,10 @@ export async function renderStudentPrayerScanner(student, options = {}) {
 
     const startScannerSystems = () => {
       if (scannerSystemsStarted) return
+      if (!isOperatorTeacher && !_isPrayerTimeWindow(systemConfig, hasExtendedScanWindow)) {
+        expirePrayerScanWindow()
+        return
+      }
       scannerSystemsStarted = true
       updateQueueUI()
       startCountdown()
@@ -4533,7 +4529,7 @@ export async function renderStudentPrayerScanner(student, options = {}) {
         return
       }
       modalSelectedLocation = ''
-      updateLocationChoiceUI('')
+      if (modalLocationSelect) modalLocationSelect.value = ''
       setLocationConfirmEnabled(false)
       locationModal.classList.remove('hidden')
       locationModal.classList.add('flex')
@@ -4544,7 +4540,7 @@ export async function renderStudentPrayerScanner(student, options = {}) {
         showToast('กรุณาเลือกจุดสแกนก่อนเปิดระบบ', 'warning')
         return
       }
-      localStorage.setItem('prayer_scan_active_location', activeLocation)
+      setActiveLocationValue(modalSelectedLocation)
       document.getElementById('scanner-location-modal')?.remove()
       startScannerSystems()
     })
@@ -4622,6 +4618,7 @@ export async function renderStudentPrayerScanner(student, options = {}) {
     if (!countdownEl || !panelEl || !borderEl) return
 
     const tick = () => {
+      if (scanWindowExpired) return
       const remaining = _prayerScanRemainingSeconds(systemConfig, hasExtendedScanWindow)
       countdownEl.textContent = _fmtRemaining(remaining)
       const warning = remaining <= PRAYER_SCAN_WARNING_SECONDS
@@ -4633,8 +4630,7 @@ export async function renderStudentPrayerScanner(student, options = {}) {
       panelEl.classList.toggle('text-emerald-800', !warning)
       borderEl.classList.toggle('hidden', !warning)
       if (remaining <= 0) {
-        stopCamera()
-        stopScannerGun()
+        expirePrayerScanWindow()
       }
     }
 
@@ -4644,6 +4640,7 @@ export async function renderStudentPrayerScanner(student, options = {}) {
 
   // ─── Camera Handler ────────────────────────────────────────────────────────
   async function startCamera() {
+    if (scanWindowExpired) return
     try {
       const Html5Qrcode = await loadHtml5Qrcode()
       const html5Qrcode = new Html5Qrcode("camera-reader")
@@ -4687,8 +4684,10 @@ export async function renderStudentPrayerScanner(student, options = {}) {
 
   // ─── Scanner Gun Wedge Handler ─────────────────────────────────────────────
   function startScannerGun() {
+    if (scanWindowExpired) return
     const gunInput = document.getElementById('scanner-gun-input')
     if (!gunInput) return
+    let scanBuffer = ''
 
     // Keep wedge input auto-focused continuously
     gunInput.focus()
@@ -4701,13 +4700,35 @@ export async function renderStudentPrayerScanner(student, options = {}) {
     window._activePrayerScannerState.focusInterval = focusInterval
 
     gunInput.addEventListener('keydown', (e) => {
+      if (scanWindowExpired) {
+        e.preventDefault()
+        return
+      }
       if (e.key === 'Enter') {
         e.preventDefault()
-        const code = gunInput.value.trim()
+        const code = (scanBuffer || gunInput.value).trim()
+        scanBuffer = ''
         gunInput.value = ''
         if (code) {
           processCheckIn(code)
         }
+        return
+      }
+
+      // USB scanners send keyboard events. On iPad, e.key follows the active
+      // keyboard language (for example Thai), while e.code identifies the
+      // physical number key. Use that physical key for numeric student codes.
+      if (e.code && /^(?:Digit|Numpad)[0-9]$/.test(e.code)) {
+        e.preventDefault()
+        scanBuffer += e.code.slice(-1)
+        return
+      }
+
+      // Keep support for non-numeric QR payloads and scanners that don't expose
+      // KeyboardEvent.code by collecting the reported character as a fallback.
+      if (e.key?.length === 1) {
+        e.preventDefault()
+        scanBuffer += e.key
       }
     })
   }
@@ -4719,15 +4740,36 @@ export async function renderStudentPrayerScanner(student, options = {}) {
     }
   }
 
+  function expirePrayerScanWindow() {
+    if (isOperatorTeacher || scanWindowExpired) return
+    scanWindowExpired = true
+    stopCamera()
+    stopScannerGun()
+    const resultPopup = document.getElementById('scanner-result-popup')
+    resultPopup?.classList.add('hidden')
+    resultPopup?.classList.remove('flex')
+    const expiredModal = document.getElementById('scanner-expired-modal')
+    expiredModal?.classList.remove('hidden')
+    expiredModal?.classList.add('flex')
+    const manualInput = document.getElementById('scanner-manual-code-input')
+    const manualButton = document.getElementById('btn-submit-manual-scan')
+    const gunInput = document.getElementById('scanner-gun-input')
+    document.getElementById('opt-input-camera')?.setAttribute('disabled', 'true')
+    document.getElementById('opt-input-gun')?.setAttribute('disabled', 'true')
+    if (gunInput) gunInput.disabled = true
+    if (manualInput) manualInput.disabled = true
+    if (manualButton) manualButton.disabled = true
+  }
+
   // ─── Main Check-in Handler ──────────────────────────────────────────────────
   async function processCheckIn(studentRawCode, options = {}) {
     console.log('[Scanner] Raw scanned text:', studentRawCode)
     if (!studentRawCode) return
     const inputMethod = options.inputMethod === 'manual' ? 'manual' : 'qr'
 
+    if (scanWindowExpired) return
     if (!isOperatorTeacher && !_isPrayerTimeWindow(systemConfig, hasExtendedScanWindow)) {
-      playBeep('error')
-      showScanFeedback(null, studentRawCode, `ไม่อยู่ในช่วงเวลาบันทึกกิจกรรมละหมาด (${scanWindow.startLabel} - ${scanWindow.endLabel} น.)`)
+      expirePrayerScanWindow()
       return
     }
 
@@ -4835,6 +4877,11 @@ export async function renderStudentPrayerScanner(student, options = {}) {
       }
     }
 
+    if (scanWindowExpired || (!isOperatorTeacher && !_isPrayerTimeWindow(systemConfig, hasExtendedScanWindow))) {
+      expirePrayerScanWindow()
+      return
+    }
+
     const weekN = getWeekNumber(today, systemConfig)
     let finalStatus = recordStatus
     let statusWarning = ''
@@ -4905,6 +4952,43 @@ export async function renderStudentPrayerScanner(student, options = {}) {
   function showScanFeedback(student, code, message, isSuccess = false, status = 'pray') {
     const container = document.getElementById('scanner-feedback-container')
     if (!container) return
+    if (scanWindowExpired) return
+
+    const resultPopup = document.getElementById('scanner-result-popup')
+    if (inputMode === 'gun' && student && resultPopup) {
+      const isDuplicate = String(message).includes('เช็คชื่อซ้ำ')
+      const badgeStyle = isSuccess
+        ? 'bg-emerald-100 text-emerald-800'
+        : isDuplicate ? 'bg-amber-100 text-amber-900' : 'bg-rose-100 text-rose-900'
+      const borderStyle = isSuccess ? 'border-emerald-400' : isDuplicate ? 'border-amber-300' : 'border-rose-300'
+      const messageStyle = isSuccess ? 'text-emerald-700' : isDuplicate ? 'text-amber-800' : 'text-rose-700'
+      const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[char])
+      const studentName = escapeHtml(student.full_name || 'นักเรียน')
+      const studentCode = escapeHtml(student.student_code || code || '')
+      const studentRoom = escapeHtml(_roomDisplay(student.main_room))
+      const photo = student.image_url
+        ? `<img src="${escapeHtml(student.image_url)}" alt="รูป${studentName}" class="w-full h-full object-cover object-top" />`
+        : `<div class="w-full h-full flex items-center justify-center bg-emerald-50 text-emerald-700 text-7xl font-extrabold">${studentName.charAt(0) || 'น'}</div>`
+      resultPopup.innerHTML = `
+        <div class="w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white p-5 sm:p-7 text-center shadow-2xl border-4 ${borderStyle}">
+          <p class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-extrabold ${badgeStyle}">
+            <span class="text-xl">${isSuccess ? '✓' : isDuplicate ? '↻' : '!'}</span>${isSuccess ? 'สแกนสำเร็จ' : isDuplicate ? 'ตรวจพบการสแกนซ้ำ' : 'สแกนไม่ผ่าน'}
+          </p>
+          <div class="mx-auto mt-4 h-[min(52vh,360px)] w-[min(72vw,300px)] overflow-hidden rounded-3xl border-4 border-slate-100 bg-slate-50 shadow-lg">${photo}</div>
+          <h2 class="mt-4 text-2xl sm:text-3xl font-extrabold text-slate-900">${studentName}</h2>
+          <p class="mt-1 text-lg font-bold text-slate-600">รหัส ${studentCode} · ห้อง ${studentRoom}</p>
+          <p class="mt-3 text-base font-bold ${messageStyle}">${escapeHtml(message)}</p>
+          <p class="mt-3 text-xs text-gray-400">ผลการสแกนจะแสดงค้างไว้จนกว่าจะสแกนรายการถัดไปหรือหมดเวลาสแกน</p>
+        </div>`
+      resultPopup.classList.remove('hidden')
+      resultPopup.classList.add('flex')
+    } else if (!student && resultPopup) {
+      resultPopup.classList.add('hidden')
+      resultPopup.classList.remove('flex')
+      resultPopup.innerHTML = ''
+    }
 
     if (window._feedbackTimeout) clearTimeout(window._feedbackTimeout)
 
