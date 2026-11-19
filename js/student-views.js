@@ -5021,14 +5021,14 @@ export async function renderStudentPrayerScanner(student, options = {}) {
           </div>
           <div id="scanner-result-popup-grid" class="grid min-h-0 flex-1 ${scannerResultColumns === 'two' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'} gap-4">
             <section class="flex min-h-0 flex-col items-center justify-center overflow-y-auto rounded-2xl bg-slate-50 p-3 sm:p-5">
-              <p class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-extrabold ${badgeStyle}">
+              <p class="inline-flex items-center gap-2 rounded-full px-5 py-3 text-base sm:text-lg font-extrabold ${badgeStyle}">
                 <span class="text-xl">${isSuccess ? '✓' : isDuplicate ? '↻' : '!'}</span>${isSuccess ? 'สแกนสำเร็จ' : isDuplicate ? 'ตรวจพบการสแกนซ้ำ' : 'สแกนไม่ผ่าน'}
               </p>
-              <div class="mx-auto mt-3 h-[min(45vh,320px)] w-[min(68vw,270px)] overflow-hidden rounded-3xl border-4 border-white bg-white shadow-lg">${photo}</div>
-              <h2 class="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900">${studentName}</h2>
-              <p class="mt-1 text-base font-bold text-slate-600">รหัส ${studentCode} · ห้อง ${studentRoom}</p>
-              <p class="mt-2 text-base font-bold ${messageStyle}">${escapeHtml(message)}</p>
-              <p class="mt-2 text-xs text-gray-400">ผลการสแกนจะแสดงค้างไว้จนกว่าจะสแกนรายการถัดไปหรือหมดเวลาสแกน</p>
+              <div class="mx-auto mt-3 ${scannerResultColumns === 'two' ? 'h-[min(54vh,560px)] w-[min(38vw,440px)]' : 'h-[min(52vh,520px)] w-[min(72vw,360px)]'} max-w-full overflow-hidden rounded-3xl border-4 border-white bg-white shadow-lg">${photo}</div>
+              <h2 class="mt-4 text-3xl sm:text-4xl lg:text-5xl leading-tight font-extrabold text-slate-900">${studentName}</h2>
+              <p class="mt-2 text-xl sm:text-2xl font-bold text-slate-600">รหัส ${studentCode} · ห้อง ${studentRoom}</p>
+              <p class="mt-3 text-lg sm:text-xl font-bold ${messageStyle}">${escapeHtml(message)}</p>
+              <p class="mt-3 text-sm text-gray-400">ผลการสแกนจะแสดงค้างไว้จนกว่าจะสแกนรายการถัดไปหรือหมดเวลาสแกน</p>
             </section>
             <section id="scanner-result-popup-history" class="${scannerResultColumns === 'two' ? 'flex' : 'hidden'} min-h-0 flex-col rounded-2xl bg-slate-50 p-3 sm:p-4 text-left">
               <div class="mb-3 flex items-center justify-between gap-2">
