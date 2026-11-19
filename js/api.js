@@ -591,37 +591,41 @@ async function _getMySubjects(teacherId, currentOnly = true) {
 }
 
 // ─── Overview Stats ───────────────────────────────────────────────────────────
-export async function getStats(academicYear = null, semester = null) {
+export async function getStats(academicYear = null, semester = null, termStartDate = null, termEndDate = null) {
   const hasTerm = Number.isInteger(Number(academicYear)) && Number(academicYear) > 0
     && [1, 2].includes(Number(semester))
+  const hasTermDates = /^\d{4}-\d{2}-\d{2}$/.test(String(termStartDate || ''))
+    && /^\d{4}-\d{2}-\d{2}$/.test(String(termEndDate || ''))
   let classesQuery = supabase.from('classes').select('*', { count: 'exact', head: true })
   let subjectsQuery = supabase.from('master_subjects').select('*', { count: 'exact', head: true })
   let prayerQuery = supabase.from('prayer_records').select('*', { count: 'exact', head: true })
   if (hasTerm) {
     classesQuery = classesQuery.eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
     subjectsQuery = subjectsQuery.eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
+  }
+  if (hasTermDates) {
+    // Legacy prayer_records often have NULL term tags; their check_date is the
+    // reliable source for assigning them to the selected academic term.
+    prayerQuery = prayerQuery.gte('check_date', termStartDate).lte('check_date', termEndDate)
+  } else if (hasTerm) {
     prayerQuery = prayerQuery.eq('academic_year', Number(academicYear)).eq('semester', Number(semester))
   }
-  const [
-    { count: teachers },
-    { count: students },
-    { count: classes },
-    { count: subjects },
-    { count: prayer },
-  ] = await Promise.all([
+  const [teachersRes, studentsRes, classesRes, subjectsRes, prayerRes] = await Promise.all([
     supabase.from('teachers').select('*',       { count: 'exact', head: true }),
     supabase.from('students').select('*',       { count: 'exact', head: true }).eq('is_active', true),
     classesQuery,
     subjectsQuery,
     prayerQuery,
   ])
+  const queryError = [teachersRes, studentsRes, classesRes, subjectsRes, prayerRes].find(result => result.error)?.error
+  if (queryError) throw queryError
 
   return {
-    teachers: teachers ?? 0,
-    students: students ?? 0,
-    classes:  classes  ?? 0,
-    subjects: subjects ?? 0,
-    prayer: prayer ?? 0,
+    teachers: teachersRes.count ?? 0,
+    students: studentsRes.count ?? 0,
+    classes:  classesRes.count  ?? 0,
+    subjects: subjectsRes.count ?? 0,
+    prayer: prayerRes.count ?? 0,
   }
 }
 

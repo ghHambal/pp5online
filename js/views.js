@@ -314,7 +314,7 @@ export async function renderOverview() {
 
   try {
     const [stats, payments, teachers] = await Promise.all([
-      getStats(selectedTerm.academic_year, selectedTerm.semester),
+      getStats(selectedTerm.academic_year, selectedTerm.semester, selectedTerm.start_date, selectedTerm.end_date),
       getAllPaymentRequests().catch(()=>[]),
       getTeachers().catch(()=>[]),
     ])
@@ -327,7 +327,7 @@ export async function renderOverview() {
       const select = event.target
       select.disabled = true
       try {
-        const nextStats = await getStats(term.academic_year, term.semester)
+        const nextStats = await getStats(term.academic_year, term.semester, term.start_date, term.end_date)
         Object.entries(nextStats).forEach(([key, value]) => {
           const el = document.getElementById(`stat-${key}`)
           if (el) el.textContent = Number(value ?? 0).toLocaleString()
