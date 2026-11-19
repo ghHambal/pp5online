@@ -4484,6 +4484,12 @@ export async function renderStudentPrayerScanner(student, options = {}) {
     // Option: Active location
     locationSelect?.addEventListener('change', (e) => {
       setActiveLocationValue(e.target.value, { toast: true })
+      if (inputMode === 'gun') {
+        setTimeout(() => {
+          const scannerInput = document.getElementById('scanner-gun-input')
+          if (scannerInput && !scanWindowExpired) scannerInput.focus()
+        }, 350)
+      }
     })
     locationSelect?.addEventListener('input', (e) => {
       setActiveLocationValue(e.target.value)
@@ -4694,8 +4700,10 @@ export async function renderStudentPrayerScanner(student, options = {}) {
     // Keep wedge input auto-focused continuously
     gunInput.focus()
     const focusInterval = setInterval(() => {
-      const manualInput = document.getElementById('scanner-manual-code-input')
-      if (document.activeElement !== gunInput && document.activeElement !== manualInput && document.getElementById('scanner-gun-input')) {
+      const activeElement = document.activeElement
+      const isUserEditingControl = activeElement !== gunInput &&
+        (activeElement?.matches('select, input, textarea') || activeElement?.isContentEditable)
+      if (activeElement !== gunInput && !isUserEditingControl && document.getElementById('scanner-gun-input')) {
         gunInput.focus()
       }
     }, 1000)
