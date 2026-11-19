@@ -386,6 +386,10 @@ function _renderQuestionForm(teacher, bank, question = null) {
           </div>
         </div>
         <div>
+          <label class="text-xs font-semibold text-gray-500 mb-1 block">คำใบ้สำหรับโบนัสสตรีค (ไม่บังคับ)</label>
+          <textarea id="q-hint" class="${INPUT_CLS}" rows="2" placeholder="จะแสดงเมื่อนักเรียนใช้โบนัสคำใบ้">${_htmlEsc(question?.hint ?? '')}</textarea>
+        </div>
+        <div>
           <label class="text-xs font-semibold text-gray-500 mb-1 block">คำอธิบายเฉลย (ไม่บังคับ)</label>
           <textarea id="q-explanation" class="${INPUT_CLS}" rows="2">${_htmlEsc(question?.explanation ?? '')}</textarea>
         </div>
@@ -435,6 +439,7 @@ function _renderQuestionForm(teacher, bank, question = null) {
         choices,
         correct_choice_index: correctIndex,
         explanation: modal.querySelector('#q-explanation').value.trim() || null,
+        hint: modal.querySelector('#q-hint').value.trim() || null,
         difficulty: modal.querySelector('#q-difficulty').value || null,
         category: modal.querySelector('#q-category').value.trim() || null,
       }

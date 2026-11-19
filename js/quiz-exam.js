@@ -4,7 +4,7 @@ import {
   rpcRecordViolation, rpcClaimSession, rpcHeartbeat, rpcGetMyRank,
   rpcSubmitQuizAnswer, rpcUseQuizBonus, getMyQuizAttemptHistory,
   rpcStartAttempt, rpcConfirmQuizFinal, getQuizFinalization,
-} from './quiz-api.js?v=10.22.538'
+} from './quiz-api.js?v=10.22.1108'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
 import { showToast, showDangerConfirm, setButtonLoading, getFriendlyErrorMessage } from './ui.js'
@@ -29,10 +29,15 @@ let _lockMode = false
 let _bonusMode = false
 let _bonusInventory = {}
 let _eliminatedChoices = {}
+let _revealedHints = {}
+// Student-controlled strike-through marks are local to this exam session.
+// Overrides let students undo even a 50/50 elimination if they change their mind.
+let _eliminationOverrides = {}
 let _unlockedForEdit = new Set()
 let _answerCorrectness = {}
 let _priorAttempts = [] // this student's other finished attempts on the same quiz (attempt_number > 1 only)
 let _currentStreak = 0
+let _streakGuardProtected = false
 let _avgPerQuestionSec = null // time_limit_minutes*60 / num_questions — pacing guide only, never force-advances
 let _perQBarStart = null
 let _perQTimerInterval = null
@@ -44,6 +49,9 @@ const BONUS_META = {
   fix_wrong:     { icon: '🛠️', label: 'แก้ข้อผิด' },
   extra_time:    { icon: '⏱️', label: '+30 วิ' },
   reveal_answer: { icon: '🔑', label: 'เปิดเฉลย' },
+  teacher_hint:  { icon: '💡', label: 'คำใบ้ครู' },
+  retry_answer:  { icon: '↩️', label: 'แก้ข้อถูก' },
+  streak_guard:  { icon: '🛡️', label: 'เซฟสตรีค' },
 }
 
 export async function initQuizExam(attemptId) {
@@ -103,9 +111,12 @@ export async function initQuizExam(attemptId) {
   _bonusMode = !!quiz?.instant_feedback_bonus
   _bonusInventory = _attempt.bonus_inventory ?? {}
   _eliminatedChoices = _attempt.eliminated_choices ?? {}
+  _revealedHints = Object.fromEntries(_questions.filter(q => q.hint).map(q => [q.question_id, q.hint]))
+  _eliminationOverrides = {}
   _unlockedForEdit = new Set(_attempt.unlocked_for_edit ?? [])
   _answerCorrectness = _attempt.answer_correctness ?? {}
   _currentStreak = _attempt.current_streak ?? 0
+  _streakGuardProtected = false
   _avgPerQuestionSec = quiz?.time_limit_minutes ? Math.floor(quiz.time_limit_minutes * 60 / _questions.length) : null
 
   _priorAttempts = _attempt.attempt_number > 1
@@ -216,6 +227,8 @@ function _renderExamUI(root) {
         <div id="quiz-timer" class="text-2xl font-mono font-bold text-indigo-600 flex-shrink-0"></div>
       </div>
 
+      ${_bonusMode ? '<div id="quiz-streak-notice" aria-live="polite"></div>' : ''}
+
       ${_avgPerQuestionSec ? `
       <div class="bg-white rounded-xl border border-gray-100 shadow-sm px-3 py-2">
         <div class="h-1.5 rounded-full bg-gray-100 overflow-hidden"><div id="quiz-perq-bar" class="h-full bg-indigo-400" style="width:100%"></div></div>
@@ -241,7 +254,7 @@ function _renderExamUI(root) {
   _renderNav()
   _renderQuestion()
   _updateNavButtons()
-  if (_bonusMode) { _renderBonusToolbar(); _renderStreakBadge() }
+  if (_bonusMode) { _renderBonusToolbar(); _renderStreakBadge(); _renderStreakNotice() }
   if (_avgPerQuestionSec) _startPerQuestionBar()
 }
 
@@ -289,7 +302,12 @@ function _renderNav() {
   nav.innerHTML = _questions.map((q, i) => {
     const answered = _answers[q.question_id] !== undefined
     const isCurrent = i === _currentIdx
-    const cls = isCurrent ? 'bg-indigo-600 text-white' : answered ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'
+    const isWrong = _bonusMode && _answerCorrectness[q.question_id] === false
+    const isCorrect = _bonusMode && _answerCorrectness[q.question_id] === true
+    const cls = isWrong ? 'bg-red-100 text-red-700 ring-2 ring-red-300'
+      : isCurrent ? 'bg-indigo-600 text-white'
+      : isCorrect || answered ? 'bg-emerald-100 text-emerald-700'
+      : 'bg-gray-100 text-gray-500'
     return `<button class="quiz-nav-btn w-9 h-9 rounded-lg text-xs font-bold ${cls}" data-idx="${i}">${i + 1}</button>`
   }).join('')
   nav.querySelectorAll('.quiz-nav-btn').forEach(btn =>
@@ -311,7 +329,8 @@ function _renderQuestion() {
   const q = _questions[_currentIdx]
   const selectedOriginal = _answers[q.question_id]
   const locked = _lockMode && selectedOriginal !== undefined && !_unlockedForEdit.has(q.question_id)
-  const elimSet = new Set(_eliminatedChoices[q.question_id] ?? [])
+  const serverElimSet = new Set(_eliminatedChoices[q.question_id] ?? [])
+  const elimOverrides = _eliminationOverrides[q.question_id] ?? {}
   const correctness = _bonusMode ? _answerCorrectness[q.question_id] : undefined // true/false/undefined
   const labelSets = {
     numeric: '12345', upper: 'ABCDE', lower: 'abcde', thai: 'กขคงจ', arabic: 'أبجد هـ'.replace(/\s/g, ''),
@@ -328,25 +347,29 @@ function _renderQuestion() {
     <p class="font-semibold text-gray-800 mb-4" dir="auto">${_htmlEsc(q.question_text)}</p>
     ${correctness === true ? `<p class="text-xs font-bold text-emerald-600 mb-3">✓ ตอบถูก</p>`
       : correctness === false ? `<p class="text-xs font-bold text-red-600 mb-3">✗ ตอบผิด</p>` : ''}
+    ${_revealedHints[q.question_id] ? `<div class="rounded-xl border border-sky-200 bg-sky-50 px-3 py-2 mb-3 text-sm text-sky-800"><p class="text-[10px] font-bold text-sky-600 mb-1">💡 คำใบ้จากครู</p><p>${_htmlEsc(_revealedHints[q.question_id])}</p></div>` : ''}
     <div class="space-y-2">
       ${q.choices.map((c, pos) => {
         const originalIdx = q.choice_perm ? q.choice_perm[pos] : pos
         const isSelected = selectedOriginal === originalIdx
-        const isEliminated = elimSet.has(originalIdx)
+        const isEliminated = Object.hasOwn(elimOverrides, originalIdx)
+          ? elimOverrides[originalIdx]
+          : serverElimSet.has(originalIdx)
         const disabled = locked || isEliminated
         const cls = isEliminated
-          ? 'border-gray-100 opacity-30 line-through cursor-not-allowed'
+          ? 'border-gray-200 bg-gray-50 opacity-60'
           : isSelected && correctness === true ? 'border-emerald-400 bg-emerald-50'
           : isSelected && correctness === false ? 'border-red-400 bg-red-50'
           : isSelected ? 'border-indigo-400 bg-indigo-50'
           : locked ? 'border-gray-100 opacity-50 cursor-not-allowed'
           : 'border-gray-200 hover:bg-gray-50 cursor-pointer'
         return `
-        <label class="flex items-center gap-3 p-3 rounded-xl border ${cls}">
+        <div class="quiz-choice-card flex items-center gap-3 p-3 rounded-xl border ${cls} ${disabled ? '' : 'cursor-pointer'}">
           <input type="radio" name="quiz-choice" class="quiz-choice-input flex-shrink-0" data-pos="${pos}" ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
           <span class="flex-shrink-0 w-7 h-7 rounded-full bg-gray-100 text-gray-600 text-xs font-bold flex items-center justify-center" aria-hidden="true">${_htmlEsc(choiceLabels[pos] ?? String(pos + 1))}</span>
-          <span class="text-sm flex-1" dir="${rtl ? 'rtl' : 'auto'}">${_htmlEsc(c)}</span>
-        </label>`
+          <span class="text-sm flex-1 ${isEliminated ? 'line-through text-gray-400' : ''}" dir="${rtl ? 'rtl' : 'auto'}">${_htmlEsc(c)}</span>
+          <button type="button" class="quiz-eliminate-btn text-[10px] font-bold px-2 py-1 rounded-lg border flex-shrink-0 ${isEliminated ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-500 hover:bg-gray-100'}" data-choice="${originalIdx}" aria-pressed="${isEliminated}">${isEliminated ? 'ยกเลิกตัด' : 'ตัดทิ้ง'}</button>
+        </div>`
       }).join('')}
     </div>
   `
@@ -362,6 +385,24 @@ function _renderQuestion() {
       _renderNav()
       _scheduleAutosave()
     }
+  }))
+  area.querySelectorAll('.quiz-choice-card').forEach(card => card.addEventListener('click', event => {
+    if (event.target.closest('button')) return
+    const input = card.querySelector('.quiz-choice-input')
+    if (!input || input.disabled || input.checked) return
+    input.checked = true
+    input.dispatchEvent(new Event('change', { bubbles: true }))
+  }))
+  area.querySelectorAll('.quiz-eliminate-btn').forEach(btn => btn.addEventListener('click', () => {
+    const choiceIdx = Number(btn.dataset.choice)
+    const wasEliminated = Object.hasOwn(elimOverrides, choiceIdx)
+      ? elimOverrides[choiceIdx]
+      : serverElimSet.has(choiceIdx)
+    _eliminationOverrides[q.question_id] = {
+      ...elimOverrides,
+      [choiceIdx]: !wasEliminated,
+    }
+    _renderQuestion()
   }))
 }
 
@@ -384,11 +425,18 @@ async function _submitAnswerToServer(q, pos) {
       return
     }
     if (_bonusMode) {
+      const guardBefore = _bonusInventory.streak_guard ?? 0
       _answerCorrectness[q.question_id] = result.is_correct
       if (result.bonus_inventory) _bonusInventory = result.bonus_inventory
       _currentStreak = result.current_streak ?? _currentStreak
+      _streakGuardProtected = result.is_correct === false && guardBefore > (_bonusInventory.streak_guard ?? 0)
+      if (result.is_correct === true) _streakGuardProtected = false
+      if (_streakGuardProtected) {
+        showToast('ใช้เกราะรักษาสตรีคอัตโนมัติแล้ว สตรีคยังต่อเนื่องอยู่', 'success')
+      }
       _flashAnswerEffect(result.is_correct, _currentStreak)
       _renderStreakBadge()
+      _renderStreakNotice()
       _renderBonusToolbar()
       if (result.bonus_awarded?.length) _showBonusPopup(result.bonus_awarded)
     }
@@ -404,6 +452,16 @@ async function _submitAnswerToServer(q, pos) {
     showToast('บันทึกคำตอบไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
     _renderQuestion(); _renderNav()
   }
+}
+
+function _renderStreakNotice() {
+  const el = document.getElementById('quiz-streak-notice')
+  if (!el) return
+  el.innerHTML = _currentStreak > 0 ? `
+    <div class="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">
+      <p class="font-bold">${_streakGuardProtected ? `เกราะช่วยรักษาสตรีค ${_currentStreak} ข้อไว้แล้ว 🛡️` : `ตอบถูกต่อเนื่อง ${_currentStreak} ข้อแล้ว 🌱`}</p>
+      <p class="mt-1 text-xs text-emerald-700">ค่อยๆ อ่านโจทย์และทำอย่างตั้งใจ เพื่อรักษาความต่อเนื่องนี้นะ</p>
+    </div>` : ''
 }
 
 let _quizEffectStylesInjected = false
@@ -450,13 +508,16 @@ function _renderBonusToolbar() {
   if (!el) return
   el.innerHTML = Object.entries(BONUS_META).map(([key, meta]) => {
     const count = _bonusInventory[key] ?? 0
-    const ready = count > 0
+    const passive = key === 'streak_guard'
+    const hasHintTarget = key !== 'teacher_hint' || _questions.some(q => q.hint_available && _answers[q.question_id] === undefined)
+    const ready = count > 0 && !passive && hasHintTarget
+    const hasCharge = count > 0
     return `
-    <button class="bonus-btn relative flex flex-col items-center justify-center w-14 h-14 rounded-2xl border text-xs font-bold flex-shrink-0 ${ready ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-[0_0_0_2px_rgba(245,158,11,0.25)] animate-pulse' : 'bg-gray-50 border-gray-200 text-gray-300'}"
-      data-bonus="${key}" ${ready ? '' : 'disabled'}>
+    <button class="bonus-btn relative flex flex-col items-center justify-center w-14 h-14 rounded-2xl border text-xs font-bold flex-shrink-0 ${hasCharge ? 'bg-amber-50 border-amber-300 text-amber-700 shadow-[0_0_0_2px_rgba(245,158,11,0.25)]' : 'bg-gray-50 border-gray-200 text-gray-300'} ${ready ? 'animate-pulse' : ''}"
+      data-bonus="${key}" ${ready ? '' : 'disabled'} title="${passive && count ? 'ทำงานอัตโนมัติเมื่อผู้สอบตอบผิด' : ''}">
       <span class="text-lg leading-none">${meta.icon}</span>
       <span class="text-[9px] leading-tight">${meta.label}</span>
-      ${count > 1 ? `<span class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] flex items-center justify-center">${count}</span>` : ''}
+      ${count > 1 || (passive && count > 0) ? `<span class="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-500 text-white text-[9px] flex items-center justify-center">${count}</span>` : ''}
     </button>`
   }).join('')
   el.querySelectorAll('.bonus-btn').forEach(btn => btn.addEventListener('click', () => _onBonusClick(btn.dataset.bonus)))
@@ -495,10 +556,43 @@ function _onBonusClick(bonusType) {
     return
   }
   if (bonusType === 'fix_wrong') _openFixWrongPicker()
+  if (bonusType === 'retry_answer') _openRetryAnswerPicker()
+  if (bonusType === 'teacher_hint') {
+    const q = _questions[_currentIdx]
+    if (_answers[q.question_id] === undefined && q.hint_available) _useBonus(bonusType, q.question_id)
+    else _openHintPicker()
+  }
+}
+
+function _openHintPicker() {
+  const hintIdxs = _questions.map((_, i) => i).filter(i =>
+    !!_questions[i].hint_available && _answers[_questions[i].question_id] === undefined)
+  if (!hintIdxs.length) { showToast('ไม่มีข้อที่ยังไม่ตอบและมีคำใบ้จากครู', 'warning'); return }
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[98] bg-black/40 flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-3xl p-5 w-full max-w-xs shadow-2xl">
+      <p class="font-bold text-gray-800 text-sm mb-1">เลือกข้อเพื่อเปิดคำใบ้</p>
+      <p class="text-[11px] text-gray-500 mb-3">เลือกได้เฉพาะข้อที่ยังไม่ได้ตอบ</p>
+      <div class="flex flex-wrap gap-2 mb-4">
+        ${hintIdxs.map(i => `<button class="hint-pick w-10 h-10 rounded-xl bg-sky-50 border border-sky-200 text-sky-700 font-bold text-xs" data-idx="${i}">${i + 1}</button>`).join('')}
+      </div>
+      <button id="hint-cancel" class="w-full py-2 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold">ยกเลิก</button>
+    </div>
+  `
+  document.body.appendChild(modal)
+  modal.querySelector('#hint-cancel').addEventListener('click', () => modal.remove())
+  modal.querySelectorAll('.hint-pick').forEach(btn => btn.addEventListener('click', async () => {
+    const idx = parseInt(btn.dataset.idx, 10)
+    modal.remove()
+    _goTo(idx)
+    await _useBonus('teacher_hint', _questions[idx].question_id)
+  }))
 }
 
 function _openFixWrongPicker() {
-  const wrongIdxs = _questions.map((_, i) => i).filter(i => _answerCorrectness[_questions[i].question_id] === false)
+  const wrongIdxs = _questions.map((_, i) => i).filter(i =>
+    _answerCorrectness[_questions[i].question_id] === false && !_unlockedForEdit.has(_questions[i].question_id))
   if (!wrongIdxs.length) { showToast('ยังไม่มีข้อที่ตอบผิดให้แก้ไข', 'warning'); return }
   const modal = document.createElement('div')
   modal.className = 'fixed inset-0 z-[98] bg-black/40 flex items-center justify-center p-4'
@@ -521,15 +615,42 @@ function _openFixWrongPicker() {
   }))
 }
 
+function _openRetryAnswerPicker() {
+  const correctIdxs = _questions.map((_, i) => i).filter(i =>
+    _answerCorrectness[_questions[i].question_id] === true && !_unlockedForEdit.has(_questions[i].question_id))
+  if (!correctIdxs.length) { showToast('ยังไม่มีข้อที่ตอบถูกและล็อกไว้ให้แก้ไข', 'warning'); return }
+  const modal = document.createElement('div')
+  modal.className = 'fixed inset-0 z-[98] bg-black/40 flex items-center justify-center p-4'
+  modal.innerHTML = `
+    <div class="bg-white rounded-3xl p-5 w-full max-w-xs shadow-2xl">
+      <p class="font-bold text-gray-800 text-sm mb-1">เลือกข้อที่ตอบถูกเพื่อแก้คำตอบ</p>
+      <p class="text-[11px] text-gray-500 mb-3">โบนัสนี้ใช้ได้หนึ่งครั้งกับข้อที่ล็อกคำตอบแล้ว</p>
+      <div class="flex flex-wrap gap-2 mb-4">
+        ${correctIdxs.map(i => `<button class="retry-pick w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 font-bold text-xs" data-idx="${i}">${i + 1}</button>`).join('')}
+      </div>
+      <button id="retry-cancel" class="w-full py-2 rounded-xl border border-gray-200 text-gray-500 text-xs font-semibold">ยกเลิก</button>
+    </div>
+  `
+  document.body.appendChild(modal)
+  modal.querySelector('#retry-cancel').addEventListener('click', () => modal.remove())
+  modal.querySelectorAll('.retry-pick').forEach(btn => btn.addEventListener('click', async () => {
+    const idx = parseInt(btn.dataset.idx, 10)
+    modal.remove()
+    const q = _questions[idx]
+    const ok = await _useBonus('retry_answer', q.question_id)
+    if (ok) _goTo(idx)
+  }))
+}
+
 async function _useBonus(bonusType, questionId) {
   try {
     const result = await rpcUseQuizBonus(_attempt.id, _sessionToken, bonusType, questionId)
-    if (!result?.ok) { showToast(result?.message ?? 'ใช้โบนัสไม่สำเร็จ', 'warning'); return }
+    if (!result?.ok) { showToast(result?.message ?? 'ใช้โบนัสไม่สำเร็จ', 'warning'); return false }
     _bonusInventory = result.bonus_inventory ?? _bonusInventory
     if (bonusType === 'fifty_fifty' && result.eliminated_indices) {
       _eliminatedChoices[questionId] = result.eliminated_indices
     }
-    if (bonusType === 'fix_wrong') {
+    if (bonusType === 'fix_wrong' || bonusType === 'retry_answer') {
       _unlockedForEdit.add(questionId)
     }
     if (bonusType === 'extra_time' && result.new_time_remaining_sec != null) {
@@ -540,12 +661,19 @@ async function _useBonus(bonusType, questionId) {
       _answers[questionId] = result.revealed_index
       _answerCorrectness[questionId] = true
     }
+    if (bonusType === 'teacher_hint') {
+      _revealedHints[questionId] = result.message || _questions.find(q => q.question_id === questionId)?.hint || ''
+      const question = _questions.find(q => q.question_id === questionId)
+      if (question) question.hint = _revealedHints[questionId]
+    }
     _renderBonusToolbar()
     _renderQuestion()
     _renderNav()
     showToast('ใช้โบนัสสำเร็จ', 'success')
+    return true
   } catch (err) {
     showToast('ใช้โบนัสไม่สำเร็จ: ' + (getFriendlyErrorMessage(err)), 'error')
+    return false
   }
 }
 

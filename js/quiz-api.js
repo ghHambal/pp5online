@@ -31,7 +31,7 @@ export async function deleteQuizBank(id) {
 export async function getQuizQuestions(bankId) {
   const { data, error } = await supabase
     .from('quiz_questions')
-    .select('id, question_text, choices, correct_choice_index, explanation, difficulty, category, sort_order')
+    .select('id, question_text, choices, correct_choice_index, explanation, hint, difficulty, category, sort_order')
     .eq('bank_id', bankId)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
