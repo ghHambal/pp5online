@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1106'
+import { APP_VERSION } from './version.js?v=10.22.1107'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1107': [
+    'ปรับชื่อปุ่มนักเรียนเป็น “ส่งใบลา” และชี้แจงทั้งนักเรียนและครูว่าระบบใช้บันทึกเช็คชื่อจากใบลาที่ฝ่ายปกครองอนุมัติแล้วเท่านั้น',
+  ],
   '10.22.1106': [
     'เพิ่มฮับแอดมินสำหรับเปิดหรือซ่อนเมนูครูและแท็บนักเรียนที่ปรึกษา โดยค่าเริ่มต้นเปิดทุกฟีเจอร์และยังคงตรวจสิทธิ์เดิม',
   ],

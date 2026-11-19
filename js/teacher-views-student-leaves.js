@@ -10,7 +10,7 @@ import {
 const TYPE_LABEL = { excused: 'ก · ลากิจ', sick: 'ป · ลาป่วย' }
 const STATUS = {
   pending: ['รอตรวจ', 'bg-amber-50 text-amber-700 border-amber-200'],
-  approved: ['ยืนยันการลาแล้ว', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
+  approved: ['ตรวจแล้ว · บันทึกเช็คชื่อ', 'bg-emerald-50 text-emerald-700 border-emerald-200'],
   rejected: ['ไม่อนุมัติ', 'bg-red-50 text-red-600 border-red-200'],
   expired: ['หมดอายุ', 'bg-gray-100 text-gray-600 border-gray-200'],
 }
@@ -34,8 +34,8 @@ async function _notifyStudent(request, status) {
   try {
     await supabase.functions.invoke('send-push', {
       body: {
-        title: status === 'approved' ? '✅ ยืนยันการลาแล้ว' : '📄 ผลการตรวจใบลา',
-        body: `${TYPE_LABEL[request.leave_type]} · ${_fmtDate(request.start_date)}`,
+        title: status === 'approved' ? '✅ ตรวจใบลาและบันทึกเช็คชื่อแล้ว' : '📄 ผลการตรวจใบลา',
+        body: `${TYPE_LABEL[request.leave_type]} · ${_fmtDate(request.start_date)} · ไม่ใช่การอนุมัติลาตามระเบียบโรงเรียน`,
         url: 'student.html', profileIds: [profileId],
       },
     })
@@ -84,7 +84,7 @@ export async function renderStudentLeaveRequests(teacher, { container = null, fo
     })
     putContent(`<div class="animate-fade">
       <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
-        <div><h2 class="text-lg font-bold text-gray-800">📄 ใบลาและใบลาป่วย</h2><p class="mt-1 text-xs text-gray-500">ตรวจเฉพาะใบลาที่ผ่านการอนุมัติจากฝ่ายปกครองแล้ว</p></div>
+        <div><h2 class="text-lg font-bold text-gray-800">📄 ตรวจใบลาและบันทึกเช็คชื่อ</h2><p class="mt-1 text-xs text-gray-500">ตรวจเฉพาะใบลาที่ฝ่ายปกครองอนุมัติแล้ว เพื่อบันทึก ก/ป ในข้อมูลเช็คชื่อเท่านั้น ไม่ใช่การอนุมัติการลาตามระเบียบโรงเรียน</p></div>
         <span class="text-xs text-gray-400">${all.filter(r => r.status === 'pending').length} รายการรอตรวจ</span>
       </div>
       <section class="mb-4 space-y-3 rounded-2xl border border-gray-200 bg-white p-3 sm:p-4">
@@ -195,13 +195,13 @@ export async function renderStudentLeaveRequests(teacher, { container = null, fo
     if (status === 'rejected' && !String(comment ?? '').trim()) return
     if (status === 'approved') {
       const kind = request.leave_type === 'sick' ? 'ป · ลาป่วย' : 'ก · ลากิจ'
-      const msg = `ยืนยันใบลา ${request.students?.full_name ?? ''}?\nระบบจะบันทึก ${kind} ให้ทุกคาบที่มีเรียนระหว่าง ${_fmtDate(request.start_date)} ถึง ${_fmtDate(request.end_date)} โดยไม่เขียนทับสถานะ มา/สาย`
+      const msg = `ยืนยันว่าตรวจใบลาที่ฝ่ายปกครองอนุมัติแล้วของ ${request.students?.full_name ?? ''}?\nระบบจะบันทึก ${kind} ในข้อมูลเช็คชื่อทุกคาบระหว่าง ${_fmtDate(request.start_date)} ถึง ${_fmtDate(request.end_date)} โดยไม่เขียนทับสถานะ มา/สาย\nการยืนยันนี้ใช้บันทึกเช็คชื่อเท่านั้น ไม่ใช่การอนุมัติการลาตามระเบียบโรงเรียน`
       if (!window.confirm(msg)) return
     }
     button.disabled = true; button.textContent = 'กำลังบันทึก...'
     try {
       const result = await reviewStudentLeaveRequest(request, { status, teacherComment: comment })
-      showToast(status === 'approved' ? `ยืนยันการลาแล้ว · บันทึกเช็คชื่อ ${result?.attendance_rows_count ?? 0} รายการ` : 'บันทึกการปฏิเสธแล้ว', 'success')
+      showToast(status === 'approved' ? `ตรวจใบลาแล้ว · บันทึกสถานะเช็คชื่อ ${result?.attendance_rows_count ?? 0} รายการ` : 'บันทึกผลตรวจใบลาแล้ว', 'success')
       await _notifyStudent(request, status)
       all = await getAdvisorStudentLeaveRequests()
       render()

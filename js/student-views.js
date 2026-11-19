@@ -27,7 +27,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1106'
+import { APP_VERSION } from './version.js?v=10.22.1107'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -2581,16 +2581,16 @@ export async function renderStudentLeaveRequests(student) {
     return
   }
 
-  const statusLabel = { pending: 'รอครูที่ปรึกษาตรวจ', approved: 'ยืนยันการลาแล้ว', rejected: 'ไม่อนุมัติ', expired: 'หมดอายุ · กรุณาส่งใหม่' }
+  const statusLabel = { pending: 'รอครูที่ปรึกษาตรวจ', approved: 'ครูตรวจแล้ว · บันทึกเช็คชื่อ', rejected: 'ไม่ผ่านการตรวจ', expired: 'หมดอายุ · กรุณาส่งใหม่' }
   const statusClass = { pending: 'bg-amber-50 text-amber-700 border-amber-200', approved: 'bg-emerald-50 text-emerald-700 border-emerald-200', rejected: 'bg-red-50 text-red-600 border-red-200', expired: 'bg-gray-100 text-gray-600 border-gray-200' }
   const leaveLabel = { excused: 'ก · ลากิจ', sick: 'ป · ลาป่วย' }
   const fmt = d => d ? new Date(`${d}T00:00:00`).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
   setContent(`<div class="max-w-2xl mx-auto space-y-4">
     <section class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5">
-      <h2 class="font-bold text-gray-800 text-lg">📄 แจ้งลา / ลาป่วย</h2>
+      <h2 class="font-bold text-gray-800 text-lg">📄 ส่งใบลา</h2>
       <div class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-900">
-        ระบบนี้ใช้ส่งใบลาที่ได้รับตราอนุมัติจากฝ่ายปกครองแล้วให้ครูที่ปรึกษาตรวจเท่านั้น การอัปโหลดยังไม่ถือว่าได้รับอนุญาตลา และจะไม่เปลี่ยนข้อมูลเช็คชื่อจนกว่าครูที่ปรึกษาจะยืนยัน
+        <strong>ระบบนี้ใช้ส่งใบลาที่ฝ่ายปกครองอนุมัติแล้วให้ครูที่ปรึกษาตรวจ เพื่อบันทึกสถานะเช็คชื่อเท่านั้น</strong> ไม่ใช่การลาตามระเบียบโรงเรียน นักเรียนยังต้องยื่นใบลาและขออนุมัติจากฝ่ายปกครองตามปกติ การส่งใบลาในระบบนี้ยังไม่เปลี่ยนข้อมูลเช็คชื่อจนกว่าครูที่ปรึกษาจะตรวจและยืนยัน
       </div>
       <form id="student-leave-form" class="mt-4 space-y-3">
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -2609,11 +2609,11 @@ export async function renderStudentLeaveRequests(student) {
         <label class="block text-xs font-semibold text-gray-600">รายละเอียดเพิ่มเติม <span class="font-normal text-gray-400">(ไม่บังคับ)</span>
           <textarea name="reason" rows="2" maxlength="500" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm" placeholder="ระบุข้อมูลเพิ่มเติมถึงครูที่ปรึกษา"></textarea>
         </label>
-        <label class="block text-xs font-semibold text-gray-600">ใบลาที่มีตราอนุมัติจากฝ่ายปกครอง <span class="text-red-500">*</span>
+        <label class="block text-xs font-semibold text-gray-600">ใบลาที่ฝ่ายปกครองอนุมัติแล้ว <span class="text-red-500">*</span>
           <input name="proof" type="file" required accept="image/jpeg,image/png,application/pdf" class="mt-1 block w-full rounded-xl border border-gray-200 bg-gray-50 p-2 text-xs">
           <span class="mt-1 block text-[11px] font-normal text-gray-400">JPG, PNG หรือ PDF ขนาดไม่เกิน 5 MB · หากคำขอยังไม่ถูกตรวจภายใน 7 วัน จะหมดอายุและลบไฟล์ ส่วนคำขอที่ยืนยันแล้วจะลบไฟล์หลังพ้นวันลาตามกำหนด</span>
         </label>
-        <button type="submit" class="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white hover:bg-indigo-700">ส่งให้ครูที่ปรึกษาตรวจ</button>
+        <button type="submit" class="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white hover:bg-indigo-700">ส่งใบลา</button>
       </form>
     </section>
     <section class="space-y-3">
@@ -2627,7 +2627,7 @@ export async function renderStudentLeaveRequests(student) {
         ${r.teacher_comment ? `<p class="mt-2 rounded-lg bg-gray-50 p-2 text-xs text-gray-600">หมายเหตุครู: ${_esc(r.teacher_comment)}</p>` : ''}
         <div class="mt-3 flex items-center justify-between gap-2">
           <button type="button" class="student-leave-proof text-xs font-semibold text-indigo-600 hover:text-indigo-800" data-proof-path="${_esc(r.proof_path ?? '')}" ${!r.proof_path ? 'disabled' : ''}>${r.proof_path ? 'เปิดใบลาที่แนบ' : 'ไฟล์หลักฐานถูกลบแล้ว'}</button>
-          ${r.status === 'approved' ? `<span class="text-[11px] text-emerald-700">ลงสถานะลาแล้ว ${Number(r.attendance_rows_count) || 0} รายการ</span>` : ''}
+          ${r.status === 'approved' ? `<span class="text-[11px] text-emerald-700">บันทึกสถานะเช็คชื่อแล้ว ${Number(r.attendance_rows_count) || 0} รายการ</span>` : ''}
         </div>
       </article>`).join('') : `<div class="rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center text-sm text-gray-400">ยังไม่มีรายการแจ้งลา</div>`}
     </section>
@@ -2641,7 +2641,7 @@ export async function renderStudentLeaveRequests(student) {
     const startDate = String(fd.get('start_date') ?? '')
     const endDate = String(fd.get('end_date') ?? '')
     if (startDate > endDate) { showToast('วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มลา', 'warning'); return }
-    submit.disabled = true; submit.textContent = 'กำลังส่งใบลา...'
+    submit.disabled = true; submit.textContent = 'กำลังส่ง...'
     try {
       await submitStudentLeaveRequest(student, {
         leaveType: fd.get('leave_type'), startDate, endDate,
@@ -2651,7 +2651,7 @@ export async function renderStudentLeaveRequests(student) {
       await renderStudentLeaveRequests(student)
     } catch (err) {
       showToast(`ส่งใบลาไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error')
-      submit.disabled = false; submit.textContent = 'ส่งให้ครูที่ปรึกษาตรวจ'
+      submit.disabled = false; submit.textContent = 'ส่งใบลา'
     }
   })
   document.querySelectorAll('.student-leave-proof').forEach(button => button.addEventListener('click', async () => {
@@ -3183,9 +3183,9 @@ export async function renderStudentProfile(student, onLogout) {
           <span class="text-xl leading-none" aria-hidden="true">🚪</span>
           <span class="text-center text-[9px] font-semibold leading-tight sm:text-[11px]">ออกนอกห้อง</span>
         </button>
-        <button id="btn-stu-leave-request" class="flex min-h-16 w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-indigo-100 bg-indigo-50 px-1 py-2 text-indigo-600 shadow-sm transition hover:bg-indigo-100 active:scale-95" title="แจ้งลา / ลาป่วย" aria-label="แจ้งลา / ลาป่วย">
+        <button id="btn-stu-leave-request" class="flex min-h-16 w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-indigo-100 bg-indigo-50 px-1 py-2 text-indigo-600 shadow-sm transition hover:bg-indigo-100 active:scale-95" title="ส่งใบลาที่ฝ่ายปกครองอนุมัติแล้วให้ครูที่ปรึกษาตรวจเพื่อบันทึกเช็คชื่อ" aria-label="ส่งใบลาให้ครูที่ปรึกษาตรวจ">
           <span class="text-xl leading-none" aria-hidden="true">📄</span>
-          <span class="text-center text-[9px] font-semibold leading-tight sm:text-[11px]">แจ้งลา/ลาป่วย</span>
+          <span class="text-center text-[9px] font-semibold leading-tight sm:text-[11px]">ส่งใบลา</span>
         </button>
         <button id="btn-request-qr-card" class="flex min-h-16 w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border border-pink-100 bg-pink-50 px-1 py-2 text-pink-600 shadow-sm transition hover:bg-pink-100 active:scale-95" title="แจ้งขอทำบัตร QR Code">
           <span class="text-xl leading-none" aria-hidden="true">🎫</span>
