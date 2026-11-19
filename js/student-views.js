@@ -4114,6 +4114,7 @@ export async function renderStudentPrayerScanner(student, options = {}) {
   let isSyncing = false
   let scannerSystemsStarted = false
   let scanWindowExpired = false
+  let scannerResultColumns = localStorage.getItem('prayer_scan_result_columns') === 'one' ? 'one' : 'two'
   const scannerAmanahPosterUrl = `${import.meta.env.BASE_URL || '/'}prayer-scanner-amanah.png`
 
   function renderUI() {
@@ -4981,20 +4982,84 @@ export async function renderStudentPrayerScanner(student, options = {}) {
       const photo = student.image_url
         ? `<img src="${escapeHtml(student.image_url)}" alt="รูป${studentName}" class="w-full h-full object-cover object-top" />`
         : `<div class="w-full h-full flex items-center justify-center bg-emerald-50 text-emerald-700 text-7xl font-extrabold">${studentName.charAt(0) || 'น'}</div>`
+      const today = _localDateValue(new Date())
+      const pendingStudentIds = new Set(JSON.parse(localStorage.getItem('prayer_scan_queue') || '[]').map(item => item.student_id))
+      const previousScans = JSON.parse(localStorage.getItem('prayer_scan_history_today') || '[]')
+        .filter(item => item.check_date === today && item.student_id !== student.id)
+        .slice(0, 10)
+      const previousScansHtml = previousScans.length
+        ? previousScans.map((item, index) => {
+            const previousStudent = roster.find(candidate => candidate.id === item.student_id)
+            const previousName = escapeHtml(item.full_name || previousStudent?.full_name || 'นักเรียน')
+            const previousCode = escapeHtml(item.student_code || previousStudent?.student_code || '')
+            const previousRoom = escapeHtml(_roomDisplay(item.main_room || previousStudent?.main_room))
+            const previousPhoto = previousStudent?.image_url
+              ? `<img src="${escapeHtml(previousStudent.image_url)}" alt="" class="h-full w-full object-cover object-top" loading="lazy" />`
+              : `<span class="text-lg font-extrabold text-emerald-700">${previousName.charAt(0) || 'น'}</span>`
+            const wasQueued = pendingStudentIds.has(item.student_id)
+            const statusLabel = wasQueued ? 'รอซิงก์' : item.status === 'usor' ? 'อูโซร' : 'สำเร็จ'
+            const statusStyle = wasQueued ? 'bg-amber-100 text-amber-800' : item.status === 'usor' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'
+            return `<div class="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white px-3 py-2.5 text-left shadow-sm">
+              <span class="w-7 flex-shrink-0 text-center font-mono text-xs font-bold text-slate-400">${index + 1}</span>
+              <div class="h-12 w-10 flex-shrink-0 overflow-hidden rounded-lg border border-slate-100 bg-emerald-50 flex items-center justify-center">${previousPhoto}</div>
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-bold text-slate-800">${previousName}</p>
+                <p class="truncate text-[11px] text-slate-500">${previousCode} · ${previousRoom}</p>
+              </div>
+              <span class="flex-shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${statusStyle}">${statusLabel}</span>
+            </div>`
+          }).join('')
+        : '<div class="rounded-2xl border border-dashed border-slate-200 px-4 py-10 text-center text-sm text-slate-400">ยังไม่มีรายการสแกนก่อนหน้าในวันนี้</div>'
       resultPopup.innerHTML = `
-        <div class="relative w-full max-w-xl max-h-[92vh] overflow-y-auto rounded-3xl bg-white p-5 pt-14 sm:p-7 sm:pt-14 text-center shadow-2xl border-4 ${borderStyle}">
-          <button id="scanner-result-popup-close" type="button" aria-label="ปิดผลการสแกน" class="absolute right-3 top-3 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-3xl font-bold leading-none text-gray-600 shadow hover:bg-gray-100 active:scale-95">×</button>
-          <p class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-extrabold ${badgeStyle}">
-            <span class="text-xl">${isSuccess ? '✓' : isDuplicate ? '↻' : '!'}</span>${isSuccess ? 'สแกนสำเร็จ' : isDuplicate ? 'ตรวจพบการสแกนซ้ำ' : 'สแกนไม่ผ่าน'}
-          </p>
-          <div class="mx-auto mt-4 h-[min(52vh,360px)] w-[min(72vw,300px)] overflow-hidden rounded-3xl border-4 border-slate-100 bg-slate-50 shadow-lg">${photo}</div>
-          <h2 class="mt-4 text-2xl sm:text-3xl font-extrabold text-slate-900">${studentName}</h2>
-          <p class="mt-1 text-lg font-bold text-slate-600">รหัส ${studentCode} · ห้อง ${studentRoom}</p>
-          <p class="mt-3 text-base font-bold ${messageStyle}">${escapeHtml(message)}</p>
-          <p class="mt-3 text-xs text-gray-400">ผลการสแกนจะแสดงค้างไว้จนกว่าจะสแกนรายการถัดไปหรือหมดเวลาสแกน</p>
+        <div id="scanner-result-popup-card" class="relative flex h-[94vh] w-full flex-col ${scannerResultColumns === 'two' ? 'max-w-6xl' : 'max-w-xl'} overflow-hidden rounded-3xl bg-white p-4 pt-16 sm:p-6 sm:pt-16 text-center shadow-2xl border-4 ${borderStyle}">
+          <div class="absolute right-3 top-3 z-10 flex items-center gap-2">
+            <div class="flex rounded-xl border border-slate-200 bg-slate-50 p-1" role="group" aria-label="รูปแบบการแสดงผล">
+              <button type="button" data-result-columns="one" aria-pressed="${scannerResultColumns === 'one'}" class="rounded-lg px-3 py-2 text-xs font-extrabold transition ${scannerResultColumns === 'one' ? 'bg-emerald-600 text-white shadow' : 'text-slate-600 hover:bg-white'}">1 คอลัมน์</button>
+              <button type="button" data-result-columns="two" aria-pressed="${scannerResultColumns === 'two'}" class="rounded-lg px-3 py-2 text-xs font-extrabold transition ${scannerResultColumns === 'two' ? 'bg-emerald-600 text-white shadow' : 'text-slate-600 hover:bg-white'}">2 คอลัมน์</button>
+            </div>
+            <button id="scanner-result-popup-close" type="button" aria-label="ปิดผลการสแกน" class="flex h-11 w-11 items-center justify-center rounded-full border border-gray-200 bg-white text-3xl font-bold leading-none text-gray-600 shadow hover:bg-gray-100 active:scale-95">×</button>
+          </div>
+          <div id="scanner-result-popup-grid" class="grid min-h-0 flex-1 ${scannerResultColumns === 'two' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'} gap-4">
+            <section class="flex min-h-0 flex-col items-center justify-center overflow-y-auto rounded-2xl bg-slate-50 p-3 sm:p-5">
+              <p class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-extrabold ${badgeStyle}">
+                <span class="text-xl">${isSuccess ? '✓' : isDuplicate ? '↻' : '!'}</span>${isSuccess ? 'สแกนสำเร็จ' : isDuplicate ? 'ตรวจพบการสแกนซ้ำ' : 'สแกนไม่ผ่าน'}
+              </p>
+              <div class="mx-auto mt-3 h-[min(45vh,320px)] w-[min(68vw,270px)] overflow-hidden rounded-3xl border-4 border-white bg-white shadow-lg">${photo}</div>
+              <h2 class="mt-3 text-2xl sm:text-3xl font-extrabold text-slate-900">${studentName}</h2>
+              <p class="mt-1 text-base font-bold text-slate-600">รหัส ${studentCode} · ห้อง ${studentRoom}</p>
+              <p class="mt-2 text-base font-bold ${messageStyle}">${escapeHtml(message)}</p>
+              <p class="mt-2 text-xs text-gray-400">ผลการสแกนจะแสดงค้างไว้จนกว่าจะสแกนรายการถัดไปหรือหมดเวลาสแกน</p>
+            </section>
+            <section id="scanner-result-popup-history" class="${scannerResultColumns === 'two' ? 'flex' : 'hidden'} min-h-0 flex-col rounded-2xl bg-slate-50 p-3 sm:p-4 text-left">
+              <div class="mb-3 flex items-center justify-between gap-2">
+                <h3 class="font-extrabold text-slate-800">รายการสแกนก่อนหน้า</h3>
+                <span class="text-xs font-semibold text-slate-500">สูงสุด 10 รายการ · วันนี้</span>
+              </div>
+              <div class="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">${previousScansHtml}</div>
+            </section>
+          </div>
         </div>`
       resultPopup.classList.remove('hidden')
       resultPopup.classList.add('flex')
+      resultPopup.querySelectorAll('[data-result-columns]').forEach(button => {
+        button.addEventListener('click', () => {
+          scannerResultColumns = button.dataset.resultColumns === 'one' ? 'one' : 'two'
+          localStorage.setItem('prayer_scan_result_columns', scannerResultColumns)
+          const card = resultPopup.querySelector('#scanner-result-popup-card')
+          const grid = resultPopup.querySelector('#scanner-result-popup-grid')
+          const history = resultPopup.querySelector('#scanner-result-popup-history')
+          card?.classList.toggle('max-w-6xl', scannerResultColumns === 'two')
+          card?.classList.toggle('max-w-xl', scannerResultColumns === 'one')
+          grid?.classList.toggle('md:grid-cols-2', scannerResultColumns === 'two')
+          history?.classList.toggle('hidden', scannerResultColumns === 'one')
+          history?.classList.toggle('flex', scannerResultColumns === 'two')
+          resultPopup.querySelectorAll('[data-result-columns]').forEach(option => {
+            const selected = option.dataset.resultColumns === scannerResultColumns
+            option.setAttribute('aria-pressed', String(selected))
+            option.className = `rounded-lg px-3 py-2 text-xs font-extrabold transition ${selected ? 'bg-emerald-600 text-white shadow' : 'text-slate-600 hover:bg-white'}`
+          })
+        })
+      })
       resultPopup.querySelector('#scanner-result-popup-close')?.addEventListener('click', () => {
         resultPopup.classList.add('hidden')
         resultPopup.classList.remove('flex')
