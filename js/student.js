@@ -366,6 +366,7 @@ const ROUTES = {
   'student-leaves': () => renderStudentLeaveRequests(_student),
   profile:  () => renderStudentProfile(_student, _handleLogout),
   prayer_scanner: () => renderStudentPrayerScanner(_student),
+  asr_prayer: () => renderStudentPrayerScanner(_student, { prayerType: 'asr' }),
   prayer_scan_history: () => renderStudentPrayerScanHistory(_student),
   assignments: () => renderStudentAllAssignments(_student),
   'classroom-chat': () => import('./chat-classroom.js').then(m => m.renderStudentClassroomChat(_student)),
@@ -447,6 +448,8 @@ async function navigate(view) {
   if (!_student?.id) {
     try { _student = (await getMyStudentProfile().catch(() => null)) ?? _student } catch {}
   }
+  window._activeAsrPrayerCleanup?.()
+  window._activeAsrPrayerCleanup = null
   if (typeof window._cleanupClassroomChat === 'function') {
     try { window._cleanupClassroomChat() } catch (e) {}
   }

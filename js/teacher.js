@@ -22,7 +22,7 @@ import { getMyTeacherProfile, getMySubjects, getMyClasses, getMasterSubjects,
 import { promptpayQRDataURL } from './promptpay.js'
 import { COPY_TEMPLATE_CONFIG, getCopyTemplateId } from './sync.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1107'
+import { APP_VERSION } from './version.js?v=10.22.1115'
 import { getFeatureHubFlags } from './feature-hub.js?v=10.22.1107'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { initInstallPrompt } from './install-prompt.js'
@@ -288,6 +288,9 @@ const ROUTES = {
       _pickRoom(rooms, picked => m.renderPrayerScore(_teacher, rooms.filter(r => r.main_room === picked)))
     }
   }),
+  'asr-prayer': () => import('./asr-prayer.js').then(m =>
+    m.renderAsrPrayerView(document.getElementById('main-content'), _teacher)
+  ),
   'prayer-monitor':   () => import('./teacher-views.js').then(m => {
     const rooms = _homeroomRooms.filter(r => r.category === 'ศาสนา')
     const preferredRoom = window._pendingPrayerMonitorRoom || null
@@ -397,6 +400,7 @@ const MOBILE_NAV_GROUPS = {
       { selector: '[data-nav="life-skill-score"]', icon: '🌱', label: 'คะแนนทักษะชีวิต' },
       { selector: '[data-nav="reading-score"]', icon: '📖', label: 'คะแนนอ่านคิดวิเคราะห์' },
       { selector: '[data-nav="prayer-score"]', icon: '🕌', label: 'คะแนนละหมาด' },
+      { selector: '[data-nav="asr-prayer"]', icon: '🕌', label: 'ติดตามละหมาดอัซรี' },
       { selector: '#menu-council', icon: '🏛️', label: 'ระบบสภานักเรียน' },
       { selector: '#menu-terangganu', icon: '⚜️', label: 'ค่าย TERANGGANU 2026' },
       { selector: '#menu-regrade', icon: '📋', label: 'แก้ค้างเก่า' },
@@ -435,6 +439,7 @@ const MOBILE_NAV_VIEW_GROUPS = {
   'life-skill-score': 'more',
   'reading-score': 'more',
   'prayer-score': 'more',
+  'asr-prayer': 'more',
   sports: 'more',
   'shirt-summary': 'more',
   'sports-fund-admin': 'more',
@@ -754,6 +759,8 @@ function _syncSidebarGroupActive(view) {
 
 let _currentView = 'overview'
 async function navigate(view) {
+  window._activeAsrPrayerCleanup?.()
+  window._activeAsrPrayerCleanup = null
   // กันคลิกช่วงที่ _teacher ยังโหลดไม่เสร็จ/หลุดชั่วคราว (เจอจริง: กด "ห้องเรียน" จากการ์ดหน้าภาพรวม
   // เร็วๆ แล้วเจอ "ไม่พบข้อมูลครู" เพราะ renderMyClasses อ่าน _teacher เป็น null) — ทางลัดออกทันทีถ้า
   // โหลดแล้ว ไม่กระทบความเร็วการนำทางปกติ
@@ -1227,6 +1234,7 @@ async function _applyRoleMenus() {
     regradePendingRes,
     sportsEvaluatorRes,
     awardsAccessRes,
+    asrAccessRes,
   ] = await Promise.all([
     safe(getSystemConfig(), {}),
     _teacher ? safe(supabase.from('profiles').select('role').eq('id', _teacher.profile_id).maybeSingle(), { data: null }) : Promise.resolve({ data: null }),
@@ -1239,6 +1247,7 @@ async function _applyRoleMenus() {
     _teacher ? safe(supabase.from('regrade_subjects').select('id', { count: 'exact', head: true }).eq('teacher_id', _teacher.id).eq('status', 'จำนงแล้ว'), { count: 0 }) : Promise.resolve({ count: 0 }),
     safe(supabase.from('sports_score_evaluators').select('id').eq('profile_id', _teacher?.profile_id).eq('is_active', true), { data: [] }),
     safe(supabase.rpc('sports_awards_access'), { data: null }),
+    safe(supabase.rpc('asr_prayer_my_access'), { data: null }),
   ])
 
   if (!hasPrayer && _teacher) {
@@ -1262,6 +1271,8 @@ async function _applyRoleMenus() {
   const featureFlags = getFeatureHubFlags(cfg)
   window._featureHubFlags = featureFlags
   const featureOn = key => featureFlags[key] !== false
+  const asrAccess = asrAccessRes?.data ?? null
+  const hasAsrPrayerAccess = !!(asrAccess?.is_admin || asrAccess?.can_manage || asrAccess?.can_view_all || asrAccess?.assignments?.length)
   const toggleSelector = (selector, show) => document.querySelectorAll(selector).forEach(el => el.classList.toggle('hidden', !show))
   const hasAdvisorRoom = _homeroomRooms.length > 0
   const teacherPositions = _teacher?.positions?.length ? _teacher.positions : (_teacher?.position ? [_teacher.position] : [])
@@ -1330,6 +1341,7 @@ async function _applyRoleMenus() {
   toggle('menu-life-skill', hasLifeSkill && featureOn('teacher_life_skill'))
   toggle('menu-reading', hasReading && featureOn('teacher_reading'))
   toggle('menu-prayer', hasPrayer && featureOn('teacher_prayer'))
+  toggle('menu-asr-prayer', hasAsrPrayerAccess)
   toggle('menu-sports-shortcut', featureOn('teacher_sports') && _sportsVisibility.enabled !== false && _sportsVisibility.teacher_menu !== false)
 
   // มิเรอร์รายการเดียวกับเมนูไซด์บาร์ด้านบนนี้ให้กริดไอคอน "ระบบอื่น ๆ" ในหน้าภาพรวม (renderTeacherOverview,
@@ -1352,6 +1364,7 @@ async function _applyRoleMenus() {
     { key: 'shirt-vote',         show: featureOn('teacher_shirt_vote_results') && !!(isSportsManager || isShirtVoteManager), emoji: '🗳️', label: 'ผลโหวต<br>แบบเสื้อ', nav: 'shirt-vote-dashboard' },
     { key: 'qr-print',           show: featureOn('teacher_qr_reissue') && _isQrReissueManager, emoji: '🎫', label: 'พิมพ์/คำขอ<br>QR', nav: 'student-qr-print' },
     { key: 'prayer-score',       show: featureOn('teacher_prayer') && hasPrayer, emoji: '🕌', label: 'คะแนน<br>ศาสนา', nav: 'prayer-score' },
+    { key: 'asr-prayer',         show: hasAsrPrayerAccess, emoji: '🕌', label: 'ติดตาม<br>อัซรี', nav: 'asr-prayer' },
   ]
   _lastRegradePendingCount = regradePendingCount
 }

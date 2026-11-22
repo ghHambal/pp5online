@@ -23,7 +23,7 @@ import { getTeachers, getTeacherById, createTeacher, updateTeacher, deleteTeache
 import { renderCourseForm } from './teacher-views.js'
 import { uploadTeacherPhoto, uploadDeptAsset } from './storage.js'
 import { applyThemeForRole } from './theme.js'
-import { APP_VERSION } from './version.js?v=10.22.1106'
+import { APP_VERSION } from './version.js?v=10.22.1115'
 import { blockPullToRefresh } from './anti-pull-refresh.js'
 import { openAzizGamesModal } from './azizgames-modal.js'
 import { openAzfutsalModal } from './azfutsal-modal.js'
@@ -882,6 +882,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('[data-nav]').forEach(link => {
     link.addEventListener('click', e => {
       e.preventDefault()
+      window._activeAsrPrayerCleanup?.()
+      window._activeAsrPrayerCleanup = null
       const view = link.dataset.nav
       if (typeof window._cleanupDonorChat === 'function') {
         try { window._cleanupDonorChat() } catch (e) {}
@@ -906,7 +908,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(_loadSubjectGroupBadge, 60000) // refresh ทุก 1 นาที
 
   showPageLoader(false)
-  window._adminNav = (view) => { if (routes[view]) routes[view]() }
+  window._adminNav = (view) => {
+    window._activeAsrPrayerCleanup?.()
+    window._activeAsrPrayerCleanup = null
+    if (routes[view]) routes[view]()
+  }
   window.addEventListener('pp5:open-sports-shirt-summary', () => routes['sports-shirt-summary']())
   window.addEventListener('pp5:open-shirt-vote-settings', () => routes['shirt-vote-settings']())
   window.addEventListener('pp5:open-shirt-vote-dashboard', () => routes['shirt-vote-dashboard']())

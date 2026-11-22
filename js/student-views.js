@@ -27,7 +27,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1107'
+import { APP_VERSION } from './version.js?v=10.22.1115'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -410,7 +410,7 @@ export async function renderStudentOverview(student) {
     </svg>
   </div>`)
 
-  const [classes, requests, dailySched, allAnns, gpaData, cfg, classroomRole, myAssignments, terms] = await Promise.all([
+  const [classes, requests, dailySched, allAnns, gpaData, cfg, classroomRole, myAssignments, terms, asrAccess] = await Promise.all([
     getMyEnrolledClasses(student.id).catch(()=>[]),
     getMyExamRequests(student.id).catch(()=>[]),
     getStudentDailySchedule(student.id).catch(()=>({ linked:[], unlinked:[] })),
@@ -423,7 +423,9 @@ export async function renderStudentOverview(student) {
     getStudentClassroomRole(student.main_room).catch(()=>null),
     getMyAllAssignments(student.id).catch(()=>[]),
     window._pp5StudentAcademicTerms?.length ? Promise.resolve(window._pp5StudentAcademicTerms) : getAcademicTerms().catch(() => []),
+    supabase.rpc('asr_prayer_my_access').then(({ data, error }) => error ? null : data).catch(() => null),
   ])
+  window._pp5AsrPrayerAccess = asrAccess
   const termRows = collectAcademicTerms(terms, cfg)
   const currentTermKey = academicTermKey({
     academic_year: Number(cfg.academicYear ?? cfg.academic_year ?? 2568),
@@ -578,7 +580,7 @@ export async function renderStudentOverview(student) {
          เต็มแถว/แถบเมนูล่างถาวร (กีฬาสี) มาเป็นไอคอน -->
     <div class="mb-4">
       <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2 px-0.5">ระบบอื่น ๆ</p>
-      ${[sportsVisible, futsalVisible, councilVisible, terangganuVisible, student.can_scan_prayer, attendanceDelegateVisible].filter(Boolean).length + 1 > 5
+      ${[sportsVisible, futsalVisible, councilVisible, terangganuVisible, student.can_scan_prayer, attendanceDelegateVisible, asrAccess?.can_manage, asrAccess?.can_view_all, (asrAccess?.assignments ?? []).length > 0].filter(Boolean).length + 1 > 5
         ? `<p class="text-[10px] text-gray-400 mb-1.5 px-0.5">👉 เลื่อนซ้าย-ขวาเพื่อดูระบบทั้งหมด</p>` : ''}
       <div class="flex gap-3 overflow-x-auto pb-1">
         ${renderIconTile({ id:'btn-stu-my-certificates', emoji:'🎖️', label:'เกียรติบัตร<br>ของฉัน', from:'#FCE7A8', to:'#E3B657' }, cfg.iconTileStyle)}
@@ -587,6 +589,7 @@ export async function renderStudentOverview(student) {
         ${councilVisible ? renderIconTile({ emoji:'🏛️', label:'สภา<br>นักเรียน', from:'#E2D3F5', to:'#9663D1', onclick:`window.location.href='council.html'` }, cfg.iconTileStyle) : ''}
         ${terangganuVisible ? renderIconTile({ emoji:'⚜️', label:'ค่าย<br>TERANGGANU', from:'#B7ECDB', to:'#3F9C7E', onclick:`window.location.href='terangganu.html'` }, cfg.iconTileStyle) : ''}
         ${student.can_scan_prayer ? renderIconTile({ emoji:'🗂️', label:'ประวัติ<br>การสแกน', from:'#B7ECDB', to:'#5FBFA3', onclick:`window._stuNav('prayer_scan_history')` }, cfg.iconTileStyle) : ''}
+        ${(asrAccess?.can_manage || asrAccess?.can_view_all || (asrAccess?.assignments ?? []).length > 0) ? renderIconTile({ emoji:'🕌', label:'ละหมาด<br>อัซรี', from:'#CDEEDB', to:'#48A77E', onclick:`window._stuNav('asr_prayer')` }, cfg.iconTileStyle) : ''}
         ${attendanceDelegateVisible ? renderIconTile({ id:'student-attendance-delegate-tile', emoji:'✅', label:'เช็คชื่อ<br>แทนครู', from:'#CDEBD6', to:'#4CA778', onclick:`window._stuNav('attendance_delegate')` }, cfg.iconTileStyle) : ''}
       </div>
     </div>
@@ -3985,6 +3988,12 @@ function getWeekNumber(dateStr, cfg) {
 
 // ─── Student Prayer Check-in Scanner Screen ──────────────────────────────────
 export async function renderStudentPrayerScanner(student, options = {}) {
+  if (options?.prayerType === 'asr') {
+    const { renderAsrPrayerView } = await import('./asr-prayer.js')
+    return renderAsrPrayerView(document.getElementById('stu-content'), student, {
+      onBack: () => window._stuNav?.('overview'),
+    })
+  }
   const { authorizedByCouncil = false, onBack = null } = options
   const operatorUser = student
   window._lastSuccessFeedbackHTML = ''

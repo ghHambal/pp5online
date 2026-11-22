@@ -7783,6 +7783,10 @@ export async function renderPrayerAdmin(teacher, options = {}) {
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700" ${councilPrayerAccess ? 'disabled title="แท็บนี้สำหรับผู้ดูแลระบบ"' : ''}>
         ⚙️ ตั้งค่า
       </button>
+      ${!councilPrayerAccess ? `<button id="pr-tab-asr" data-tab="asr-prayer"
+        class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-gray-500 hover:text-gray-700">
+        🕌 ติดตามอัซรี
+      </button>` : ''}
       ${isAllowedScanner ? `
       <button id="pr-tab-scanner-cam" data-tab="scanner-cam"
         class="px-4 py-1.5 rounded-lg text-sm font-medium transition text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 font-bold">
@@ -9690,6 +9694,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
 
   // ─── Tab switcher ──────────────────────────────────────────────────────────
   const _switchTab = (tab) => {
+    if (tab !== 'asr-prayer') window._activeAsrPrayerCleanup?.()
     if (historyInterval) {
       clearInterval(historyInterval)
       historyInterval = null
@@ -9703,12 +9708,18 @@ export async function renderPrayerAdmin(teacher, options = {}) {
     if (tab==='scores') _showScores();
     else if (tab==='history') _showHistory();
     else if (tab==='scanners') _showScanners();
+    else if (tab==='asr-prayer') {
+      document.getElementById('pr-tab-actions').innerHTML = ''
+      import('./asr-prayer.js').then(({ renderAsrPrayerView }) => renderAsrPrayerView(document.getElementById('pr-tab-content'), activeTeacher))
+        .catch(error => { document.getElementById('pr-tab-content').innerHTML = `<div class="rounded-xl bg-red-50 p-4 text-sm text-red-700">เปิดระบบอัซรีไม่สำเร็จ: ${getFriendlyErrorMessage(error)}</div>` })
+    }
     else _showConfig()
   }
   document.getElementById('pr-tab-scores').addEventListener('click', ()=>_switchTab('scores'))
   document.getElementById('pr-tab-history')?.addEventListener('click', ()=>_switchTab('history'))
   document.getElementById('pr-tab-scanners').addEventListener('click', ()=>_switchTab('scanners'))
   document.getElementById('pr-tab-config').addEventListener('click', ()=>_switchTab('config'))
+  document.getElementById('pr-tab-asr')?.addEventListener('click', ()=>_switchTab('asr-prayer'))
   if (isAllowedScanner) {
     document.getElementById('pr-tab-scanner-cam')?.addEventListener('click', async () => {
       const { renderStudentPrayerScanner } = await import('./student-views.js')
@@ -9716,7 +9727,7 @@ export async function renderPrayerAdmin(teacher, options = {}) {
     })
   }
   const requestedTab = councilPrayerAccess ? 'scanners' : initialTab
-  _switchTab(['scores', 'history', 'scanners', 'config', 'scanner-cam'].includes(requestedTab) ? requestedTab : 'scores')
+  _switchTab(['scores', 'history', 'scanners', 'config', 'scanner-cam', 'asr-prayer'].includes(requestedTab) ? requestedTab : 'scores')
 }
 
 function _openReadingModal(col, year, sem, onSave) {

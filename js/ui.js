@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1107'
+import { APP_VERSION } from './version.js?v=10.22.1115'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1115': [
+    'เพิ่มระบบติดตามละหมาดอัซรีสำหรับนักเรียนหญิง: แยกรอบไปกลับและหอพัก บันทึกในตารางเฉพาะ มอบสิทธิ์ผู้สแกนตามสี/หอ กำหนดตัวแทนและเวลาได้ พร้อมแดชบอร์ดตามขอบเขตสิทธิ์',
+  ],
   '10.22.1114': [
     'ขยายรูปและข้อมูลนักเรียนในป๊อบอัพผลสแกนให้เด่นชัดและใช้พื้นที่คอลัมน์ได้มากขึ้น',
   ],
