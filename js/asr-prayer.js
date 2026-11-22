@@ -214,7 +214,7 @@ function bindManager(root, data, access, reload) {
     } catch(error) { showToast(getFriendlyErrorMessage(error),'error') } finally { button.disabled=false }
   })
 
-  const delegatePicker=bindSearchChecklist(root,{inputId:'asr-delegate-search',resultsId:'asr-delegate-results',selectedId:'asr-delegate-selected',name:'asr-delegate',items:data.delegate_candidates??data.m6_candidates??[],initialIds:delegates.map(x=>x.student_id),label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
+  const delegatePicker=bindSearchChecklist(root,{inputId:'asr-delegate-search',resultsId:'asr-delegate-results',selectedId:'asr-delegate-selected',name:'asr-delegate',items:data.delegate_candidates??data.m6_candidates??[],initialIds:(data.delegates??[]).map(x=>x.student_id),label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
   root.querySelector('#asr-save-delegates')?.addEventListener('click',async event=>{
     const ids=[...delegatePicker.selected].map(Number)
     event.currentTarget.disabled=true
