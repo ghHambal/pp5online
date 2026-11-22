@@ -194,6 +194,13 @@ function renderManager(data, access) {
 
 function bindManager(root, data, access, reload) {
   const canAdmin = !!access.is_admin
+  const m6Candidates = data.m6_candidates ?? []
+  const femaleStudents = data.female_students ?? []
+  const teachers = data.teachers ?? []
+  const viewers = data.report_viewers ?? []
+  const delegates = data.delegates ?? []
+  const colorScanners = data.color_scanners ?? []
+  const dorms = data.dorms ?? []
   const managerTabButtons=[...root.querySelectorAll('[data-asr-manager-tab]')]
   const showManagerTab=tab=>{
     root.querySelectorAll('[data-asr-manager-panel]').forEach(panel=>panel.classList.toggle('hidden',panel.dataset.asrManagerPanel!==tab))
@@ -214,7 +221,7 @@ function bindManager(root, data, access, reload) {
     } catch(error) { showToast(getFriendlyErrorMessage(error),'error') } finally { button.disabled=false }
   })
 
-  const delegatePicker=bindSearchChecklist(root,{inputId:'asr-delegate-search',resultsId:'asr-delegate-results',selectedId:'asr-delegate-selected',name:'asr-delegate',items:data.delegate_candidates??data.m6_candidates??[],initialIds:(data.delegates??[]).map(x=>x.student_id),label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
+  const delegatePicker=bindSearchChecklist(root,{inputId:'asr-delegate-search',resultsId:'asr-delegate-results',selectedId:'asr-delegate-selected',name:'asr-delegate',items:data.delegate_candidates??m6Candidates,initialIds:delegates.map(x=>x.student_id),label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
   root.querySelector('#asr-save-delegates')?.addEventListener('click',async event=>{
     const ids=[...delegatePicker.selected].map(Number)
     event.currentTarget.disabled=true
@@ -226,8 +233,8 @@ function bindManager(root, data, access, reload) {
   const colorPicker=bindSearchChecklist(root,{inputId:'asr-color-search',resultsId:'asr-color-candidates',selectedId:'asr-color-selected',name:'asr-color-scanner',items:[],initialIds:[],label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
   const drawColorCandidates=()=>{
     const color=colorSelect?.value
-    const assigned=data.color_scanners.filter(row=>row.scope_value===color).map(row=>row.student_id)
-    const list=data.m6_candidates.filter(row=>row.house_color===color)
+    const assigned=colorScanners.filter(row=>row.scope_value===color).map(row=>row.student_id)
+    const list=m6Candidates.filter(row=>row.house_color===color)
     colorPicker.reset(list,assigned)
   }
   drawColorCandidates()
@@ -247,7 +254,7 @@ function bindManager(root, data, access, reload) {
   })
 
   const dormSelect=root.querySelector('#asr-dorm-select')
-  let currentDorm=()=>data.dorms.find(d=>String(d.id)===String(dormSelect?.value))
+  let currentDorm=()=>dorms.find(d=>String(d.id)===String(dormSelect?.value))
   const dormPicker=bindSearchChecklist(root,{inputId:'asr-dorm-search',resultsId:'asr-dorm-search-results',selectedId:'asr-dorm-selection-count',name:'asr-dorm-student',items:femaleStudents,initialIds:currentDorm()?.student_ids??[],label:s=>`${s.full_name} · ${s.main_room} · ${s.house_color||'ไม่ระบุสี'}`,searchFields:['full_name','student_code','main_room','house_color'],limit:80,emptyText:'พิมพ์ชื่อ รหัส ห้อง หรือสี เพื่อค้นหานักเรียนหญิง'})
   dormSelect?.addEventListener('change',()=>{const dorm=currentDorm();dormPicker.reset(femaleStudents,dorm?.student_ids??[]);const count=root.querySelector('#asr-dorm-current-count');if(count)count.textContent=`สมาชิกหอนี้ ${(dorm?.student_ids??[]).length} คน`})
   root.querySelector('#asr-save-dorm-roster')?.addEventListener('click',async event=>{

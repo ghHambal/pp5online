@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1117'
+import { APP_VERSION } from './version.js?v=10.22.1118'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1118': [
+    'แก้การโหลดข้อมูลรายชื่อนักเรียนและครูในหน้าตั้งค่าและมอบสิทธิ์ติดตามอัซรี',
+  ],
   '10.22.1117': [
     'แก้ข้อผิดพลาดที่ทำให้หน้าแดชบอร์ดติดตามอัซรีเปิดไม่ได้หลังอัปเดต',
   ],
