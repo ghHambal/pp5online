@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1115'
+import { APP_VERSION } from './version.js?v=10.22.1116'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1116': [
+    'ปรับภาพรวมละหมาดอัซรีเป็นการ์ดสองคอลัมน์ แยกตามสีและหอพัก คลิกเปิดรายชื่อนักเรียนเต็มหน้าจอ เพิ่มแท็บตั้งค่าและค้นหารายชื่อ พร้อมซ่อนกลุ่มสีและห้อง ม.6 ที่ไม่เข้าเงื่อนไข',
+  ],
   '10.22.1115': [
     'เพิ่มระบบติดตามละหมาดอัซรีสำหรับนักเรียนหญิง: แยกรอบไปกลับและหอพัก บันทึกในตารางเฉพาะ มอบสิทธิ์ผู้สแกนตามสี/หอ กำหนดตัวแทนและเวลาได้ พร้อมแดชบอร์ดตามขอบเขตสิทธิ์',
   ],
