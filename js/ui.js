@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1121'
+import { APP_VERSION } from './version.js?v=10.22.1122'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1122': [
+    'เพิ่มตัวเลือกทุกสีที่มีอยู่ในข้อมูลนักเรียน และแจ้งเมื่อสีนั้นยังไม่มีผู้สแกนหญิง ม.6 ที่เลือกได้',
+  ],
   '10.22.1121': [
     'ย้ายการโหลดรายชื่อนักเรียนและครูไปทำเมื่อเปิดแท็บตั้งค่า แก้ตัวแปรตัวแทนที่ทำให้หน้าแสดงข้อผิดพลาด',
   ],

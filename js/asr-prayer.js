@@ -186,10 +186,10 @@ function renderManager(data, access) {
 
     <section class="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm sm:p-5">
       <h2 class="font-bold text-gray-800">🎨 ผู้สแกนประจำสี · รอบไปกลับ</h2><p class="mt-1 text-xs text-gray-500">จัดการได้ทุกสี · ผู้สแกนต้องเป็นนักเรียนหญิง ม.6 ในสีที่เลือก และสแกนข้ามสีไม่ได้</p>
-      <div class="mt-3 flex flex-wrap items-center gap-2"><label for="asr-color-select" class="text-xs font-semibold text-gray-500">เลือกสี</label><select id="asr-color-select" class="rounded-xl border border-gray-200 px-3 py-2 text-sm">${colors.map(color=>`<option value="${esc(color)}">สี${esc(color)}</option>`).join('')}</select></div>
+      <div class="mt-3 flex flex-wrap items-center gap-2"><label for="asr-color-select" class="text-xs font-semibold text-gray-500">เลือกสี</label><select id="asr-color-select" class="rounded-xl border border-gray-200 px-3 py-2 text-sm">${colors.map(color=>`<option value="${esc(color)}">สี${esc(color)}</option>`).join('')}</select></div><p id="asr-color-eligibility" class="mt-2 text-xs text-gray-500"></p>
       <label for="asr-color-search" class="mt-3 block text-xs font-semibold text-gray-600">ค้นหานักเรียนหญิง ม.6 สีที่เลือก</label><div class="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_190px]"><input id="asr-color-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อหรือรหัส" class="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><select id="asr-color-room" aria-label="กรองผู้สแกนตามห้อง" class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${roomOptions(candidates,'ทุกห้อง ม.6')}</select></div>
       <p id="asr-color-selected" class="mt-2 text-xs text-gray-500"></p><div id="asr-color-candidates" class="mt-2 grid max-h-64 grid-cols-1 gap-2 overflow-auto sm:grid-cols-2"></div>
-      <button id="asr-save-color-scanners" class="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white">บันทึกผู้สแกนของสีนี้</button>
+      <button id="asr-save-color-scanners" class="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">บันทึกผู้สแกนของสีนี้</button>
     </section>
     </section>
 
@@ -259,6 +259,10 @@ function bindManager(root, data, access, reload) {
     const assigned=colorScanners.filter(row=>row.scope_value===color).map(row=>row.student_id)
     const list=m6Candidates.filter(row=>row.house_color===color)
     colorPicker.reset(list,assigned)
+    const eligibility=root.querySelector('#asr-color-eligibility')
+    const saveButton=root.querySelector('#asr-save-color-scanners')
+    if(eligibility)eligibility.textContent=list.length?`มีนักเรียนหญิง ม.6 สี${color} ${list.length} คนที่เลือกเป็นผู้สแกนได้`:`สี${color} ยังไม่มีนักเรียนหญิง ม.6 ที่มีบัญชีผู้ใช้ จึงยังมอบหมายผู้สแกนไม่ได้`
+    if(saveButton)saveButton.disabled=list.length===0
   }
   drawColorCandidates()
   colorSelect?.addEventListener('change',drawColorCandidates)
@@ -360,12 +364,14 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
     if(!canManage&&!canDashboard)throw new Error('คุณยังไม่ได้รับมอบหมายสิทธิ์ใช้งานระบบติดตามละหมาดอัซรี')
   }
   const loadManagerData=async()=>{
-    const [adminData,delegateCandidates]=await Promise.all([
+    const [adminData,delegateCandidates,schoolColors]=await Promise.all([
       call('asr_prayer_admin_data'),
       access.is_admin?call('asr_prayer_delegate_candidates'):Promise.resolve(null),
+      call('asr_prayer_house_colors'),
     ])
     data=adminData
     if(access.is_admin)data.delegate_candidates=delegateCandidates
+    data.colors=schoolColors??data.colors??[]
     managerLoaded=true
   }
   try{await load()}catch(error){root.innerHTML=`<div class="mx-auto max-w-xl rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center"><p class="text-3xl">🔒</p><p class="mt-2 font-bold text-gray-800">ยังไม่มีสิทธิ์ใช้งานระบบอัซรี</p><p class="mt-1 text-sm text-gray-600">${esc(getFriendlyErrorMessage(error))}</p><button id="asr-back" class="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-gray-700">← กลับ</button></div>`;root.querySelector('#asr-back')?.addEventListener('click',()=>onBack?.());return}
