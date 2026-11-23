@@ -217,6 +217,7 @@ function renderManager(data, access) {
 function bindManager(root, data, access, reload) {
   const canAdmin = !!access.is_admin
   const m6Candidates = data.m6_candidates ?? []
+  const delegateCandidates = data.delegate_candidates ?? m6Candidates
   const femaleStudents = data.female_students ?? []
   const teachers = data.teachers ?? []
   const viewers = data.report_viewers ?? []

@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1119'
+import { APP_VERSION } from './version.js?v=10.22.1120'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1120': [
+    'แก้ข้อผิดพลาดตัวแปรขอบเขตในหน้ามอบหมายสิทธิ์ เพื่อให้ตัวแทนและตัวกรองห้องเรียนทำงานได้',
+  ],
   '10.22.1119': [
     'ลดข้อมูลรายชื่อนักเรียนที่โหลดในภาพรวมละหมาดอัซรี โดยโหลดรายชื่อเมื่อเปิดการ์ด เรียกข้อมูลเริ่มต้นพร้อมกัน เพิ่มปุ่มถอนรายการที่เลือกและตัวกรองห้องเรียน',
   ],
