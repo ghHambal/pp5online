@@ -347,7 +347,7 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
   if (!root) throw new Error('ไม่พบพื้นที่แสดงระบบอัซรี')
   window._activeAsrPrayerCleanup?.()
   root.innerHTML='<div class="py-16 text-center text-sm text-gray-400">กำลังโหลดระบบติดตามละหมาดอัซรี…</div>'
-  let access, data=null, dashboard=null, selectedDate=bangkokDate()
+  let access, data=null, dashboard=null, selectedDate=bangkokDate(), managerLoaded=false
   let camera=null, refreshing=null, timer=null
   const cleanup=()=>{if(timer)clearInterval(timer);timer=null;if(camera){camera.stop().catch(()=>{});camera.clear().catch(()=>{});camera=null}if(window._activePrayerScannerState?.asrMode)window._activePrayerScannerState=null}
   window._activeAsrPrayerCleanup=cleanup
@@ -356,14 +356,17 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
     const roles=accessRoles(access)
     const canManage=!!access.can_manage
     const canDashboard=access.is_admin||access.can_view_all||roles.some(row=>['color_scanner','dorm_scanner','dorm_monitor'].includes(row.role))
-    const [adminData,delegateCandidates,dashboardData]=await Promise.all([
-      canManage?call('asr_prayer_admin_data'):Promise.resolve(null),
-      canManage&&access.is_admin?call('asr_prayer_delegate_candidates'):Promise.resolve(null),
-      canDashboard?call('asr_prayer_dashboard',{p_check_date:selectedDate}):Promise.resolve(null),
-    ])
-    if(canManage){data=adminData;if(access.is_admin)data.delegate_candidates=delegateCandidates}
-    dashboard=dashboardData
+    dashboard=canDashboard?await call('asr_prayer_dashboard',{p_check_date:selectedDate}):null
     if(!canManage&&!canDashboard)throw new Error('คุณยังไม่ได้รับมอบหมายสิทธิ์ใช้งานระบบติดตามละหมาดอัซรี')
+  }
+  const loadManagerData=async()=>{
+    const [adminData,delegateCandidates]=await Promise.all([
+      call('asr_prayer_admin_data'),
+      access.is_admin?call('asr_prayer_delegate_candidates'):Promise.resolve(null),
+    ])
+    data=adminData
+    if(access.is_admin)data.delegate_candidates=delegateCandidates
+    managerLoaded=true
   }
   try{await load()}catch(error){root.innerHTML=`<div class="mx-auto max-w-xl rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center"><p class="text-3xl">🔒</p><p class="mt-2 font-bold text-gray-800">ยังไม่มีสิทธิ์ใช้งานระบบอัซรี</p><p class="mt-1 text-sm text-gray-600">${esc(getFriendlyErrorMessage(error))}</p><button id="asr-back" class="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-gray-700">← กลับ</button></div>`;root.querySelector('#asr-back')?.addEventListener('click',()=>onBack?.());return}
 
@@ -375,7 +378,6 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
   const roles=accessRoles(access)
   const canDashboard=!!dashboard
   const scanner=renderScannerSection(access)
-  const manager=data?renderManager(data,access):''
   const headerBack=onBack?'<button id="asr-back" class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600">← กลับ</button>':''
   root.innerHTML=`<div class="mx-auto max-w-6xl space-y-4 animate-fade">
     <header class="flex flex-wrap items-center justify-between gap-3"><div><p class="text-[10px] font-bold uppercase tracking-wider text-emerald-600">ระบบติดตามระยะเริ่มต้น · นักเรียนหญิง</p><h1 class="text-xl font-extrabold text-gray-800 sm:text-2xl">🕌 ติดตามละหมาดอัซรี</h1></div>${headerBack}</header>
@@ -383,7 +385,7 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
     <nav class="flex flex-wrap gap-2">${canDashboard?'<button data-asr-tab="dashboard" class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white">📊 ติดตามผล</button>':''}${scanner?'<button data-asr-tab="scanner" class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600">📷 สแกน</button>':''}${canManage?'<button data-asr-tab="manager" class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600">⚙️ ตั้งค่าและมอบสิทธิ์</button>':''}</nav>
     ${canDashboard?`<section id="asr-dashboard-panel" class="space-y-3"><div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white p-3"><label class="text-xs font-semibold text-gray-600">เลือกวันที่ <input id="asr-dashboard-date" type="date" value="${esc(selectedDate)}" max="${bangkokDate()}" class="ml-1 rounded-lg border border-gray-200 px-2 py-1.5"></label><button id="asr-dashboard-refresh" class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600">รีเฟรช</button></div><p id="asr-dashboard-date-label" class="text-[10px] text-amber-700"></p><div id="asr-dashboard-content"></div></section>`:''}
     ${scanner?`<section id="asr-scanner-panel" class="hidden">${scanner}</section>`:''}
-    ${canManage?`<section id="asr-manager-panel" class="hidden">${manager}</section>`:''}
+    ${canManage?'<section id="asr-manager-panel" class="hidden"></section>':''}
   </div>`
   root.querySelector('#asr-back')?.addEventListener('click',()=>{cleanup();onBack?.()})
   drawDashboard()
@@ -409,11 +411,24 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
     root.querySelector('#asr-manager-panel')?.classList.toggle('hidden',tab!=='manager')
     root.querySelectorAll('[data-asr-tab]').forEach(button=>{const active=button.dataset.asrTab===tab;button.className=`rounded-xl px-3 py-2 text-xs font-bold ${active?'bg-emerald-600 text-white':'border border-gray-200 bg-white text-gray-600'}`})
   }
-  root.querySelectorAll('[data-asr-tab]').forEach(button=>button.addEventListener('click',()=>showTab(button.dataset.asrTab)))
-  showTab(scanner?'scanner':canDashboard?'dashboard':'manager')
-
-  const reload=async()=>{await load();if(data)root.querySelector('#asr-manager-panel').innerHTML=renderManager(data,access);if(dashboard)drawDashboard();bindManager(root,data,access,reload)}
-  if(data)bindManager(root,data,access,reload)
+  const reload=async()=>{
+    await loadManagerData()
+    const panel=root.querySelector('#asr-manager-panel')
+    if(panel)panel.innerHTML=renderManager(data,access)
+    bindManager(root,data,access,reload)
+    if(canDashboard)await fetchDashboard()
+  }
+  const openTab=async tab=>{
+    showTab(tab)
+    if(tab!=='manager'||!canManage||managerLoaded)return
+    const panel=root.querySelector('#asr-manager-panel')
+    if(!panel)return
+    panel.innerHTML='<div class="rounded-2xl border border-gray-100 bg-white p-8 text-center text-sm text-gray-400">กำลังโหลดข้อมูลสำหรับตั้งค่า…</div>'
+    try{await loadManagerData();panel.innerHTML=renderManager(data,access);bindManager(root,data,access,reload)}
+    catch(error){panel.innerHTML=`<div class="rounded-2xl border border-red-100 bg-red-50 p-5 text-sm text-red-700">โหลดข้อมูลตั้งค่าไม่สำเร็จ: ${esc(getFriendlyErrorMessage(error))}<button type="button" data-asr-manager-retry class="ml-3 rounded-lg bg-white px-3 py-1.5 font-semibold">ลองอีกครั้ง</button></div>`;panel.querySelector('[data-asr-manager-retry]')?.addEventListener('click',()=>{managerLoaded=false;openTab('manager')})}
+  }
+  root.querySelectorAll('[data-asr-tab]').forEach(button=>button.addEventListener('click',()=>openTab(button.dataset.asrTab)))
+  openTab(scanner?'scanner':canDashboard?'dashboard':'manager')
   const fetchDashboard=async()=>{
     if(!canDashboard)return
     try{dashboard=await call('asr_prayer_dashboard',{p_check_date:selectedDate});drawDashboard()}

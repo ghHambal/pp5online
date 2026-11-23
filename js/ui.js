@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1120'
+import { APP_VERSION } from './version.js?v=10.22.1121'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1121': [
+    'ย้ายการโหลดรายชื่อนักเรียนและครูไปทำเมื่อเปิดแท็บตั้งค่า แก้ตัวแปรตัวแทนที่ทำให้หน้าแสดงข้อผิดพลาด',
+  ],
   '10.22.1120': [
     'แก้ข้อผิดพลาดตัวแปรขอบเขตในหน้ามอบหมายสิทธิ์ เพื่อให้ตัวแทนและตัวกรองห้องเรียนทำงานได้',
   ],
