@@ -1,5 +1,6 @@
 import { supabase } from './supabase.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
+import { startPrayerCamera } from './prayer-camera.js?v=10.22.1127'
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]))
 const bangkokDate = () => new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Bangkok', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date())
@@ -11,33 +12,6 @@ const call = async (name, args = {}) => {
 const timeLabel = value => String(value ?? '').slice(0, 5)
 const weekdayLabels = ['วันอาทิตย์','วันจันทร์','วันอังคาร','วันพุธ','วันพฤหัสบดี']
 const accessRoles = access => access?.assignments ?? []
-let asrQrReaderPromise = null
-
-function loadAsrQrReader() {
-  if (window.Html5Qrcode) return Promise.resolve(window.Html5Qrcode)
-  if (asrQrReaderPromise) return asrQrReaderPromise
-  asrQrReaderPromise = (async () => {
-    const sources = [
-      'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js',
-      'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js',
-    ]
-    let lastError
-    for (const src of sources) {
-      try {
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script')
-          script.src = src
-          script.onload = () => window.Html5Qrcode ? resolve() : reject(new Error('ไฟล์อ่าน QR โหลดแล้วแต่ไม่พบตัวอ่าน'))
-          script.onerror = () => reject(new Error('โหลดตัวอ่าน QR ไม่สำเร็จ'))
-          document.head.appendChild(script)
-        })
-        if (window.Html5Qrcode) return window.Html5Qrcode
-      } catch (error) { lastError = error }
-    }
-    throw new Error(lastError?.message || 'โหลดตัวอ่าน QR Code ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต')
-  })().catch(error => { asrQrReaderPromise = null; throw error })
-  return asrQrReaderPromise
-}
 
 export async function getAsrPrayerAccess() {
   try { return await call('asr_prayer_my_access') } catch { return null }
@@ -484,7 +458,10 @@ function renderScannerSection(access) {
   return `<section class="rounded-2xl border border-emerald-200 bg-white p-4 shadow-sm sm:p-5">
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2"><div><h2 class="font-bold text-gray-800">📷 สแกนบันทึกละหมาดอัซรี</h2><p class="mt-1 text-xs text-gray-500">ระบบเลือกและตรวจรอบจากเวลาและสิทธิ์ของผู้สแกน</p></div><span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">รอบไปกลับ ${timeLabel(settings.commuter_scan_start)}–${timeLabel(settings.commuter_scan_end)} · หอพัก ${timeLabel(settings.dorm_scan_start)}–${timeLabel(settings.dorm_scan_end)}</span></div>
     <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
-      <div id="asr-camera-reader" class="min-h-52 overflow-hidden rounded-xl bg-gray-950"></div>
+      <div id="asr-scanner-view" class="relative mx-auto mb-1 flex aspect-square w-full max-w-sm flex-col items-center justify-center overflow-hidden rounded-3xl border border-slate-800 bg-slate-950 p-0 shadow-inner">
+        <div id="asr-camera-reader" class="h-full w-full overflow-hidden rounded-2xl"></div>
+        <div class="pointer-events-none absolute inset-0 z-10 flex items-center justify-center overflow-hidden"><div class="absolute inset-0 bg-black/35"></div><div class="relative flex h-56 w-56 items-center justify-center overflow-hidden rounded-3xl border-2 border-white/20 bg-transparent shadow-[0_0_0_9999px_rgba(0,0,0,0.4)]"><div class="absolute left-0 top-0 h-6 w-6 rounded-tl-md border-l-[3.5px] border-t-[3.5px] border-emerald-400"></div><div class="absolute right-0 top-0 h-6 w-6 rounded-tr-md border-r-[3.5px] border-t-[3.5px] border-emerald-400"></div><div class="absolute bottom-0 left-0 h-6 w-6 rounded-bl-md border-b-[3.5px] border-l-[3.5px] border-emerald-400"></div><div class="absolute bottom-0 right-0 h-6 w-6 rounded-br-md border-b-[3.5px] border-r-[3.5px] border-emerald-400"></div><div class="absolute top-0 h-[2.5px] w-full animate-laser-move bg-emerald-400 opacity-90 shadow-[0_0_8px_rgba(52,211,153,0.85)]"></div></div></div>
+      </div>
       <div class="space-y-2"><button id="asr-camera-start" class="w-full rounded-xl bg-indigo-600 px-3 py-2.5 text-sm font-bold text-white">เปิดกล้องสแกน</button><button id="asr-camera-stop" class="w-full rounded-xl border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600">ปิดกล้อง</button>
         <form id="asr-code-form"><label for="asr-student-code" class="text-xs font-semibold text-gray-500">หรือใช้เครื่องยิงรหัส/กรอกรหัส</label><input id="asr-student-code" autocomplete="off" inputmode="numeric" placeholder="รหัสนักเรียน" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 font-mono text-sm"><button class="mt-2 w-full rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-bold text-white">บันทึกผลสแกน</button></form>
       </div>
@@ -627,7 +604,8 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
   }
   let saving=false
   const processCode=async raw=>{
-    const code=String(raw??'').trim();if(!code||saving)return
+    let code=String(raw??'').trim();if(!code||saving)return
+    if(code.startsWith('SQ:')){const parts=code.split(':');if(parts.length!==3){showFeedback(null,new Error('รูปแบบ QR Code ไม่ถูกต้อง'));return}code=parts[1].trim()}
     saving=true
     try{const result=await call('asr_prayer_scan',{p_student_code:code});showFeedback(result,null);if(selectedDate===bangkokDate())await fetchDashboard()}
     catch(error){showFeedback(null,error)}finally{saving=false;const input=root.querySelector('#asr-student-code');if(input){input.value='';input.focus()}}
@@ -635,7 +613,7 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
   root.querySelector('#asr-code-form')?.addEventListener('submit',event=>{event.preventDefault();processCode(root.querySelector('#asr-student-code')?.value)})
   root.querySelector('#asr-camera-start')?.addEventListener('click',async event=>{
     const button=event.currentTarget;button.disabled=true;button.textContent='กำลังเปิดกล้อง…'
-    try{const Html5Qrcode=await loadAsrQrReader();camera=new Html5Qrcode('asr-camera-reader');window._activePrayerScannerState={asrMode:true,html5Qrcode:camera};await camera.start({facingMode:'environment'},{fps:10,qrbox:{width:230,height:230}},code=>processCode(code));button.textContent='กล้องกำลังทำงาน';showToast('เปิดกล้องแล้ว','success')}
+    try{window._activePrayerScannerState={asrMode:true,html5Qrcode:null};camera=await startPrayerCamera('asr-camera-reader',code=>processCode(code));window._activePrayerScannerState.html5Qrcode=camera;button.textContent='กล้องกำลังทำงาน';showToast('เปิดกล้องแล้ว','success')}
     catch(error){camera=null;window._activePrayerScannerState=null;button.disabled=false;button.textContent='เปิดกล้องสแกน';showToast(getFriendlyErrorMessage(error),'error')}
   })
   root.querySelector('#asr-camera-stop')?.addEventListener('click',async()=>{if(camera){await camera.stop().catch(()=>{});await camera.clear().catch(()=>{});camera=null;window._activePrayerScannerState=null}const button=root.querySelector('#asr-camera-start');if(button){button.disabled=false;button.textContent='เปิดกล้องสแกน'}})

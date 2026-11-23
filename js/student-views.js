@@ -27,11 +27,12 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1126'
+import { APP_VERSION } from './version.js?v=10.22.1127'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
 import { openMyCertificatesModal } from './student-certificates-modal.js'
+import { startPrayerCamera } from './prayer-camera.js?v=10.22.1127'
 import { academicTermKey, collectAcademicTerms, renderAcademicTermOptions } from './academic-term-switcher.js'
 import { renderRegradeMenuCta, startRegradeMenuCountdowns } from './regrade-menu-window.js'
 
@@ -3808,18 +3809,6 @@ async function _loadMyLeaveModalData(student, modal) {
   }
 }
 
-// ─── Scanner Dynamic Library Loader ──────────────────────────────────────────
-async function loadHtml5Qrcode() {
-  if (window.Html5Qrcode) return window.Html5Qrcode
-  return new Promise((resolve, reject) => {
-    const s = document.createElement('script')
-    s.src = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'
-    s.onload = () => resolve(window.Html5Qrcode)
-    s.onerror = (err) => reject(new Error('โหลดตัวอ่าน QR Code ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต'))
-    document.head.appendChild(s)
-  })
-}
-
 // ─── Google Sign-In (เลือกบัญชีที่ล็อกอินอยู่ในเครื่อง แทนการพิมพ์อีเมลเอง) ──────
 // ใช้ ux_mode:'redirect' (เด้งออกจากหน้าจริงไปหน้า Google แล้วเด้งกลับ) แทน popup เดิม —
 // popup โดน Safari บล็อก third-party cookie ทำให้ Google จำบัญชีที่ล็อกอินอยู่ในเครื่องไม่ได้
@@ -4660,33 +4649,15 @@ export async function renderStudentPrayerScanner(student, options = {}) {
   async function startCamera() {
     if (scanWindowExpired) return
     try {
-      const Html5Qrcode = await loadHtml5Qrcode()
-      const html5Qrcode = new Html5Qrcode("camera-reader")
-      window._activePrayerScannerState.html5Qrcode = html5Qrcode
-
       let lastScannedCode = null
       let lastScannedTime = 0
-
-      const config = { 
-        fps: 25, 
-        aspectRatio: 1.0
-      }
-
-      await html5Qrcode.start(
-        { facingMode: "environment" },
-        config,
-        (decodedText) => {
-          if (decodedText === lastScannedCode && Date.now() - lastScannedTime < 1800) {
-            return // skip repeat scanned text
-          }
-          lastScannedCode = decodedText
-          lastScannedTime = Date.now()
-          processCheckIn(decodedText)
-        },
-        () => {
-          // silent camera failures/no QR found
-        }
-      )
+      const html5Qrcode = await startPrayerCamera("camera-reader", (decodedText) => {
+        if (decodedText === lastScannedCode && Date.now() - lastScannedTime < 1800) return
+        lastScannedCode = decodedText
+        lastScannedTime = Date.now()
+        processCheckIn(decodedText)
+      })
+      window._activePrayerScannerState.html5Qrcode = html5Qrcode
     } catch (err) {
       console.error('Camera open failed:', err)
       showToast('ไม่สามารถเปิดใช้งานกล้องได้: ' + (err.message || 'ไม่มีสิทธิ์เข้าถึง'), 'error')
@@ -5422,23 +5393,16 @@ export async function renderStudentPrayerScanHistory(student) {
   async function _startSearchCamera() {
     window._activePrayerScannerState = { html5Qrcode: null }
     try {
-      const Html5Qrcode = await loadHtml5Qrcode()
-      const html5Qrcode = new Html5Qrcode('sh-camera-reader')
+      const html5Qrcode = await startPrayerCamera('sh-camera-reader', (decodedText) => {
+        let code = String(decodedText).trim()
+        if (code.startsWith('SQ:')) code = code.split(':')[1] ?? code
+        _stopSearchCamera()
+        document.getElementById('sh-camera-wrap')?.classList.add('hidden')
+        const input = document.getElementById('sh-search-input')
+        if (input) input.value = code
+        _renderList(code)
+      })
       window._activePrayerScannerState.html5Qrcode = html5Qrcode
-      await html5Qrcode.start(
-        { facingMode: 'environment' },
-        { fps: 25, aspectRatio: 1.0 },
-        (decodedText) => {
-          let code = String(decodedText).trim()
-          if (code.startsWith('SQ:')) code = code.split(':')[1] ?? code
-          _stopSearchCamera()
-          document.getElementById('sh-camera-wrap')?.classList.add('hidden')
-          const input = document.getElementById('sh-search-input')
-          if (input) input.value = code
-          _renderList(code)
-        },
-        () => {}
-      )
     } catch (err) {
       showToast('ไม่สามารถเปิดกล้องได้: ' + (err.message || 'ไม่มีสิทธิ์เข้าถึง'), 'error')
     }
