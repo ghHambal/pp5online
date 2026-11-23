@@ -47,24 +47,27 @@ function progressHtml(groups = []) {
   </div>`
 }
 
-function renderGroupModal(group) {
-  if (!group) return
-  const isColor = group.round === 'commuter'
-  const title = isColor ? `สี${group.scope_value}` : group.scope_value
-  const rows = (group.students ?? []).map((student,index) => `<tr class="${index%2?'bg-gray-50':'bg-white'} border-t border-gray-100">
+function renderGroupStudentRows(students = []) {
+  return students.map((student,index) => `<tr class="${index%2?'bg-gray-50':'bg-white'} border-t border-gray-100">
     <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-400">${index+1}</td>
     <td class="px-4 py-3"><b class="block text-sm text-gray-800">${esc(student.full_name)}</b><span class="text-xs text-gray-500">${esc(student.student_code)}</span></td>
     <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600">${esc(student.main_room || '—')}</td>
     <td class="whitespace-nowrap px-4 py-3"><span class="rounded-full px-2.5 py-1 text-xs font-bold ${student.scanned?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-600'}">${student.scanned?'บันทึกแล้ว':'ยังไม่มีรายการ'}</span></td>
     <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-500">${student.recorded_at?new Date(student.recorded_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'}):'—'}</td>
-  </tr>`).join('')
+  </tr>`).join('') || '<tr><td colspan="5" class="p-10 text-center text-gray-400">ไม่มีรายชื่อ</td></tr>'
+}
+
+function renderGroupModal(group) {
+  if (!group) return null
+  const isColor = group.round === 'commuter'
+  const title = isColor ? `สี${group.scope_value}` : group.scope_value
   const modal = document.createElement('div')
   modal.className = 'fixed inset-0 z-[100] overflow-y-auto bg-slate-950/60 p-0 sm:p-4'
   modal.setAttribute('role','dialog'); modal.setAttribute('aria-modal','true'); modal.setAttribute('aria-labelledby','asr-detail-title')
   modal.innerHTML = `<div class="flex min-h-screen flex-col bg-white shadow-2xl sm:mx-auto sm:min-h-[calc(100vh-2rem)] sm:max-w-6xl sm:rounded-2xl">
     <header class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-4 sm:px-6"><div class="min-w-0"><p class="text-xs font-semibold text-emerald-700">${isColor?'รอบไปกลับ':'รอบหอพัก'} · ${esc(title)}</p><h2 id="asr-detail-title" class="text-lg font-extrabold text-gray-900 sm:text-xl">รายชื่อนักเรียน · ${esc(group.eligible)} คน</h2></div><button type="button" data-asr-close-modal aria-label="ปิดหน้ารายชื่อ" class="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-gray-200 text-xl text-gray-600 hover:bg-gray-50">×</button></header>
     <div class="flex flex-wrap items-center gap-3 border-b border-gray-100 bg-gray-50 px-4 py-3 text-sm sm:px-6"><span class="font-bold text-emerald-700">บันทึกแล้ว ${group.scanned}</span><span class="text-gray-500">ยังไม่มีรายการ ${group.pending}</span><span class="ml-auto text-gray-500">ความคืบหน้า ${group.percent}%</span></div>
-    <div class="flex-1 overflow-auto"><table class="w-full min-w-[640px] border-collapse text-left"><thead class="sticky top-0 bg-white text-xs font-bold text-gray-500 shadow-sm"><tr><th class="px-4 py-3">ลำดับ</th><th class="px-4 py-3">นักเรียน</th><th class="px-4 py-3">ห้อง</th><th class="px-4 py-3">สถานะ</th><th class="px-4 py-3">เวลาสแกน</th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="p-10 text-center text-gray-400">ไม่มีรายชื่อ</td></tr>'}</tbody></table></div>
+    <div class="flex-1 overflow-auto"><table class="w-full min-w-[640px] border-collapse text-left"><thead class="sticky top-0 bg-white text-xs font-bold text-gray-500 shadow-sm"><tr><th class="px-4 py-3">ลำดับ</th><th class="px-4 py-3">นักเรียน</th><th class="px-4 py-3">ห้อง</th><th class="px-4 py-3">สถานะ</th><th class="px-4 py-3">เวลาสแกน</th></tr></thead><tbody data-asr-detail-body><tr><td colspan="5" class="p-10 text-center text-gray-400">กำลังโหลดรายชื่อ…</td></tr></tbody></table></div>
   </div>`
   const close=()=>{document.removeEventListener('keydown',onKey);modal.remove()}
   const onKey=event=>{if(event.key==='Escape')close()}
@@ -73,6 +76,7 @@ function renderGroupModal(group) {
   document.addEventListener('keydown',onKey)
   document.body.append(modal)
   modal.querySelector('[data-asr-close-modal]').focus()
+  return modal
 }
 
 function checkList(items, { name, checkedIds = [], label = x => x.full_name, value = x => x.id, disabled = false, limit = 250 } = {}) {
@@ -86,40 +90,58 @@ function checkList(items, { name, checkedIds = [], label = x => x.full_name, val
   }).join('') || '<p class="col-span-full p-3 text-xs text-gray-400">ไม่พบรายชื่อ</p>'
 }
 
-function bindSearchChecklist(root, { inputId, resultsId, selectedId, name, items = [], initialIds = [], value = item => item.id, label = item => item.full_name, searchFields = ['full_name','student_code','main_room','house_color','teacher_code','dept'], limit = 80, emptyText = 'พิมพ์คำค้นเพื่อค้นหารายชื่อ' }) {
+function roomOptions(items = [], allLabel = 'ทุกห้อง') {
+  const rooms = [...new Set((items ?? []).map(item => String(item.main_room ?? '').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'th'))
+  return `<option value="">${esc(allLabel)}</option>${rooms.map(room=>`<option value="${esc(room)}">${esc(room)}</option>`).join('')}`
+}
+
+function bindSearchChecklist(root, { inputId, resultsId, selectedId, filterId = null, name, items = [], initialIds = [], value = item => item.id, label = item => item.full_name, searchFields = ['full_name','student_code','main_room','house_color','teacher_code','dept'], limit = 80, emptyText = 'พิมพ์คำค้นเพื่อค้นหารายชื่อ' }) {
   const input=root.querySelector(`#${inputId}`)
   const results=root.querySelector(`#${resultsId}`)
   const selectedSummary=root.querySelector(`#${selectedId}`)
+  const roomFilter=filterId?root.querySelector(`#${filterId}`):null
   let searchableItems=items
   const selected=new Set((initialIds??[]).map(String))
   if(!input||!results)return selected
   const draw=()=>{
     const query=input.value.trim().toLocaleLowerCase()
-    const matches=query?searchableItems.filter(item=>searchFields.some(field=>String(item[field]??'').toLocaleLowerCase().includes(query))):[]
+    const room=roomFilter?.value??''
+    const matches=searchableItems.filter(item=>(!query||searchFields.some(field=>String(item[field]??'').toLocaleLowerCase().includes(query)))&&(!room||String(item.main_room??'').trim()===room))
     const visible=matches.slice(0,limit)
-    results.innerHTML=query
+    results.innerHTML=(query||room)
       ? checkList(visible,{name,checkedIds:[...selected],label,value,limit}) + (matches.length>limit?`<p class="col-span-full px-2 text-xs text-gray-500">พบ ${matches.length} รายชื่อ · แสดง ${limit} รายชื่อแรก พิมพ์เพิ่มเพื่อกรองให้แคบลง</p>`:'')
       : `<p class="col-span-full rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-500">${emptyText}</p>`
     if(selectedSummary){
       const chosen=searchableItems.filter(item=>selected.has(String(value(item))))
-      selectedSummary.innerHTML=`เลือกแล้ว ${chosen.length} รายชื่อ${chosen.length?` <span class="ml-1 inline-flex flex-wrap gap-1">${chosen.slice(0,6).map(item=>`<span class="rounded-full bg-indigo-50 px-2 py-1 text-[10px] text-indigo-700">${esc(label(item))}</span>`).join('')}${chosen.length>6?`<span class="text-[10px] text-gray-500">และอีก ${chosen.length-6} รายชื่อ</span>`:''}</span>`:''}`
+      selectedSummary.innerHTML=`เลือกแล้ว ${chosen.length} รายชื่อ${chosen.length?` · คลิก × เพื่อนำออก <span class="ml-1 inline-flex flex-wrap gap-1">${chosen.slice(0,20).map(item=>`<button type="button" data-asr-remove-id="${esc(value(item))}" aria-label="ถอนสิทธิ์ ${esc(label(item))}" title="คลิกเพื่อนำออก" class="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-1 text-[10px] text-indigo-700 hover:bg-red-50 hover:text-red-700">${esc(label(item))} <span aria-hidden="true">×</span></button>`).join('')}${chosen.length>20?`<span class="text-[10px] text-gray-500">และอีก ${chosen.length-20} รายชื่อ · ค้นชื่อเพื่อถอนเพิ่ม</span>`:''}</span>`:''}`
     }
   }
   input.addEventListener('input',draw)
+  roomFilter?.addEventListener('change',draw)
   results.addEventListener('change',event=>{
     if(event.target.name!==name)return
     const id=String(event.target.value)
     if(event.target.checked)selected.add(id);else selected.delete(id)
     draw()
   })
+  selectedSummary?.addEventListener('click',event=>{
+    const remove=event.target.closest('[data-asr-remove-id]')
+    if(!remove)return
+    selected.delete(remove.dataset.asrRemoveId)
+    draw()
+  })
+  const setItems=(nextItems,nextIds=[])=>{
+    searchableItems=nextItems??[]
+    selected.clear()
+    for(const id of nextIds??[])selected.add(String(id))
+    if(roomFilter){const previous=roomFilter.value;roomFilter.innerHTML=roomOptions(searchableItems);if([...roomFilter.options].some(option=>option.value===previous))roomFilter.value=previous}
+    draw()
+  }
   draw()
   return {
     selected,
     reset(nextItems,nextIds=[]) {
-      searchableItems=nextItems??[]
-      selected.clear()
-      for(const id of nextIds??[])selected.add(String(id))
-      draw()
+      setItems(nextItems,nextIds)
     },
   }
 }
@@ -157,7 +179,7 @@ function renderManager(data, access) {
     <section data-asr-manager-panel="scanners" class="hidden space-y-5">
     ${canAdmin ? `<section class="rounded-2xl border border-violet-100 bg-white p-4 shadow-sm sm:p-5">
       <h2 class="font-bold text-gray-800">👑 แต่งตั้งนักเรียนตัวแทน</h2><p class="mt-1 text-xs text-gray-500">ตัวแทนที่เลือกจัดการผู้สแกน ม.6 ได้ทุกสีและปรับเวลาสองรอบได้</p>
-      <label for="asr-delegate-search" class="mt-3 block text-xs font-semibold text-gray-600">ค้นหานักเรียน ม.6</label><input id="asr-delegate-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อ รหัส หรือห้อง" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm">
+      <label for="asr-delegate-search" class="mt-3 block text-xs font-semibold text-gray-600">ค้นหานักเรียน ม.6</label><div class="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_190px]"><input id="asr-delegate-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อหรือรหัส" class="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><select id="asr-delegate-room" aria-label="กรองนักเรียนตัวแทนตามห้อง" class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${roomOptions(delegateCandidates,'ทุกห้อง ม.6')}</select></div>
       <p id="asr-delegate-selected" class="mt-2 text-xs text-gray-500"></p><div id="asr-delegate-results" class="mt-2 grid max-h-64 grid-cols-1 gap-2 overflow-auto sm:grid-cols-2"></div>
       <button id="asr-save-delegates" class="mt-3 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white">บันทึกนักเรียนตัวแทน</button>
     </section>` : ''}
@@ -165,7 +187,7 @@ function renderManager(data, access) {
     <section class="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm sm:p-5">
       <h2 class="font-bold text-gray-800">🎨 ผู้สแกนประจำสี · รอบไปกลับ</h2><p class="mt-1 text-xs text-gray-500">จัดการได้ทุกสี · ผู้สแกนต้องเป็นนักเรียนหญิง ม.6 ในสีที่เลือก และสแกนข้ามสีไม่ได้</p>
       <div class="mt-3 flex flex-wrap items-center gap-2"><label for="asr-color-select" class="text-xs font-semibold text-gray-500">เลือกสี</label><select id="asr-color-select" class="rounded-xl border border-gray-200 px-3 py-2 text-sm">${colors.map(color=>`<option value="${esc(color)}">สี${esc(color)}</option>`).join('')}</select></div>
-      <label for="asr-color-search" class="mt-3 block text-xs font-semibold text-gray-600">ค้นหานักเรียนหญิง ม.6 สีที่เลือก</label><input id="asr-color-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อ รหัส หรือห้อง" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm">
+      <label for="asr-color-search" class="mt-3 block text-xs font-semibold text-gray-600">ค้นหานักเรียนหญิง ม.6 สีที่เลือก</label><div class="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_190px]"><input id="asr-color-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อหรือรหัส" class="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><select id="asr-color-room" aria-label="กรองผู้สแกนตามห้อง" class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${roomOptions(candidates,'ทุกห้อง ม.6')}</select></div>
       <p id="asr-color-selected" class="mt-2 text-xs text-gray-500"></p><div id="asr-color-candidates" class="mt-2 grid max-h-64 grid-cols-1 gap-2 overflow-auto sm:grid-cols-2"></div>
       <button id="asr-save-color-scanners" class="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white">บันทึกผู้สแกนของสีนี้</button>
     </section>
@@ -182,7 +204,7 @@ function renderManager(data, access) {
           <div class="mt-3 flex gap-2"><select id="asr-dorm-role" class="min-w-0 flex-1 rounded-xl border border-gray-200 px-2 py-2 text-sm"><option value="dorm_monitor">ติดตามผล</option><option value="dorm_scanner">สแกนและติดตาม</option></select><button id="asr-add-dorm-staff" class="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white">เพิ่ม</button></div>
           <div id="asr-dorm-staff-list" class="mt-2 space-y-1">${(selectedDorm?.staff??[]).map(person=>`<div class="flex items-center justify-between gap-2 rounded-lg border border-gray-100 px-2 py-1.5 text-xs"><span>${esc(person.name)} · ${person.role==='dorm_scanner'?'สแกนและติดตาม':'ติดตามผล'}</span><button data-remove-dorm-staff="${esc(person.profile_id)}" data-role="${esc(person.role)}" class="text-red-500">ถอนสิทธิ์</button></div>`).join('')}</div>
         </div>
-        <div><label for="asr-dorm-search" class="text-xs font-semibold text-gray-600">ค้นหานักเรียนหญิงแล้วเลือกสมาชิกหอ</label><input id="asr-dorm-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อ รหัส ห้อง หรือสี" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><p id="asr-dorm-selection-count" class="mt-2 text-xs text-gray-500">เลือกแล้ว ${(selectedDorm?.student_ids??[]).length} คน</p><div id="asr-dorm-search-results" class="mt-2 max-h-64 space-y-1 overflow-auto"></div><button id="asr-save-dorm-roster" class="mt-2 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white">บันทึกรายชื่อหอนี้</button></div>
+        <div><label for="asr-dorm-search" class="text-xs font-semibold text-gray-600">ค้นหานักเรียนหญิงแล้วเลือกสมาชิกหอ</label><div class="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_190px]"><input id="asr-dorm-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อ รหัส หรือสี" class="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><select id="asr-dorm-room" aria-label="กรองนักเรียนหอตามห้อง" class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${roomOptions(femaleStudents,'ทุกห้อง')}</select></div><p id="asr-dorm-selection-count" class="mt-2 text-xs text-gray-500">เลือกแล้ว ${(selectedDorm?.student_ids??[]).length} คน</p><div id="asr-dorm-search-results" class="mt-2 max-h-64 space-y-1 overflow-auto"></div><button id="asr-save-dorm-roster" class="mt-2 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white">บันทึกรายชื่อหอนี้</button></div>
       </div>
     </section>
     </section>` : ''}
@@ -221,7 +243,7 @@ function bindManager(root, data, access, reload) {
     } catch(error) { showToast(getFriendlyErrorMessage(error),'error') } finally { button.disabled=false }
   })
 
-  const delegatePicker=bindSearchChecklist(root,{inputId:'asr-delegate-search',resultsId:'asr-delegate-results',selectedId:'asr-delegate-selected',name:'asr-delegate',items:data.delegate_candidates??m6Candidates,initialIds:delegates.map(x=>x.student_id),label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
+  const delegatePicker=bindSearchChecklist(root,{inputId:'asr-delegate-search',resultsId:'asr-delegate-results',selectedId:'asr-delegate-selected',filterId:'asr-delegate-room',name:'asr-delegate',items:delegateCandidates,initialIds:delegates.map(x=>x.student_id),label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
   root.querySelector('#asr-save-delegates')?.addEventListener('click',async event=>{
     const ids=[...delegatePicker.selected].map(Number)
     event.currentTarget.disabled=true
@@ -230,7 +252,7 @@ function bindManager(root, data, access, reload) {
   })
 
   const colorSelect=root.querySelector('#asr-color-select')
-  const colorPicker=bindSearchChecklist(root,{inputId:'asr-color-search',resultsId:'asr-color-candidates',selectedId:'asr-color-selected',name:'asr-color-scanner',items:[],initialIds:[],label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
+  const colorPicker=bindSearchChecklist(root,{inputId:'asr-color-search',resultsId:'asr-color-candidates',selectedId:'asr-color-selected',filterId:'asr-color-room',name:'asr-color-scanner',items:[],initialIds:[],label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
   const drawColorCandidates=()=>{
     const color=colorSelect?.value
     const assigned=colorScanners.filter(row=>row.scope_value===color).map(row=>row.student_id)
@@ -255,7 +277,7 @@ function bindManager(root, data, access, reload) {
 
   const dormSelect=root.querySelector('#asr-dorm-select')
   let currentDorm=()=>dorms.find(d=>String(d.id)===String(dormSelect?.value))
-  const dormPicker=bindSearchChecklist(root,{inputId:'asr-dorm-search',resultsId:'asr-dorm-search-results',selectedId:'asr-dorm-selection-count',name:'asr-dorm-student',items:femaleStudents,initialIds:currentDorm()?.student_ids??[],label:s=>`${s.full_name} · ${s.main_room} · ${s.house_color||'ไม่ระบุสี'}`,searchFields:['full_name','student_code','main_room','house_color'],limit:80,emptyText:'พิมพ์ชื่อ รหัส ห้อง หรือสี เพื่อค้นหานักเรียนหญิง'})
+  const dormPicker=bindSearchChecklist(root,{inputId:'asr-dorm-search',resultsId:'asr-dorm-search-results',selectedId:'asr-dorm-selection-count',filterId:'asr-dorm-room',name:'asr-dorm-student',items:femaleStudents,initialIds:currentDorm()?.student_ids??[],label:s=>`${s.full_name} · ${s.main_room} · ${s.house_color||'ไม่ระบุสี'}`,searchFields:['full_name','student_code','main_room','house_color'],limit:80,emptyText:'พิมพ์ชื่อ รหัส หรือเลือกห้องเพื่อค้นหานักเรียนหญิง'})
   dormSelect?.addEventListener('change',()=>{const dorm=currentDorm();dormPicker.reset(femaleStudents,dorm?.student_ids??[]);const count=root.querySelector('#asr-dorm-current-count');if(count)count.textContent=`สมาชิกหอนี้ ${(dorm?.student_ids??[]).length} คน`})
   root.querySelector('#asr-save-dorm-roster')?.addEventListener('click',async event=>{
     const dorm=currentDorm();if(!dorm)return showToast('กรุณาเพิ่มและเลือกหอพักก่อน','warning')
@@ -332,12 +354,14 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
     access=await call('asr_prayer_my_access')
     const roles=accessRoles(access)
     const canManage=!!access.can_manage
-    if(canManage){
-      data=await call('asr_prayer_admin_data')
-      if(access.is_admin)data.delegate_candidates=await call('asr_prayer_delegate_candidates')
-    }
     const canDashboard=access.is_admin||access.can_view_all||roles.some(row=>['color_scanner','dorm_scanner','dorm_monitor'].includes(row.role))
-    if(canDashboard)dashboard=await call('asr_prayer_dashboard',{p_check_date:selectedDate})
+    const [adminData,delegateCandidates,dashboardData]=await Promise.all([
+      canManage?call('asr_prayer_admin_data'):Promise.resolve(null),
+      canManage&&access.is_admin?call('asr_prayer_delegate_candidates'):Promise.resolve(null),
+      canDashboard?call('asr_prayer_dashboard',{p_check_date:selectedDate}):Promise.resolve(null),
+    ])
+    if(canManage){data=adminData;if(access.is_admin)data.delegate_candidates=delegateCandidates}
+    dashboard=dashboardData
     if(!canManage&&!canDashboard)throw new Error('คุณยังไม่ได้รับมอบหมายสิทธิ์ใช้งานระบบติดตามละหมาดอัซรี')
   }
   try{await load()}catch(error){root.innerHTML=`<div class="mx-auto max-w-xl rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center"><p class="text-3xl">🔒</p><p class="mt-2 font-bold text-gray-800">ยังไม่มีสิทธิ์ใช้งานระบบอัซรี</p><p class="mt-1 text-sm text-gray-600">${esc(getFriendlyErrorMessage(error))}</p><button id="asr-back" class="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-gray-700">← กลับ</button></div>`;root.querySelector('#asr-back')?.addEventListener('click',()=>onBack?.());return}
@@ -362,10 +386,21 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
   </div>`
   root.querySelector('#asr-back')?.addEventListener('click',()=>{cleanup();onBack?.()})
   drawDashboard()
-  root.querySelector('#asr-dashboard-content')?.addEventListener('click',event=>{
+  root.querySelector('#asr-dashboard-content')?.addEventListener('click',async event=>{
     const card=event.target.closest('[data-asr-open-group]')
     if(!card)return
-    renderGroupModal(dashboard?.groups?.[Number(card.dataset.asrOpenGroup)])
+    const group=dashboard?.groups?.[Number(card.dataset.asrOpenGroup)]
+    const modal=renderGroupModal(group)
+    if(!modal)return
+    try {
+      const students=await call('asr_prayer_dashboard_students',{p_check_date:selectedDate,p_round_key:group.round,p_scope_value:group.scope_value})
+      const body=modal.querySelector('[data-asr-detail-body]')
+      if(body&&modal.isConnected)body.innerHTML=renderGroupStudentRows(students??[])
+    } catch(error) {
+      const body=modal.querySelector('[data-asr-detail-body]')
+      if(body&&modal.isConnected)body.innerHTML='<tr><td colspan="5" class="p-10 text-center text-red-600">โหลดรายชื่อไม่สำเร็จ กรุณาปิดแล้วลองเปิดใหม่</td></tr>'
+      showToast(getFriendlyErrorMessage(error),'error')
+    }
   })
   const showTab=tab=>{
     root.querySelector('#asr-dashboard-panel')?.classList.toggle('hidden',tab!=='dashboard')
