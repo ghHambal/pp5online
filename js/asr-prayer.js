@@ -15,49 +15,87 @@ export async function getAsrPrayerAccess() {
   try { return await call('asr_prayer_my_access') } catch { return null }
 }
 
-function progressCard(group, index) {
+function progressCard(group, index, periodKey = 'day') {
   const pct = Math.max(0, Math.min(100, Number(group.percent) || 0))
   const color = group.round === 'commuter'
   const title = color ? `สี${group.scope_value}` : group.scope_value
-  return `<button type="button" data-asr-open-group="${index}" aria-label="ดูรายชื่อนักเรียน ${esc(title)} สแกนแล้ว ${group.scanned} จาก ${group.eligible} คน" class="group w-full rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:p-5">
+  const countUnit = periodKey === 'day' ? 'คน' : 'ครั้ง'
+  return `<button type="button" data-asr-open-group="${index}" aria-label="ดูรายชื่อนักเรียน ${esc(title)} บันทึกแล้ว ${group.scanned} จาก ${group.eligible} ${countUnit}" class="group w-full rounded-2xl border border-gray-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-emerald-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-emerald-500 sm:p-5">
     <div class="flex items-center gap-4 sm:gap-5">
       <div class="grid h-24 w-24 shrink-0 place-items-center rounded-full sm:h-28 sm:w-28" role="img" aria-label="สแกนแล้ว ${pct}%" style="background:conic-gradient(#10b981 ${pct}%,#e5e7eb ${pct}% 100%)">
         <div class="grid h-[72px] w-[72px] place-items-center rounded-full bg-white sm:h-[84px] sm:w-[84px]"><div class="text-center"><b class="text-xl font-extrabold text-emerald-700 sm:text-2xl">${pct}%</b><span class="block text-[10px] text-gray-500">บันทึกแล้ว</span></div></div>
       </div>
       <div class="min-w-0 flex-1">
         <div class="flex flex-wrap items-center justify-between gap-2"><div><p class="text-xs font-semibold text-gray-400">${color ? 'รอบไปกลับ' : 'รอบหอพัก'}</p><h3 class="truncate text-lg font-extrabold text-gray-800">${esc(title)}</h3></div><span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">${pct}%</span></div>
-        <p class="mt-2 text-sm text-gray-600">สแกนแล้ว <b>${group.scanned}</b> / ${group.eligible} คน</p>
+        <p class="mt-2 text-sm text-gray-600">บันทึกแล้ว <b>${group.scanned}</b> / ${group.eligible} ${countUnit}</p>
         <div class="mt-2 h-3 overflow-hidden rounded-full bg-gray-100" aria-hidden="true"><div class="h-full rounded-full bg-emerald-500 transition-all" style="width:${pct}%"></div></div>
-        <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs"><span class="font-semibold text-emerald-700">● บันทึกแล้ว ${group.scanned}</span><span class="text-gray-500">● ยังไม่มีรายการ ${group.pending}</span></div>
+        <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs"><span class="font-semibold text-emerald-700">บันทึกแล้ว ${group.scanned}</span><span class="text-gray-500">ยังไม่มีรายการ ${group.pending}</span>${group.mismatches?`<span class="font-semibold text-amber-700">ต้องตรวจสอบ ${group.mismatches}</span>`:''}</div>
         <p class="mt-3 text-xs font-semibold text-indigo-600 group-hover:text-indigo-800">คลิกดูรายชื่อนักเรียน →</p>
       </div>
     </div>
   </button>`
 }
 
-function progressHtml(groups = []) {
+function optionList(values = [], selected = '', allLabel = 'ทั้งหมด') {
+  return `<option value="">${esc(allLabel)}</option>${values.map(value=>`<option value="${esc(value)}" ${value===selected?'selected':''}>${esc(value)}</option>`).join('')}`
+}
+
+function studentPhoto(student, size = 'h-12 w-10') {
+  const initials = String(student.full_name ?? '?').trim().slice(0,1) || '?'
+  return student.image_url
+    ? `<img src="${esc(student.image_url)}" alt="รูปนักเรียน ${esc(student.full_name)}" loading="lazy" class="${size} shrink-0 rounded-lg border border-gray-200 bg-gray-50 object-cover object-top">`
+    : `<span aria-label="ไม่มีรูปนักเรียน" class="${size} grid shrink-0 place-items-center rounded-lg bg-emerald-50 text-sm font-bold text-emerald-700">${esc(initials)}</span>`
+}
+
+function renderFollowup(students = [], total = 0) {
+  const rows = students.map((student,index)=>`<article class="flex min-w-0 items-center gap-3 rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+    ${studentPhoto(student)}
+    <div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-x-2"><b class="truncate text-sm text-gray-800">${esc(student.full_name)}</b><span class="text-xs text-gray-500">${esc(student.student_code)}</span></div>
+      <p class="mt-0.5 truncate text-xs text-gray-500">${esc(student.main_room||'ไม่ระบุห้อง')} · สี${esc(student.house_color||'ไม่ระบุ')} · ${esc(student.dorm_name||'รอบไปกลับ')}</p>
+      <p class="mt-1 text-xs"><span class="font-semibold text-rose-700">ขาดสแกน ${student.missing_days} วัน</span>${student.mismatch_days?`<span class="ml-2 font-semibold text-amber-700">ข้อมูลไม่ตรง ${student.mismatch_days} วัน</span>`:''}</p>
+    </div>
+    <span class="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-rose-50 text-xs font-extrabold text-rose-700">${index+1}</span>
+  </article>`).join('')
+  return `<section class="space-y-3" aria-labelledby="asr-followup-title"><div class="flex flex-wrap items-end justify-between gap-2"><div><h2 id="asr-followup-title" class="text-base font-extrabold text-gray-800">นักเรียนที่ควรติดตาม</h2><p class="mt-1 text-xs text-gray-500">เรียงจากจำนวนวันที่ขาดบันทึกและรายการที่ขอบเขตไม่ตรง · แสดง ${students.length} จาก ${total} คน</p></div></div>
+    ${rows?`<div class="grid grid-cols-1 gap-2 lg:grid-cols-2">${rows}</div>`:'<div class="rounded-xl border border-dashed border-gray-300 bg-white p-7 text-center text-sm text-gray-500">ยังไม่มีรายการที่ต้องติดตามในช่วงนี้</div>'}
+    ${total>students.length?'<p class="text-center text-xs text-gray-500">รายการจัดอันดับแสดง 100 คนแรก · ใช้ตัวกรองห้อง สี หรือหอพักเพื่อเจาะจงกลุ่ม</p>':''}
+    <p class="text-xs text-gray-500">“ขาดสแกน” หมายถึงยังไม่มีบันทึกในระบบ และไม่ได้ยืนยันว่าขาดการละหมาด</p>
+  </section>`
+}
+
+function progressHtml(data = {}, periodKey = 'day', filters = {}) {
+  const groups = data.groups ?? []
+  const followup = data.followup ?? []
+  const followupTotal = Number(data.followup_total) || 0
+  const filtersHtml = `<section class="rounded-2xl border border-gray-200 bg-white p-3 shadow-sm"><h2 class="mb-2 text-sm font-bold text-gray-700">กรองภาพรวมและรายชื่อนักเรียน</h2><div class="grid grid-cols-1 gap-2 sm:grid-cols-3" role="group" aria-label="ตัวกรองห้อง สี และหอพัก"><label class="text-xs font-semibold text-gray-600">ห้อง<select data-asr-filter="room" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">${optionList(data.filter_options?.rooms,filters.room,'ทุกห้อง')}</select></label><label class="text-xs font-semibold text-gray-600">สี<select data-asr-filter="color" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">${optionList(data.filter_options?.colors,filters.color,'ทุกสี')}</select></label><label class="text-xs font-semibold text-gray-600">หอพัก<select data-asr-filter="dorm" class="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">${optionList(data.filter_options?.dorms,filters.dorm,'ทุกหอพัก')}</select></label></div></section>`
   const colors = groups.filter(group => group.round === 'commuter' && group.scope_type === 'color' && group.scope_value && !['#N/A','ยังไม่ระบุสี'].includes(group.scope_value.trim()))
   const dorms = groups.filter(group => group.round === 'dorm' && group.scope_type === 'dorm' && group.scope_value)
   const renderGrid = (items, empty) => items.length
-    ? `<div class="grid grid-cols-1 gap-4 md:grid-cols-2">${items.map((group,index)=>progressCard(group,groups.indexOf(group))).join('')}</div>`
+    ? `<div class="grid grid-cols-1 gap-4 md:grid-cols-2">${items.map(group=>progressCard(group,groups.indexOf(group),periodKey)).join('')}</div>`
     : `<div class="rounded-2xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-400">${empty}</div>`
   return `<div class="space-y-7">
+    <section class="grid grid-cols-2 gap-3 sm:grid-cols-4"><div class="rounded-xl bg-white p-3"><p class="text-xs text-gray-500">วันตามรอบ</p><b class="text-lg text-gray-800">${data.school_days??0}</b><p class="text-[10px] text-gray-500">อาทิตย์–พฤหัสฯ</p></div><div class="rounded-xl bg-white p-3"><p class="text-xs text-gray-500">นักเรียนที่ควรติดตาม</p><b class="text-lg text-rose-700">${followupTotal}</b><p class="text-[10px] text-gray-500">ในขอบเขตตัวกรอง</p></div><div class="rounded-xl bg-white p-3"><p class="text-xs text-gray-500">ช่วงข้อมูล</p><b class="text-sm text-gray-800">${esc(data.start_date||'—')} – ${esc(data.end_date||'—')}</b></div><div class="rounded-xl bg-white p-3"><p class="text-xs text-gray-500">ระบบเริ่มเก็บข้อมูล</p><b class="text-sm text-gray-800">${esc(data.tracking_started_on||'—')}</b></div></section>
+    ${filtersHtml}
     <section><div class="mb-3"><h2 class="text-base font-extrabold text-gray-800">🎨 ความคืบหน้ารอบไปกลับตามสี</h2><p class="mt-1 text-xs text-gray-500">แตะการ์ดเพื่อเปิดรายชื่อนักเรียนของสีนั้น</p></div>${renderGrid(colors,'ยังไม่มีข้อมูลสีที่เข้าเงื่อนไข')}</section>
     <section><div class="mb-3"><h2 class="text-base font-extrabold text-gray-800">🏠 ความคืบหน้ารอบหอพัก</h2><p class="mt-1 text-xs text-gray-500">แยกตามชื่อหอที่แอดมินกำหนด แตะการ์ดเพื่อเปิดรายชื่อ</p></div>${renderGrid(dorms,'ยังไม่มีหอพักที่จัดกลุ่มนักเรียนไว้')}</section>
+    ${renderFollowup(followup,followupTotal)}
   </div>`
 }
 
 function renderGroupStudentRows(students = []) {
   return students.map((student,index) => `<tr class="${index%2?'bg-gray-50':'bg-white'} border-t border-gray-100">
     <td class="whitespace-nowrap px-4 py-3 text-xs text-gray-400">${index+1}</td>
-    <td class="px-4 py-3"><b class="block text-sm text-gray-800">${esc(student.full_name)}</b><span class="text-xs text-gray-500">${esc(student.student_code)}</span></td>
+    <td class="px-4 py-3"><div class="flex items-center gap-2">${studentPhoto(student,'h-11 w-9')}<div><b class="block text-sm text-gray-800">${esc(student.full_name)}</b><span class="text-xs text-gray-500">${esc(student.student_code)}</span></div></div></td>
     <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600">${esc(student.main_room || '—')}</td>
-    <td class="whitespace-nowrap px-4 py-3"><span class="rounded-full px-2.5 py-1 text-xs font-bold ${student.scanned?'bg-emerald-100 text-emerald-700':'bg-gray-100 text-gray-600'}">${student.scanned?'บันทึกแล้ว':'ยังไม่มีรายการ'}</span></td>
-    <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-500">${student.recorded_at?new Date(student.recorded_at).toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Bangkok'}):'—'}</td>
-  </tr>`).join('') || '<tr><td colspan="5" class="p-10 text-center text-gray-400">ไม่มีรายชื่อ</td></tr>'
+    <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600">${esc(student.house_color||'—')}</td>
+    <td class="whitespace-nowrap px-4 py-3 text-sm text-gray-600">${esc(student.dorm_name||'—')}</td>
+    <td class="whitespace-nowrap px-4 py-3 text-sm text-emerald-700">${student.scanned_days??(student.scanned?1:0)} / ${student.expected_days??1}</td>
+    <td class="whitespace-nowrap px-4 py-3 text-sm font-semibold ${student.missing_days?'text-rose-700':'text-gray-500'}">${student.missing_days??(student.scanned?0:1)}</td>
+    <td class="whitespace-nowrap px-4 py-3 text-sm font-semibold ${student.mismatch_days?'text-amber-700':'text-gray-500'}">${student.mismatch_days??0}</td>
+  </tr>`).join('') || '<tr><td colspan="8" class="p-10 text-center text-gray-400">ไม่มีรายชื่อ</td></tr>'
 }
 
-function renderGroupModal(group) {
+function renderGroupModal(group, periodKey = 'day', periodLabel = '') {
   if (!group) return null
   const isColor = group.round === 'commuter'
   const title = isColor ? `สี${group.scope_value}` : group.scope_value
@@ -65,9 +103,9 @@ function renderGroupModal(group) {
   modal.className = 'fixed inset-0 z-[100] overflow-y-auto bg-slate-950/60 p-0 sm:p-4'
   modal.setAttribute('role','dialog'); modal.setAttribute('aria-modal','true'); modal.setAttribute('aria-labelledby','asr-detail-title')
   modal.innerHTML = `<div class="flex min-h-screen flex-col bg-white shadow-2xl sm:mx-auto sm:min-h-[calc(100vh-2rem)] sm:max-w-6xl sm:rounded-2xl">
-    <header class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-4 sm:px-6"><div class="min-w-0"><p class="text-xs font-semibold text-emerald-700">${isColor?'รอบไปกลับ':'รอบหอพัก'} · ${esc(title)}</p><h2 id="asr-detail-title" class="text-lg font-extrabold text-gray-900 sm:text-xl">รายชื่อนักเรียน · ${esc(group.eligible)} คน</h2></div><button type="button" data-asr-close-modal aria-label="ปิดหน้ารายชื่อ" class="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-gray-200 text-xl text-gray-600 hover:bg-gray-50">×</button></header>
-    <div class="flex flex-wrap items-center gap-3 border-b border-gray-100 bg-gray-50 px-4 py-3 text-sm sm:px-6"><span class="font-bold text-emerald-700">บันทึกแล้ว ${group.scanned}</span><span class="text-gray-500">ยังไม่มีรายการ ${group.pending}</span><span class="ml-auto text-gray-500">ความคืบหน้า ${group.percent}%</span></div>
-    <div class="flex-1 overflow-auto"><table class="w-full min-w-[640px] border-collapse text-left"><thead class="sticky top-0 bg-white text-xs font-bold text-gray-500 shadow-sm"><tr><th class="px-4 py-3">ลำดับ</th><th class="px-4 py-3">นักเรียน</th><th class="px-4 py-3">ห้อง</th><th class="px-4 py-3">สถานะ</th><th class="px-4 py-3">เวลาสแกน</th></tr></thead><tbody data-asr-detail-body><tr><td colspan="5" class="p-10 text-center text-gray-400">กำลังโหลดรายชื่อ…</td></tr></tbody></table></div>
+    <header class="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-4 sm:px-6"><div class="min-w-0"><p class="text-xs font-semibold text-emerald-700">${isColor?'รอบไปกลับ':'รอบหอพัก'} · ${esc(title)} · ${esc(periodLabel)}</p><h2 id="asr-detail-title" class="text-lg font-extrabold text-gray-900 sm:text-xl">รายชื่อนักเรียน · ${esc(group.student_count??group.eligible)} คน</h2></div><button type="button" data-asr-close-modal aria-label="ปิดหน้ารายชื่อ" class="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-gray-200 text-xl text-gray-600 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-emerald-500">×</button></header>
+    <div class="flex flex-wrap items-center gap-3 border-b border-gray-100 bg-gray-50 px-4 py-3 text-sm sm:px-6"><span class="font-bold text-emerald-700">บันทึกแล้ว ${group.scanned} ครั้ง</span><span class="text-gray-500">ยังไม่มีรายการ ${group.pending} ครั้ง</span>${group.mismatches?`<span class="font-semibold text-amber-700">ข้อมูลไม่ตรง ${group.mismatches} ครั้ง</span>`:''}<span class="ml-auto text-gray-500">ความคืบหน้า ${group.percent}%</span></div>
+    <div class="flex-1 overflow-auto"><table class="w-full min-w-[900px] border-collapse text-left"><thead class="sticky top-0 bg-white text-xs font-bold text-gray-500 shadow-sm"><tr><th class="px-4 py-3">ลำดับ</th><th class="px-4 py-3">นักเรียน</th><th class="px-4 py-3">ห้อง</th><th class="px-4 py-3">สี</th><th class="px-4 py-3">หอพัก</th><th class="px-4 py-3">บันทึก / วัน</th><th class="px-4 py-3">ขาดสแกน</th><th class="px-4 py-3">ข้อมูลไม่ตรง</th></tr></thead><tbody data-asr-detail-body><tr><td colspan="8" class="p-10 text-center text-gray-400">กำลังโหลดรายชื่อ…</td></tr></tbody></table></div>
   </div>`
   const close=()=>{document.removeEventListener('keydown',onKey);modal.remove()}
   const onKey=event=>{if(event.key==='Escape')close()}
@@ -148,11 +186,18 @@ function bindSearchChecklist(root, { inputId, resultsId, selectedId, filterId = 
 
 function renderManager(data, access) {
   const settings = data.settings ?? access.settings ?? {}
+  const scheduleData = data.schedule_data ?? {}
+  const scheduleColors = scheduleData.colors ?? []
+  const scheduleScanners = scheduleData.scanners ?? []
+  const colorManagers = scheduleData.color_managers ?? []
+  const duties = scheduleData.duties ?? []
+  const dutyGroups = [...duties.reduce((map,row)=>{const key=`${row.duty_date}|${row.house_color}`;const group=map.get(key)??{duty_date:row.duty_date,house_color:row.house_color,people:[]};group.people.push(row);map.set(key,group);return map},new Map()).values()]
   const candidates = data.m6_candidates ?? []
   const delegateCandidates = data.delegate_candidates ?? candidates
   const delegates = data.delegates ?? []
   const colors = data.colors ?? []
   const canAdmin = !!access.is_admin
+  const canManageGlobal = !!access.can_manage_global
   const dorms = data.dorms ?? []
   const femaleStudents = data.female_students ?? []
   const teachers = data.teachers ?? []
@@ -162,21 +207,27 @@ function renderManager(data, access) {
   return `<div class="space-y-4">
     <nav aria-label="หมวดตั้งค่าและมอบสิทธิ์" class="sticky top-2 z-20 flex gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-white/95 p-2 shadow-sm backdrop-blur">
       <button type="button" data-asr-manager-tab="schedule" class="shrink-0 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white">⏱️ เวลา</button>
-      <button type="button" data-asr-manager-tab="scanners" class="shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">🎨 ผู้สแกนและตัวแทน</button>
+      ${canManageGlobal?'<button type="button" data-asr-manager-tab="scanners" class="shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">🎨 ผู้สแกนและตัวแทน</button>':''}
       ${canAdmin?'<button type="button" data-asr-manager-tab="dorms" class="shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">🏠 หอพัก</button><button type="button" data-asr-manager-tab="viewers" class="shrink-0 rounded-xl px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50">📊 ผู้ติดตาม</button>':''}
     </nav>
-    <section data-asr-manager-panel="schedule" class="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm sm:p-5">
-      <div class="mb-4"><h2 class="font-bold text-gray-800">⏱️ ตั้งเวลาสแกนอัซรี</h2><p class="mt-1 text-xs text-gray-500">ปรับได้โดยแอดมินและนักเรียนตัวแทน · เวลาเริ่มละหมาดตรงกับเวลาปิดสแกนแต่ละรอบ</p></div>
+    <section data-asr-manager-panel="schedule" class="space-y-5">
+      ${canAdmin?`<section class="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm sm:p-5"><div class="mb-4"><h2 class="font-bold text-gray-800">📅 กำหนดช่วงเปิดใช้ระบบติดตาม</h2><p class="mt-1 text-xs text-gray-500">ระบบจะเปิดรับการสแกนและนับความคืบหน้าตั้งแต่วันเริ่มถึงวันสิ้นสุด · เว้นวันสิ้นสุดไว้หากยังไม่กำหนด</p></div><form id="asr-window-form" class="grid grid-cols-1 gap-3 sm:grid-cols-3"><label class="text-xs text-gray-600">วันเริ่มต้น<input name="start_date" type="date" value="${esc(settings.tracking_started_on||'2026-11-22')}" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"></label><label class="text-xs text-gray-600">วันสิ้นสุด<input name="end_date" type="date" value="${esc(settings.tracking_ends_on||'')}" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"></label><button class="self-end rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white">บันทึกช่วงเปิดใช้</button></form></section>`:''}
+      <section class="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm sm:p-5"><div class="mb-4"><h2 class="font-bold text-gray-800">⏱️ ตั้งเวลาสแกนอัซรี</h2><p class="mt-1 text-xs text-gray-500">${canManageGlobal?'ปรับได้โดยแอดมินและนักเรียนตัวแทน':'ดูช่วงเวลาที่แอดมินและตัวแทนกำหนด'} · เวลาเริ่มละหมาดตรงกับเวลาปิดสแกนแต่ละรอบ</p></div>
       <form id="asr-schedule-form" class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <label class="text-xs text-gray-500">รอบไปกลับ · เริ่มสแกน<input name="commuter_start" type="time" value="${timeLabel(settings.commuter_scan_start)||'16:10'}" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 font-mono text-sm text-gray-800"></label>
-        <label class="text-xs text-gray-500">ปิดสแกน/เริ่มละหมาด<input name="commuter_end" type="time" value="${timeLabel(settings.commuter_scan_end)||'16:20'}" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 font-mono text-sm text-gray-800"></label>
-        <label class="text-xs text-gray-500">รอบหอพัก · เริ่มสแกน<input name="dorm_start" type="time" value="${timeLabel(settings.dorm_scan_start)||'16:20'}" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 font-mono text-sm text-gray-800"></label>
-        <label class="text-xs text-gray-500">ปิดสแกน/เริ่มละหมาด<input name="dorm_end" type="time" value="${timeLabel(settings.dorm_scan_end)||'16:30'}" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 font-mono text-sm text-gray-800"></label>
-        <button class="col-span-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 sm:col-span-4">บันทึกช่วงเวลา</button>
-      </form>
+        <label class="text-xs text-gray-500">รอบไปกลับ · เริ่มสแกน<input name="commuter_start" type="time" value="${timeLabel(settings.commuter_scan_start)||'16:10'}" required ${canManageGlobal?'':'disabled'} class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 font-mono text-sm text-gray-800 disabled:bg-gray-50"></label>
+        <label class="text-xs text-gray-500">ปิดสแกน/เริ่มละหมาด<input name="commuter_end" type="time" value="${timeLabel(settings.commuter_scan_end)||'16:20'}" required ${canManageGlobal?'':'disabled'} class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 font-mono text-sm text-gray-800 disabled:bg-gray-50"></label>
+        <label class="text-xs text-gray-500">รอบหอพัก · เริ่มสแกน<input name="dorm_start" type="time" value="${timeLabel(settings.dorm_scan_start)||'16:20'}" required ${canManageGlobal?'':'disabled'} class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 font-mono text-sm text-gray-800 disabled:bg-gray-50"></label>
+        <label class="text-xs text-gray-500">ปิดสแกน/เริ่มละหมาด<input name="dorm_end" type="time" value="${timeLabel(settings.dorm_scan_end)||'16:30'}" required ${canManageGlobal?'':'disabled'} class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 font-mono text-sm text-gray-800 disabled:bg-gray-50"></label>
+        ${canManageGlobal?'<button class="col-span-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 sm:col-span-4">บันทึกช่วงเวลา</button>':''}
+      </form></section>
+      <section class="rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm sm:p-5"><div class="mb-4"><h2 class="font-bold text-gray-800">🗓️ จัดเวรผู้สแกนประจำสี</h2><p class="mt-1 text-xs text-gray-500">เลือกวันที่และผู้สแกนที่ได้รับมอบหมายของสีนั้น · จำนวนเวรต่อวันแสดงตามจำนวนชื่อที่เลือก · จัดได้วันอาทิตย์–พฤหัสบดี</p></div>
+        <form id="asr-duty-form" class="grid grid-cols-1 gap-3 sm:grid-cols-[180px_220px_minmax(0,1fr)]"><label class="text-xs font-semibold text-gray-600">วันที่เข้าเวร<input name="duty_date" type="date" min="${esc(settings.tracking_started_on||'2026-11-22')}" ${settings.tracking_ends_on?`max="${esc(settings.tracking_ends_on)}"`:''} value="${bangkokDate()}" required class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"></label><label class="text-xs font-semibold text-gray-600">สี<select name="color" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${scheduleColors.map(color=>`<option value="${esc(color)}">สี${esc(color)}</option>`).join('')}</select></label><div class="text-xs font-semibold text-gray-600">เลือกผู้รับผิดชอบ<select id="asr-duty-scanner-filter" aria-label="กรองผู้สแกนตามห้อง" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><option value="">ทุกห้อง</option>${roomOptions(scheduleScanners,'ทุกห้อง').replace('<option value="">ทุกห้อง</option>','')}</select></div>
+          <div class="sm:col-span-3"><label for="asr-duty-search" class="block text-xs font-semibold text-gray-600">ค้นหาผู้สแกน</label><input id="asr-duty-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อนักเรียนหรือรหัส" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><p id="asr-duty-selected" class="my-2 text-xs text-gray-500"></p><div id="asr-duty-scanners" class="grid max-h-56 grid-cols-1 gap-2 overflow-auto sm:grid-cols-2"></div><button class="mt-3 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">บันทึกเวร · <span data-asr-duty-count>0</span> คน</button></div>
+        </form><div class="mt-5 border-t border-gray-100 pt-4"><h3 class="text-sm font-bold text-gray-700">เวรที่บันทึกไว้</h3><div id="asr-duty-list" class="mt-2 grid max-h-72 grid-cols-1 gap-2 overflow-auto sm:grid-cols-2">${dutyGroups.map(group=>`<button type="button" data-asr-duty-edit data-date="${esc(group.duty_date)}" data-color="${esc(group.house_color)}" class="rounded-xl border border-gray-100 bg-gray-50 p-3 text-left text-xs hover:border-emerald-300"><span class="flex items-center justify-between gap-2"><b>${esc(group.duty_date)} · สี${esc(group.house_color)}</b><span class="rounded-full bg-emerald-100 px-2 py-1 font-bold text-emerald-800">${group.people.length} คน</span></span><span class="mt-1 block text-gray-600">${group.people.map(person=>esc(person.full_name)).join(' · ')}</span><span class="mt-1 block text-indigo-600">คลิกเพื่อแก้ไขเวร</span></button>`).join('')||'<p class="col-span-full rounded-xl bg-gray-50 p-4 text-center text-xs text-gray-400">ยังไม่มีการบันทึกเวร</p>'}</div><p class="mt-2 text-[11px] text-gray-400">แสดงเวรล่าสุดและเวรในอนาคต · หัวหน้าสตาฟเห็นเฉพาะสีที่ได้รับมอบหมาย ส่วนแอดมินเห็นทุกสี</p></div>
+      </section>
     </section>
 
-    <section data-asr-manager-panel="scanners" class="hidden space-y-5">
+    ${canManageGlobal?`<section data-asr-manager-panel="scanners" class="hidden space-y-5">
     ${canAdmin ? `<section class="rounded-2xl border border-violet-100 bg-white p-4 shadow-sm sm:p-5">
       <h2 class="font-bold text-gray-800">👑 แต่งตั้งนักเรียนตัวแทน</h2><p class="mt-1 text-xs text-gray-500">ตัวแทนที่เลือกจัดการผู้สแกน ม.6 ได้ทุกสีและปรับเวลาสองรอบได้</p>
       <label for="asr-delegate-search" class="mt-3 block text-xs font-semibold text-gray-600">ค้นหานักเรียน ม.6</label><div class="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_190px]"><input id="asr-delegate-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อหรือรหัส" class="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><select id="asr-delegate-room" aria-label="กรองนักเรียนตัวแทนตามห้อง" class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${roomOptions(delegateCandidates,'ทุกห้อง ม.6')}</select></div>
@@ -190,8 +241,9 @@ function renderManager(data, access) {
       <label for="asr-color-search" class="mt-3 block text-xs font-semibold text-gray-600">ค้นหานักเรียนหญิง ม.6 สีที่เลือก</label><div class="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_190px]"><input id="asr-color-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อหรือรหัส" class="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><select id="asr-color-room" aria-label="กรองผู้สแกนตามห้อง" class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${roomOptions(candidates,'ทุกห้อง ม.6')}</select></div>
       <p id="asr-color-selected" class="mt-2 text-xs text-gray-500"></p><div id="asr-color-candidates" class="mt-2 grid max-h-64 grid-cols-1 gap-2 overflow-auto sm:grid-cols-2"></div>
       <button id="asr-save-color-scanners" class="mt-3 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-50">บันทึกผู้สแกนของสีนี้</button>
+      ${canAdmin?'<div class="mt-4 border-t border-gray-100 pt-4"><h3 class="text-sm font-bold text-gray-700">👑 หัวหน้าสตาฟประจำสี</h3><p class="mt-1 text-xs text-gray-500">เลือกจากผู้สแกนที่มอบหมายไว้ในสีนี้ หัวหน้าจะจัดเวรได้เฉพาะสีของตน</p><input id="asr-color-manager-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อหรือรหัสผู้สแกน" class="mt-2 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm"><p id="asr-color-manager-selected" class="mt-2 text-xs text-gray-500"></p><div id="asr-color-manager-candidates" class="mt-2 grid max-h-48 grid-cols-1 gap-2 overflow-auto sm:grid-cols-2"></div><button id="asr-save-color-managers" class="mt-2 rounded-xl bg-violet-600 px-4 py-2 text-xs font-bold text-white">บันทึกหัวหน้าสตาฟสีนี้</button></div>':''}
     </section>
-    </section>
+    </section>`:''}
 
     ${canAdmin ? `<section data-asr-manager-panel="dorms" class="hidden space-y-5">
     <section class="rounded-2xl border border-amber-100 bg-white p-4 shadow-sm sm:p-5">
@@ -216,6 +268,11 @@ function renderManager(data, access) {
 
 function bindManager(root, data, access, reload) {
   const canAdmin = !!access.is_admin
+  const canManageGlobal = !!access.can_manage_global
+  const scheduleData = data.schedule_data ?? {}
+  const scheduleScanners = scheduleData.scanners ?? []
+  const colorManagers = scheduleData.color_managers ?? []
+  const duties = scheduleData.duties ?? []
   const m6Candidates = data.m6_candidates ?? []
   const delegateCandidates = data.delegate_candidates ?? m6Candidates
   const femaleStudents = data.female_students ?? []
@@ -231,6 +288,13 @@ function bindManager(root, data, access, reload) {
   }
   managerTabButtons.forEach(button=>button.addEventListener('click',()=>showManagerTab(button.dataset.asrManagerTab)))
   showManagerTab('schedule')
+  root.querySelector('#asr-window-form')?.addEventListener('submit',async event=>{
+    event.preventDefault()
+    const fd=new FormData(event.currentTarget),button=event.currentTarget.querySelector('button')
+    button.disabled=true
+    try{await call('asr_prayer_save_tracking_window',{p_start_date:fd.get('start_date'),p_end_date:fd.get('end_date')||null});showToast('บันทึกช่วงเปิดใช้ระบบแล้ว','success');await reload()}
+    catch(error){showToast(getFriendlyErrorMessage(error),'error')}finally{button.disabled=false}
+  })
   root.querySelector('#asr-schedule-form')?.addEventListener('submit', async event => {
     event.preventDefault()
     const form = event.currentTarget
@@ -244,6 +308,41 @@ function bindManager(root, data, access, reload) {
     } catch(error) { showToast(getFriendlyErrorMessage(error),'error') } finally { button.disabled=false }
   })
 
+  const dutyForm=root.querySelector('#asr-duty-form')
+  const dutyDate=dutyForm?.querySelector('[name="duty_date"]')
+  const dutyColor=dutyForm?.querySelector('[name="color"]')
+  const dutyCount=root.querySelector('[data-asr-duty-count]')
+  const dutyPicker=bindSearchChecklist(root,{inputId:'asr-duty-search',resultsId:'asr-duty-scanners',selectedId:'asr-duty-selected',filterId:'asr-duty-scanner-filter',name:'asr-duty-scanner',items:[],initialIds:[],value:x=>x.student_id,label:x=>`${x.full_name} · สี${x.house_color}`,searchFields:['full_name','student_code','main_room','house_color'],emptyText:'ไม่มีผู้สแกนที่ได้รับมอบหมายในสีนี้'})
+  const updateDutyRoster=(loadSaved=true)=>{
+    const color=dutyColor?.value,date=dutyDate?.value
+    const candidates=scheduleScanners.filter(student=>student.house_color===color)
+    const ids=loadSaved?duties.filter(row=>row.duty_date===date&&row.house_color===color).map(row=>row.student_id):[...dutyPicker.selected]
+    dutyPicker.reset(candidates,ids)
+    if(dutyCount)dutyCount.textContent=String(dutyPicker.selected.size)
+    const submit=dutyForm?.querySelector('button[type="submit"],button:not([type])')
+    if(submit)submit.disabled=!candidates.length
+  }
+  dutyColor?.addEventListener('change',()=>updateDutyRoster(true))
+  dutyDate?.addEventListener('change',()=>updateDutyRoster(true))
+  root.querySelector('#asr-duty-scanners')?.addEventListener('change',()=>{if(dutyCount)dutyCount.textContent=String(dutyPicker.selected.size)})
+  updateDutyRoster(true)
+  dutyForm?.addEventListener('submit',async event=>{
+    event.preventDefault()
+    const date=dutyDate?.value,color=dutyColor?.value,ids=[...dutyPicker.selected].map(Number)
+    if(!date||!color)return showToast('เลือกวันที่และสีก่อนบันทึก','warning')
+    const button=dutyForm.querySelector('button[type="submit"],button:not([type])');if(button)button.disabled=true
+    try{const result=await call('asr_prayer_save_color_duty',{p_duty_date:date,p_color:color,p_student_ids:ids});showToast(`บันทึกเวรสี${color} ${result.assigned_count} คนแล้ว`,'success');await reload()}
+    catch(error){showToast(getFriendlyErrorMessage(error),'error')}finally{if(button)button.disabled=false}
+  })
+  root.querySelector('#asr-duty-list')?.addEventListener('click',event=>{
+    const item=event.target.closest('[data-asr-duty-edit]');if(!item)return
+    if(dutyDate)dutyDate.value=item.dataset.date
+    if(dutyColor)dutyColor.value=item.dataset.color
+    updateDutyRoster(true)
+    dutyForm?.scrollIntoView({behavior:'smooth',block:'center'})
+  })
+
+  if(!canManageGlobal)return
   const delegatePicker=bindSearchChecklist(root,{inputId:'asr-delegate-search',resultsId:'asr-delegate-results',selectedId:'asr-delegate-selected',filterId:'asr-delegate-room',name:'asr-delegate',items:delegateCandidates,initialIds:delegates.map(x=>x.student_id),label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
   root.querySelector('#asr-save-delegates')?.addEventListener('click',async event=>{
     const ids=[...delegatePicker.selected].map(Number)
@@ -254,11 +353,13 @@ function bindManager(root, data, access, reload) {
 
   const colorSelect=root.querySelector('#asr-color-select')
   const colorPicker=bindSearchChecklist(root,{inputId:'asr-color-search',resultsId:'asr-color-candidates',selectedId:'asr-color-selected',filterId:'asr-color-room',name:'asr-color-scanner',items:[],initialIds:[],label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']})
+  const colorManagerPicker=canAdmin?bindSearchChecklist(root,{inputId:'asr-color-manager-search',resultsId:'asr-color-manager-candidates',selectedId:'asr-color-manager-selected',name:'asr-color-manager',items:[],initialIds:[],value:x=>x.student_id,label:x=>`${x.full_name} · ${x.main_room}`,searchFields:['full_name','student_code','main_room']}):null
   const drawColorCandidates=()=>{
     const color=colorSelect?.value
     const assigned=colorScanners.filter(row=>row.scope_value===color).map(row=>row.student_id)
     const list=m6Candidates.filter(row=>row.house_color===color)
     colorPicker.reset(list,assigned)
+    colorManagerPicker?.reset(colorScanners.filter(row=>row.scope_value===color),colorManagers.filter(row=>row.scope_value===color).map(row=>row.student_id))
     const eligibility=root.querySelector('#asr-color-eligibility')
     const saveButton=root.querySelector('#asr-save-color-scanners')
     if(eligibility)eligibility.textContent=list.length?`มีนักเรียนหญิง ม.6 สี${color} ${list.length} คนที่เลือกเป็นผู้สแกนได้`:`สี${color} ยังไม่มีนักเรียนหญิง ม.6 ที่มีบัญชีผู้ใช้ จึงยังมอบหมายผู้สแกนไม่ได้`
@@ -271,6 +372,13 @@ function bindManager(root, data, access, reload) {
     event.currentTarget.disabled=true
     try { await call('asr_prayer_set_color_scanners',{p_color:colorSelect.value,p_student_ids:ids}); showToast(`บันทึกผู้สแกนสี${colorSelect.value} ${ids.length} คนแล้ว`,'success'); await reload() }
     catch(error){showToast(getFriendlyErrorMessage(error),'error')} finally{event.currentTarget.disabled=false}
+  })
+
+  root.querySelector('#asr-save-color-managers')?.addEventListener('click',async event=>{
+    const ids=[...(colorManagerPicker?.selected??[])].map(Number)
+    event.currentTarget.disabled=true
+    try{await call('asr_prayer_set_color_managers',{p_color:colorSelect.value,p_student_ids:ids});showToast(`บันทึกหัวหน้าสตาฟสี${colorSelect.value} ${ids.length} คนแล้ว`,'success');await reload()}
+    catch(error){showToast(getFriendlyErrorMessage(error),'error')}finally{event.currentTarget.disabled=false}
   })
 
   if (!canAdmin) return
@@ -351,8 +459,8 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
   if (!root) throw new Error('ไม่พบพื้นที่แสดงระบบอัซรี')
   window._activeAsrPrayerCleanup?.()
   root.innerHTML='<div class="py-16 text-center text-sm text-gray-400">กำลังโหลดระบบติดตามละหมาดอัซรี…</div>'
-  let access, data=null, dashboard=null, selectedDate=bangkokDate(), managerLoaded=false
-  let camera=null, refreshing=null, timer=null
+  let access, data=null, dashboard=null, selectedDate=bangkokDate(), dashboardMode='day', managerLoaded=false, dashboardRequestId=0
+  let reportFilters={room:'',color:'',dorm:''}, camera=null, timer=null
   const cleanup=()=>{if(timer)clearInterval(timer);timer=null;if(camera){camera.stop().catch(()=>{});camera.clear().catch(()=>{});camera=null}if(window._activePrayerScannerState?.asrMode)window._activePrayerScannerState=null}
   window._activeAsrPrayerCleanup=cleanup
   const load=async()=>{
@@ -360,25 +468,31 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
     const roles=accessRoles(access)
     const canManage=!!access.can_manage
     const canDashboard=access.is_admin||access.can_view_all||roles.some(row=>['color_scanner','dorm_scanner','dorm_monitor'].includes(row.role))
-    dashboard=canDashboard?await call('asr_prayer_dashboard',{p_check_date:selectedDate}):null
+    dashboard=canDashboard?await call('asr_prayer_dashboard_period',{p_period_key:dashboardMode,p_anchor_date:selectedDate}):null
     if(!canManage&&!canDashboard)throw new Error('คุณยังไม่ได้รับมอบหมายสิทธิ์ใช้งานระบบติดตามละหมาดอัซรี')
   }
   const loadManagerData=async()=>{
-    const [adminData,delegateCandidates,schoolColors]=await Promise.all([
-      call('asr_prayer_admin_data'),
-      access.is_admin?call('asr_prayer_delegate_candidates'):Promise.resolve(null),
-      call('asr_prayer_house_colors'),
-    ])
-    data=adminData
-    if(access.is_admin)data.delegate_candidates=delegateCandidates
-    data.colors=schoolColors??data.colors??[]
+    const scheduleData=await call('asr_prayer_color_schedule_data')
+    if(access.can_manage_global){
+      const [adminData,delegateCandidates]=await Promise.all([
+        call('asr_prayer_admin_data'),
+        access.is_admin?call('asr_prayer_delegate_candidates'):Promise.resolve(null),
+      ])
+      data=adminData
+      if(access.is_admin)data.delegate_candidates=delegateCandidates
+      data.colors=scheduleData.colors??data.colors??[]
+    } else data={settings:scheduleData.settings,m6_candidates:[],colors:scheduleData.colors??[]}
+    data.settings=scheduleData.settings??data.settings
+    data.schedule_data=scheduleData
     managerLoaded=true
   }
   try{await load()}catch(error){root.innerHTML=`<div class="mx-auto max-w-xl rounded-2xl border border-amber-200 bg-amber-50 p-6 text-center"><p class="text-3xl">🔒</p><p class="mt-2 font-bold text-gray-800">ยังไม่มีสิทธิ์ใช้งานระบบอัซรี</p><p class="mt-1 text-sm text-gray-600">${esc(getFriendlyErrorMessage(error))}</p><button id="asr-back" class="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-gray-700">← กลับ</button></div>`;root.querySelector('#asr-back')?.addEventListener('click',()=>onBack?.());return}
 
   const drawDashboard=()=>{
-    const wrap=root.querySelector('#asr-dashboard-content');if(wrap)wrap.innerHTML=progressHtml(dashboard?.groups??[])
-    const dateText=root.querySelector('#asr-dashboard-date-label');if(dateText)dateText.textContent=`ข้อมูลวันที่ ${new Date(`${selectedDate}T12:00:00+07:00`).toLocaleDateString('th-TH',{dateStyle:'long',timeZone:'Asia/Bangkok'})} · “ยังไม่มีรายการ” ไม่ได้แปลว่าขาดละหมาด`
+    const wrap=root.querySelector('#asr-dashboard-content');if(wrap)wrap.innerHTML=progressHtml(dashboard??{},dashboardMode,reportFilters)
+    const dateText=root.querySelector('#asr-dashboard-date-label')
+    if(dateText){const label=dashboardMode==='day'?'รายวัน':dashboardMode==='week'?'รายสัปดาห์ (อาทิตย์–พฤหัสฯ)':'รายเดือน';dateText.textContent=`${label} · ${dashboard?.start_date??selectedDate} ถึง ${dashboard?.end_date??selectedDate} · ช่องว่างคือการไม่มีบันทึก ไม่ใช่หลักฐานว่าขาดละหมาด`}
+    root.querySelectorAll('[data-asr-period]').forEach(button=>{const active=button.dataset.asrPeriod===dashboardMode;button.className=`rounded-xl px-3 py-2 text-xs font-bold ${active?'bg-emerald-600 text-white':'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`})
   }
   const canManage=!!access.can_manage
   const roles=accessRoles(access)
@@ -389,7 +503,7 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
     <header class="flex flex-wrap items-center justify-between gap-3"><div><p class="text-[10px] font-bold uppercase tracking-wider text-emerald-600">ระบบติดตามระยะเริ่มต้น · นักเรียนหญิง</p><h1 class="text-xl font-extrabold text-gray-800 sm:text-2xl">🕌 ติดตามละหมาดอัซรี</h1></div>${headerBack}</header>
     <div class="grid grid-cols-2 gap-2 rounded-2xl border border-gray-100 bg-white p-3 text-center shadow-sm sm:grid-cols-4"><div><p class="text-[10px] font-semibold text-gray-400">รอบ 1 · ไปกลับ</p><p class="mt-1 font-mono text-sm font-bold text-emerald-700">${timeLabel(access.settings?.commuter_scan_start)}–${timeLabel(access.settings?.commuter_scan_end)}</p><p class="text-[10px] text-gray-400">เริ่มละหมาด ${timeLabel(access.settings?.commuter_scan_end)}</p></div><div><p class="text-[10px] font-semibold text-gray-400">รอบ 2 · หอพัก</p><p class="mt-1 font-mono text-sm font-bold text-indigo-700">${timeLabel(access.settings?.dorm_scan_start)}–${timeLabel(access.settings?.dorm_scan_end)}</p><p class="text-[10px] text-gray-400">เริ่มละหมาด ${timeLabel(access.settings?.dorm_scan_end)}</p></div><div><p class="text-[10px] font-semibold text-gray-400">ขอบเขตของฉัน</p><p class="mt-1 text-sm font-bold text-gray-700">${access.is_admin||access.can_view_all?'ภาพรวมทั้งหมด':roles.filter(r=>r.role!=='delegate').map(r=>r.scope_value).join(', ')||'จัดการสิทธิ์'}</p></div><div><p class="text-[10px] font-semibold text-gray-400">บันทึกลง</p><p class="mt-1 text-sm font-bold text-gray-700">ตารางอัซรีแยก</p></div></div>
     <nav class="flex flex-wrap gap-2">${canDashboard?'<button data-asr-tab="dashboard" class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white">📊 ติดตามผล</button>':''}${scanner?'<button data-asr-tab="scanner" class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600">📷 สแกน</button>':''}${canManage?'<button data-asr-tab="manager" class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600">⚙️ ตั้งค่าและมอบสิทธิ์</button>':''}</nav>
-    ${canDashboard?`<section id="asr-dashboard-panel" class="space-y-3"><div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white p-3"><label class="text-xs font-semibold text-gray-600">เลือกวันที่ <input id="asr-dashboard-date" type="date" value="${esc(selectedDate)}" max="${bangkokDate()}" class="ml-1 rounded-lg border border-gray-200 px-2 py-1.5"></label><button id="asr-dashboard-refresh" class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600">รีเฟรช</button></div><p id="asr-dashboard-date-label" class="text-[10px] text-amber-700"></p><div id="asr-dashboard-content"></div></section>`:''}
+    ${canDashboard?`<section id="asr-dashboard-panel" class="space-y-3"><div class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-3"><div class="flex flex-wrap gap-2" role="group" aria-label="เลือกระยะเวลาติดตาม"><button type="button" data-asr-period="day" class="rounded-xl px-3 py-2 text-xs font-bold">รายวัน</button><button type="button" data-asr-period="week" class="rounded-xl px-3 py-2 text-xs font-bold">รายสัปดาห์</button><button type="button" data-asr-period="month" class="rounded-xl px-3 py-2 text-xs font-bold">รายเดือน</button></div><label class="text-xs font-semibold text-gray-600">วันที่อ้างอิง <input id="asr-dashboard-date" type="date" value="${esc(selectedDate)}" max="${bangkokDate()}" class="ml-1 rounded-lg border border-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"></label><button id="asr-dashboard-refresh" class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600">รีเฟรช</button></div><p id="asr-dashboard-date-label" class="text-xs text-amber-700"></p><div id="asr-dashboard-content"></div></section>`:''}
     ${scanner?`<section id="asr-scanner-panel" class="hidden">${scanner}</section>`:''}
     ${canManage?'<section id="asr-manager-panel" class="hidden"></section>':''}
   </div>`
@@ -399,17 +513,24 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
     const card=event.target.closest('[data-asr-open-group]')
     if(!card)return
     const group=dashboard?.groups?.[Number(card.dataset.asrOpenGroup)]
-    const modal=renderGroupModal(group)
+    const periodLabel=dashboardMode==='day'?'รายวัน':dashboardMode==='week'?'รายสัปดาห์':'รายเดือน'
+    const modal=renderGroupModal(group,dashboardMode,periodLabel)
     if(!modal)return
     try {
-      const students=await call('asr_prayer_dashboard_students',{p_check_date:selectedDate,p_round_key:group.round,p_scope_value:group.scope_value})
+      const students=await call('asr_prayer_dashboard_period_students',{p_period_key:dashboardMode,p_anchor_date:selectedDate,p_round_key:group.round,p_scope_value:group.scope_value,p_room:reportFilters.room||null,p_color:reportFilters.color||null,p_dorm:reportFilters.dorm||null})
       const body=modal.querySelector('[data-asr-detail-body]')
       if(body&&modal.isConnected)body.innerHTML=renderGroupStudentRows(students??[])
     } catch(error) {
       const body=modal.querySelector('[data-asr-detail-body]')
-      if(body&&modal.isConnected)body.innerHTML='<tr><td colspan="5" class="p-10 text-center text-red-600">โหลดรายชื่อไม่สำเร็จ กรุณาปิดแล้วลองเปิดใหม่</td></tr>'
+      if(body&&modal.isConnected)body.innerHTML='<tr><td colspan="8" class="p-10 text-center text-red-600">โหลดรายชื่อไม่สำเร็จ กรุณาปิดแล้วลองเปิดใหม่</td></tr>'
       showToast(getFriendlyErrorMessage(error),'error')
     }
+  })
+  root.querySelector('#asr-dashboard-content')?.addEventListener('change',event=>{
+    const filter=event.target.closest('[data-asr-filter]')
+    if(!filter)return
+    reportFilters[filter.dataset.asrFilter]=filter.value
+    fetchDashboard()
   })
   const showTab=tab=>{
     root.querySelector('#asr-dashboard-panel')?.classList.toggle('hidden',tab!=='dashboard')
@@ -437,12 +558,14 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
   openTab(scanner?'scanner':canDashboard?'dashboard':'manager')
   const fetchDashboard=async()=>{
     if(!canDashboard)return
-    try{dashboard=await call('asr_prayer_dashboard',{p_check_date:selectedDate});drawDashboard()}
+    const requestId=++dashboardRequestId
+    try{const nextDashboard=await call('asr_prayer_dashboard_period',{p_period_key:dashboardMode,p_anchor_date:selectedDate,p_room:reportFilters.room||null,p_color:reportFilters.color||null,p_dorm:reportFilters.dorm||null});if(requestId!==dashboardRequestId)return;dashboard=nextDashboard;drawDashboard()}
     catch(error){showToast(getFriendlyErrorMessage(error),'error')}
   }
+  root.querySelectorAll('[data-asr-period]').forEach(button=>button.addEventListener('click',async()=>{dashboardMode=button.dataset.asrPeriod;await fetchDashboard()}))
   root.querySelector('#asr-dashboard-date')?.addEventListener('change',async event=>{selectedDate=event.target.value||bangkokDate();await fetchDashboard()})
   root.querySelector('#asr-dashboard-refresh')?.addEventListener('click',fetchDashboard)
-  if(canDashboard)timer=setInterval(()=>{if(document.visibilityState==='visible')fetchDashboard()},15000)
+  if(canDashboard)timer=setInterval(()=>{if(dashboardMode==='day'&&document.visibilityState==='visible')fetchDashboard()},30000)
 
   const feedback=root.querySelector('#asr-scan-feedback')
   const showFeedback=(result,error)=>{
