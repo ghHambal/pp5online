@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1124'
+import { APP_VERSION } from './version.js?v=10.22.1126'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1126': [
+    'แก้ปุ่มเปิดกล้องในหน้าติดตามอัซรีให้โหลดตัวอ่าน QR เมื่อเริ่มสแกน และมี CDN สำรอง',
+    'ปรับตารางเวรผู้สแกนให้วนซ้ำทุกสัปดาห์ตามวันอาทิตย์–พฤหัสบดี และแยกแถบนักเรียนที่ควรติดตามพร้อมตัวกรองออกจากภาพรวม',
+  ],
   '10.22.1124': [
     'เพิ่มการกำหนดวันเริ่ม–สิ้นสุดระบบอัซรี และตารางเวรสแกนรายสีที่หัวหน้าสตาฟจัดการเฉพาะสีของตน โดยแอดมินดูและแก้ไขได้ทุกสี',
   ],
