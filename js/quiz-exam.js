@@ -4,7 +4,7 @@ import {
   rpcRecordViolation, rpcClaimSession, rpcHeartbeat, rpcGetMyRank,
   rpcSubmitQuizAnswer, rpcUseQuizBonus, getMyQuizAttemptHistory,
   rpcStartAttempt, rpcConfirmQuizFinal, getQuizFinalization,
-} from './quiz-api.js?v=10.22.1114'
+} from './quiz-api.js?v=10.22.1130'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
 import { showToast, showDangerConfirm, setButtonLoading, getFriendlyErrorMessage } from './ui.js'
@@ -367,8 +367,8 @@ function _renderQuestion() {
         <div class="quiz-choice-card flex items-center gap-3 p-3 rounded-xl border ${cls} ${disabled ? '' : 'cursor-pointer'}">
           <input type="radio" name="quiz-choice" class="quiz-choice-input flex-shrink-0" data-pos="${pos}" ${isSelected ? 'checked' : ''} ${disabled ? 'disabled' : ''} />
           <span class="flex-shrink-0 w-7 h-7 rounded-full bg-gray-100 text-gray-600 text-xs font-bold flex items-center justify-center" aria-hidden="true">${_htmlEsc(choiceLabels[pos] ?? String(pos + 1))}</span>
-          <span class="text-sm flex-1 ${isEliminated ? 'line-through text-gray-400' : ''}" dir="${rtl ? 'rtl' : 'auto'}">${_htmlEsc(c)}</span>
-          <button type="button" class="quiz-eliminate-btn text-[10px] font-bold px-2 py-1 rounded-lg border flex-shrink-0 ${isEliminated ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-500 hover:bg-gray-100'}" data-choice="${originalIdx}" aria-pressed="${isEliminated}">${isEliminated ? 'ยกเลิกตัด' : 'ตัดทิ้ง'}</button>
+          <span class="text-sm flex-1 ${isEliminated ? 'text-gray-400' : ''}" dir="${rtl ? 'rtl' : 'auto'}">${_htmlEsc(c)}</span>
+          <button type="button" class="quiz-eliminate-btn w-10 h-10 text-xl leading-none font-bold rounded-lg border flex-shrink-0 ${isEliminated ? 'border-amber-300 bg-amber-50 text-amber-700' : 'border-gray-200 text-gray-500 hover:bg-gray-100'}" data-choice="${originalIdx}" aria-label="${isEliminated ? 'ยกเลิกการตัดตัวเลือก' : 'ตัดตัวเลือก'} ${_htmlEsc(choiceLabels[pos] ?? String(pos + 1))}" aria-pressed="${isEliminated}"><span aria-hidden="true">✕</span></button>
         </div>`
       }).join('')}
     </div>
