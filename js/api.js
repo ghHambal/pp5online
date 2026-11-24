@@ -5737,7 +5737,7 @@ export async function getLessonPlanReflectionsForPlans(lessonPlanIds, weekNo = n
     .in('lesson_plan_id', ids)
     .order('week_no', { ascending: true })
     .order('class_id', { ascending: true })
-  if (Number.isInteger(Number(weekNo))) query = query.eq('week_no', Number(weekNo))
+  if (weekNo !== null && weekNo !== undefined && weekNo !== '' && Number.isInteger(Number(weekNo))) query = query.eq('week_no', Number(weekNo))
   const { data, error } = await query
   if (error) throw error
   return data ?? []
@@ -5786,4 +5786,9 @@ export async function upsertLessonPlanReflection(payload) {
     .single()
   if (error) throw error
   return data
+}
+
+export async function deleteLessonPlanReflection(id) {
+  const { error } = await supabase.from('lesson_plan_reflections').delete().eq('id', id)
+  if (error) throw error
 }

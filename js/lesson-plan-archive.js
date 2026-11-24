@@ -1,10 +1,12 @@
 import {
   getLessonPlanReflectionsForPlans,
+  deleteLessonPlanReflection,
   getLessonPlanArchives,
   getLessonPlanDriveSettings,
   getLessonPlans,
   upsertLessonPlanDriveSettings,
   upsertLessonPlanReflection,
+  updateLessonPlan,
 } from './api.js'
 import { getLessonPlanAssetUrl } from './storage.js'
 import { supabase } from './supabase.js'
@@ -63,6 +65,60 @@ export function plansForRoomWeek(plans, classId, weekNo) {
     .sort((a, b) => Number(a.session_in_week ?? a.source_json?.session_in_week ?? 1) - Number(b.session_in_week ?? b.source_json?.session_in_week ?? 1) || Number(a.session_number ?? 0) - Number(b.session_number ?? 0))
 }
 
+const scheduleOverride = (plan, classId, baseWeek) => plan?.source_json?.class_schedule_overrides?.[String(classId)]?.[String(baseWeek)] ?? null
+const lessonSlot = (plan, classId, baseWeek) => {
+  const override = scheduleOverride(plan, classId, baseWeek)
+  return { week: Number(override?.week ?? baseWeek), session: Number(override?.session ?? plan.session_in_week ?? plan.source_json?.session_in_week ?? 1) }
+}
+function roomOccurrences(plans, classId) {
+  const weeks = [...new Set((plans ?? []).flatMap(plan => {
+    const start = Number(plan.week_start), end = Number(plan.week_end ?? start)
+    return Number.isInteger(start) ? Array.from({ length: Math.max(1, end - start + 1) }, (_, index) => start + index) : []
+  }))].sort((a, b) => a - b)
+  const occurrences = weeks.flatMap(baseWeek => plansForRoomWeek(plans, classId, baseWeek).map(plan => ({ plan, baseWeek, declaredSession: Number(plan.session_in_week ?? plan.source_json?.session_in_week ?? 1) })))
+  const byBaseWeek = new Map()
+  for (const occurrence of occurrences) {
+    if (!byBaseWeek.has(occurrence.baseWeek)) byBaseWeek.set(occurrence.baseWeek, [])
+    byBaseWeek.get(occurrence.baseWeek).push(occurrence)
+  }
+  for (const group of byBaseWeek.values()) {
+    group.sort((a, b) => a.declaredSession - b.declaredSession || Number(a.plan.session_number ?? 0) - Number(b.plan.session_number ?? 0) || Number(a.plan.id) - Number(b.plan.id))
+    const used = new Set()
+    for (const occurrence of group) {
+      let session = occurrence.declaredSession
+      while (used.has(session)) session++
+      used.add(session)
+      occurrence.baseSession = session
+      const override = scheduleOverride(occurrence.plan, classId, occurrence.baseWeek)
+      occurrence.slot = { week: Number(override?.week ?? occurrence.baseWeek), session: Number(override?.session ?? session) }
+    }
+  }
+  occurrences.sort((a, b) => a.slot.week - b.slot.week || a.slot.session - b.slot.session || Number(a.plan.session_number ?? 0) - Number(b.plan.session_number ?? 0) || Number(a.plan.id) - Number(b.plan.id))
+  const usedByWeek = new Map()
+  for (const occurrence of occurrences) {
+    if (!usedByWeek.has(occurrence.slot.week)) usedByWeek.set(occurrence.slot.week, new Set())
+    const used = usedByWeek.get(occurrence.slot.week)
+    while (used.has(occurrence.slot.session)) occurrence.slot.session++
+    used.add(occurrence.slot.session)
+  }
+  return occurrences
+}
+const activePostponements = (plans, classId) => (plans ?? []).flatMap(plan => (plan.source_json?.class_postponements?.[String(classId)] ?? []).map(event => ({ plan, event })))
+function scheduleWeeks(plans, classes) {
+  const weeks = new Set()
+  for (const plan of plans ?? []) {
+    const start = Number(plan.week_start), end = Number(plan.week_end ?? start)
+    for (let week = start; Number.isInteger(start) && week <= end; week++) weeks.add(week)
+  }
+  for (const cls of classes ?? []) {
+    for (const occurrence of roomOccurrences(plans, cls.id)) weeks.add(occurrence.slot.week)
+    for (const { event } of activePostponements(plans, cls.id)) weeks.add(Number(event.source_week))
+  }
+  return [...weeks].filter(Number.isInteger).sort((a, b) => a - b)
+}
+const reflectionHasTeachingData = reflection => Boolean(text(reflection?.reflection_text).trim() || text(reflection?.issues_solutions).trim() || text(reflection?.suggestions).trim() || reflection?.teacher_name || reflection?.teacher_signature_path || reflection?.signature_data_url || reflection?.dept_head_name || reflection?.dept_head_signature_path || reflection?.class_head_name || reflection?.class_head_signature_path)
+const sameSlot = (left, right) => Number(left?.week) === Number(right?.week) && Number(left?.session) === Number(right?.session)
+
 export function archiveReadiness(plan, reflection, weekNo = null, classId = null) {
   const missing = []
   const bypassPostLesson = classId != null && weekNo != null && postLessonBypassEnabled(plan, classId, weekNo)
@@ -82,10 +138,10 @@ function scheduleDaysForClass(classId, schedule, links) {
   return [...new Set((schedule ?? []).filter(row => ids.has(Number(row.id))).map(row => Number(row.day_of_week)).map(day => day === 0 ? 7 : day).filter(day => day >= 1 && day <= 7 && day !== 6))]
 }
 
-function suggestedDate(plan, weekNo, semesterStart, semesterEnd, days, used = new Set()) {
+function suggestedDate(plan, weekNo, semesterStart, semesterEnd, days, used = new Set(), sessionOverride = null) {
   const dates = weekDates(weekNo, semesterStart, semesterEnd, days)
   if (!dates.length) return ''
-  const session = Math.max(1, Number(plan.session_in_week ?? plan.source_json?.session_in_week ?? 1))
+  const session = Math.max(1, Number(sessionOverride ?? plan.session_in_week ?? plan.source_json?.session_in_week ?? 1))
   return dates.find(date => !used.has(date)) ?? dates[Math.min(session - 1, dates.length - 1)]
 }
 
@@ -203,9 +259,25 @@ function showArchiveConfirm(file, weekNo) {
 }
 
 export async function openLessonPlanArchiveCenter({ subject, teacher, classes = [], plans = [], semesterStart, semesterEnd, termSchedule = [], scheduleLinks = [], academicYear, semester }) {
+  const confirmPostpone = ({ plan, before, after, count, affectedPlans = [], undo = false }) => new Promise(resolve => {
+    document.getElementById('lesson-plan-postpone-confirm')?.remove()
+    const dialog = document.createElement('div')
+    dialog.id = 'lesson-plan-postpone-confirm'
+    dialog.className = 'fixed inset-0 z-[100001] flex items-center justify-center p-4'
+    const title = undo ? 'คืนลำดับแผน' : 'ยืนยันเลื่อนแผนการสอน'
+    const planName = esc(plan.title || `ครั้งที่ ${plan.session_number || ''}`)
+    const detail = undo ? `คืนแผน ${planName} และรายการที่ขยับตาม ${count} รายการ` : `เลื่อน ${planName} จากสัปดาห์ ${before.week} คาบที่ ${before.session} ไปสัปดาห์ ${after.week} คาบที่ ${after.session} และขยับแผนถัดไป ${Math.max(0, count - 1)} รายการ เฉพาะห้องนี้`
+    const affectedHtml = affectedPlans.length ? `<div class="mt-3 max-h-40 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-3 text-left text-xs"><p class="mb-2 font-bold text-gray-700">รายการที่จะขยับ</p><ol class="list-decimal space-y-1 pl-5">${affectedPlans.map(item => `<li>${esc(item.plan.title || `ครั้งที่ ${item.plan.session_number || ''}`)} · สัปดาห์ ${item.before.week} คาบ ${item.before.session} → สัปดาห์ ${item.after.week} คาบ ${item.after.session}</li>`).join('')}</ol></div>` : ''
+    dialog.innerHTML = `<div data-overlay class="absolute inset-0 bg-black/55"></div><div role="dialog" aria-modal="true" class="relative w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl"><p class="text-2xl">${undo ? '↩️' : '⏭️'}</p><h3 class="mt-2 text-lg font-extrabold">${title}</h3><p class="mt-2 text-sm leading-relaxed text-gray-600">${detail}</p>${affectedHtml}<p class="mt-3 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">ระบบจะเลื่อนเฉพาะห้องนี้ และจะหยุดหากพบผลหลังสอนหรือลายเซ็นที่บันทึกไว้ในรายการที่จะขยับ</p><div class="mt-5 grid grid-cols-2 gap-3"><button data-cancel class="rounded-xl border py-3 text-sm">ยกเลิก</button><button data-confirm class="rounded-xl ${undo ? 'bg-indigo-600' : 'bg-amber-600'} py-3 text-sm font-bold text-white">${undo ? 'คืนลำดับ' : 'เลื่อนแผน'}</button></div></div>`
+    document.body.appendChild(dialog)
+    const finish = value => { dialog.remove(); resolve(value) }
+    dialog.querySelector('[data-overlay]').addEventListener('click', () => finish(false))
+    dialog.querySelector('[data-cancel]').addEventListener('click', () => finish(false))
+    dialog.querySelector('[data-confirm]').addEventListener('click', () => finish(true))
+  })
   document.getElementById('lesson-plan-archive-modal')?.remove()
   plans = await getLessonPlans(subject.id).catch(() => plans)
-  const weeks = [...new Set(plans.flatMap(plan => { const start = Number(plan.week_start); const end = Number(plan.week_end ?? start); return Number.isInteger(start) ? Array.from({ length: Math.max(1, end - start + 1) }, (_, i) => start + i) : [] }))].sort((a, b) => a - b)
+  let weeks = scheduleWeeks(plans, classes)
   if (!weeks.length) { showToast('ยังไม่มีแผนการสอนสำหรับจัดเก็บ', 'warning'); return }
   let driveSettings = await getLessonPlanDriveSettings(teacher?.id, academicYear, semester).catch(() => null)
   const modal = document.createElement('div'); modal.id = 'lesson-plan-archive-modal'; modal.className = 'fixed inset-0 z-[130] bg-black/60 flex items-center justify-center p-3'
@@ -214,6 +286,81 @@ export async function openLessonPlanArchiveCenter({ subject, teacher, classes = 
   modal.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-6xl max-h-[94vh] overflow-hidden flex flex-col"><header class="flex items-start justify-between gap-3 p-5 border-b"><div><h2 class="text-lg font-extrabold text-gray-900">📦 ศูนย์จัดการ/จัดเก็บแผนรายสัปดาห์ระดับคอร์ส</h2><p class="text-xs text-gray-500 mt-1">รวมแผนของทุกห้องในคอร์สเดียวกัน แล้วส่งเป็น PDF เดียวต่อสัปดาห์เข้าโฟลเดอร์ Drive ส่วนตัวของคุณ</p></div><button data-archive-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button></header><section class="p-4 border-b bg-amber-50"><div class="flex flex-wrap items-end gap-3"><label class="text-xs font-bold text-gray-700 flex-1 min-w-[280px]">โฟลเดอร์หลัก Drive ส่วนตัว (Folder ID)<input data-archive-root-id type="text" value="${esc(settings.root_folder_id || '')}" placeholder="วาง Folder ID ของโฟลเดอร์ส่วนตัว" class="mt-1 block w-full min-h-[42px] rounded-xl border bg-white px-3 font-mono text-xs" /></label><label class="text-xs font-bold text-gray-700">กลุ่มสาระ (ถ้าต้องการตรวจสอบ)<input data-archive-dept type="text" value="${esc(settings.dept_code || '')}" placeholder="เช่น MATH" class="mt-1 block min-h-[42px] w-32 rounded-xl border bg-white px-3" /></label><label class="text-xs font-bold text-gray-700">สร้างโฟลเดอร์<select data-archive-create class="mt-1 block min-h-[42px] rounded-xl border bg-white px-3"><option value="true" ${settings.create_folders !== false ? 'selected' : ''}>อัตโนมัติ</option><option value="false" ${settings.create_folders === false ? 'selected' : ''}>ไม่สร้าง</option></select></label><label class="text-xs font-bold text-gray-700">ไฟล์ชื่อเดิม<select data-archive-replace class="mt-1 block min-h-[42px] rounded-xl border bg-white px-3"><option value="replace" ${settings.replace_mode !== 'version' ? 'selected' : ''}>แทนที่</option><option value="version" ${settings.replace_mode === 'version' ? 'selected' : ''}>เก็บเวอร์ชัน</option></select></label><button data-archive-save-settings class="min-h-[42px] rounded-xl bg-amber-600 px-4 text-xs font-bold text-white">บันทึกการตั้งค่าส่วนตัว</button></div><p data-archive-settings-status class="mt-2 text-xs text-amber-800">ตั้งค่านี้ใช้เฉพาะบัญชีของคุณและภาคเรียนนี้ ไม่กระทบครูคนอื่น</p></section><section class="border-b bg-indigo-50/70 px-4 py-3"><p class="text-xs font-extrabold text-indigo-900">ห้องที่อยู่ในคอร์สเดียวกัน (${classes.length} ห้อง)</p><div class="mt-2 flex flex-wrap gap-2">${roomSummary}</div></section><div class="p-4 border-b bg-violet-50 flex flex-wrap items-end gap-3"><label class="text-xs font-bold text-gray-600">สัปดาห์<select data-archive-week class="mt-1 block min-h-[42px] rounded-xl border bg-white px-3">${weeks.map(week => `<option value="${week}">สัปดาห์ที่ ${week}</option>`).join('')}</select></label><button data-archive-suggest class="min-h-[42px] rounded-xl border border-violet-200 bg-white px-4 text-xs font-bold text-violet-700">↻ เติมวันที่จากตารางสอน</button><button data-archive-refresh class="min-h-[42px] rounded-xl border bg-white px-4 text-xs font-bold">ตรวจสอบความพร้อม</button><span data-archive-status class="text-xs text-gray-500"></span></div><div data-archive-body class="flex-1 overflow-y-auto p-4"></div><footer class="p-4 border-t flex flex-wrap justify-end gap-2"><button data-archive-download disabled class="min-h-[44px] rounded-xl border border-violet-200 bg-white px-4 text-xs font-bold text-violet-700 disabled:opacity-40">⬇️ ดาวน์โหลด PDF เดียว</button><button data-archive-drive disabled class="min-h-[44px] rounded-xl bg-emerald-600 px-5 text-xs font-bold text-white disabled:opacity-40">☁️ บันทึก PDF รวมเข้า Drive ส่วนตัว</button></footer></div>`
   document.body.appendChild(modal)
   let selectedWeek = weeks[0], current = null, archives = []
+  const applyScheduleChanges = async (classId, changes, event, undo = false) => {
+    const plansById = new Map(plans.map(plan => [Number(plan.id), plan]))
+    const snapshots = new Map()
+    const updates = new Map()
+    for (const change of changes) {
+      const plan = plansById.get(Number(change.plan_id))
+      if (!plan) throw new Error('ไม่พบแผนบางรายการ กรุณาตรวจสอบแผนใหม่')
+      if (!updates.has(Number(plan.id))) { snapshots.set(Number(plan.id), structuredClone(plan.source_json ?? {})); updates.set(Number(plan.id), structuredClone(plan.source_json ?? {})) }
+      const nextSource = updates.get(Number(plan.id))
+      const overridesByClass = { ...(nextSource.class_schedule_overrides ?? {}) }
+      const roomOverrides = { ...(overridesByClass[String(classId)] ?? {}) }
+      const desiredSlot = undo ? change.before : change.after
+      if (sameSlot(desiredSlot, { week: change.base_week, session: change.base_session })) delete roomOverrides[String(change.base_week)]
+      else roomOverrides[String(change.base_week)] = { week: Number(desiredSlot.week), session: Number(desiredSlot.session) }
+      if (Object.keys(roomOverrides).length) overridesByClass[String(classId)] = roomOverrides
+      else delete overridesByClass[String(classId)]
+      if (Object.keys(overridesByClass).length) nextSource.class_schedule_overrides = overridesByClass
+      else delete nextSource.class_schedule_overrides
+    }
+    const targetSource = updates.get(Number(event.target_plan_id))
+    if (!targetSource) throw new Error('ไม่พบแผนที่เริ่มการเลื่อน')
+    const postponements = { ...(targetSource.class_postponements ?? {}) }
+    const events = [...(postponements[String(classId)] ?? [])]
+    if (undo) {
+      const remaining = events.filter(item => item.id !== event.id)
+      if (remaining.length) postponements[String(classId)] = remaining
+      else delete postponements[String(classId)]
+    } else postponements[String(classId)] = [...events, event]
+    if (Object.keys(postponements).length) targetSource.class_postponements = postponements
+    else delete targetSource.class_postponements
+    const changedIds = [...new Set(changes.map(change => Number(change.plan_id)))]
+    const reflections = await getLessonPlanReflectionsForPlans(changedIds)
+    const roomReflections = reflections.filter(item => Number(item.class_id) === Number(classId))
+    const moves = []
+    const movingIds = new Set()
+    for (const change of changes) {
+      const oldWeek = Number(undo ? change.after.week : change.before.week)
+      const newWeek = Number(undo ? change.before.week : change.after.week)
+      const changePlan = plansById.get(Number(change.plan_id))
+      if (!undo && postLessonBypassEnabled(changePlan, classId, oldWeek)) throw new Error('รายการนี้บันทึกโดยข้ามหลังสอนไว้แล้ว กรุณาตรวจสอบก่อนเลื่อน')
+      const reflection = roomReflections.find(item => Number(item.lesson_plan_id) === Number(change.plan_id) && Number(item.week_no) === oldWeek)
+      if (reflection && reflectionHasTeachingData(reflection)) throw new Error('พบผลหลังสอนหรือลายเซ็นที่บันทึกแล้วในแผนที่จะขยับ กรุณาตรวจสอบรายการก่อนเลื่อน')
+      if (reflection?.lesson_date) { movingIds.add(Number(reflection.id)); moves.push({ reflection, newWeek }) }
+    }
+    for (const move of moves) {
+      const occupied = roomReflections.find(item => Number(item.lesson_plan_id) === Number(move.reflection.lesson_plan_id) && Number(item.week_no) === move.newWeek && !movingIds.has(Number(item.id)))
+      if (occupied) throw new Error('แผนปลายทางมีบันทึกอยู่แล้ว จึงยังเลื่อนไม่ได้')
+    }
+    const movedRows = []
+    const writtenPlans = []
+    try {
+      for (const move of moves) await deleteLessonPlanReflection(move.reflection.id)
+      for (const move of moves) {
+        const { id, created_at, updated_at, ...payload } = move.reflection
+        const created = await upsertLessonPlanReflection({ ...payload, week_no: move.newWeek, lesson_date: null })
+        movedRows.push(created)
+      }
+      for (const [id, sourceJson] of updates) {
+        await updateLessonPlan(id, { source_json: sourceJson })
+        writtenPlans.push(id)
+        plansById.get(id).source_json = sourceJson
+      }
+    } catch (error) {
+      for (const row of movedRows) if (row?.id) await deleteLessonPlanReflection(row.id).catch(() => {})
+      for (const move of moves) {
+        const { id, created_at, updated_at, ...payload } = move.reflection
+        await upsertLessonPlanReflection(payload).catch(() => {})
+      }
+      for (const id of writtenPlans.reverse()) {
+        await updateLessonPlan(id, { source_json: snapshots.get(id) }).catch(() => {})
+        plansById.get(id).source_json = snapshots.get(id)
+      }
+      throw error
+    }
+  }
   const close = () => modal.remove()
   modal.querySelector('[data-archive-close]').addEventListener('click', close)
   modal.addEventListener('click', event => { if (event.target === modal) close() })
@@ -222,24 +369,75 @@ export async function openLessonPlanArchiveCenter({ subject, teacher, classes = 
     status.textContent = `กำลังโหลดแผนและบันทึกของสัปดาห์ที่ ${selectedWeek}…`
     modal.querySelector('[data-archive-body]').innerHTML = '<div class="p-10 text-center text-sm text-gray-500">กำลังโหลดข้อมูลของสัปดาห์ที่เลือก…</div>'
     plans = await getLessonPlans(subject.id).catch(() => plans)
-    const allForWeek = plans.filter(plan => Number(plan.week_start) <= selectedWeek && Number(plan.week_end ?? plan.week_start) >= selectedWeek)
-    const reflections = await getLessonPlanReflectionsForPlans(allForWeek.map(plan => plan.id), selectedWeek).catch(() => [])
-    const reflectionMap = new Map(reflections.map(item => [`${item.lesson_plan_id}:${item.class_id}:${selectedWeek}`, item]))
+    weeks = scheduleWeeks(plans, classes)
+    if (!weeks.includes(selectedWeek)) selectedWeek = weeks[0] ?? 1
+    const weekSelect = modal.querySelector('[data-archive-week]')
+    weekSelect.innerHTML = weeks.map(week => `<option value="${week}" ${week === selectedWeek ? 'selected' : ''}>สัปดาห์ที่ ${week}</option>`).join('')
+    const reflections = await getLessonPlanReflectionsForPlans(plans.map(plan => plan.id)).catch(() => [])
+    const reflectionMap = new Map(reflections.map(item => [`${item.lesson_plan_id}:${item.class_id}:${item.week_no}`, item]))
     const rows = [...classes].sort(sortRooms).map(cls => {
-      const roomPlans = plansForRoomWeek(plans, cls.id, selectedWeek); const days = scheduleDaysForClass(cls.id, termSchedule, scheduleLinks); const used = new Set()
-      const items = roomPlans.map(plan => { const reflection = reflectionMap.get(`${plan.id}:${cls.id}:${selectedWeek}`) ?? null; const date = iso(reflection?.lesson_date) || suggestedDate(plan, selectedWeek, semesterStart, semesterEnd, days, used); if (date) used.add(date); return { plan, reflection, date, readiness: archiveReadiness(plan, reflection, selectedWeek, cls.id) } })
-      return { cls, plans: roomPlans, items, days }
+      const occurrences = roomOccurrences(plans, cls.id).filter(item => item.slot.week === selectedWeek)
+      const days = scheduleDaysForClass(cls.id, termSchedule, scheduleLinks); const used = new Set()
+      const items = occurrences.map(({ plan, baseWeek, slot }) => { const reflection = reflectionMap.get(`${plan.id}:${cls.id}:${selectedWeek}`) ?? null; const date = iso(reflection?.lesson_date) || suggestedDate(plan, selectedWeek, semesterStart, semesterEnd, days, used, slot.session); if (date) used.add(date); return { plan, baseWeek, slot, reflection, date, readiness: archiveReadiness(plan, reflection, selectedWeek, cls.id) } })
+      return { cls, plans: items.map(item => item.plan), items, days, occurrences }
     }).filter(row => row.items.length)
+    const postponed = [...classes].flatMap(cls => activePostponements(plans, cls.id).filter(({ event }) => Number(event.source_week) === selectedWeek).map(({ plan, event }) => ({ cls, plan, event, currentSlot: lessonSlot(plan, cls.id, Number(event.target_base_week)) })))
     current = { rows, items: rows.flatMap(row => row.items), roomCount: rows.length, planCount: rows.reduce((n, row) => n + row.items.length, 0) }
+    current.postponed = postponed
     const missing = current.items.filter(item => !item.readiness.ready)
     const skipped = current.items.filter(item => item.readiness.skippedPostLesson).length
     const settingsMissing = !driveSettings?.enabled || !String(driveSettings.root_folder_id || '').trim()
     const skippedStatus = skipped ? ` · ข้ามบันทึกหลังสอน/ลายเซ็น ${skipped} แผนตามที่เลือก` : ''
-    status.textContent = missing.length ? `สัปดาห์ที่ ${selectedWeek} · ${current.planCount} แผน ${current.roomCount} ห้อง · ยังไม่พร้อม ${missing.length} รายการ${skippedStatus}` : settingsMissing ? `สัปดาห์ที่ ${selectedWeek} · พร้อมดาวน์โหลด ${current.planCount} แผน · กรุณาบันทึกโฟลเดอร์ Drive ส่วนตัวก่อนส่ง${skippedStatus}` : `สัปดาห์ที่ ${selectedWeek} · พร้อมส่ง ${current.planCount} แผน ${current.roomCount} ห้อง${skippedStatus}`
+    const postponedStatus = current.postponed.length ? ` · เลื่อนออกไป ${current.postponed.length} แผน` : ''
+    status.textContent = missing.length ? `สัปดาห์ที่ ${selectedWeek} · ${current.planCount} แผน ${current.roomCount} ห้อง · ยังไม่พร้อม ${missing.length} รายการ${skippedStatus}${postponedStatus}` : settingsMissing ? `สัปดาห์ที่ ${selectedWeek} · พร้อมดาวน์โหลด ${current.planCount} แผน · กรุณาบันทึกโฟลเดอร์ Drive ส่วนตัวก่อนส่ง${skippedStatus}${postponedStatus}` : `สัปดาห์ที่ ${selectedWeek} · พร้อมส่ง ${current.planCount} แผน ${current.roomCount} ห้อง${skippedStatus}${postponedStatus}`
     modal.querySelector('[data-archive-settings-status]').textContent = settingsMissing ? 'ยังไม่ได้บันทึกโฟลเดอร์ส่วนตัวสำหรับภาคเรียนนี้' : `เชื่อมกับโฟลเดอร์ส่วนตัวแล้ว · ภาคเรียนที่ ${semester} ปีการศึกษา ${academicYear}`
     modal.querySelector('[data-archive-download]').disabled = !current.planCount || missing.length > 0
     modal.querySelector('[data-archive-drive]').disabled = !current.planCount || missing.length > 0 || settingsMissing
-    modal.querySelector('[data-archive-body]').innerHTML = rows.length ? `<div class="overflow-auto rounded-2xl border"><table class="w-full min-w-[860px] text-sm"><thead class="bg-gray-50 text-xs"><tr><th class="p-3 text-left">ห้อง</th><th class="p-3 text-left">แผน/ครั้งที่</th><th class="p-3 text-left">วันที่สอน</th><th class="p-3 text-left">สถานะ</th><th class="p-3 text-left">เปิดแผน</th></tr></thead><tbody>${rows.flatMap(row => row.items.map(item => `<tr class="border-t"><td class="p-3 font-bold">${esc(roomName(row.cls))}</td><td class="p-3">${esc(item.plan.title || `ครั้งที่ ${item.plan.session_number || ''}`)}</td><td class="p-3"><input data-archive-date data-plan-id="${item.plan.id}" data-class-id="${row.cls.id}" type="date" value="${esc(item.date)}" class="rounded-lg border px-2 py-1.5" /></td><td class="p-3 ${item.readiness.ready ? 'text-emerald-700' : 'text-amber-700'}">${item.readiness.skippedPostLesson ? 'พร้อม (ข้าม 4 ส่วน)' : item.readiness.ready ? 'พร้อม' : `ขาด ${esc(item.readiness.missing.join(', '))}`}</td><td class="p-3"><button type="button" data-archive-open-plan data-plan-id="${item.plan.id}" data-class-id="${row.cls.id}" class="whitespace-nowrap rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50">📝 เปิดแผน</button></td></tr>`)).join('')}</tbody></table></div>` : '<div class="p-10 text-center text-sm text-gray-400">ไม่พบแผนของสัปดาห์นี้สำหรับห้องที่ผูกไว้</div>'
+    modal.querySelector('[data-archive-body]').innerHTML = rows.length ? `<div class="overflow-auto rounded-2xl border"><table class="w-full min-w-[860px] text-sm"><thead class="bg-gray-50 text-xs"><tr><th class="p-3 text-left">ห้อง</th><th class="p-3 text-left">แผน/ครั้งที่</th><th class="p-3 text-left">วันที่สอน</th><th class="p-3 text-left">สถานะ</th><th class="p-3 text-left">เปิดแผน</th></tr></thead><tbody>${rows.flatMap(row => row.items.map(item => `<tr class="border-t"><td class="p-3 font-bold">${esc(roomName(row.cls))}</td><td class="p-3"><div>${esc(item.plan.title || `ครั้งที่ ${item.plan.session_number || ''}`)}</div><div class="mt-1 text-[11px] text-gray-500">คาบ ${item.slot.session}</div></td><td class="p-3"><input data-archive-date data-plan-id="${item.plan.id}" data-class-id="${row.cls.id}" type="date" value="${esc(item.date)}" class="rounded-lg border px-2 py-1.5" /></td><td class="p-3 ${item.readiness.ready ? 'text-emerald-700' : 'text-amber-700'}">${item.readiness.skippedPostLesson ? 'พร้อม (ข้าม 4 ส่วน)' : item.readiness.ready ? 'พร้อม' : `ขาด ${esc(item.readiness.missing.join(', '))}`}</td><td class="p-3"><button type="button" data-archive-open-plan data-plan-id="${item.plan.id}" data-class-id="${row.cls.id}" class="whitespace-nowrap rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700 hover:bg-indigo-50">📝 เปิดแผน</button></td></tr>`)).join('')}</tbody></table></div>` : '<div class="p-10 text-center text-sm text-gray-400">ไม่พบแผนของสัปดาห์นี้สำหรับห้องที่ผูกไว้</div>'
+    if (rows.length) {
+      const table = modal.querySelector('[data-archive-body] table')
+      const header = document.createElement('th'); header.className = 'p-3 text-left'; header.textContent = 'จัดการคาบ'; table?.querySelector('thead tr')?.append(header)
+      let rowIndex = 0
+      for (const row of rows) for (const item of row.items) {
+        const tableRow = table?.querySelectorAll('tbody tr')[rowIndex++]
+        if (!tableRow) continue
+        const cell = document.createElement('td'); cell.className = 'p-3'
+        cell.innerHTML = `<button type="button" data-postpone-plan data-plan-id="${item.plan.id}" data-class-id="${row.cls.id}" data-base-week="${item.baseWeek}" class="whitespace-nowrap rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800">⏭️ เลื่อนไปครั้งถัดไป</button>`
+        tableRow.append(cell)
+      }
+    }
+    const postponedHtml = current.postponed.map(({ cls, plan, event, currentSlot }) => `<div class="flex flex-wrap items-center justify-between gap-3 border-b border-amber-100 p-3 last:border-0"><div><p class="font-bold">🏫 ${esc(roomName(cls))} · ${esc(plan.title || `ครั้งที่ ${plan.session_number || ''}`)}</p><p class="mt-1 text-xs text-amber-800">ยังไม่ได้สอน · เลื่อนไปสัปดาห์ ${currentSlot.week} คาบที่ ${currentSlot.session}</p></div><button type="button" data-undo-postponement data-plan-id="${plan.id}" data-class-id="${cls.id}" data-event-id="${esc(event.id)}" class="rounded-lg border border-indigo-200 bg-white px-3 py-2 text-xs font-bold text-indigo-700">↩️ คืนลำดับแผน</button></div>`).join('')
+    if (postponedHtml) modal.querySelector('[data-archive-body]').insertAdjacentHTML('afterbegin', `<section class="mb-3 rounded-2xl border border-amber-200 bg-amber-50"><div class="border-b border-amber-100 px-3 py-2 text-xs font-extrabold text-amber-900">แผนที่เลื่อนจากสัปดาห์นี้</div>${postponedHtml}</section>`)
+    modal.querySelectorAll('[data-postpone-plan]').forEach(button => button.addEventListener('click', async () => {
+      const classId = Number(button.dataset.classId), planId = Number(button.dataset.planId), baseWeek = Number(button.dataset.baseWeek)
+      const occurrences = roomOccurrences(plans, classId)
+      const index = occurrences.findIndex(item => Number(item.plan.id) === planId && item.baseWeek === baseWeek && item.slot.week === selectedWeek)
+      if (index < 0) { showToast('ไม่พบคาบนี้ในลำดับปัจจุบัน กรุณาตรวจสอบแผนใหม่', 'warning'); return }
+      const target = occurrences[index]
+      const last = occurrences.at(-1)
+      const appended = { week: last.slot.week + 1, session: last.slot.session }
+      const changes = occurrences.slice(index).map((item, offset) => ({ plan_id: Number(item.plan.id), base_week: item.baseWeek, base_session: item.baseSession, before: item.slot, after: occurrences[index + offset + 1]?.slot ?? appended }))
+      const event = { id: globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`, target_plan_id: planId, target_base_week: baseWeek, source_week: selectedWeek, from_slot: target.slot, to_slot: changes[0].after, changes, created_at: new Date().toISOString() }
+      const affectedPlans = changes.map(change => ({ plan: plans.find(item => Number(item.id) === Number(change.plan_id)), before: change.before, after: change.after })).filter(item => item.plan)
+      if (!await confirmPostpone({ plan: target.plan, before: target.slot, after: changes[0].after, count: changes.length, affectedPlans })) return
+      button.disabled = true
+      try { await applyScheduleChanges(classId, changes, event); showToast('เลื่อนแผนและขยับลำดับครั้งถัดไปแล้ว', 'success'); await build() }
+      catch (error) { showToast(`เลื่อนแผนไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error') }
+      finally { button.disabled = false }
+    }))
+    modal.querySelectorAll('[data-undo-postponement]').forEach(button => button.addEventListener('click', async () => {
+      const classId = Number(button.dataset.classId), planId = Number(button.dataset.planId), eventId = button.dataset.eventId
+      const plan = plans.find(item => Number(item.id) === planId)
+      const event = (plan?.source_json?.class_postponements?.[String(classId)] ?? []).find(item => item.id === eventId)
+      if (!plan || !event) { showToast('ไม่พบรายการเลื่อนนี้แล้ว กรุณาตรวจสอบแผนใหม่', 'warning'); return }
+      const currentSlotsMatch = event.changes.every(change => { const changedPlan = plans.find(item => Number(item.id) === Number(change.plan_id)); return sameSlot(lessonSlot(changedPlan, classId, Number(change.base_week)), change.after) })
+      if (!currentSlotsMatch) { showToast('กรุณาคืนรายการเลื่อนล่าสุดก่อน แล้วจึงคืนรายการนี้ได้', 'warning'); return }
+      if (!await confirmPostpone({ plan, before: event.from_slot ?? event.changes[0]?.before, after: event.changes[0]?.before, count: event.changes.length, undo: true })) return
+      button.disabled = true
+      try { await applyScheduleChanges(classId, event.changes, event, true); showToast('คืนลำดับแผนแล้ว', 'success'); selectedWeek = Number(event.source_week); await build() }
+      catch (error) { showToast(`คืนลำดับไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`, 'error') }
+      finally { button.disabled = false }
+    }))
     modal.querySelectorAll('[data-archive-open-plan]').forEach(button => button.addEventListener('click', () => {
       const classId = Number(button.dataset.classId)
       const row = current.rows.find(item => Number(item.cls.id) === classId)

@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1131'
+import { APP_VERSION } from './version.js?v=10.22.1132'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,7 +1015,8 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
-  '10.22.1131': [
+  '10.22.1132': [
+    'เพิ่มการเลื่อนแผนที่ยังไม่ได้สอนตามคาบของห้อง พร้อมขยับแผนถัดไป แสดงแผนที่เลื่อนในคลัง และคืนลำดับได้',
     'เพิ่มตัวเลือกบันทึกแผนการสอนโดยข้ามผลหลังสอน แนวทางแก้ปัญหา และลายเซ็นครู/หัวหน้ากลุ่มสาระ พร้อมคงเงื่อนไขวันที่และลายเซ็นหัวหน้าห้องตามการตั้งค่า',
     'ปรับเครื่องหมายตัดตัวเลือกในหน้าทำข้อสอบให้แสดงกากบาท พร้อมคงชื่อการทำงานสำหรับโปรแกรมช่วยอ่านหน้าจอ',
   ],

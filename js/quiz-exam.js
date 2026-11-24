@@ -4,7 +4,7 @@ import {
   rpcRecordViolation, rpcClaimSession, rpcHeartbeat, rpcGetMyRank,
   rpcSubmitQuizAnswer, rpcUseQuizBonus, getMyQuizAttemptHistory,
   rpcStartAttempt, rpcConfirmQuizFinal, getQuizFinalization,
-} from './quiz-api.js?v=10.22.1131'
+} from './quiz-api.js?v=10.22.1132'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 import { loadConfetti, fireConfetti } from './confetti-loader.js'
 import { showToast, showDangerConfirm, setButtonLoading, getFriendlyErrorMessage } from './ui.js'

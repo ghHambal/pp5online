@@ -29,6 +29,7 @@ const asInt = (value, fallback = null) => Number.isFinite(Number(value)) ? Math.
 const isoDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value ?? '')) ? String(value) : null
 const postLessonBypassKey = (classId, weekNo) => `${Number(classId)}:${Number(weekNo)}`
 const postLessonBypassEnabled = (plan, classId, weekNo) => plan?.source_json?.post_lesson_bypass?.[postLessonBypassKey(classId, weekNo)]?.enabled === true
+const classScheduleSlot = (plan, classId, baseWeek) => plan?.source_json?.class_schedule_overrides?.[String(classId)]?.[String(baseWeek)] ?? null
 const thaiShortDate = value => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value ?? ''))
   return match ? `${match[3]}/${match[2]}/${String(Number(match[1]) + 543).slice(-2)}` : '........................'
@@ -1029,13 +1030,23 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
   const priorClassHeadReflection = [...courseReflections]
     .filter(item => Number(item.class_id) === Number(classId) && item.class_head_signature_path && Number(item.lesson_plan_id) !== Number(plan.id))
     .sort((a, b) => String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')) || Number(b.week_no || 0) - Number(a.week_no || 0))[0] ?? null
-  let weekNo = currentWeek >= plan.week_start && currentWeek <= plan.week_end ? currentWeek : plan.week_start
+  let weekNo = asInt(currentWeek, plan.week_start)
+  const planWeekOptions = Array.from({ length: Math.max(1, Number(plan.week_end ?? plan.week_start) - Number(plan.week_start) + 1) }, (_, index) => {
+    const baseWeek = Number(plan.week_start) + index
+    const slot = classScheduleSlot(plan, classId, baseWeek)
+    const baseSession = Number(plan.session_in_week ?? plan.source_json?.session_in_week ?? 1)
+    const session = Number(slot?.session ?? baseSession)
+    const week = Number(slot?.week ?? baseWeek)
+    return { baseWeek, baseSession, week, session, moved: week !== baseWeek || session !== baseSession, label: asInt(plan.session_number, 1) + index }
+  }).sort((a, b) => a.week - b.week || a.session - b.session)
   const m = document.createElement('div'); m.id='lp-document-modal'; m.className='fixed inset-0 z-[140] bg-black/60 flex items-center justify-center p-3'; document.body.appendChild(m)
 
   const render = async () => {
     const reflection = await getLessonPlanReflection(plan.id, classId, weekNo).catch(() => null)
     const bypassPostLesson = postLessonBypassEnabled(plan, classId, weekNo)
+    const movedOccurrence = planWeekOptions.find(item => item.week === weekNo && item.moved) ?? null
     const dateState = lessonDateState(plan, reflection, weekNo, semesterStart, semesterEnd, scheduledDays)
+    const allowOutsideSemester = Boolean(movedOccurrence && !dateState.availableDates.length)
     const dateHint = dateState.saved
       ? `วันที่ที่บันทึกไว้สำหรับครั้งนี้: ${thaiShortDate(dateState.saved)}`
       : dateState.suggested
@@ -1113,10 +1124,10 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
             : false,
     }))
     m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
-      <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-bold text-gray-800">📝 ${esc(plan.title)}</h3><p class="text-xs ${bypassPostLesson ? 'text-amber-700' : 'text-gray-400'}">${bypassPostLesson ? 'ครั้งนี้เลือกข้ามผลหลังสอนและลายเซ็นครู/หัวหน้ากลุ่มสาระไว้แล้ว' : 'บันทึกหลังสอนและลายเซ็นตามการตั้งค่าของแผน'}</p></div><button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button></div>
+      <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-bold text-gray-800">📝 ${esc(plan.title)}</h3><p class="text-xs ${bypassPostLesson ? 'text-amber-700' : 'text-gray-400'}">${bypassPostLesson ? 'ครั้งนี้เลือกข้ามผลหลังสอนและลายเซ็นครู/หัวหน้ากลุ่มสาระไว้แล้ว' : 'บันทึกหลังสอนและลายเซ็นตามการตั้งค่าของแผน'}</p>${movedOccurrence ? `<p class="mt-1 text-xs font-bold text-amber-700">⏭️ เลื่อนจากสัปดาห์ที่ ${movedOccurrence.baseWeek} คาบ ${movedOccurrence.baseSession} มาสัปดาห์ที่ ${weekNo} คาบ ${movedOccurrence.session}</p>` : ''}</div><button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button></div>
       <div class="flex flex-wrap items-end gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
-        <label class="text-xs font-bold text-gray-600">ครั้งที่<select id="lp-doc-week" class="mt-1 block min-h-[40px] border border-gray-200 rounded-xl px-3 bg-white text-sm">${Array.from({length:plan.week_end-plan.week_start+1},(_,i)=>({ week:plan.week_start+i, session:asInt(plan.session_number,1)+i })).map(item=>`<option value="${item.week}" ${item.week===weekNo?'selected':''}>${item.session}</option>`).join('')}</select></label>
-        <label class="text-xs font-bold text-gray-600">วันที่สอน<input id="lp-doc-date" type="date" value="${esc(dateState.value)}" ${isoDate(semesterStart) ? `min="${esc(semesterStart)}"` : ''} ${isoDate(semesterEnd) ? `max="${esc(semesterEnd)}"` : ''} class="mt-1 block min-h-[40px] rounded-xl border border-gray-200 bg-white px-3 text-sm"></label>
+        <label class="text-xs font-bold text-gray-600">ครั้งที่<select id="lp-doc-week" class="mt-1 block min-h-[40px] border border-gray-200 rounded-xl px-3 bg-white text-sm">${planWeekOptions.map(item=>`<option value="${item.week}" ${item.week===weekNo?'selected':''}>${item.label}${item.moved ? ` · สัปดาห์ ${item.week} คาบ ${item.session}` : ''}</option>`).join('')}</select></label>
+        <label class="text-xs font-bold text-gray-600">วันที่สอน<input id="lp-doc-date" type="date" value="${esc(dateState.value)}" ${isoDate(semesterStart) ? `min="${esc(semesterStart)}"` : ''} ${isoDate(semesterEnd) && !allowOutsideSemester ? `max="${esc(semesterEnd)}"` : ''} class="mt-1 block min-h-[40px] rounded-xl border border-gray-200 bg-white px-3 text-sm"></label>
         ${dateState.suggested ? `<button id="lp-doc-use-suggested-date" type="button" class="min-h-[40px] rounded-xl border border-indigo-200 bg-white px-3 text-[11px] font-bold text-indigo-700">↻ ใช้วันที่ตามตาราง</button>` : ''}
         <p id="lp-doc-date-hint" class="basis-full text-[11px] ${dateState.saved ? 'text-emerald-700' : dateState.suggested ? 'text-indigo-700' : 'text-amber-700'}">${esc(dateHint)}</p>
       </div>
