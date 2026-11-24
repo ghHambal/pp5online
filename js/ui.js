@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1127'
+import { APP_VERSION } from './version.js?v=10.22.1128'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1017,6 +1017,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 const CHANGELOGS = {
   '10.22.1127': [
     'ปรับกล้องสแกนอัซรีให้ใช้ตัวอ่าน QR และการตั้งค่ากล้องร่วมกับหน้าสแกนละหมาดเที่ยง พร้อมปรับกรอบภาพเป็นสี่เหลี่ยมเพื่อให้วิดีโอแสดงผลได้',
+  ],
+  '10.22.1128': [
+    'ปรับการสร้างและแก้ไขแบบทดสอบเป็นตัวช่วยเต็มจอ 5 ขั้น พร้อมตรวจทานห้องเรียน ช่องคะแนน และวิธีบันทึกคะแนนก่อนบันทึก',
   ],
   '10.22.1126': [
     'แก้ปุ่มเปิดกล้องในหน้าติดตามอัซรีให้โหลดตัวอ่าน QR เมื่อเริ่มสแกน และมี CDN สำรอง',
