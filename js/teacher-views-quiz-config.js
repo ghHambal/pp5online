@@ -1,8 +1,9 @@
 // js/teacher-views-quiz-config.js
+import '../css/quiz-config-wizard.css'
 import { getMyClasses, getScoreColumns, getSystemConfig } from './api.js'
 import { getQuizzesForBank, getQuizQuestions, createQuiz, updateQuiz, startQuizLive, closeQuiz, applyQuizScores, deleteQuiz, getTeacherStartedQuizCount } from './quiz-api.js'
-import { showToast, showDangerConfirm, showQuizCloseChoice, setButtonLoading, getFriendlyErrorMessage } from './ui.js'
-import { setContent, setTitle, _htmlEsc, SELECT_CLS, INPUT_CLS } from './teacher-views-utils.js'
+import { showToast, showDangerConfirm, showQuizCloseChoice, getFriendlyErrorMessage } from './ui.js'
+import { setContent, setTitle, _htmlEsc } from './teacher-views-utils.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
 
 const STATUS_LABEL = {
@@ -196,7 +197,7 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
   const activeElement = document.activeElement
   const modal = document.createElement('div')
   modal.id = 'quiz-config-wizard'
-  modal.className = 'fixed inset-0 z-[90] bg-slate-50 flex flex-col'
+  modal.className = 'qzw-shell'
   modal.setAttribute('role', 'dialog')
   modal.setAttribute('aria-modal', 'true')
   modal.setAttribute('aria-labelledby', 'qz-wizard-title')
@@ -214,122 +215,128 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
   let columnsLoadPromise = Promise.resolve([])
 
   modal.innerHTML = `
-    <header class="flex-shrink-0 bg-white border-b border-slate-200 shadow-sm">
-      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3">
-        <div class="min-w-0 flex-1">
-          <p class="text-[11px] text-slate-500 truncate">คลังข้อสอบ · ${_htmlEsc(bank.name)}</p>
-          <h2 id="qz-wizard-title" class="text-base sm:text-lg font-extrabold text-slate-800">${quiz ? 'แก้ไขแบบทดสอบ' : 'สร้างแบบทดสอบใหม่'}</h2>
-        </div>
-        <span class="hidden sm:inline text-xs text-slate-500">มีคำถามในคลัง ${bankQuestionCount} ข้อ</span>
-        <button type="button" id="qz-cancel" class="w-11 h-11 flex-shrink-0 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold" aria-label="ปิดหน้าตั้งค่า">✕</button>
+    <header class="qzw-topbar">
+      <div class="qzw-title-wrap">
+        <h2 id="qz-wizard-title" class="qzw-title">${quiz ? 'แก้ไขแบบทดสอบ' : 'สร้างแบบทดสอบ'}</h2>
+        <p class="qzw-bank-name">คลังข้อสอบ: ${_htmlEsc(bank.name)}</p>
       </div>
-      <div class="max-w-6xl mx-auto px-4 sm:px-6 pb-3">
-        <div class="flex items-center justify-between gap-2 mb-2" aria-label="ความคืบหน้าการตั้งค่า">
-          ${steps.map((step, index) => `<div class="flex-1 flex items-center gap-2 min-w-0"><span class="qz-step-dot w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border ${index === 0 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-300'}" data-step-dot="${index}">${index + 1}</span><span class="hidden md:block text-xs font-semibold truncate ${index === 0 ? 'text-indigo-700' : 'text-slate-400'}" data-step-label="${index}">${step.short}</span>${index < steps.length - 1 ? '<span class="h-px flex-1 bg-slate-200"></span>' : ''}</div>`).join('')}
-        </div>
-        <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden"><div id="qz-progress" class="h-full bg-indigo-600 rounded-full transition-all" style="width:20%"></div></div>
-        <p id="qz-step-count" class="text-[11px] text-slate-500 mt-1.5">ขั้นตอนที่ 1 จาก ${steps.length} · ${steps[0].title}</p>
+      <div class="qzw-topbar-end">
+        <span class="qzw-bank-count">มีคำถามในคลัง ${bankQuestionCount} ข้อ</span>
+        <button type="button" id="qz-cancel" class="qzw-button qzw-button--text" aria-label="ปิดหน้าตั้งค่า">ปิด</button>
       </div>
     </header>
 
-    <main id="qz-wizard-scroll" class="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-5 sm:py-8">
-      <div class="max-w-4xl mx-auto">
-        <div id="qz-error-summary" class="hidden mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800" role="alert" tabindex="-1"></div>
+    <main id="qz-wizard-scroll" class="qzw-main-area">
+      <div class="qzw-workspace">
+        <aside class="qzw-rail" aria-label="ขั้นตอนการตั้งค่า">
+          <h3 class="qzw-rail-title">การตั้งค่าแบบทดสอบ</h3>
+          <ol class="qzw-step-list">
+            ${steps.map((step, index) => `<li class="qzw-step-item" data-step-item="${index}"><span class="qzw-step-number" data-step-dot="${index}">${index + 1}</span><span class="qzw-step-label" data-step-label="${index}">${step.short}</span></li>`).join('')}
+          </ol>
+          <p class="qzw-rail-note"><strong>คลังข้อสอบ</strong>${bankQuestionCount} คำถาม</p>
+        </aside>
 
-        <section data-step-panel="0" class="bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-7">
-          <p class="text-xs font-bold text-indigo-600 mb-1">ขั้นตอนที่ 1</p>
-          <h3 class="text-xl font-extrabold text-slate-800">กำหนดห้องเรียนและชื่อแบบทดสอบ</h3>
-          <p class="text-sm text-slate-500 mt-1 mb-6">แบบทดสอบหนึ่งรายการจะผูกกับห้องเรียนที่เลือก ครูสร้างรายการแยกสำหรับห้องอื่นได้</p>
-          <div class="space-y-5">
-            <div>
-              <label for="qz-title" class="block text-sm font-bold text-slate-700 mb-1.5">ชื่อแบบทดสอบ <span class="text-red-600">*</span></label>
-              <input id="qz-title" class="${INPUT_CLS}" value="${_htmlEsc(quiz?.title ?? '')}" placeholder="เช่น สอบย่อยบทที่ 1" autocomplete="off" />
-              <p class="text-xs text-slate-500 mt-1">ชื่อนี้จะแสดงให้นักเรียนเห็นก่อนเริ่มสอบ</p>
-            </div>
-            <div>
-              <label for="qz-class" class="block text-sm font-bold text-slate-700 mb-1.5">ห้องเรียนที่จะให้สอบ <span class="text-red-600">*</span></label>
-              <select id="qz-class" class="${SELECT_CLS}">
-                <option value="">— เลือกห้องเรียน —</option>
-                ${classes.map(c => `<option value="${c.id}" ${(quiz ? quiz.class_id === c.id : c.id === preferredClassId) ? 'selected' : ''}>${_htmlEsc(c.master_subjects?.subject_name ?? '')} (${_htmlEsc(c.class_name ?? '—')})</option>`).join('')}
-              </select>
-              <p class="text-xs text-slate-500 mt-1">ตรวจสอบห้องให้ถูกต้อง เพราะคอลัมน์คะแนนในขั้นต่อไปจะมาจากห้องนี้</p>
-            </div>
-          </div>
-        </section>
+        <div class="qzw-content">
+          <p id="qz-step-count" class="qzw-step-count">ขั้นตอนที่ 1 จาก ${steps.length}: ${steps[0].title}</p>
+          <div class="qzw-progress-track" role="progressbar" aria-label="ความคืบหน้าการตั้งค่า" aria-valuemin="1" aria-valuemax="${steps.length}" aria-valuenow="1"><div id="qz-progress" class="qzw-progress-fill"></div></div>
+          <div id="qz-error-summary" class="qzw-error-summary hidden" role="alert" tabindex="-1"></div>
 
-        <section data-step-panel="1" class="hidden bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-7">
-          <p class="text-xs font-bold text-indigo-600 mb-1">ขั้นตอนที่ 2</p>
-          <h3 class="text-xl font-extrabold text-slate-800">กำหนดจำนวนข้อและเวลาสอบ</h3>
-          <p class="text-sm text-slate-500 mt-1 mb-6">ระบบจะสุ่มคำถามจากคลังนี้ตามจำนวนที่กำหนด</p>
-          <div class="grid sm:grid-cols-2 gap-5">
-            <div><label for="qz-num" class="block text-sm font-bold text-slate-700 mb-1.5">จำนวนข้อที่สุ่ม <span class="text-red-600">*</span></label><input id="qz-num" type="number" min="1" max="${Math.max(1, bankQuestionCount)}" class="${INPUT_CLS}" value="${quiz?.num_questions ?? Math.min(10, bankQuestionCount || 10)}" /><p class="text-xs text-slate-500 mt-1">คลังนี้มี ${bankQuestionCount} ข้อ</p></div>
-            <div><label for="qz-time" class="block text-sm font-bold text-slate-700 mb-1.5">เวลาสอบ (นาที) <span class="text-red-600">*</span></label><input id="qz-time" type="number" min="1" class="${INPUT_CLS}" value="${quiz?.time_limit_minutes ?? 30}" /></div>
-          </div>
-          <div class="mt-6 rounded-2xl border border-slate-200 p-4 space-y-4">
-            <p class="font-bold text-sm text-slate-700">ลำดับข้อสอบ</p>
-            <label class="flex items-start gap-3 text-sm text-slate-700"><input type="checkbox" id="qz-shuffle-q" class="mt-0.5 w-5 h-5" ${quiz ? (quiz.shuffle_questions ? 'checked' : '') : 'checked'} /><span><b>สลับลำดับคำถาม</b><span class="block text-xs text-slate-500 mt-0.5">นักเรียนแต่ละคนอาจเห็นข้อสอบคนละลำดับ</span></span></label>
-            <label class="flex items-start gap-3 text-sm text-slate-700"><input type="checkbox" id="qz-shuffle-c" class="mt-0.5 w-5 h-5" ${quiz ? (quiz.shuffle_choices ? 'checked' : '') : 'checked'} /><span><b>สลับลำดับตัวเลือก</b><span class="block text-xs text-slate-500 mt-0.5">ตัวเลือกในแต่ละข้อจะสลับตำแหน่ง</span></span></label>
-          </div>
-        </section>
-
-        <section data-step-panel="2" class="hidden bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-7">
-          <p class="text-xs font-bold text-indigo-600 mb-1">ขั้นตอนที่ 3</p>
-          <h3 class="text-xl font-extrabold text-slate-800">ตั้งเงื่อนไขและสิ่งที่นักเรียนเห็น</h3>
-          <p class="text-sm text-slate-500 mt-1 mb-6">กำหนดจำนวนครั้ง ช่วงเวลา และการแสดงผลหลังส่งข้อสอบ</p>
-          <div class="space-y-5">
-            <div class="grid sm:grid-cols-2 gap-5">
-              <div><label for="qz-attempts" class="block text-sm font-bold text-slate-700 mb-1.5">จำนวนครั้งที่ทำได้</label><input id="qz-attempts" type="number" min="1" class="${INPUT_CLS}" value="${quiz?.max_attempts ?? 1}" /></div>
-              <div><label for="qz-scoring" class="block text-sm font-bold text-slate-700 mb-1.5">ถ้าทำหลายครั้ง ให้นับคะแนนแบบ</label><select id="qz-scoring" class="${SELECT_CLS}">${Object.entries(SCORING_LABEL).map(([v, l]) => `<option value="${v}" ${(quiz?.attempt_scoring_mode ?? 'last') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-            </div>
-            <div class="grid sm:grid-cols-2 gap-5">
-              <div><label for="qz-open" class="block text-sm font-bold text-slate-700 mb-1.5">เปิดสอบตั้งแต่ (ไม่บังคับ)</label><input id="qz-open" type="datetime-local" class="${INPUT_CLS}" value="${quiz?.open_at ? quiz.open_at.slice(0, 16) : ''}" /></div>
-              <div><label for="qz-close" class="block text-sm font-bold text-slate-700 mb-1.5">ปิดสอบเมื่อ (ไม่บังคับ)</label><input id="qz-close" type="datetime-local" class="${INPUT_CLS}" value="${quiz?.close_at ? quiz.close_at.slice(0, 16) : ''}" /></div>
-            </div>
-            <div><label for="qz-review" class="block text-sm font-bold text-slate-700 mb-1.5">นักเรียนดูผลได้แค่ไหนหลังส่งข้อสอบ</label><select id="qz-review" class="${SELECT_CLS}">${Object.entries(REVIEW_LABEL).map(([v, l]) => `<option value="${v}" ${(quiz?.review_policy ?? 'total_only') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-            <div class="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4 space-y-3">
-              <label class="flex items-start gap-3 text-sm font-semibold text-slate-700"><input type="checkbox" id="qz-lock-answer" class="mt-0.5 w-5 h-5" ${quiz?.lock_on_answer ? 'checked' : ''} /><span>ล็อกคำตอบทันทีที่เลือก<span class="block text-xs font-normal text-slate-500 mt-0.5">นักเรียนย้อนกลับไปแก้ข้อที่ตอบแล้วไม่ได้</span></span></label>
-              <label class="flex items-start gap-3 text-sm font-semibold text-slate-700"><input type="checkbox" id="qz-instant-bonus" class="mt-0.5 w-5 h-5" ${quiz?.instant_feedback_bonus ? 'checked' : ''} /><span>เปิดเอฟเฟกต์ถูก/ผิดทันทีและระบบคอมโบ/โบนัส<span class="block text-xs font-normal text-slate-500 mt-0.5">ต้องล็อกคำตอบทันทีด้วย เพื่อไม่ให้เปลี่ยนคำตอบหลังเห็นผล</span></span></label>
-            </div>
-            <div class="rounded-2xl border border-rose-100 bg-rose-50/70 p-4">
-              <label class="flex items-start gap-3 text-sm font-semibold text-slate-700"><input type="checkbox" id="qz-deterrent" class="mt-0.5 w-5 h-5" ${quiz?.deterrent_notice_enabled ? 'checked' : ''} /><span>แสดงป้ายเตือนและข้อความก่อนเริ่มสอบ<span class="block text-xs font-normal text-slate-500 mt-0.5">ระบบจะแสดงข้อความเตือนและกรอบสีระหว่างสอบ ตามการตรวจจับการออกนอกหน้าสอบที่มีอยู่</span></span></label>
-            </div>
-          </div>
-        </section>
-
-        <section data-step-panel="3" class="hidden bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-7">
-          <p class="text-xs font-bold text-indigo-600 mb-1">ขั้นตอนที่ 4 · ตรวจให้ครบ</p>
-          <h3 class="text-xl font-extrabold text-slate-800">ผูกคะแนนและเลือกวิธีบันทึก</h3>
-          <p class="text-sm text-slate-500 mt-1 mb-6">เลือกอย่างใดอย่างหนึ่งให้ชัดเจน: ผูกกับช่องคะแนนของห้อง หรือระบุว่าไม่ผูกคะแนน</p>
-          <div class="space-y-5">
-            <div><label for="qz-score-col" class="block text-sm font-bold text-slate-700 mb-1.5">ช่องคะแนนปลายทาง <span class="text-red-600">*</span></label><select id="qz-score-col" class="${SELECT_CLS}"><option value="__choose__">— เลือกช่องคะแนน หรือเลือกไม่ผูก —</option><option value="">ไม่ผูกคะแนนกับสมุดคะแนน</option></select><p id="qz-score-col-status" class="text-xs text-slate-500 mt-1.5" aria-live="polite">เลือกห้องเรียนในขั้นตอนที่ 1 ก่อน แล้วตรวจสอบช่องคะแนนของห้องนี้</p></div>
-            <div id="qz-score-details" class="hidden rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 sm:p-5 space-y-4">
-              <div class="grid sm:grid-cols-2 gap-5">
-                <div><label for="qz-score-max" class="block text-sm font-bold text-slate-700 mb-1.5">คะแนนเต็มของแบบทดสอบ <span class="text-red-600">*</span></label><input id="qz-score-max" type="number" min="0.01" step="0.5" class="${INPUT_CLS}" value="${quiz?.score_max ?? 100}" /><p class="text-xs text-slate-500 mt-1">คะแนนจากข้อสอบจะถูกปรับให้อยู่ในคะแนนเต็มนี้ก่อนบันทึก</p></div>
-                <div><label for="qz-write-mode" class="block text-sm font-bold text-slate-700 mb-1.5">ถ้าช่องนี้มีคะแนนอยู่แล้ว <span class="text-red-600">*</span></label><select id="qz-write-mode" class="${SELECT_CLS}">${Object.entries(WRITE_MODE_LABEL).map(([v, m]) => `<option value="${v}" ${(quiz?.score_write_mode ?? 'highest') === v ? 'selected' : ''}>${m.label}</option>`).join('')}</select></div>
+          <section data-step-panel="0" class="qzw-panel">
+            <h3>กำหนดห้องเรียนและชื่อแบบทดสอบ</h3>
+            <p class="qzw-panel-intro">แบบทดสอบหนึ่งรายการจะผูกกับห้องเรียนที่เลือก ครูสร้างรายการแยกสำหรับห้องอื่นได้</p>
+            <div class="qzw-fields">
+              <div class="qzw-field-group">
+                <label for="qz-title" class="qzw-label">ชื่อแบบทดสอบ <span class="qzw-required">จำเป็น</span></label>
+                <input id="qz-title" class="qzw-field" value="${_htmlEsc(quiz?.title ?? '')}" placeholder="เช่น สอบย่อยบทที่ 1" autocomplete="off" aria-required="true" />
+                <p class="qzw-help">ชื่อนี้จะแสดงให้นักเรียนเห็นก่อนเริ่มสอบ</p>
               </div>
-              <div id="qz-write-mode-hint" class="rounded-xl bg-white/80 border border-indigo-100 p-3 text-sm text-slate-700" aria-live="polite"></div>
-              <div class="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 leading-relaxed"><b>ตอนปิดสอบ:</b> ครูจะได้รับตัวเลือกว่าจะส่งคะแนนเข้าช่องนี้ทันที หรือปิดสอบโดยไม่เปลี่ยนสมุดคะแนนก่อน หากยังไม่ส่ง สามารถใช้ปุ่ม “ส่งคะแนนย้อนหลัง” ภายหลังได้</div>
+              <div class="qzw-field-group">
+                <label for="qz-class" class="qzw-label">ห้องเรียนที่จะให้สอบ <span class="qzw-required">จำเป็น</span></label>
+                <select id="qz-class" class="qzw-field qzw-select" aria-required="true">
+                  <option value="">เลือกห้องเรียน</option>
+                  ${classes.map(c => `<option value="${c.id}" ${(quiz ? quiz.class_id === c.id : c.id === preferredClassId) ? 'selected' : ''}>${_htmlEsc(c.master_subjects?.subject_name ?? '')} (${_htmlEsc(c.class_name ?? '—')})</option>`).join('')}
+                </select>
+                <p class="qzw-help">ช่องคะแนนในขั้นต่อไปจะมาจากห้องเรียนนี้</p>
+              </div>
             </div>
-            <div id="qz-unbound-note" class="hidden rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700"><b>เลือกไม่ผูกคะแนนแล้ว</b><span class="block text-xs text-slate-500 mt-1">คะแนนจะอยู่ในผลการทำแบบทดสอบ ครูสามารถตรวจดูผลและส่งคะแนนย้อนหลังได้เมื่อแก้ไขแบบทดสอบให้ผูกกับช่องคะแนน</span></div>
-          </div>
-        </section>
+          </section>
 
-        <section data-step-panel="4" class="hidden bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm p-4 sm:p-7">
-          <p class="text-xs font-bold text-indigo-600 mb-1">ขั้นตอนที่ 5</p>
-          <h3 class="text-xl font-extrabold text-slate-800">ตรวจทานการตั้งค่าก่อนบันทึก</h3>
-          <p class="text-sm text-slate-500 mt-1 mb-6">ตรวจสอบทุกหัวข้อ โดยเฉพาะห้องเรียน ช่องคะแนน และวิธีเขียนคะแนนเก่า</p>
-          <div id="qz-review-summary" class="space-y-3"></div>
-          <label class="flex items-start gap-3 mt-6 p-4 rounded-2xl border border-indigo-200 bg-indigo-50 text-sm text-slate-700"><input type="checkbox" id="qz-review-confirm" class="mt-0.5 w-5 h-5" /><span><b>ตรวจทานแล้ว</b><span class="block text-xs text-slate-600 mt-1">ยืนยันว่าห้องเรียน การตั้งค่าการสอบ และแนวทางบันทึกคะแนนถูกต้อง</span></span></label>
-        </section>
+          <section data-step-panel="1" class="qzw-panel hidden">
+            <h3>กำหนดจำนวนข้อและเวลาสอบ</h3>
+            <p class="qzw-panel-intro">ระบบจะสุ่มคำถามจากคลังนี้ตามจำนวนที่กำหนด</p>
+            <div class="qzw-fields">
+              <div class="qzw-field-row">
+                <div class="qzw-field-group"><label for="qz-num" class="qzw-label">จำนวนข้อที่สุ่ม <span class="qzw-required">จำเป็น</span></label><input id="qz-num" type="number" min="1" max="${Math.max(1, bankQuestionCount)}" class="qzw-field" value="${quiz?.num_questions ?? Math.min(10, bankQuestionCount || 10)}" aria-required="true" /><p class="qzw-help">คลังนี้มี ${bankQuestionCount} ข้อ</p></div>
+                <div class="qzw-field-group"><label for="qz-time" class="qzw-label">เวลาสอบ (นาที) <span class="qzw-required">จำเป็น</span></label><input id="qz-time" type="number" min="1" class="qzw-field" value="${quiz?.time_limit_minutes ?? 30}" aria-required="true" /></div>
+              </div>
+              <fieldset class="qzw-choice-list">
+                <legend class="qzw-option-title">ลำดับข้อสอบ</legend>
+                <label class="qzw-choice"><input type="checkbox" id="qz-shuffle-q" ${quiz ? (quiz.shuffle_questions ? 'checked' : '') : 'checked'} /><span><span class="qzw-choice-title">สลับลำดับคำถาม</span><span class="qzw-choice-help">นักเรียนแต่ละคนอาจเห็นข้อสอบคนละลำดับ</span></span></label>
+                <label class="qzw-choice"><input type="checkbox" id="qz-shuffle-c" ${quiz ? (quiz.shuffle_choices ? 'checked' : '') : 'checked'} /><span><span class="qzw-choice-title">สลับลำดับตัวเลือก</span><span class="qzw-choice-help">ตัวเลือกในแต่ละข้อจะสลับตำแหน่ง</span></span></label>
+              </fieldset>
+            </div>
+          </section>
+
+          <section data-step-panel="2" class="qzw-panel hidden">
+            <h3>ตั้งเงื่อนไขและสิ่งที่นักเรียนเห็น</h3>
+            <p class="qzw-panel-intro">กำหนดจำนวนครั้ง ช่วงเวลา และการแสดงผลหลังส่งข้อสอบ</p>
+            <div class="qzw-fields">
+              <div class="qzw-field-row">
+                <div class="qzw-field-group"><label for="qz-attempts" class="qzw-label">จำนวนครั้งที่ทำได้</label><input id="qz-attempts" type="number" min="1" class="qzw-field" value="${quiz?.max_attempts ?? 1}" /></div>
+                <div class="qzw-field-group"><label for="qz-scoring" class="qzw-label">ถ้าทำหลายครั้ง ให้นับคะแนนแบบ</label><select id="qz-scoring" class="qzw-field qzw-select">${Object.entries(SCORING_LABEL).map(([v, l]) => `<option value="${v}" ${(quiz?.attempt_scoring_mode ?? 'last') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+              </div>
+              <div class="qzw-field-row">
+                <div class="qzw-field-group"><label for="qz-open" class="qzw-label">เปิดสอบตั้งแต่ (ไม่บังคับ)</label><input id="qz-open" type="datetime-local" class="qzw-field" value="${quiz?.open_at ? quiz.open_at.slice(0, 16) : ''}" /></div>
+                <div class="qzw-field-group"><label for="qz-close" class="qzw-label">ปิดสอบเมื่อ (ไม่บังคับ)</label><input id="qz-close" type="datetime-local" class="qzw-field" value="${quiz?.close_at ? quiz.close_at.slice(0, 16) : ''}" /></div>
+              </div>
+              <div class="qzw-field-group"><label for="qz-review" class="qzw-label">นักเรียนดูผลได้แค่ไหนหลังส่งข้อสอบ</label><select id="qz-review" class="qzw-field qzw-select">${Object.entries(REVIEW_LABEL).map(([v, l]) => `<option value="${v}" ${(quiz?.review_policy ?? 'total_only') === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+              <fieldset class="qzw-choice-list">
+                <legend class="qzw-option-title">การตอบและผลตอบกลับ</legend>
+                <label class="qzw-choice"><input type="checkbox" id="qz-lock-answer" ${quiz?.lock_on_answer ? 'checked' : ''} /><span><span class="qzw-choice-title">ล็อกคำตอบทันทีที่เลือก</span><span class="qzw-choice-help">นักเรียนย้อนกลับไปแก้ข้อที่ตอบแล้วไม่ได้</span></span></label>
+                <label class="qzw-choice"><input type="checkbox" id="qz-instant-bonus" ${quiz?.instant_feedback_bonus ? 'checked' : ''} /><span><span class="qzw-choice-title">เปิดเอฟเฟกต์ถูก/ผิดทันที + ระบบคอมโบ/โบนัส</span><span class="qzw-choice-help">ตอบถูกติดกัน 3 ข้อ ปลดล็อกโบนัส (50/50, แก้ข้อที่เคยผิด, ต่อเวลา). ครบ 6 ข้อ ได้โบนัสเปิดเฉลยเพิ่ม. เปิดตัวเลือกนี้จะล็อกคำตอบทันทีให้อัตโนมัติด้วย.</span></span></label>
+              </fieldset>
+              <fieldset class="qzw-choice-list">
+                <legend class="qzw-option-title">คำเตือนก่อนสอบ</legend>
+                <label class="qzw-choice"><input type="checkbox" id="qz-deterrent" ${quiz?.deterrent_notice_enabled ? 'checked' : ''} /><span><span class="qzw-choice-title">แสดงป้ายเตือน + ข้อความนาซีฮัตก่อนเริ่มสอบ</span><span class="qzw-choice-help">แสดงข้อความห้ามมองจอที่สอง/หนังสือ พร้อมขอบแดงระหว่างทำข้อสอบ (ข้อความจริงทุกคำ อิงจากระบบตรวจจับการออกนอกหน้าสอบที่มีอยู่แล้ว ไม่ได้อ้างว่ามีกล้อง/ตรวจจับสายตา)</span></span></label>
+              </fieldset>
+            </div>
+          </section>
+
+          <section data-step-panel="3" class="qzw-panel hidden">
+            <h3>ผูกคะแนนและเลือกวิธีบันทึก</h3>
+            <p class="qzw-panel-intro">เลือกช่องคะแนนของห้องนี้ หรือยืนยันว่าจะเก็บผลไว้ในแบบทดสอบโดยไม่ผูกกับสมุดคะแนน</p>
+            <div class="qzw-field-group qzw-score-choice">
+              <label for="qz-score-col" class="qzw-label">ช่องคะแนนปลายทาง <span class="qzw-required">จำเป็นต้องเลือก</span></label>
+              <select id="qz-score-col" class="qzw-field qzw-select" aria-required="true"><option value="__choose__">เลือกช่องคะแนนหรือไม่ผูกคะแนน</option><option value="">ไม่ผูกคะแนนกับสมุดคะแนน</option></select>
+              <p id="qz-score-col-status" class="qzw-help" aria-live="polite">เลือกห้องเรียนในขั้นตอนแรก แล้วตรวจสอบช่องคะแนนของห้องนี้</p>
+            </div>
+            <div id="qz-score-details" class="qzw-score-details hidden">
+              <div class="qzw-field-row">
+                <div class="qzw-field-group"><label for="qz-score-max" class="qzw-label">คะแนนเต็มของแบบทดสอบ <span class="qzw-required">จำเป็น</span></label><input id="qz-score-max" type="number" min="0.01" step="0.5" class="qzw-field" value="${quiz?.score_max ?? 100}" aria-required="true" /><p class="qzw-help">คะแนนจากข้อสอบจะถูกปรับให้อยู่ในคะแนนเต็มนี้ก่อนบันทึก</p></div>
+                <div class="qzw-field-group"><label for="qz-write-mode" class="qzw-label">ถ้าช่องนี้มีคะแนนอยู่แล้ว <span class="qzw-required">จำเป็น</span></label><select id="qz-write-mode" class="qzw-field qzw-select" aria-required="true">${Object.entries(WRITE_MODE_LABEL).map(([v, m]) => `<option value="${v}" ${(quiz?.score_write_mode ?? 'highest') === v ? 'selected' : ''}>${m.label}</option>`).join('')}</select></div>
+              </div>
+              <p id="qz-write-mode-hint" class="qzw-help" aria-live="polite"></p>
+              <div class="qzw-callout qzw-callout--warning qzw-score-note"><b>ตอนปิดสอบ:</b> ครูเลือกได้ว่าจะส่งคะแนนเข้าช่องนี้ทันที หรือปิดสอบโดยไม่เปลี่ยนสมุดคะแนนก่อน หากยังไม่ส่ง สามารถใช้ปุ่ม “ส่งคะแนนย้อนหลัง” ภายหลังได้</div>
+            </div>
+            <div id="qz-unbound-note" class="qzw-callout hidden"><b>เลือกไม่ผูกคะแนนแล้ว</b><br />คะแนนจะอยู่ในผลการทำแบบทดสอบ ครูสามารถตรวจดูผลและส่งคะแนนย้อนหลังได้เมื่อแก้ไขแบบทดสอบให้ผูกกับช่องคะแนน</div>
+          </section>
+
+          <section data-step-panel="4" class="qzw-panel hidden">
+            <h3>ตรวจทานการตั้งค่าก่อนบันทึก</h3>
+            <p class="qzw-panel-intro">ตรวจสอบทุกหัวข้อ โดยเฉพาะห้องเรียน ช่องคะแนน และวิธีเขียนคะแนนเก่า</p>
+            <dl id="qz-review-summary" class="qzw-review-summary"></dl>
+            <label class="qzw-review-confirm"><input type="checkbox" id="qz-review-confirm" /><span><b>ตรวจทานแล้ว</b><small>ยืนยันว่าห้องเรียน การตั้งค่าการสอบ และแนวทางบันทึกคะแนนถูกต้อง</small></span></label>
+          </section>
+        </div>
       </div>
     </main>
 
-    <footer class="flex-shrink-0 bg-white border-t border-slate-200 safe-area-inset-bottom">
-      <div class="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3">
-        <button type="button" id="qz-prev" class="min-h-11 px-5 rounded-xl border border-slate-300 text-slate-700 font-bold text-sm hover:bg-slate-50">ย้อนกลับ</button>
-        <p id="qz-footer-hint" class="hidden sm:block flex-1 text-xs text-slate-500">ไปทีละขั้น ระบบจะตรวจข้อมูลก่อนให้ดำเนินการต่อ</p>
-        <button type="button" id="qz-next" class="min-h-11 ml-auto px-6 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-sm">ถัดไป →</button>
-        <button type="button" id="qz-save" class="hidden min-h-11 ml-auto px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm">บันทึกแบบทดสอบ</button>
+    <footer class="qzw-footer">
+      <p id="qz-footer-hint" class="qzw-footer-hint">ตรวจค่าที่จำเป็นในแต่ละขั้นก่อนดำเนินการต่อ</p>
+      <div class="qzw-footer-actions">
+        <button type="button" id="qz-prev" class="qzw-button" disabled>ย้อนกลับ</button>
+        <button type="button" id="qz-next" class="qzw-button qzw-button--primary">ถัดไป</button>
+        <button type="button" id="qz-save" class="qzw-button qzw-button--primary hidden">บันทึกแบบทดสอบ</button>
       </div>
     </footer>
   `
@@ -355,7 +362,7 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
       scoreColumnsLoadClassId = ''
       scoreColumnsError = false
       scoreColSelect.innerHTML = '<option value="__choose__">— เลือกช่องคะแนน หรือเลือกไม่ผูก —</option><option value="">ไม่ผูกคะแนนกับสมุดคะแนน</option>'
-      scoreColStatus.textContent = 'เลือกห้องเรียนในขั้นตอนที่ 1 ก่อน แล้วตรวจสอบช่องคะแนนของห้องนี้'
+      scoreColStatus.textContent = 'เลือกห้องเรียนในขั้นตอนแรก แล้วตรวจสอบช่องคะแนนของห้องนี้'
       return []
     }
     if (!force && scoreColumnsLoadClassId === classId && scoreColumnsLoadState === 'loaded') return columnsLoadPromise
@@ -373,10 +380,10 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
       scoreColSelect.disabled = false
       const validExistingColumn = quiz?.class_id === classId && cols.some(c => String(c.id) === String(quiz.score_column_id))
       const selectedValue = validExistingColumn ? String(quiz.score_column_id) : (quiz && !quiz.score_column_id ? '' : '__choose__')
-      scoreColSelect.innerHTML = '<option value="__choose__">— เลือกช่องคะแนน หรือเลือกไม่ผูก —</option><option value="">ไม่ผูกคะแนนกับสมุดคะแนน</option>' +
+      scoreColSelect.innerHTML = '<option value="__choose__">เลือกช่องคะแนนหรือไม่ผูกคะแนน</option><option value="">ไม่ผูกคะแนนกับสมุดคะแนน</option>' +
         cols.map(c => `<option value="${_htmlEsc(c.id)}">${_htmlEsc(c.assignment_name)}</option>`).join('')
       scoreColSelect.value = selectedValue
-      scoreColStatus.textContent = cols.length ? `พบ ${cols.length} ช่องคะแนนในห้อง ${selectedClassName()} · เลือกช่องที่ต้องการ หรือเลือกไม่ผูกคะแนน` : `ห้อง ${selectedClassName()} ยังไม่มีช่องคะแนนที่เลือกได้ · หากต้องการบันทึกคะแนน ให้เพิ่มช่องที่หน้าบันทึกคะแนนก่อน หรือเลือกไม่ผูกคะแนน`
+      scoreColStatus.textContent = cols.length ? `พบ ${cols.length} ช่องคะแนนในห้อง ${selectedClassName()}. เลือกช่องที่ต้องการ หรือเลือกไม่ผูกคะแนน` : `ห้อง ${selectedClassName()} ยังไม่มีช่องคะแนนที่เลือกได้. หากต้องการบันทึกคะแนน ให้เพิ่มช่องที่หน้าบันทึกคะแนนก่อน หรือเลือกไม่ผูกคะแนน`
       syncScoreBindingUI()
       return cols
     }).catch(() => {
@@ -384,9 +391,9 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
       scoreColumnsLoadState = 'error'
       scoreColumnsError = true
       scoreColSelect.disabled = false
-      scoreColSelect.innerHTML = '<option value="__choose__">— เลือกช่องคะแนน หรือเลือกไม่ผูก —</option><option value="">ไม่ผูกคะแนนกับสมุดคะแนน</option>'
+      scoreColSelect.innerHTML = '<option value="__choose__">เลือกช่องคะแนนหรือไม่ผูกคะแนน</option><option value="">ไม่ผูกคะแนนกับสมุดคะแนน</option>'
       scoreColSelect.value = '__choose__'
-      scoreColStatus.textContent = 'โหลดช่องคะแนนไม่สำเร็จ กรุณาลองใหม่ก่อนเลือกช่องคะแนน หรือเลือกไม่ผูกคะแนนโดยตั้งใจ'
+      scoreColStatus.textContent = 'โหลดช่องคะแนนไม่สำเร็จ. กลับมาที่ขั้นนี้เพื่อลองใหม่ หรือเลือกไม่ผูกคะแนนโดยตั้งใจ'
       syncScoreBindingUI()
       return []
     })
@@ -402,7 +409,7 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
   const syncWriteModeHint = () => {
     const mode = WRITE_MODE_LABEL[$('#qz-write-mode').value]
     const keySafety = $('#qz-write-mode').value === 'add' ? 'การส่งคะแนนย้อนหลังซ้ำจะเพิ่มเฉพาะส่วนต่าง ไม่บวกคะแนนเดิมซ้ำ' : ''
-    $('#qz-write-mode-hint').innerHTML = `<b>${_htmlEsc(mode?.label ?? '')}</b><div class="text-xs text-slate-600 mt-1">${_htmlEsc(mode?.hint ?? '')}${keySafety ? `<br>${_htmlEsc(keySafety)}` : ''}</div>`
+    $('#qz-write-mode-hint').innerHTML = `<b>${_htmlEsc(mode?.label ?? '')}</b><span class="qzw-choice-help">${_htmlEsc(mode?.hint ?? '')}${keySafety ? `<br>${_htmlEsc(keySafety)}` : ''}</span>`
   }
   const updateReviewSummary = () => {
     const bound = Boolean(scoreColSelect.value && scoreColSelect.value !== '__choose__')
@@ -413,15 +420,15 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
     const closeAt = $('#qz-close').value
     const dateText = openAt || closeAt ? `${openAt || 'ไม่กำหนดเวลาเปิด'} ถึง ${closeAt || 'ไม่กำหนดเวลาปิด'}` : 'ไม่มีช่วงเวลาบังคับ'
     const rows = [
-      ['ห้องเรียนและชื่อ', `${selectedClassName()} · ${$('#qz-title').value.trim() || 'ยังไม่ได้ตั้งชื่อ'}`],
-      ['จำนวนข้อและเวลา', `${$('#qz-num').value || '—'} ข้อ · ${$('#qz-time').value || '—'} นาที · ${$('#qz-shuffle-q').checked ? 'สลับข้อ' : 'ไม่สลับข้อ'} · ${$('#qz-shuffle-c').checked ? 'สลับตัวเลือก' : 'ไม่สลับตัวเลือก'}`],
-      ['การทำและการแสดงผล', `${$('#qz-attempts').value || '—'} ครั้ง · นับ${SCORING_LABEL[$('#qz-scoring').value] ?? '—'} · ${REVIEW_LABEL[$('#qz-review').value] ?? '—'}`],
+      ['ห้องเรียนและชื่อ', `${selectedClassName()}, ${$('#qz-title').value.trim() || 'ยังไม่ได้ตั้งชื่อ'}`],
+      ['จำนวนข้อและเวลา', `${$('#qz-num').value || '—'} ข้อ, ${$('#qz-time').value || '—'} นาที, ${$('#qz-shuffle-q').checked ? 'สลับข้อ' : 'ไม่สลับข้อ'}, ${$('#qz-shuffle-c').checked ? 'สลับตัวเลือก' : 'ไม่สลับตัวเลือก'}`],
+      ['การทำและการแสดงผล', `${$('#qz-attempts').value || '—'} ครั้ง, นับ${SCORING_LABEL[$('#qz-scoring').value] ?? '—'}, ${REVIEW_LABEL[$('#qz-review').value] ?? '—'}`],
       ['ช่วงเวลา', dateText],
-      ['การล็อก/เอฟเฟกต์/คำเตือน', `${$('#qz-lock-answer').checked || $('#qz-instant-bonus').checked ? 'ล็อกคำตอบ' : 'ย้อนแก้ได้'} · ${$('#qz-instant-bonus').checked ? 'เปิดคอมโบ/โบนัส' : 'ปิดคอมโบ/โบนัส'} · ${$('#qz-deterrent').checked ? 'เปิดป้ายเตือน' : 'ไม่แสดงป้ายเตือน'}`],
-      ['ช่องคะแนน', bound ? `${selectedColumn} · คะแนนเต็ม ${$('#qz-score-max').value || '—'}` : scoreColSelect.value === '' ? 'ตั้งใจไม่ผูกคะแนนกับสมุดคะแนน' : 'ยังไม่ได้เลือก — กลับไปเลือกช่องคะแนนหรือไม่ผูกคะแนน'],
-      ['วิธีบันทึก', bound ? `${mode?.label ?? '—'} · ${modeDescription} · ตอนปิดสอบครูเลือกได้ว่าจะส่งคะแนนทันทีหรือปิดโดยไม่เปลี่ยนสมุดคะแนน` : 'ไม่มีการส่งคะแนนเข้าคอลัมน์คะแนนของห้อง'],
+      ['การล็อก/เอฟเฟกต์/คำเตือน', `${$('#qz-lock-answer').checked || $('#qz-instant-bonus').checked ? 'ล็อกคำตอบ' : 'ย้อนแก้ได้'}, ${$('#qz-instant-bonus').checked ? 'เปิดคอมโบ/โบนัส' : 'ปิดคอมโบ/โบนัส'}, ${$('#qz-deterrent').checked ? 'เปิดป้ายเตือน' : 'ไม่แสดงป้ายเตือน'}`],
+      ['ช่องคะแนน', bound ? `${selectedColumn}, คะแนนเต็ม ${$('#qz-score-max').value || '—'}` : scoreColSelect.value === '' ? 'ตั้งใจไม่ผูกคะแนนกับสมุดคะแนน' : 'ยังไม่ได้เลือก. กลับไปเลือกช่องคะแนนหรือไม่ผูกคะแนน'],
+      ['วิธีบันทึก', bound ? `${mode?.label ?? '—'}. ${modeDescription}. ตอนปิดสอบครูเลือกได้ว่าจะส่งคะแนนทันทีหรือปิดโดยไม่เปลี่ยนสมุดคะแนน` : 'ไม่มีการส่งคะแนนเข้าคอลัมน์คะแนนของห้อง'],
     ]
-    $('#qz-review-summary').innerHTML = rows.map(([label, value]) => `<div class="rounded-xl border border-slate-200 p-3 sm:p-4"><p class="text-[11px] uppercase tracking-wide text-slate-500 font-bold">${_htmlEsc(label)}</p><p class="text-sm text-slate-800 font-semibold mt-1 break-words">${_htmlEsc(value)}</p></div>`).join('')
+    $('#qz-review-summary').innerHTML = rows.map(([label, value]) => `<div class="qzw-review-row"><dt>${_htmlEsc(label)}</dt><dd>${_htmlEsc(value)}</dd></div>`).join('')
   }
   const validateStep = step => {
     const errors = []
@@ -458,8 +465,13 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
     return errors
   }
   const showErrors = errors => {
-    errorSummary.innerHTML = `<b>ยังไปต่อไม่ได้ กรุณาตรวจรายการนี้</b><ul class="list-disc pl-5 mt-1">${errors.map(err => `<li><a class="underline" href="#${err.id}" data-error-field="${err.id}">${_htmlEsc(err.message)}</a></li>`).join('')}</ul>`
+    errorSummary.innerHTML = `<b>ตรวจข้อมูลที่จำเป็นก่อนดำเนินการต่อ</b><ul class="qzw-error-list">${errors.map(err => `<li><a href="#${err.id}" data-error-field="${err.id}">${_htmlEsc(err.message)}</a></li>`).join('')}</ul>`
     errorSummary.classList.remove('hidden')
+    errors.forEach(({ id }) => {
+      const field = $(`#${id}`)
+      field?.setAttribute('aria-invalid', 'true')
+      field?.setAttribute('aria-describedby', 'qz-error-summary')
+    })
     errorSummary.focus()
     errorSummary.querySelectorAll('[data-error-field]').forEach(link => link.addEventListener('click', e => {
       e.preventDefault()
@@ -476,32 +488,57 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
     currentStep = step
     errorSummary.classList.add('hidden')
     panelNodes.forEach((panel, index) => panel.classList.toggle('hidden', index !== currentStep))
-    modal.querySelectorAll('[data-step-dot]').forEach((dot, index) => {
-      dot.className = `qz-step-dot w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border ${index < currentStep ? 'bg-emerald-600 text-white border-emerald-600' : index === currentStep ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-400 border-slate-300'}`
+    modal.querySelectorAll('[data-step-item]').forEach((item, index) => {
+      item.classList.toggle('is-current', index === currentStep)
+      item.classList.toggle('is-complete', index < currentStep)
+      const dot = item.querySelector('[data-step-dot]')
       dot.textContent = index < currentStep ? '✓' : String(index + 1)
     })
-    modal.querySelectorAll('[data-step-label]').forEach((label, index) => label.className = `hidden md:block text-xs font-semibold truncate ${index === currentStep ? 'text-indigo-700' : index < currentStep ? 'text-emerald-700' : 'text-slate-400'}`)
-    $('#qz-progress').style.width = `${((currentStep + 1) / steps.length) * 100}%`
-    $('#qz-step-count').textContent = `ขั้นตอนที่ ${currentStep + 1} จาก ${steps.length} · ${steps[currentStep].title}`
+    $('#qz-progress').style.transform = `scaleX(${(currentStep + 1) / steps.length})`
+    $('#qz-progress').parentElement.setAttribute('aria-valuenow', String(currentStep + 1))
+    $('#qz-step-count').textContent = `ขั้นตอนที่ ${currentStep + 1} จาก ${steps.length}: ${steps[currentStep].title}`
     $('#qz-prev').disabled = currentStep === 0
-    $('#qz-prev').classList.toggle('opacity-40', currentStep === 0)
     $('#qz-next').classList.toggle('hidden', currentStep === steps.length - 1)
     $('#qz-save').classList.toggle('hidden', currentStep !== steps.length - 1)
     if (currentStep === 3) await loadScoreColumns()
     if (currentStep === 4) updateReviewSummary()
-    $('#qz-wizard-scroll').scrollTo({ top: 0, behavior: 'smooth' })
+    $('#qz-wizard-scroll').scrollTo({ top: 0, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
     const heading = panelNodes[currentStep].querySelector('h3')
     heading?.setAttribute('tabindex', '-1')
     heading?.focus({ preventScroll: true })
     return true
   }
 
+  const backgroundElements = [...document.body.children].filter(element => element !== modal)
+  const backgroundInertState = new Map(backgroundElements.map(element => [element, element.inert]))
+  backgroundElements.forEach(element => { element.inert = true })
+  document.documentElement.classList.add('qzw-open')
+  document.body.classList.add('qzw-open')
   const closeModal = () => {
     modal.remove()
     document.removeEventListener('keydown', onKeyDown)
+    backgroundInertState.forEach((wasInert, element) => { element.inert = wasInert })
+    document.documentElement.classList.remove('qzw-open')
+    document.body.classList.remove('qzw-open')
     activeElement?.focus?.({ preventScroll: true })
   }
-  const onKeyDown = e => { if (e.key === 'Escape' && document.body.contains(modal)) closeModal() }
+  const onKeyDown = e => {
+    if (!document.body.contains(modal)) return
+    if (e.key === 'Escape') { closeModal(); return }
+    if (e.key !== 'Tab') return
+    const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), a[href], [tabindex="0"]')]
+      .filter(element => element.getClientRects().length > 0)
+    if (!focusable.length) return
+    const first = focusable[0]
+    const last = focusable[focusable.length - 1]
+    if (e.shiftKey && (document.activeElement === first || document.activeElement === modal)) {
+      e.preventDefault()
+      last.focus()
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault()
+      first.focus()
+    }
+  }
   document.addEventListener('keydown', onKeyDown)
   $('#qz-cancel').addEventListener('click', closeModal)
   $('#qz-prev').addEventListener('click', () => { if (currentStep > 0) renderStep(currentStep - 1) })
@@ -511,7 +548,7 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
     scoreColumnsLoadClassId = ''
     scoreColumnsError = false
     scoreColSelect.value = '__choose__'
-    scoreColSelect.innerHTML = '<option value="__choose__">— เลือกช่องคะแนน หรือเลือกไม่ผูก —</option><option value="">ไม่ผูกคะแนนกับสมุดคะแนน</option>'
+    scoreColSelect.innerHTML = '<option value="__choose__">เลือกช่องคะแนนหรือไม่ผูกคะแนน</option><option value="">ไม่ผูกคะแนนกับสมุดคะแนน</option>'
     scoreColStatus.textContent = 'เปลี่ยนห้องแล้ว โปรดตรวจสอบและเลือกช่องคะแนนของห้องใหม่นี้ในขั้นตอนผูกคะแนน'
     syncScoreBindingUI()
   })
@@ -527,6 +564,13 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
 
   $('#qz-review-confirm').addEventListener('change', e => { $('#qz-save').disabled = !e.target.checked })
   $('#qz-save').disabled = true
+  const clearFieldError = field => {
+    if (!field?.matches?.('input, select, textarea')) return
+    field.removeAttribute('aria-invalid')
+    if (field.getAttribute('aria-describedby') === 'qz-error-summary') field.removeAttribute('aria-describedby')
+  }
+  modal.addEventListener('input', event => clearFieldError(event.target))
+  modal.addEventListener('change', event => clearFieldError(event.target))
   $('#qz-save').addEventListener('click', async e => {
     const saveButton = e.currentTarget
     if (!$('#qz-review-confirm').checked) return
@@ -566,7 +610,9 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
       score_max: scoreColSelect.value ? Number($('#qz-score-max').value) : null,
       score_write_mode: scoreColSelect.value ? $('#qz-write-mode').value : 'highest',
     }
-    setButtonLoading(saveButton, true, 'กำลังบันทึก…')
+    saveButton.disabled = true
+    saveButton.setAttribute('aria-busy', 'true')
+    saveButton.innerHTML = 'กำลังบันทึก <span class="qzw-spinner" aria-hidden="true"></span>'
     try {
       if (quiz) await updateQuiz(quiz.id, payload)
       else await createQuiz({ ...payload, status: 'announced' })
@@ -575,7 +621,9 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
       renderBankQuizzes(teacher, bank)
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
-      setButtonLoading(saveButton, false, 'บันทึกแบบทดสอบ')
+      saveButton.removeAttribute('aria-busy')
+      saveButton.disabled = !$('#qz-review-confirm').checked
+      saveButton.textContent = 'บันทึกแบบทดสอบ'
     }
   })
 

@@ -1,0 +1,39 @@
+/* Hallmark · component tokens · quiz setup wizard · PP5 green · v2.0.0 */
+/* critique: the first wizard had one visual weight for every control and hid score handling inside a long form. */
+:root {
+  --qzw-paper: #f3f6f2;
+  --qzw-surface: #ffffff;
+  --qzw-ink: #20352d;
+  --qzw-muted: #56665e;
+  --qzw-rule: #d6dfd9;
+  --qzw-rule-strong: #78887d;
+  --qzw-primary: #176b50;
+  --qzw-primary-dark: #0b4c39;
+  --qzw-primary-soft: #e9f3ed;
+  --qzw-focus: #a8681e;
+  --qzw-focus-soft: rgb(168 104 30 / 22%);
+  --qzw-danger: #9c3434;
+  --qzw-danger-soft: #fff0ef;
+  --qzw-warning: #725116;
+  --qzw-warning-soft: #fbf4e4;
+  --qzw-success: #176746;
+  --qzw-success-soft: #eaf4ec;
+  --qzw-white-ink: #ffffff;
+  --qzw-clear: transparent;
+  --qzw-spinner-track: rgb(255 255 255 / 48%);
+  --qzw-shadow: 0 24px 72px rgb(22 47 35 / 18%);
+  --qzw-font: 'Sarabun', sans-serif;
+  --qzw-radius: 14px;
+  --qzw-radius-large: 22px;
+  --qzw-space-1: 4px;
+  --qzw-space-2: 8px;
+  --qzw-space-3: 12px;
+  --qzw-space-4: 16px;
+  --qzw-space-5: 20px;
+  --qzw-space-6: 24px;
+  --qzw-space-8: 32px;
+  --qzw-space-10: 40px;
+  --qzw-motion-fast: 120ms;
+  --qzw-motion-short: 180ms;
+  --qzw-ease-out: cubic-bezier(.2, .7, .2, 1);
+}

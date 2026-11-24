@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="ตัวอย่างหน้าตั้งค่าแบบทดสอบและสถานะของตัวควบคุม" />
+  <title>ตัวอย่างหน้าตั้งค่าแบบทดสอบ</title>
+  <link rel="stylesheet" href="./quiz-config-wizard.css" />
+</head>
+<body class="qzw-preview-body">
+  <div class="qzw-shell qzw-shell--preview" id="quiz-config-wizard" role="dialog" aria-modal="true" aria-labelledby="qz-wizard-title">
+    <header class="qzw-topbar">
+      <div class="qzw-title-wrap"><h2 id="qz-wizard-title" class="qzw-title">สร้างแบบทดสอบ</h2><p class="qzw-bank-name">คลังข้อสอบ: หลักการนับ ความน่าจะเป็น และตรรกศาสตร์เบื้องต้น</p></div>
+      <div class="qzw-topbar-end"><span class="qzw-bank-count">มีคำถามในคลัง 20 ข้อ</span><button class="qzw-button qzw-button--text" type="button">ปิด</button></div>
+    </header>
+    <main class="qzw-main-area">
+      <div class="qzw-workspace">
+        <aside class="qzw-rail" aria-label="ขั้นตอนการตั้งค่า">
+          <h3 class="qzw-rail-title">การตั้งค่าแบบทดสอบ</h3>
+          <ol class="qzw-step-list">
+            <li class="qzw-step-item is-complete"><span class="qzw-step-number">✓</span><span class="qzw-step-label">ห้อง/ชื่อ</span></li>
+            <li class="qzw-step-item is-complete"><span class="qzw-step-number">✓</span><span class="qzw-step-label">ข้อสอบ</span></li>
+            <li class="qzw-step-item is-complete"><span class="qzw-step-number">✓</span><span class="qzw-step-label">การสอบ</span></li>
+            <li class="qzw-step-item is-current"><span class="qzw-step-number">4</span><span class="qzw-step-label">คะแนน</span></li>
+            <li class="qzw-step-item"><span class="qzw-step-number">5</span><span class="qzw-step-label">ตรวจทาน</span></li>
+          </ol>
+          <p class="qzw-rail-note"><strong>คลังข้อสอบ</strong>มีคำถาม 20 ข้อ</p>
+        </aside>
+        <div class="qzw-content">
+          <p class="qzw-step-count">ขั้นตอนที่ 4 จาก 5: ผูกคะแนนและบันทึก</p>
+          <div class="qzw-progress-track" role="progressbar" aria-label="ความคืบหน้าการตั้งค่า" aria-valuemin="1" aria-valuemax="5" aria-valuenow="4"><div class="qzw-progress-fill" style="transform:scaleX(.8)"></div></div>
+          <section class="qzw-panel">
+            <h3>ผูกคะแนนและเลือกวิธีบันทึก</h3>
+            <p class="qzw-panel-intro">เลือกช่องคะแนนของห้องนี้ หรือยืนยันว่าจะเก็บผลไว้ในแบบทดสอบโดยไม่ผูกกับสมุดคะแนน</p>
+            <div class="qzw-field-group qzw-score-choice">
+              <label class="qzw-label" for="qz-score-col">ช่องคะแนนปลายทาง <span class="qzw-required">จำเป็นต้องเลือก</span></label>
+              <select id="qz-score-col" class="qzw-field qzw-select"><option>เลือกช่องคะแนนหรือไม่ผูกคะแนน</option><option selected>ลำดับและอนุกรม</option><option>ไม่ผูกคะแนนกับสมุดคะแนน</option></select>
+              <p class="qzw-help">พบช่องคะแนนในห้องเรียน. เลือกช่องที่ต้องการ หรือเลือกไม่ผูกคะแนน</p>
+            </div>
+            <div class="qzw-score-details">
+              <div class="qzw-field-row">
+                <div class="qzw-field-group"><label class="qzw-label" for="qz-score-max">คะแนนเต็มของแบบทดสอบ <span class="qzw-required">จำเป็น</span></label><input id="qz-score-max" class="qzw-field" value="10" /><p class="qzw-help">คะแนนจากข้อสอบจะถูกปรับให้อยู่ในคะแนนเต็มนี้ก่อนบันทึก</p></div>
+                <div class="qzw-field-group"><label class="qzw-label" for="qz-write-mode">ถ้าช่องนี้มีคะแนนอยู่แล้ว <span class="qzw-required">จำเป็น</span></label><select id="qz-write-mode" class="qzw-field qzw-select"><option>เทียบเอาคะแนนสูงกว่า</option><option>ทับคะแนนเก่า</option><option selected>บวกเพิ่มจากคะแนนเดิม</option></select></div>
+              </div>
+              <p class="qzw-help"><b>บวกเพิ่มจากคะแนนเดิม</b><br />บวกคะแนนจากควิซนี้เข้ากับคะแนนที่มีอยู่ เหมาะกับคอลัมน์สะสมคะแนนจากหลายควิซ</p>
+              <div class="qzw-callout qzw-callout--warning qzw-score-note"><b>ตอนปิดสอบ:</b> ครูเลือกได้ว่าจะส่งคะแนนเข้าช่องนี้ทันที หรือปิดสอบโดยไม่เปลี่ยนสมุดคะแนนก่อน หากยังไม่ส่ง สามารถใช้ปุ่ม “ส่งคะแนนย้อนหลัง” ภายหลังได้</div>
+            </div>
+            <div class="qzw-callout hidden"><b>เลือกไม่ผูกคะแนนแล้ว</b><br />คะแนนจะอยู่ในผลการทำแบบทดสอบ ครูสามารถตรวจดูผลและส่งคะแนนย้อนหลังได้เมื่อแก้ไขแบบทดสอบให้ผูกกับช่องคะแนน</div>
+          </section>
+        </div>
+      </div>
+    </main>
+    <footer class="qzw-footer"><p class="qzw-footer-hint">ตรวจค่าที่จำเป็นในแต่ละขั้นก่อนดำเนินการต่อ</p><div class="qzw-footer-actions"><button class="qzw-button" type="button">ย้อนกลับ</button><button class="qzw-button qzw-button--primary" type="button">ถัดไป</button></div></footer>
+  </div>
+
+  <section class="qzw-preview" aria-labelledby="state-heading">
+    <h1 id="state-heading">สถานะของตัวควบคุม</h1>
+    <p>การตอบสนองของช่องกรอกและปุ่มในหน้าตั้งค่า</p>
+    <div class="qzw-state-grid">
+      <div class="qzw-state-row"><span class="qzw-state-label">ปกติ</span><input class="qzw-field" value="ชื่อแบบทดสอบ" aria-label="สถานะปกติ" /></div>
+      <div class="qzw-state-row"><span class="qzw-state-label">ชี้เมาส์</span><span class="qzw-button qzw-button--primary is-hover" aria-hidden="true">ถัดไป</span></div>
+      <div class="qzw-state-row"><span class="qzw-state-label">โฟกัสด้วยแป้นพิมพ์</span><input class="qzw-field is-focus" value="ห้องเรียนที่เลือก" aria-label="สถานะโฟกัส" /></div>
+      <div class="qzw-state-row"><span class="qzw-state-label">กำลังกด</span><span class="qzw-button qzw-button--primary is-active" aria-hidden="true">ถัดไป</span></div>
+      <div class="qzw-state-row"><span class="qzw-state-label">ปิดใช้งาน</span><span class="qzw-button qzw-button--primary is-disabled" aria-hidden="true">ย้อนกลับ</span></div>
+      <div class="qzw-state-row"><span class="qzw-state-label">กำลังบันทึก</span><span class="qzw-button qzw-button--primary is-loading" aria-hidden="true">กำลังบันทึก <span class="qzw-spinner"></span></span></div>
+      <div class="qzw-state-row"><span class="qzw-state-label">ข้อมูลไม่ครบ</span><div><input class="qzw-field is-error" value="" aria-label="สถานะข้อมูลไม่ครบ" aria-invalid="true" /><p class="qzw-status is-error">กรุณาตรวจข้อมูลนี้อีกครั้ง</p></div></div>
+      <div class="qzw-state-row"><span class="qzw-state-label">บันทึกสำเร็จ</span><p class="qzw-status is-success">บันทึกการตั้งค่าแล้ว</p></div>
+    </div>
+  </section>
+</body>
+</html>
