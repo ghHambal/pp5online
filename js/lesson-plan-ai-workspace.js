@@ -1003,6 +1003,12 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     plan.course_id ? getLessonPlans(plan.course_id, classId).catch(() => []) : Promise.resolve([]),
   ])
   const courseReflections = await getLessonPlanReflectionsForPlans(coursePlans.map(item => item.id)).catch(() => [])
+  const planOptions = [...coursePlans]
+  if (!planOptions.some(item => Number(item.id) === Number(plan.id))) planOptions.push(plan)
+  planOptions.sort((a, b) => {
+    const sessionDiff = Number(a.session_number || a.week_start || 0) - Number(b.session_number || b.week_start || 0)
+    return sessionDiff || Number(a.week_start || 0) - Number(b.week_start || 0) || Number(a.id) - Number(b.id)
+  })
   const courseHeadName = String(cls?.master_subjects?.learning_area ?? '').trim()
   const deptKey = String(cls?.master_subjects?.dept ?? teacher?.dept ?? '').trim().toLowerCase()
   const subjectGroup = String(cls?.master_subjects?.subject_group ?? '').toUpperCase()
@@ -1142,7 +1148,12 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
       <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-bold text-gray-800">📝 ${esc(plan.title)}</h3><p class="text-xs ${bypassPostLesson ? 'text-amber-700' : 'text-gray-400'}">${bypassPostLesson ? 'ครั้งนี้เลือกข้ามผลหลังสอนและลายเซ็นครู/หัวหน้ากลุ่มสาระไว้แล้ว' : 'บันทึกหลังสอนและลายเซ็นตามการตั้งค่าของแผน'}</p>${movedOccurrence ? `<p class="mt-1 text-xs font-bold text-amber-700">⏭️ เลื่อนจากสัปดาห์ที่ ${movedOccurrence.baseWeek} คาบ ${movedOccurrence.baseSession} มาสัปดาห์ที่ ${weekNo} คาบ ${movedOccurrence.session}</p>` : ''}</div><button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button></div>
       <div class="flex flex-wrap items-end gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
-        <label class="text-xs font-bold text-gray-600">ครั้งที่<select id="lp-doc-week" class="mt-1 block min-h-[40px] border border-gray-200 rounded-xl px-3 bg-white text-sm">${planWeekOptions.map(item=>`<option value="${item.week}" ${item.week===weekNo?'selected':''}>${item.label}${item.moved ? ` · สัปดาห์ ${item.week} คาบ ${item.session}` : ''}</option>`).join('')}</select></label>
+        <div class="flex flex-wrap items-end gap-2">
+          <label class="text-xs font-bold text-gray-600">ครั้งที่ของแผน<select id="lp-doc-plan" class="mt-1 block min-h-[40px] max-w-[min(72vw,24rem)] border border-gray-200 rounded-xl px-3 bg-white text-sm">${planOptions.map((item,index)=>`<option value="${esc(item.id)}" ${Number(item.id)===Number(plan.id)?'selected':''}>ครั้งที่ ${esc(item.session_number || index + 1)} · ${esc(item.title || 'แผนการสอน')}</option>`).join('')}</select></label>
+          <button id="lp-doc-plan-prev" type="button" aria-label="แผนครั้งก่อน" class="min-h-[40px] rounded-xl border border-indigo-200 bg-white px-3 text-sm font-bold text-indigo-700" ${planOptions.findIndex(item=>Number(item.id)===Number(plan.id))<=0?'disabled':''}>← ก่อนหน้า</button>
+          <button id="lp-doc-plan-next" type="button" aria-label="แผนครั้งถัดไป" class="min-h-[40px] rounded-xl border border-indigo-200 bg-white px-3 text-sm font-bold text-indigo-700" ${planOptions.findIndex(item=>Number(item.id)===Number(plan.id))>=planOptions.length-1?'disabled':''}>ถัดไป →</button>
+        </div>
+        ${planWeekOptions.length > 1 ? `<label class="text-xs font-bold text-gray-600">สัปดาห์/คาบ<select id="lp-doc-week" class="mt-1 block min-h-[40px] border border-gray-200 rounded-xl px-3 bg-white text-sm">${planWeekOptions.map(item=>`<option value="${item.week}" ${item.week===weekNo?'selected':''}>สัปดาห์ ${item.week} · ครั้งที่ ${item.label}${item.moved ? ` · คาบ ${item.session}` : ''}</option>`).join('')}</select></label>` : `<input id="lp-doc-week" type="hidden" value="${weekNo}">`}
         <label class="text-xs font-bold text-gray-600">วันที่สอน<input id="lp-doc-date" type="date" value="${esc(dateState.value)}" ${isoDate(semesterStart) ? `min="${esc(semesterStart)}"` : ''} ${isoDate(semesterEnd) && !allowOutsideSemester ? `max="${esc(semesterEnd)}"` : ''} class="mt-1 block min-h-[40px] rounded-xl border border-gray-200 bg-white px-3 text-sm"></label>
         ${dateState.suggested ? `<button id="lp-doc-use-suggested-date" type="button" class="min-h-[40px] rounded-xl border border-indigo-200 bg-white px-3 text-[11px] font-bold text-indigo-700">↻ ใช้วันที่ตามตาราง</button>` : ''}
         <p id="lp-doc-date-hint" class="basis-full text-[11px] ${dateState.saved ? 'text-emerald-700' : dateState.suggested ? 'text-indigo-700' : 'text-amber-700'}">${esc(dateHint)}</p>
@@ -1288,6 +1299,35 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
     }
     m.querySelector('[data-class-head-enable]').addEventListener('click', async event => { const button = event.currentTarget; button.disabled = true; try { await persistClassHeadPreference(true); await render() } catch (err) { showToast('เปิดใช้งานลายเซ็นหัวหน้าห้องไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); button.disabled = false } })
     m.querySelector('[data-class-head-disable]').addEventListener('click', async event => { const button = event.currentTarget; button.disabled = true; try { await persistClassHeadPreference(false); await render() } catch (err) { showToast('ปิดใช้งานลายเซ็นหัวหน้าห้องไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error'); button.disabled = false } })
+    const switchPlan = async targetId => {
+      const targetPlan = planOptions.find(item => String(item.id) === String(targetId))
+      if (!targetPlan || Number(targetPlan.id) === Number(plan.id)) return
+      const confirmed = window.confirm('เปลี่ยนไปยังแผนครั้งอื่นหรือไม่? การแก้ไขที่ยังไม่ได้บันทึกในแผนปัจจุบันจะไม่ถูกบันทึก')
+      if (!confirmed) {
+        m.querySelector('#lp-doc-plan').value = String(plan.id)
+        return
+      }
+      await openLessonPlanDocument({
+        plan: targetPlan,
+        cls,
+        teacher,
+        classId,
+        currentWeek: asInt(targetPlan.week_start, currentWeek),
+        semesterStart,
+        semesterEnd,
+        scheduledDays,
+        onSaved,
+      })
+    }
+    m.querySelector('#lp-doc-plan').addEventListener('change', event => switchPlan(event.target.value))
+    m.querySelector('#lp-doc-plan-prev').addEventListener('click', () => {
+      const index = planOptions.findIndex(item => Number(item.id) === Number(plan.id))
+      if (index > 0) switchPlan(planOptions[index - 1].id)
+    })
+    m.querySelector('#lp-doc-plan-next').addEventListener('click', () => {
+      const index = planOptions.findIndex(item => Number(item.id) === Number(plan.id))
+      if (index >= 0 && index < planOptions.length - 1) switchPlan(planOptions[index + 1].id)
+    })
     m.querySelector('#lp-doc-week').addEventListener('change',e=>{weekNo=asInt(e.target.value,plan.week_start);render()})
     m.querySelector('#lp-doc-date').addEventListener('change', event => {
       const hint = m.querySelector('#lp-doc-date-hint')

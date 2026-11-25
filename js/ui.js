@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1134'
+import { APP_VERSION } from './version.js?v=10.22.1135'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1135': [
+    'เพิ่มตัวเลือกสลับไปมาระหว่างแผนแต่ละครั้งในรายวิชาและห้องเดียวกัน พร้อมปุ่มก่อนหน้า/ถัดไป และเตือนก่อนทิ้งการแก้ไขที่ยังไม่บันทึก',
+  ],
   '10.22.1134': [
     'แยกหน้าต่างแผนการสอนเป็นแท็บเนื้อหาแผน บันทึกหลังสอน และลายเซ็น พร้อมแสดงรายละเอียดแผนในหน้าต่างเดียว',
   ],
