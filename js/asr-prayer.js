@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
-import { startPrayerCamera } from './prayer-camera.js?v=10.22.1127'
+import { startPrayerCamera } from './prayer-camera.js?v=10.22.1133'
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]))
 const bangkokDate = () => new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Bangkok', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date())
@@ -264,7 +264,9 @@ function renderManager(data, access) {
         <div><label class="text-xs font-semibold text-gray-500">เลือกหอพัก</label><select id="asr-dorm-select" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm">${dorms.filter(d=>d.is_active).map(d=>`<option value="${d.id}" ${d.id===selectedDorm?.id?'selected':''}>${esc(d.name)} · ${(d.student_ids??[]).length} คน</option>`).join('')}</select>
           <p id="asr-dorm-current-count" class="mt-2 text-xs text-gray-500">สมาชิกหอนี้ ${dormStudents.length} คน</p>
           <label for="asr-dorm-staff-search" class="mt-3 block text-xs font-semibold text-gray-600">ค้นหาครู/ผู้ดูแลหอ</label><input id="asr-dorm-staff-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อ รหัส หรือฝ่าย" class="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><input id="asr-dorm-staff" type="hidden"><p id="asr-dorm-staff-selected" class="mt-1 text-xs text-gray-500">ยังไม่ได้เลือกครู</p><div id="asr-dorm-staff-results" class="mt-1 max-h-40 space-y-1 overflow-auto"></div>
-          <div class="mt-3 flex gap-2"><select id="asr-dorm-role" class="min-w-0 flex-1 rounded-xl border border-gray-200 px-2 py-2 text-sm"><option value="dorm_monitor">ติดตามผล</option><option value="dorm_scanner">สแกนและติดตาม</option></select><button id="asr-add-dorm-staff" class="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white">เพิ่ม</button></div>
+          <div class="mt-3 flex gap-2"><select id="asr-dorm-role" class="min-w-0 flex-1 rounded-xl border border-gray-200 px-2 py-2 text-sm"><option value="dorm_monitor">ติดตามผล</option><option value="dorm_scanner">สแกนและติดตาม</option></select><button id="asr-add-dorm-staff" class="rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white">เพิ่มหอนี้</button></div>
+          <div class="mt-2 grid grid-cols-2 gap-2"><button id="asr-add-all-dorms" class="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-bold text-indigo-700">มอบหมายทุกหอพัก</button><button id="asr-remove-all-dorms" class="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-600">ถอนทุกหอพัก</button></div>
+          <p class="mt-1 text-[11px] text-gray-400">บัญชีผู้ปกครองหอพักบัญชีเดียวเลือก “ติดตามผล” แล้วมอบหมายทุกหอพักได้ จะเห็นเฉพาะรอบหอพัก</p>
           <div id="asr-dorm-staff-list" class="mt-2 space-y-1">${(selectedDorm?.staff??[]).map(person=>`<div class="flex items-center justify-between gap-2 rounded-lg border border-gray-100 px-2 py-1.5 text-xs"><span>${esc(person.name)} · ${person.role==='dorm_scanner'?'สแกนและติดตาม':'ติดตามผล'}</span><button data-remove-dorm-staff="${esc(person.profile_id)}" data-role="${esc(person.role)}" class="text-red-500">ถอนสิทธิ์</button></div>`).join('')}</div>
         </div>
         <div><label for="asr-dorm-search" class="text-xs font-semibold text-gray-600">ค้นหานักเรียนหญิงแล้วเลือกสมาชิกหอ</label><div class="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_190px]"><input id="asr-dorm-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อ รหัส หรือสี" class="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm"><select id="asr-dorm-room" aria-label="กรองนักเรียนหอตามห้อง" class="rounded-xl border border-gray-200 px-3 py-2.5 text-sm">${roomOptions(femaleStudents,'ทุกห้อง')}</select></div><p id="asr-dorm-selection-count" class="mt-2 text-xs text-gray-500">เลือกแล้ว ${(selectedDorm?.student_ids??[]).length} คน</p><div id="asr-dorm-search-results" class="mt-2 max-h-64 space-y-1 overflow-auto"></div><button id="asr-save-dorm-roster" class="mt-2 rounded-xl bg-amber-500 px-4 py-2 text-xs font-bold text-white">บันทึกรายชื่อหอนี้</button></div>
@@ -436,6 +438,20 @@ function bindManager(root, data, access, reload) {
     try{await call('asr_prayer_set_dorm_access',{p_profile_id:profileId,p_dorm_id:dorm.id,p_role:role,p_enabled:true});showToast('เพิ่มสิทธิ์ผู้ดูแลหอแล้ว','success');await reload()}
     catch(error){showToast(getFriendlyErrorMessage(error),'error')}finally{event.currentTarget.disabled=false}
   })
+  root.querySelector('#asr-add-all-dorms')?.addEventListener('click',async event=>{
+    const profileId=selectedStaff?.profile_id;const role=root.querySelector('#asr-dorm-role')?.value
+    if(!profileId)return showToast('ค้นหาและเลือกบัญชีผู้ดูแลหอก่อน','warning')
+    event.currentTarget.disabled=true
+    try{const count=await call('asr_prayer_set_dorm_access_all',{p_profile_id:profileId,p_role:role,p_enabled:true});showToast(`มอบหมายสิทธิ์ให้ทุกหอพักแล้ว · ${count} หอ`,'success');await reload()}
+    catch(error){showToast(getFriendlyErrorMessage(error),'error')}finally{event.currentTarget.disabled=false}
+  })
+  root.querySelector('#asr-remove-all-dorms')?.addEventListener('click',async event=>{
+    const profileId=selectedStaff?.profile_id;const role=root.querySelector('#asr-dorm-role')?.value
+    if(!profileId)return showToast('ค้นหาและเลือกบัญชีผู้ดูแลหอก่อน','warning')
+    event.currentTarget.disabled=true
+    try{const count=await call('asr_prayer_set_dorm_access_all',{p_profile_id:profileId,p_role:role,p_enabled:false});showToast(`ถอนสิทธิ์ทุกหอพักแล้ว · ${count} หอ`,'success');await reload()}
+    catch(error){showToast(getFriendlyErrorMessage(error),'error')}finally{event.currentTarget.disabled=false}
+  })
   root.querySelectorAll('[data-remove-dorm-staff]').forEach(button=>button.addEventListener('click',async()=>{
     const dorm=currentDorm();if(!dorm)return
     try{await call('asr_prayer_set_dorm_access',{p_profile_id:button.dataset.removeDormStaff,p_dorm_id:dorm.id,p_role:button.dataset.role,p_enabled:false});showToast('ถอนสิทธิ์แล้ว','success');await reload()}
@@ -481,8 +497,8 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
     access=await call('asr_prayer_my_access')
     const roles=accessRoles(access)
     const canManage=!!access.can_manage
-    const canDashboard=access.is_admin||access.can_view_all||roles.some(row=>['color_scanner','dorm_scanner','dorm_monitor'].includes(row.role))
-    dashboard=canDashboard?await call('asr_prayer_dashboard_period',{p_period_key:dashboardMode,p_anchor_date:selectedDate}):null
+    const canDashboard=access.is_admin||access.can_view_all||access.can_view_commuter||roles.some(row=>['color_scanner','dorm_scanner','dorm_monitor'].includes(row.role))
+    dashboard=canDashboard?await call(access.can_view_commuter?'asr_prayer_student_period':'asr_prayer_dashboard_period',{p_period_key:dashboardMode,p_anchor_date:selectedDate}):null
     if(!canManage&&!canDashboard)throw new Error('คุณยังไม่ได้รับมอบหมายสิทธิ์ใช้งานระบบติดตามละหมาดอัซรี')
   }
   const loadManagerData=async()=>{
@@ -518,7 +534,7 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
   const headerBack=onBack?'<button id="asr-back" class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600">← กลับ</button>':''
   root.innerHTML=`<div class="mx-auto max-w-6xl space-y-4 animate-fade">
     <header class="flex flex-wrap items-center justify-between gap-3"><div><p class="text-[10px] font-bold uppercase tracking-wider text-emerald-600">ระบบติดตามระยะเริ่มต้น · นักเรียนหญิง</p><h1 class="text-xl font-extrabold text-gray-800 sm:text-2xl">🕌 ติดตามละหมาดอัซรี</h1></div>${headerBack}</header>
-    <div class="grid grid-cols-2 gap-2 rounded-2xl border border-gray-100 bg-white p-3 text-center shadow-sm sm:grid-cols-4"><div><p class="text-[10px] font-semibold text-gray-400">รอบ 1 · ไปกลับ</p><p class="mt-1 font-mono text-sm font-bold text-emerald-700">${timeLabel(access.settings?.commuter_scan_start)}–${timeLabel(access.settings?.commuter_scan_end)}</p><p class="text-[10px] text-gray-400">เริ่มละหมาด ${timeLabel(access.settings?.commuter_scan_end)}</p></div><div><p class="text-[10px] font-semibold text-gray-400">รอบ 2 · หอพัก</p><p class="mt-1 font-mono text-sm font-bold text-indigo-700">${timeLabel(access.settings?.dorm_scan_start)}–${timeLabel(access.settings?.dorm_scan_end)}</p><p class="text-[10px] text-gray-400">เริ่มละหมาด ${timeLabel(access.settings?.dorm_scan_end)}</p></div><div><p class="text-[10px] font-semibold text-gray-400">ขอบเขตของฉัน</p><p class="mt-1 text-sm font-bold text-gray-700">${access.is_admin||access.can_view_all?'ภาพรวมทั้งหมด':roles.filter(r=>r.role!=='delegate').map(r=>r.scope_value).join(', ')||'จัดการสิทธิ์'}</p></div><div><p class="text-[10px] font-semibold text-gray-400">บันทึกลง</p><p class="mt-1 text-sm font-bold text-gray-700">ตารางอัซรีแยก</p></div></div>
+    <div class="grid grid-cols-2 gap-2 rounded-2xl border border-gray-100 bg-white p-3 text-center shadow-sm sm:grid-cols-4"><div><p class="text-[10px] font-semibold text-gray-400">รอบ 1 · ไปกลับ</p><p class="mt-1 font-mono text-sm font-bold text-emerald-700">${timeLabel(access.settings?.commuter_scan_start)}–${timeLabel(access.settings?.commuter_scan_end)}</p><p class="text-[10px] text-gray-400">เริ่มละหมาด ${timeLabel(access.settings?.commuter_scan_end)}</p></div><div><p class="text-[10px] font-semibold text-gray-400">รอบ 2 · หอพัก</p><p class="mt-1 font-mono text-sm font-bold text-indigo-700">${timeLabel(access.settings?.dorm_scan_start)}–${timeLabel(access.settings?.dorm_scan_end)}</p><p class="text-[10px] text-gray-400">เริ่มละหมาด ${timeLabel(access.settings?.dorm_scan_end)}</p></div><div><p class="text-[10px] font-semibold text-gray-400">ขอบเขตของฉัน</p><p class="mt-1 text-sm font-bold text-gray-700">${access.is_admin||access.can_view_all?'ภาพรวมทั้งหมด':access.can_view_commuter?'ข้อมูลของฉัน · รอบไปกลับ':roles.filter(r=>r.role!=='delegate').map(r=>r.scope_value).join(', ')||'จัดการสิทธิ์'}</p></div><div><p class="text-[10px] font-semibold text-gray-400">บันทึกลง</p><p class="mt-1 text-sm font-bold text-gray-700">ตารางอัซรีแยก</p></div></div>
     <nav class="flex flex-wrap gap-2">${canDashboard?'<button data-asr-tab="dashboard" class="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white">📊 ติดตามผล</button><button data-asr-tab="followup" class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600">⚠️ นักเรียนที่ควรติดตาม</button>':''}${scanner?'<button data-asr-tab="scanner" class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600">📷 สแกน</button>':''}${canManage?'<button data-asr-tab="manager" class="rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-bold text-gray-600">⚙️ ตั้งค่าและมอบสิทธิ์</button>':''}</nav>
     ${canDashboard?`<section id="asr-dashboard-panel" class="space-y-3"><div class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-3"><div class="flex flex-wrap gap-2" role="group" aria-label="เลือกระยะเวลาติดตาม"><button type="button" data-asr-period="day" class="rounded-xl px-3 py-2 text-xs font-bold">รายวัน</button><button type="button" data-asr-period="week" class="rounded-xl px-3 py-2 text-xs font-bold">รายสัปดาห์</button><button type="button" data-asr-period="month" class="rounded-xl px-3 py-2 text-xs font-bold">รายเดือน</button></div><label class="text-xs font-semibold text-gray-600">วันที่อ้างอิง <input id="asr-dashboard-date" type="date" value="${esc(selectedDate)}" max="${bangkokDate()}" class="ml-1 rounded-lg border border-gray-200 px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-500"></label><button id="asr-dashboard-refresh" class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600">รีเฟรช</button></div><p id="asr-dashboard-date-label" class="text-xs text-amber-700"></p><div id="asr-dashboard-content"></div></section>`:''}
     ${canDashboard?`<section id="asr-followup-panel" class="hidden space-y-3"><div class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-white p-3"><div class="flex flex-wrap gap-2" role="group" aria-label="เลือกระยะเวลาติดตาม"><button type="button" data-asr-period="day" class="rounded-xl px-3 py-2 text-xs font-bold">รายวัน</button><button type="button" data-asr-period="week" class="rounded-xl px-3 py-2 text-xs font-bold">รายสัปดาห์</button><button type="button" data-asr-period="month" class="rounded-xl px-3 py-2 text-xs font-bold">รายเดือน</button></div><label class="text-xs font-semibold text-gray-600">วันที่อ้างอิง <input data-asr-followup-date type="date" value="${esc(selectedDate)}" max="${bangkokDate()}" class="ml-1 rounded-lg border border-gray-200 px-2 py-1.5"></label><button data-asr-followup-refresh class="rounded-lg border border-gray-200 px-3 py-2 text-xs font-semibold text-gray-600">รีเฟรช</button></div><p class="text-xs text-amber-700" data-asr-followup-period-label></p><div id="asr-followup-content"></div></section>`:''}
@@ -535,7 +551,7 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
     const modal=renderGroupModal(group,dashboardMode,periodLabel)
     if(!modal)return
     try {
-      const students=await call('asr_prayer_dashboard_period_students',{p_period_key:dashboardMode,p_anchor_date:selectedDate,p_round_key:group.round,p_scope_value:group.scope_value,p_room:reportFilters.room||null,p_color:reportFilters.color||null,p_dorm:reportFilters.dorm||null})
+      const students=await call(access.can_view_commuter?'asr_prayer_student_period_students':'asr_prayer_dashboard_period_students',access.can_view_commuter?{p_period_key:dashboardMode,p_anchor_date:selectedDate}:{p_period_key:dashboardMode,p_anchor_date:selectedDate,p_round_key:group.round,p_scope_value:group.scope_value,p_room:reportFilters.room||null,p_color:reportFilters.color||null,p_dorm:reportFilters.dorm||null})
       const body=modal.querySelector('[data-asr-detail-body]')
       if(body&&modal.isConnected)body.innerHTML=renderGroupStudentRows(students??[])
     } catch(error) {
@@ -584,7 +600,7 @@ export async function renderAsrPrayerView(root, actor = null, { onBack = null } 
   const fetchDashboard=async()=>{
     if(!canDashboard)return
     const requestId=++dashboardRequestId
-    try{const nextDashboard=await call('asr_prayer_dashboard_period',{p_period_key:dashboardMode,p_anchor_date:selectedDate,p_room:reportFilters.room||null,p_color:reportFilters.color||null,p_dorm:reportFilters.dorm||null});if(requestId!==dashboardRequestId)return;dashboard=nextDashboard;drawDashboard()}
+    try{const nextDashboard=await call(access.can_view_commuter?'asr_prayer_student_period':'asr_prayer_dashboard_period',access.can_view_commuter?{p_period_key:dashboardMode,p_anchor_date:selectedDate}:{p_period_key:dashboardMode,p_anchor_date:selectedDate,p_room:reportFilters.room||null,p_color:reportFilters.color||null,p_dorm:reportFilters.dorm||null});if(requestId!==dashboardRequestId)return;dashboard=nextDashboard;drawDashboard()}
     catch(error){showToast(getFriendlyErrorMessage(error),'error')}
   }
   root.querySelectorAll('[data-asr-period]').forEach(button=>button.addEventListener('click',async()=>{dashboardMode=button.dataset.asrPeriod;await fetchDashboard()}))
