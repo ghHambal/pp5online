@@ -1114,121 +1114,100 @@ export async function renderGradesGrid(teacher, classData) {
       })
     }
 
-    const _openFormulaLinkPopup = (col) => {
-      document.getElementById('formula-link-popup')?.remove()
-      const pop = document.createElement('div')
-      pop.id = 'formula-link-popup'
-      pop.className = 'fixed inset-0 z-[650] flex items-center justify-center bg-black/40 p-4'
-      const varHint = bonusWithVars.length
-        ? bonusWithVars.map(b => `<span class="font-mono font-bold text-violet-700">${b.var}</span> = "${b.assignment_name}"`).join('  |  ')
-        : '<span class="text-gray-400">ยังไม่มีคอลัมน์พิเศษ</span>'
-      pop.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
-          <div class="bg-gradient-to-br from-violet-500 to-purple-600 px-5 py-4">
-            <h3 class="text-white font-bold text-sm">🔗 เชื่อมสูตรจากคะแนนพิเศษ</h3>
-            <p class="text-violet-100 text-xs mt-0.5">คอลัมน์: <span class="font-semibold">${_htmlEsc(col.assignment_name)}</span> (เต็ม ${col.max_score??'?'})</p>
-            <p class="text-violet-200 text-[10px] mt-1">สูตรจะบวกเพิ่มเข้าคะแนนที่กรอก ไม่เกินคะแนนเต็ม</p>
-          </div>
-          <div class="p-4 space-y-3">
-            <div class="bg-violet-50 rounded-xl p-3 text-xs text-violet-800">
-              <p class="font-semibold mb-1">พิมพ์สูตรหรือคลิกเลือกคอลัมน์ด้านล่างเพื่อแทรกตัวแปร</p>
-              <p id="flp-vars">${varHint}</p>
-              <p class="mt-1 text-violet-500">ฟังก์ชัน: MIN, MAX, IF, ROUND, SUM, AVG, CLAMP</p>
-            </div>
-            <div>
-              <label class="block text-xs font-medium text-gray-600 mb-1">สูตร <span class="text-red-400">*</span></label>
-              <div class="flex gap-2">
-                <input id="flp-formula" type="text" value="${_htmlEsc(col.bonus_formula??'')}"
-                  placeholder="เช่น =MIN(A,5) หรือ =A*0.5+B"
-                  class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-violet-400"/>
-                <button id="flp-test" class="px-3 py-2 rounded-xl bg-violet-100 text-violet-700 text-xs font-medium hover:bg-violet-200 whitespace-nowrap">ทดสอบ</button>
-              </div>
-              <p id="flp-result" class="text-xs mt-1 hidden"></p>
-            </div>
-            <div class="space-y-1.5">
-              <label for="flp-column-search" class="block text-xs font-medium text-gray-600">ค้นหาคอลัมน์คะแนน แล้วคลิกเพื่อแทรกในสูตร</label>
-              <input id="flp-column-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อคอลัมน์ เช่น คะแนนกิจกรรม"
-                class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400"/>
-              <div id="flp-column-options" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-36 overflow-y-auto rounded-xl bg-gray-50 p-2">
-                ${bonusWithVars.map(b => `<button type="button" data-formula-var="${b.var}" data-formula-name="${_htmlEsc(b.assignment_name)}"
-                    class="text-left rounded-lg border border-violet-100 bg-white px-2.5 py-2 text-xs hover:border-violet-400 hover:bg-violet-50">
-                    <span class="font-mono font-bold text-violet-700">${b.var}</span>
-                    <span class="ml-1 text-gray-700">${_htmlEsc(b.assignment_name)}</span>
-                    <span class="block mt-0.5 text-[10px] text-gray-400">เต็ม ${b.max_score ?? 'ไม่ระบุ'} คะแนน</span>
-                  </button>`).join('') || '<p class="col-span-full py-2 text-center text-xs text-gray-400">ไม่มีคอลัมน์คะแนนพิเศษให้เลือก</p>'}
-              </div>
-              <p class="text-[10px] text-gray-400">สูตรจะใช้คะแนนจากคอลัมน์ที่เลือกของนักเรียนคนเดียวกัน</p>
-            </div>
-            <div class="flex gap-2">
-              ${col.bonus_formula ? `<button id="flp-clear" class="flex-1 py-2.5 rounded-xl border border-red-200 text-red-500 text-xs hover:bg-red-50 transition">ลบสูตร</button>` : ''}
-              <button id="flp-cancel" class="flex-1 py-2.5 rounded-xl border border-gray-200 text-gray-500 text-xs hover:bg-gray-50 transition">ยกเลิก</button>
-              <button id="flp-save" class="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold transition">บันทึก</button>
-            </div>
-          </div>
-        </div>`
-      document.body.appendChild(pop)
-
-      const formulaInput = pop.querySelector('#flp-formula')
-      const optionButtons = [...pop.querySelectorAll('[data-formula-var]')]
-      const insertFormulaVar = (variable) => {
-        const start = formulaInput.selectionStart ?? formulaInput.value.length
-        const end = formulaInput.selectionEnd ?? start
-        formulaInput.setRangeText(variable, start, end, 'end')
-        formulaInput.focus()
-        formulaInput.dispatchEvent(new Event('input', { bubbles: true }))
+    let activeFormulaColumnId = null
+    const _toggleFormulaEditor = (col) => {
+      // Open the formula editor in the grid itself instead of a modal dialog.
+      activeFormulaColumnId = activeFormulaColumnId === col.id ? null : col.id
+      _renderGrid()
+      if (activeFormulaColumnId != null) {
+        const input = document.getElementById('grade-formula-input')
+        input?.focus()
+        input?.setSelectionRange(input.value.length, input.value.length)
       }
-      pop.querySelector('#flp-column-search')?.addEventListener('input', e => {
-        const query = e.target.value.trim().toLocaleLowerCase()
-        optionButtons.forEach(button => {
-          button.classList.toggle('hidden', query && !button.dataset.formulaName.toLocaleLowerCase().includes(query))
-        })
-      })
-      optionButtons.forEach(button => button.addEventListener('click', () => insertFormulaVar(button.dataset.formulaVar)))
+    }
 
-      pop.querySelector('#flp-cancel').addEventListener('click', () => pop.remove())
+    const _formulaEditorHtml = () => {
+      const col = [...midCols, ...finalCols].find(c => c.id === activeFormulaColumnId)
+      if (!col) return ''
+      const refs = bonusWithVars.map(b => `<button type="button" data-formula-var="${b.var}"
+        class="inline-flex items-center gap-1 rounded-lg border border-violet-200 bg-white px-2.5 py-1.5 text-xs hover:bg-violet-50 hover:border-violet-400">
+        <span class="font-mono font-bold text-violet-700">${b.var}</span><span>${_htmlEsc(b.assignment_name)}</span>
+      </button>`).join('') || '<span class="text-xs text-gray-400">ยังไม่มีคอลัมน์คะแนนพิเศษให้เลือก</span>'
+      return `<section class="sticky top-0 z-40 border-b border-violet-200 bg-violet-50/95 p-3 shadow-sm backdrop-blur" data-formula-editor>
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div><h3 class="text-sm font-bold text-violet-900">🔗 สูตรคะแนน: ${_htmlEsc(col.assignment_name)}</h3>
+            <p class="text-[11px] text-violet-700">พิมพ์ = เพื่อเริ่มสูตร เช่น =SUM( แล้วคลิกคอลัมน์เพื่อแทรกตัวแปร · สูตรจะบวกเพิ่มและไม่เกินคะแนนเต็ม</p></div>
+          <button type="button" id="grade-formula-close" class="rounded-lg px-2 py-1 text-xs text-gray-500 hover:bg-white">ปิด</button>
+        </div>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <input id="grade-formula-input" type="text" value="${_htmlEsc(col.bonus_formula ?? '')}"
+            placeholder="พิมพ์ =SUM( หรือ = แล้วเลือกคอลัมน์"
+            class="min-w-[240px] flex-1 rounded-lg border border-violet-300 bg-white px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-violet-200" />
+          <button type="button" id="grade-formula-test" class="rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-800 hover:bg-violet-200">ทดสอบ</button>
+          ${col.bonus_formula ? '<button type="button" id="grade-formula-clear" class="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-600 hover:bg-red-50">ลบสูตร</button>' : ''}
+          <button type="button" id="grade-formula-save" class="rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-700">บันทึกสูตร</button>
+        </div>
+        <div id="grade-formula-templates" class="mt-2 hidden flex-wrap items-center gap-1.5">
+          <span class="mr-1 text-[11px] text-gray-500">สูตรตัวอย่าง:</span>
+          ${['=SUM(', '=MIN(', '=MAX(', '=AVG(', '=IF('].map(t => `<button type="button" data-formula-template="${t}" class="rounded-md border border-violet-200 bg-white px-2 py-1 font-mono text-[11px] text-violet-700 hover:bg-violet-100">${t}</button>`).join('')}
+        </div>
+        <div class="mt-2 flex flex-wrap items-center gap-1.5"><span class="text-[11px] text-gray-500">คลิกคอลัมน์เพื่อแทรก:</span>${refs}</div>
+        <p id="grade-formula-result" class="mt-1 hidden text-xs"></p>
+      </section>`
+    }
 
-      pop.querySelector('#flp-test')?.addEventListener('click', () => {
-        const formula = pop.querySelector('#flp-formula').value.trim()
-        const resultEl = pop.querySelector('#flp-result')
-        if (!formula) { resultEl.classList.add('hidden'); return }
-        const sampleVars = Object.fromEntries(bonusWithVars.map(b => [b.var, 5]))
-        const result = evalFormula(formula, sampleVars)
+    const _bindFormulaEditor = (wrap) => {
+      const col = [...midCols, ...finalCols].find(c => c.id === activeFormulaColumnId)
+      if (!col) return
+      const input = wrap.querySelector('#grade-formula-input')
+      const templates = wrap.querySelector('#grade-formula-templates')
+      const insertText = value => {
+        const start = input.selectionStart ?? input.value.length
+        const end = input.selectionEnd ?? start
+        input.setRangeText(value, start, end, 'end')
+        input.focus()
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      input.addEventListener('input', () => templates.classList.toggle('hidden', !input.value.trim().startsWith('=')))
+      templates.classList.toggle('hidden', !input.value.trim().startsWith('='))
+      wrap.querySelectorAll('[data-formula-template]').forEach(button => button.addEventListener('click', () => {
+        input.value = button.dataset.formulaTemplate
+        input.focus(); input.setSelectionRange(input.value.length, input.value.length)
+        templates.classList.remove('hidden')
+      }))
+      wrap.querySelectorAll('[data-formula-var]').forEach(button => button.addEventListener('click', () => insertText(button.dataset.formulaVar)))
+      wrap.querySelector('#grade-formula-close').addEventListener('click', () => { activeFormulaColumnId = null; _renderGrid() })
+      wrap.querySelector('#grade-formula-test').addEventListener('click', () => {
+        const resultEl = wrap.querySelector('#grade-formula-result')
+        const result = evalFormula(input.value, Object.fromEntries(bonusWithVars.map(b => [b.var, 5])))
         resultEl.classList.remove('hidden')
-        if (result === null) {
-          resultEl.className = 'text-xs mt-1 text-red-500'
-          resultEl.textContent = '⚠️ สูตรไม่ถูกต้อง'
-        } else {
-          resultEl.className = 'text-xs mt-1 text-emerald-600'
-          const eg = bonusWithVars.map(b=>`${b.var}=5`).join(', ')
-          const eff = col.max_score ? Math.min((0 + result), col.max_score) : result
-          resultEl.textContent = `✅ ตัวอย่าง (${eg||'ไม่มี'}) → bonus=${result} → คะแนนจริง MIN(0+${result},${col.max_score??'∞'}) = ${eff}`
-        }
+        resultEl.className = `mt-1 text-xs ${result == null ? 'text-red-600' : 'text-emerald-700'}`
+        resultEl.textContent = result == null ? 'สูตรยังไม่สมบูรณ์หรือไม่ถูกต้อง' : `ตัวอย่างเมื่อแต่ละคอลัมน์มี 5 คะแนน: โบนัสที่ได้ ${result} คะแนน`
       })
-
-      pop.querySelector('#flp-clear')?.addEventListener('click', async () => {
+      wrap.querySelector('#grade-formula-clear')?.addEventListener('click', async () => {
         try {
           await updateScoreColumn(col.id, { bonus_formula: null, bonus_formula_refs: [] })
           col.bonus_formula = null; col.bonus_formula_refs = []
+          activeFormulaColumnId = null
           showToast('ลบสูตรแล้ว ✅', 'success')
-          pop.remove(); _renderToggleBar(); _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
+          _renderToggleBar(); _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
         } catch { showToast('บันทึกไม่สำเร็จ', 'error') }
       })
-
-      pop.querySelector('#flp-save').addEventListener('click', async () => {
-        const formula = pop.querySelector('#flp-formula').value.trim()
+      wrap.querySelector('#grade-formula-save').addEventListener('click', async e => {
+        const formula = input.value.trim()
         if (!formula) { showToast('กรุณากรอกสูตร', 'warning'); return }
-        if (evalFormula(formula, Object.fromEntries(bonusWithVars.map(b=>[b.var,5]))) === null) {
-          showToast('สูตรไม่ถูกต้อง', 'warning'); return
+        if (evalFormula(formula, Object.fromEntries(bonusWithVars.map(b => [b.var, 5]))) == null) {
+          showToast('สูตรยังไม่สมบูรณ์หรือไม่ถูกต้อง', 'warning'); return
         }
-        const refs = bonusWithVars.map(b => ({ var: b.var, col_id: b.id }))
-        const btn = pop.querySelector('#flp-save')
-        btn.disabled = true; btn.textContent = '⏳'
+        const btn = e.currentTarget
+        btn.disabled = true; btn.textContent = 'กำลังบันทึก…'
         try {
-          await updateScoreColumn(col.id, { bonus_formula: formula, bonus_formula_refs: refs })
-          col.bonus_formula = formula; col.bonus_formula_refs = refs
+          await updateScoreColumn(col.id, { bonus_formula: formula, bonus_formula_refs: bonusWithVars.map(b => ({ var: b.var, col_id: b.id })) })
+          col.bonus_formula = formula; col.bonus_formula_refs = bonusWithVars.map(b => ({ var: b.var, col_id: b.id }))
+          activeFormulaColumnId = null
           showToast('บันทึกสูตรแล้ว ✅', 'success')
-          pop.remove(); _renderToggleBar(); _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
-        } catch { showToast('บันทึกไม่สำเร็จ', 'error'); btn.disabled=false; btn.textContent='บันทึก' }
+          _renderToggleBar(); _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
+        } catch { showToast('บันทึกไม่สำเร็จ', 'error'); btn.disabled = false; btn.textContent = 'บันทึกสูตร' }
       })
     }
 
@@ -1899,7 +1878,7 @@ export async function renderGradesGrid(teacher, classData) {
                 data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
               <button class="btn-mass-score text-blue-300 hover:text-blue-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
               ${!_isLockedScoreColumn(c) ? `<button class="btn-scan-col text-blue-300 hover:text-blue-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="สแกน QR บันทึกคะแนนคอลัมน์นี้">📷</button>` : ''}
-              ${showFormulaLink ? `<button class="btn-formula-link text-[10px] leading-none flex-shrink-0 ${c.bonus_formula ? 'text-violet-500' : 'text-gray-300 hover:text-violet-400'}" data-colid="${c.id}" title="${c.bonus_formula ? '🔗 = '+c.bonus_formula : 'เชื่อมสูตรจากคะแนนพิเศษ'}">🔗</button>` : ''}
+              ${showFormulaLink ? `<button class="btn-formula-link text-[10px] leading-none flex-shrink-0 ${c.bonus_formula ? 'text-violet-500' : 'text-gray-300 hover:text-violet-400'}" data-colid="${c.id}" title="${c.bonus_formula ? '🔗 = '+c.bonus_formula : 'เปิดแถบสูตรในตาราง'}">🔗</button>` : ''}
             </div>
           </th>`).join('')}
           <th class="${thBase} bg-blue-50" style="width:30px">
@@ -1910,7 +1889,7 @@ export async function renderGradesGrid(teacher, classData) {
                 data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
               <button class="btn-mass-score text-purple-300 hover:text-purple-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
               ${!_isLockedScoreColumn(c) ? `<button class="btn-scan-col text-purple-300 hover:text-purple-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="สแกน QR บันทึกคะแนนคอลัมน์นี้">📷</button>` : ''}
-              ${showFormulaLink ? `<button class="btn-formula-link text-[10px] leading-none flex-shrink-0 ${c.bonus_formula ? 'text-violet-500' : 'text-gray-300 hover:text-violet-400'}" data-colid="${c.id}" title="${c.bonus_formula ? '🔗 = '+c.bonus_formula : 'เชื่อมสูตรจากคะแนนพิเศษ'}">🔗</button>` : ''}
+              ${showFormulaLink ? `<button class="btn-formula-link text-[10px] leading-none flex-shrink-0 ${c.bonus_formula ? 'text-violet-500' : 'text-gray-300 hover:text-violet-400'}" data-colid="${c.id}" title="${c.bonus_formula ? '🔗 = '+c.bonus_formula : 'เปิดแถบสูตรในตาราง'}">🔗</button>` : ''}
             </div>
           </th>`).join('')}
           <th class="${thBase} bg-purple-50" style="width:30px">
@@ -2017,8 +1996,9 @@ export async function renderGradesGrid(teacher, classData) {
           ${_readCell(s.id)}
         </tr>`}).join('')
 
-      wrap.innerHTML = `<table class="border-collapse text-xs" style="min-width:max-content">
+      wrap.innerHTML = `${_formulaEditorHtml()}<table class="border-collapse text-xs" style="min-width:max-content">
         <thead>${head}</thead><tbody>${body}</tbody></table>`
+      _bindFormulaEditor(wrap)
       const tbl = wrap.querySelector('table')
 
       // ── คอลัมน์ปรับคะแนน: เทียบ/บวกกับคอลัมน์ที่เชื่อมไว้ (link_column_id) ตามโหมด
@@ -2329,7 +2309,7 @@ export async function renderGradesGrid(teacher, classData) {
         btn.addEventListener('click',()=>{
           const colId=parseInt(btn.dataset.colid)
           const col=[...midCols,...finalCols].find(c=>c.id===colId)
-          if(col) _openFormulaLinkPopup(col)
+          if(col) _toggleFormulaEditor(col)
         })
       })
       // ── Student grade detail ──
