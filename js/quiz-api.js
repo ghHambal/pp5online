@@ -139,6 +139,25 @@ export async function closeQuiz(id, { writeScores = false } = {}) {
   if (error) throw error
 }
 
+export async function getQuizAttemptStudentIds(quizId) {
+  const { data, error } = await supabase
+    .from('quiz_attempts')
+    .select('student_id')
+    .eq('quiz_id', quizId)
+  if (error) throw error
+  return new Set((data ?? []).map(row => Number(row.student_id)))
+}
+
+export async function openQuizMakeup(quizId, studentIds, closesAt) {
+  const { data, error } = await supabase.rpc('teacher_open_quiz_makeup', {
+    p_quiz_id: quizId,
+    p_student_ids: studentIds,
+    p_closes_at: closesAt,
+  })
+  if (error) throw error
+  return Number(data ?? 0)
+}
+
 export async function applyQuizScores(id) {
   // Idempotent on the server. In add mode only the contribution difference is
   // applied, so pressing this again cannot double-add the same quiz score.
@@ -190,9 +209,17 @@ export async function getQuizzesForStudentClass(classId, studentId) {
     .in('quiz_id', quizzes.map(q => q.id))
   if (attemptsError) throw attemptsError
 
+  const { data: makeupAccess, error: makeupError } = await supabase
+    .from('quiz_makeup_access')
+    .select('quiz_id, opened_at, closes_at')
+    .eq('student_id', studentId)
+    .in('quiz_id', quizzes.map(q => q.id))
+  if (makeupError) throw makeupError
+
   return quizzes.map(quiz => ({
     ...quiz,
-    attempts: (attempts ?? []).filter(a => a.quiz_id === quiz.id).sort((a, b) => a.attempt_number - b.attempt_number)
+    attempts: (attempts ?? []).filter(a => a.quiz_id === quiz.id).sort((a, b) => a.attempt_number - b.attempt_number),
+    makeupAccess: (makeupAccess ?? []).find(access => access.quiz_id === quiz.id) ?? null,
   }))
 }
 

@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1144'
+import { APP_VERSION } from './version.js?v=10.22.1145'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1145': [
+    'เพิ่มเปิดสอบชดเชยหลังปิดสอบ โดยครูเลือกนักเรียนที่ยังไม่เคยเริ่มสอบ กำหนดวันหมดเขต และตรวจสิทธิ์สอบรายคนในระบบ',
+  ],
   '10.22.1144': [
     'เพิ่มเลือกช่วงคะแนนด้วยการลาก เลือกทั้งคอลัมน์ คัดลอก/วางหลายช่องแบบตาราง และวางข้อมูลจาก Excel หรือ Google Sheets ได้',
     'รวมการแก้ผลสูตรให้แสดงในช่องคะแนนที่ตั้งไว้ และคงช่องคะแนนที่ยังไม่กรอกให้เป็นค่าว่าง',

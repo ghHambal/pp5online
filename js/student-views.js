@@ -28,7 +28,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1144'
+import { APP_VERSION } from './version.js?v=10.22.1145'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -444,10 +444,8 @@ export async function renderStudentOverview(student) {
   const recent  = requests.slice(0, 3)
   const hasExtendedScanWindow = _isExtendedPrayerScanner(student, cfg)
 
-  // แบบทดสอบที่ "เข้าได้เดี๋ยวนี้" — ปรากฏเฉพาะตอนที่ครูกดเริ่มสอบแล้ว (status
-  // 'started') และหายไปเองทันทีที่ครูกดปิดสอบ (status 'closed') โดยไม่ต้องใช้
-  // timer ฝั่ง client เลย เพราะ "ถึงเวลา/เลยเวลา" ในที่นี้คือสถานะที่ครูตั้งเอง
-  // ไม่ใช่ช่วงเวลานาฬิกา (เหมือนกับที่การ์ดในแท็บ "ต้องทำ" ของแต่ละวิชาใช้อยู่แล้ว)
+  // แบบทดสอบที่เข้าได้ตอนนี้: แบบที่ครูเปิดสอบทั้งห้อง หรือสิทธิ์สอบชดเชย
+  // เฉพาะรายคนที่ยังอยู่ในช่วงเวลาที่กำหนด (รวม attempt ที่เริ่มแล้วและกำลังทำต่อ)
   const quizzesByClass = await Promise.all(
     classes.map(c => getQuizzesForStudentClass(c.id, student.id).catch(() => []))
   )
@@ -455,7 +453,11 @@ export async function renderStudentOverview(student) {
   const _finalizedQuizIds = await getMyQuizFinalizations(_quizCandidates.map(q => q.id), student.id).catch(() => new Set())
   const liveQuizzes = _quizCandidates
     .filter(q => {
-      if (q.status !== 'started') return false
+      const inProgress = q.attempts.some(a => a.status === 'in_progress')
+      const makeupWindowOpen = q.status === 'closed' && q.makeupAccess
+        && Date.now() >= new Date(q.makeupAccess.opened_at).getTime()
+        && Date.now() <= new Date(q.makeupAccess.closes_at).getTime()
+      if (q.status !== 'started' && !(q.status === 'closed' && (makeupWindowOpen || inProgress))) return false
       if (_finalizedQuizIds.has(q.id)) return false // นักเรียนกดยืนยันจบเองไปแล้ว ไม่ต้องโชว์การ์ดค้าง
       const finishedCount = q.attempts.filter(a => a.status === 'submitted' || a.status === 'terminated_violation').length
       const lockedAttempt = q.attempts.length && q.attempts[q.attempts.length - 1].status === 'terminated_violation'
@@ -2197,22 +2199,27 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo',
         ? q.attempts[q.attempts.length - 1] : null
       const inProgressAttempt = q.attempts.find(a => a.status === 'in_progress')
       const finishedCount = q.attempts.filter(a => a.status === 'submitted' || a.status === 'terminated_violation').length
+      const makeupWindowOpen = q.status === 'closed' && q.makeupAccess
+        && Date.now() >= new Date(q.makeupAccess.opened_at).getTime()
+        && Date.now() <= new Date(q.makeupAccess.closes_at).getTime()
+      const makeupAvailable = q.status === 'closed' && q.makeupAccess && (makeupWindowOpen || inProgressAttempt)
+      const canEnter = q.status === 'started' || makeupAvailable
 
       let statusChip = ''
       let actionBtn = ''
       if (q.status === 'announced') {
         statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">รอครูเริ่ม</span>`
-      } else if (q.status === 'started' && finalizedQuizIds.has(q.id)) {
+      } else if (canEnter && finalizedQuizIds.has(q.id)) {
         statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">✅ ยืนยันคะแนนสุดท้ายแล้ว</span>`
-      } else if (q.status === 'started' && lockedAttempt) {
+      } else if (canEnter && lockedAttempt) {
         statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">🔒 ถูกล็อก — ติดต่อครูผู้สอน</span>`
-      } else if (q.status === 'started' && inProgressAttempt) {
-        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">กำลังทำอยู่</span>`
+      } else if (canEnter && inProgressAttempt) {
+        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">${makeupAvailable ? 'กำลังทำสอบชดเชย' : 'กำลังทำอยู่'}</span>`
         actionBtn = `<button onclick="window._stuStartQuiz('${q.id}')" class="mt-2 px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">ทำต่อ →</button>`
-      } else if (q.status === 'started' && finishedCount >= q.max_attempts) {
+      } else if (canEnter && finishedCount >= q.max_attempts) {
         statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">ทำครบจำนวนครั้งแล้ว</span>`
-      } else if (q.status === 'started') {
-        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">เปิดสอบอยู่</span>`
+      } else if (canEnter) {
+        statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full ${makeupAvailable ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">${makeupAvailable ? 'เปิดสอบชดเชย' : 'เปิดสอบอยู่'}</span>`
         actionBtn = `<button onclick="window._stuStartQuiz('${q.id}')" class="mt-2 px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold">เข้าสอบ →</button>`
       } else if (q.status === 'closed') {
         statusChip = `<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">ปิดสอบแล้ว</span>`

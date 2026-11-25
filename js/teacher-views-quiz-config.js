@@ -1,7 +1,7 @@
 // js/teacher-views-quiz-config.js
 import '../css/quiz-config-wizard.css'
-import { getMyClasses, getScoreColumns, getSystemConfig } from './api.js'
-import { getQuizzesForBank, getQuizQuestions, createQuiz, updateQuiz, startQuizLive, closeQuiz, applyQuizScores, deleteQuiz, getTeacherStartedQuizCount } from './quiz-api.js'
+import { getMyClasses, getClassStudents, getScoreColumns, getSystemConfig } from './api.js'
+import { getQuizzesForBank, getQuizQuestions, createQuiz, updateQuiz, startQuizLive, closeQuiz, openQuizMakeup, getQuizAttemptStudentIds, applyQuizScores, deleteQuiz, getTeacherStartedQuizCount } from './quiz-api.js'
 import { showToast, showDangerConfirm, showQuizCloseChoice, getFriendlyErrorMessage } from './ui.js'
 import { setContent, setTitle, _htmlEsc } from './teacher-views-utils.js'
 import { loadKaTeX, renderMathIn } from './katex-loader.js'
@@ -90,6 +90,7 @@ export async function renderBankQuizzes(teacher, bank, preferredClassId = null) 
               <div class="flex flex-col gap-1.5 flex-shrink-0">
                 ${q.status === 'announced' ? `<button class="btn-start-quiz px-3 py-1.5 rounded-lg ${canStartFree ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-gray-300'} text-white text-xs font-bold" data-id="${q.id}">▶️ เริ่มสอบ</button>` : ''}
                 ${q.status === 'started' ? `<button class="btn-close-quiz px-3 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold" data-id="${q.id}">⏹️ ปิดสอบ</button>` : ''}
+                ${q.status === 'closed' ? `<button class="btn-makeup-quiz px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold" data-id="${q.id}">🕒 เปิดสอบชดเชย</button>` : ''}
                 ${q.status === 'started' ? `<button class="btn-monitor-quiz px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold" data-id="${q.id}">🔴 ดูสด</button>` : ''}
                 ${(q.status === 'started' || q.status === 'closed') ? `<button class="btn-analytics-quiz px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold" data-id="${q.id}">📊 สถิติ</button>` : ''}
                 ${(q.status === 'closed' && q.score_column_id) ? `<button class="btn-apply-quiz-score px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold" data-id="${q.id}">📥 ส่งคะแนนย้อนหลัง</button>` : ''}
@@ -150,6 +151,12 @@ export async function renderBankQuizzes(teacher, bank, preferredClassId = null) 
       renderBankQuizzes(teacher, bank)
     }))
 
+  document.querySelectorAll('.btn-makeup-quiz').forEach(btn =>
+    btn.addEventListener('click', () => {
+      const quiz = quizzes.find(q => q.id === btn.dataset.id)
+      if (quiz) _openQuizMakeupModal(teacher, bank, quiz, classNameById[quiz.class_id] ?? 'ห้องเรียน')
+    }))
+
   document.querySelectorAll('.btn-apply-quiz-score').forEach(btn =>
     btn.addEventListener('click', async () => {
       const quiz = quizzes.find(q => q.id === btn.dataset.id)
@@ -188,6 +195,128 @@ export async function renderBankQuizzes(teacher, bank, preferredClassId = null) 
       const { openQuizAnalytics } = await import('./teacher-views-quiz-analytics.js')
       openQuizAnalytics(quizzes.find(q => q.id === btn.dataset.id))
     }))
+}
+
+async function _openQuizMakeupModal(teacher, bank, quiz, className) {
+  document.getElementById('quiz-makeup-modal')?.remove()
+  const modal = document.createElement('div')
+  modal.id = 'quiz-makeup-modal'
+  modal.className = 'fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-3 sm:p-5'
+  modal.setAttribute('role', 'dialog')
+  modal.setAttribute('aria-modal', 'true')
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+      <header class="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
+        <div><h2 class="font-bold text-gray-800">🕒 เปิดสอบชดเชย</h2>
+          <p class="text-xs text-gray-500 mt-1">${_htmlEsc(quiz.title)} · ${_htmlEsc(className)}</p></div>
+        <button type="button" data-close class="text-gray-400 hover:text-gray-700 text-xl leading-none" aria-label="ปิด">×</button>
+      </header>
+      <div class="p-5 space-y-3 overflow-y-auto">
+        <div class="rounded-xl bg-teal-50 border border-teal-100 p-3 text-xs text-teal-800 leading-relaxed">
+          เลือกได้เฉพาะนักเรียนในห้องที่ยังไม่เคยเริ่มทำแบบทดสอบนี้ นักเรียนที่สอบแล้วจะไม่ถูกเปิดสิทธิ์ซ้ำ
+        </div>
+        <div class="flex flex-col sm:flex-row gap-2">
+          <input id="quiz-makeup-search" type="search" placeholder="ค้นหาชื่อหรือเลขประจำตัว" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+          <label class="text-xs flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 cursor-pointer">
+            <input id="quiz-makeup-select-all" type="checkbox" class="accent-teal-600" /> เลือกผู้มีสิทธิ์ทั้งหมด
+          </label>
+        </div>
+        <div id="quiz-makeup-list" class="max-h-72 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-100">
+          <div class="p-6 text-center text-sm text-gray-400">กำลังโหลดรายชื่อนักเรียน...</div>
+        </div>
+        <label class="block text-xs font-semibold text-gray-600">เปิดสอบถึงวันและเวลา
+          <input id="quiz-makeup-closes-at" type="datetime-local" class="mt-1 block w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+        </label>
+        <p class="text-[11px] text-gray-400">ค่าเริ่มต้นเปิดสอบ 3 วัน และการสอบชดเชยจะใช้จำนวนครั้งและกติกาคะแนนของแบบทดสอบเดิม</p>
+      </div>
+      <footer class="px-5 py-4 border-t border-gray-100 flex items-center justify-between gap-3">
+        <span id="quiz-makeup-selected-count" class="text-xs text-gray-500">เลือก 0 คน</span>
+        <div class="flex gap-2"><button type="button" data-close class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm">ยกเลิก</button>
+          <button id="quiz-makeup-submit" type="button" class="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:bg-gray-300 text-white font-bold text-sm" disabled>เปิดสอบชดเชย</button></div>
+      </footer>
+    </div>`
+  document.body.appendChild(modal)
+  modal.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => modal.remove()))
+  modal.addEventListener('click', event => { if (event.target === modal) modal.remove() })
+
+  const closesAt = modal.querySelector('#quiz-makeup-closes-at')
+  const localInputDate = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+  closesAt.min = localInputDate(new Date(Date.now() + 60000))
+  closesAt.value = localInputDate(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000))
+
+  let eligibleStudents = []
+  const selectedStudentIds = new Set()
+  const list = modal.querySelector('#quiz-makeup-list')
+  const selectAll = modal.querySelector('#quiz-makeup-select-all')
+  const submit = modal.querySelector('#quiz-makeup-submit')
+  const updateSelection = () => {
+    const selectedCount = selectedStudentIds.size
+    modal.querySelector('#quiz-makeup-selected-count').textContent = `เลือก ${selectedCount} คน`
+    submit.disabled = selectedCount === 0
+    selectAll.checked = eligibleStudents.length > 0 && selectedCount === eligibleStudents.length
+    selectAll.indeterminate = selectedCount > 0 && selectedCount < eligibleStudents.length
+  }
+  const renderStudents = () => {
+    const search = modal.querySelector('#quiz-makeup-search').value.trim().toLocaleLowerCase()
+    const rows = eligibleStudents.map(student => {
+      const name = student.full_name ?? 'ไม่ระบุชื่อ'
+      const code = student.student_code ?? ''
+      const haystack = `${name} ${code}`.toLocaleLowerCase()
+      if (search && !haystack.includes(search)) return ''
+      return `<label class="flex items-center gap-3 px-3 py-2.5 hover:bg-teal-50 cursor-pointer">
+        <input type="checkbox" class="quiz-makeup-student accent-teal-600" value="${Number(student.id)}" ${selectedStudentIds.has(Number(student.id)) ? 'checked' : ''} />
+        <span class="min-w-0"><span class="block text-sm font-semibold text-gray-700 truncate">${_htmlEsc(name)}</span>
+          <span class="text-[11px] text-gray-400">${_htmlEsc(code)} · ยังไม่เคยเริ่มสอบ</span></span></label>`
+    }).filter(Boolean)
+    list.innerHTML = rows.length
+      ? rows.join('')
+      : `<div class="p-6 text-center text-sm text-gray-400">${eligibleStudents.length ? 'ไม่พบรายชื่อที่ค้นหา' : 'ไม่มีนักเรียนที่ยังไม่เคยเริ่มทำแบบทดสอบนี้'}</div>`
+    modal.querySelectorAll('.quiz-makeup-student').forEach(input => input.addEventListener('change', () => {
+      const id = Number(input.value)
+      if (input.checked) selectedStudentIds.add(id)
+      else selectedStudentIds.delete(id)
+      updateSelection()
+    }))
+    updateSelection()
+  }
+
+  try {
+    const [students, attemptedIds] = await Promise.all([
+      getClassStudents(quiz.class_id),
+      getQuizAttemptStudentIds(quiz.id),
+    ])
+    eligibleStudents = students.filter(student => !attemptedIds.has(Number(student.id)))
+    renderStudents()
+  } catch (error) {
+    list.innerHTML = `<div class="p-5 text-center text-sm text-red-600">โหลดรายชื่อไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(error))}</div>`
+  }
+
+  modal.querySelector('#quiz-makeup-search').addEventListener('input', renderStudents)
+  selectAll.addEventListener('change', () => {
+    if (selectAll.checked) eligibleStudents.forEach(student => selectedStudentIds.add(Number(student.id)))
+    else selectedStudentIds.clear()
+    renderStudents()
+  })
+  submit.addEventListener('click', async () => {
+    const studentIds = [...selectedStudentIds]
+    const closeDate = new Date(closesAt.value)
+    if (!studentIds.length) { showToast('กรุณาเลือกนักเรียนอย่างน้อย 1 คน', 'error'); return }
+    if (!closesAt.value || Number.isNaN(closeDate.getTime()) || closeDate <= new Date()) {
+      showToast('กรุณากำหนดเวลาปิดสอบชดเชยในอนาคต', 'error'); return
+    }
+    submit.disabled = true
+    submit.textContent = 'กำลังเปิดสอบชดเชย...'
+    try {
+      const openedCount = await openQuizMakeup(quiz.id, studentIds, closeDate.toISOString())
+      modal.remove()
+      showToast(`เปิดสอบชดเชยให้นักเรียน ${openedCount} คนแล้ว`, 'success')
+      renderBankQuizzes(teacher, bank)
+    } catch (error) {
+      showToast('เปิดสอบชดเชยไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
+      submit.disabled = false
+      submit.textContent = 'เปิดสอบชดเชย'
+    }
+  })
 }
 
 async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, preferredClassId = null) {
