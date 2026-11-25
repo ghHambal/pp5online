@@ -1341,6 +1341,27 @@ function _showAttendanceStats(classData, students, sessions, attMap, holidaySet)
 
 // sameDateSessions = array of all sessions on the same date as sessN
 
+// เปิดฟอร์มเช็คชื่อเดิมในโหมดนักเรียนที่ได้รับมอบหมาย โดยส่งข้อมูลที่ผ่าน
+// getMyAttendanceDelegateClasses/isPeriodNow มาแล้วจาก student route
+export function openAttendanceDelegateForm(student, entry, students, attRows, onClose = null) {
+  const { cls, ms, sessionNumber, checkDate, period } = entry ?? {}
+  if (!student?.id || !cls?.id || !Number.isFinite(Number(sessionNumber)) || !checkDate) {
+    throw new Error('ข้อมูลคาบเรียนสำหรับเช็คชื่อไม่ครบ')
+  }
+  const attMap = {}
+  for (const row of attRows ?? []) {
+    if (Number(row.session_number) !== Number(sessionNumber)) continue
+    if (!attMap[row.student_id]) attMap[row.student_id] = {}
+    attMap[row.student_id][sessionNumber] = row.status
+  }
+  const session = { n: Number(sessionNumber), ds: checkDate }
+  _openAttFormModal(
+    student, { ...cls, master_subjects: ms }, students ?? [], attMap,
+    Number(sessionNumber), checkDate, [session], new Set(), cls.id, n => n,
+    { delegateMode: true, period, onClose }
+  )
+}
+
 export async function _openAttendanceModalForSession(teacher, classData, sessN, options = {}) {
   const ms = classData.master_subjects
   const credit = ms?.credit ?? 1
@@ -1686,7 +1707,8 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
     { key: 'excused', label: 'ลากิจ', labelAll: 'ลากิจทุกคน',  color: 'bg-blue-400 text-white',    bulkCls: 'bg-blue-50 text-blue-600 hover:bg-blue-100' },
     { key: 'sick',    label: 'ลาป่วย',labelAll: 'ลาป่วยทุกคน', color: 'bg-orange-400 text-white',  bulkCls: 'bg-orange-50 text-orange-600 hover:bg-orange-100' },
   ]
-  const hasMulti = sameDateSessions.length > 1
+  const delegateMode = options.delegateMode === true
+  const hasMulti = !delegateMode && sameDateSessions.length > 1
   let syncEnabled = hasMulti
   const modal = document.createElement('div')
   modal.id = 'att-form-modal'
@@ -1697,13 +1719,13 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       <div class="px-4 py-3 border-b flex-shrink-0 space-y-2">
         <div class="flex items-center justify-between gap-2">
           <div class="min-w-0">
-            <h3 class="font-bold text-gray-800 text-sm">เช็คชื่อ — คาบที่ ${sessN}</h3>
-            <p class="text-xs text-gray-400">${date} · ${classData.class_name}</p>
+            <h3 class="font-bold text-gray-800 text-sm">${delegateMode ? 'เช็คชื่อแทนครู' : 'เช็คชื่อ'} — คาบที่ ${sessN}</h3>
+            <p class="text-xs text-gray-400">${date} · ${classData.class_name}${delegateMode && options.period?.period_no ? ` · คาบเรียนที่ ${options.period.period_no}` : ''}</p>
           </div>
           <button id="att-modal-close"
             class="text-gray-400 hover:text-gray-700 text-lg leading-none flex-shrink-0">✕</button>
         </div>
-        <div class="flex items-center flex-wrap gap-1.5">
+        <div class="flex items-center flex-wrap gap-1.5 ${delegateMode ? 'hidden' : ''}">
           <button id="btn-att-scan-qr"
             class="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-xl
                    font-bold flex items-center gap-1.5 hover:bg-slate-800 active:scale-[0.98] transition shadow-sm"
@@ -1732,7 +1754,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
             ✓ ทุกคาบ (${sameDateSessions.length})
           </button>` : ''}
           <!-- Bulk dropdown -->
-          <div class="relative" id="bulk-wrap">
+          ${delegateMode ? '' : `<div class="relative" id="bulk-wrap">
             <button id="att-bulk-btn"
               class="text-xs px-2.5 py-1.5 bg-emerald-100 text-emerald-700 rounded-lg
                      font-medium flex items-center gap-1 hover:bg-emerald-200 transition">
@@ -1749,21 +1771,21 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
                   ${sc.labelAll}
                 </button>`).join('')}
             </div>
-          </div>
+          </div>`}
         </div>
       </div>
       <!-- Student list -->
       <div class="overflow-y-auto flex-1 px-4 py-2 space-y-1">
         ${students.map((s, i) => {
           const savedStatus = attMap[s.id]?.[sessN] ?? null
-          const cur = savedStatus ?? 'present'
+          const cur = savedStatus ?? (delegateMode ? null : 'present')
           return `<div class="flex items-center gap-1.5 py-1.5 border-b border-gray-50" data-modal-sid="${s.id}">
             <span class="text-gray-400 text-xs w-5 text-right flex-shrink-0">${i+1}</span>
             ${s.image_url
               ? `<img src="${s.image_url}" class="w-7 h-7 rounded object-cover flex-shrink-0" />`
               : `<div class="w-7 h-7 rounded bg-gray-100 flex items-center justify-center text-xs flex-shrink-0">👤</div>`}
             <span class="flex-1 text-sm text-gray-800 truncate min-w-0">${s.full_name}</span>
-            <div class="flex gap-0.5 flex-shrink-0" data-att-touched="${savedStatus ? '1' : '0'}">
+            <div class="flex gap-0.5 flex-shrink-0" data-att-touched="${!delegateMode && savedStatus ? '1' : '0'}">
               ${STATUS_LIST.map(sc => `
                 <button class="att-modal-status text-xs px-1.5 py-1 rounded-lg border transition font-medium
                   ${cur === sc.key ? sc.color : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}"
@@ -1783,6 +1805,10 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
       </div>
     </div>`
   document.body.appendChild(modal)
+  const closeModal = () => {
+    modal.remove()
+    options.onClose?.()
+  }
 
   // ─── Sync toggle button ───────────────────────────────────────────
   const syncBtn = modal.querySelector('#att-sync-btn')
@@ -2293,8 +2319,8 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
   })
 
   // ─── Close ───────────────────────────────────────────────────────
-  modal.querySelector('#att-modal-close').addEventListener('click', () => modal.remove())
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove() })
+  modal.querySelector('#att-modal-close').addEventListener('click', closeModal)
+  modal.addEventListener('click', e => { if (e.target === modal) closeModal() })
 
   if (options.autoOpenScanner) {
     setTimeout(() => modal.querySelector('#btn-att-scan-qr')?.click(), 150)
@@ -2304,7 +2330,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
   modal.querySelector('#att-modal-save').addEventListener('click', async () => {
     if (holidaySet.has(date)) {
       showToast('วันหยุดโรงเรียน — ไม่สามารถบันทึกได้', 'warning')
-      modal.remove()
+      closeModal()
       return
     }
     const saveBtn = modal.querySelector('#att-modal-save')
@@ -2330,6 +2356,19 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
           })
         }
       }
+      if (delegateMode) {
+        // นักเรียนที่ได้รับมอบหมายบันทึกได้เฉพาะแถวที่เลือกเองในคาบปัจจุบัน
+        for (let i = allRecords.length - 1; i >= 0; i--) {
+          const row = modal.querySelector(`[data-modal-sid="${allRecords[i].student_id}"]`)
+          if (row?.querySelector('[data-att-touched]')?.dataset.attTouched !== '1') allRecords.splice(i, 1)
+        }
+        if (!allRecords.length) {
+          showToast('เลือกสถานะนักเรียนอย่างน้อย 1 คนก่อนบันทึก', 'warning')
+          saveBtn.disabled = false
+          saveBtn.textContent = '💾 บันทึกการเช็คชื่อ'
+          return
+        }
+      }
       await saveAttendance(allRecords)
       allRecords.forEach(r => {
         const cell = document.querySelector(`.att-cell[data-sid="${r.student_id}"][data-session="${r.session_number}"]`)
@@ -2342,7 +2381,7 @@ function _openAttFormModal(teacher, classData, students, attMap, sessN, date, sa
         `บันทึก${targetSessions.length > 1 ? ` ${targetSessions.length} คาบ` : ''} แล้ว ✅`,
         'success'
       )
-      modal.remove()
+      closeModal()
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: '+(getFriendlyErrorMessage(err)), 'error')
       saveBtn.disabled = false; saveBtn.textContent = '💾 บันทึกการเช็คชื่อ'

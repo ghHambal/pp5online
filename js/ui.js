@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1137'
+import { APP_VERSION } from './version.js?v=10.22.1138'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1138': [
+    'แก้หน้าหัวหน้าห้องเช็คชื่อแทนครูให้เปิดป๊อบอัพเช็คชื่อแบบเดียวกับครู จำกัดการบันทึกเฉพาะคาบที่ได้รับมอบหมายและสถานะที่เลือกเอง',
+  ],
   '10.22.1137': [
     'แก้การเปิดหลักฐานใบลาจากหน้าครูและนักเรียน โดยแสดงตัวอย่างรูปภาพหรือ PDF ภายในหน้า รองรับมือถือและ iPad ที่บล็อกการเปิดแท็บหลังโหลดลิงก์',
   ],
