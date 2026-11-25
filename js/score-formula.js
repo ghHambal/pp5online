@@ -2,7 +2,8 @@
 export function evalFormula(expr, vars = {}) {
   if (!expr?.trim()) return null
   let pos = 0
-  const str = expr.replace(/\s+/g, '').toUpperCase()
+  // Accept spreadsheet-style formulas with an optional leading equals sign.
+  const str = expr.trim().replace(/^=/, '').replace(/\s+/g, '').toUpperCase()
 
   const peek  = ()  => str[pos] ?? ''
   const next  = ()  => str[pos++]

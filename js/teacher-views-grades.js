@@ -1123,7 +1123,7 @@ export async function renderGradesGrid(teacher, classData) {
         ? bonusWithVars.map(b => `<span class="font-mono font-bold text-violet-700">${b.var}</span> = "${b.assignment_name}"`).join('  |  ')
         : '<span class="text-gray-400">ยังไม่มีคอลัมน์พิเศษ</span>'
       pop.innerHTML = `
-        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
           <div class="bg-gradient-to-br from-violet-500 to-purple-600 px-5 py-4">
             <h3 class="text-white font-bold text-sm">🔗 เชื่อมสูตรจากคะแนนพิเศษ</h3>
             <p class="text-violet-100 text-xs mt-0.5">คอลัมน์: <span class="font-semibold">${_htmlEsc(col.assignment_name)}</span> (เต็ม ${col.max_score??'?'})</p>
@@ -1131,7 +1131,7 @@ export async function renderGradesGrid(teacher, classData) {
           </div>
           <div class="p-4 space-y-3">
             <div class="bg-violet-50 rounded-xl p-3 text-xs text-violet-800">
-              <p class="font-semibold mb-1">ตัวแปรที่ใช้ได้:</p>
+              <p class="font-semibold mb-1">พิมพ์สูตรหรือคลิกเลือกคอลัมน์ด้านล่างเพื่อแทรกตัวแปร</p>
               <p id="flp-vars">${varHint}</p>
               <p class="mt-1 text-violet-500">ฟังก์ชัน: MIN, MAX, IF, ROUND, SUM, AVG, CLAMP</p>
             </div>
@@ -1139,11 +1139,25 @@ export async function renderGradesGrid(teacher, classData) {
               <label class="block text-xs font-medium text-gray-600 mb-1">สูตร <span class="text-red-400">*</span></label>
               <div class="flex gap-2">
                 <input id="flp-formula" type="text" value="${_htmlEsc(col.bonus_formula??'')}"
-                  placeholder="เช่น MIN(A,5)  หรือ  A*0.5+B"
+                  placeholder="เช่น =MIN(A,5) หรือ =A*0.5+B"
                   class="flex-1 border border-gray-300 rounded-xl px-3 py-2 text-sm font-mono focus:outline-none focus:border-violet-400"/>
                 <button id="flp-test" class="px-3 py-2 rounded-xl bg-violet-100 text-violet-700 text-xs font-medium hover:bg-violet-200 whitespace-nowrap">ทดสอบ</button>
               </div>
               <p id="flp-result" class="text-xs mt-1 hidden"></p>
+            </div>
+            <div class="space-y-1.5">
+              <label for="flp-column-search" class="block text-xs font-medium text-gray-600">ค้นหาคอลัมน์คะแนน แล้วคลิกเพื่อแทรกในสูตร</label>
+              <input id="flp-column-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อคอลัมน์ เช่น คะแนนกิจกรรม"
+                class="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-violet-400"/>
+              <div id="flp-column-options" class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-36 overflow-y-auto rounded-xl bg-gray-50 p-2">
+                ${bonusWithVars.map(b => `<button type="button" data-formula-var="${b.var}" data-formula-name="${_htmlEsc(b.assignment_name)}"
+                    class="text-left rounded-lg border border-violet-100 bg-white px-2.5 py-2 text-xs hover:border-violet-400 hover:bg-violet-50">
+                    <span class="font-mono font-bold text-violet-700">${b.var}</span>
+                    <span class="ml-1 text-gray-700">${_htmlEsc(b.assignment_name)}</span>
+                    <span class="block mt-0.5 text-[10px] text-gray-400">เต็ม ${b.max_score ?? 'ไม่ระบุ'} คะแนน</span>
+                  </button>`).join('') || '<p class="col-span-full py-2 text-center text-xs text-gray-400">ไม่มีคอลัมน์คะแนนพิเศษให้เลือก</p>'}
+              </div>
+              <p class="text-[10px] text-gray-400">สูตรจะใช้คะแนนจากคอลัมน์ที่เลือกของนักเรียนคนเดียวกัน</p>
             </div>
             <div class="flex gap-2">
               ${col.bonus_formula ? `<button id="flp-clear" class="flex-1 py-2.5 rounded-xl border border-red-200 text-red-500 text-xs hover:bg-red-50 transition">ลบสูตร</button>` : ''}
@@ -1153,6 +1167,23 @@ export async function renderGradesGrid(teacher, classData) {
           </div>
         </div>`
       document.body.appendChild(pop)
+
+      const formulaInput = pop.querySelector('#flp-formula')
+      const optionButtons = [...pop.querySelectorAll('[data-formula-var]')]
+      const insertFormulaVar = (variable) => {
+        const start = formulaInput.selectionStart ?? formulaInput.value.length
+        const end = formulaInput.selectionEnd ?? start
+        formulaInput.setRangeText(variable, start, end, 'end')
+        formulaInput.focus()
+        formulaInput.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+      pop.querySelector('#flp-column-search')?.addEventListener('input', e => {
+        const query = e.target.value.trim().toLocaleLowerCase()
+        optionButtons.forEach(button => {
+          button.classList.toggle('hidden', query && !button.dataset.formulaName.toLocaleLowerCase().includes(query))
+        })
+      })
+      optionButtons.forEach(button => button.addEventListener('click', () => insertFormulaVar(button.dataset.formulaVar)))
 
       pop.querySelector('#flp-cancel').addEventListener('click', () => pop.remove())
 

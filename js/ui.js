@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1138'
+import { APP_VERSION } from './version.js?v=10.22.1139'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1139': [
+    'ปรับหน้าสูตรคะแนนพิเศษให้พิมพ์สูตรแบบขึ้นต้นด้วย = ได้ ค้นหาคอลัมน์และคลิกแทรกตัวแปรได้ พร้อมอ้างอิงคะแนนของนักเรียนคนเดียวกัน',
+  ],
   '10.22.1138': [
     'แก้หน้าหัวหน้าห้องเช็คชื่อแทนครูให้เปิดป๊อบอัพเช็คชื่อแบบเดียวกับครู จำกัดการบันทึกเฉพาะคาบที่ได้รับมอบหมายและสถานะที่เลือกเอง',
   ],
