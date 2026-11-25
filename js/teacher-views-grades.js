@@ -1891,6 +1891,7 @@ export async function renderGradesGrid(teacher, classData) {
     }
 
     let activeCellFormula = null
+    let gradeSelectionController = null
     const _cellFormulaEditorHtml = () => `<section data-cell-formula-editor class="hidden sticky top-0 z-40 border-b border-violet-200 bg-violet-50/95 p-3 shadow-sm backdrop-blur">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <div><div class="text-sm font-bold text-violet-900">สูตรเฉพาะช่องคะแนน</div><p class="text-[11px] text-violet-700">พิมพ์ = แล้วใส่สูตร หรือคลิกหัวคอลัมน์/ช่องคะแนนเพื่อแทรกการอ้างอิง · Enter บันทึก · Esc ยกเลิก</p></div>
@@ -1899,6 +1900,8 @@ export async function renderGradesGrid(teacher, classData) {
     </section>`
 
     const _renderGrid = () => {
+      gradeSelectionController?.abort()
+      gradeSelectionController = null
       const midMax = _groupMax(midCols), finMax = _groupMax(finalCols)
       const wrap = document.getElementById('grade-grid-wrap')
       if (!wrap) return
@@ -1926,6 +1929,7 @@ export async function renderGradesGrid(teacher, classData) {
             <div class="flex items-center justify-between gap-0.5 px-0.5">
               <span class="col-sheet-ref font-mono text-[11px] flex-1 text-center rounded px-0.5 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-blue-600 cursor-pointer hover:bg-blue-100'}"
                 data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
+              <button class="btn-select-grade-col text-blue-400 hover:text-blue-700 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="เลือกทั้งคอลัมน์คะแนน">▤</button>
               <button class="btn-mass-score text-blue-300 hover:text-blue-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
               ${!_isLockedScoreColumn(c) ? `<button class="btn-scan-col text-blue-300 hover:text-blue-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="สแกน QR บันทึกคะแนนคอลัมน์นี้">📷</button>` : ''}
               ${showFormulaLink ? `<button class="btn-formula-link text-[10px] leading-none flex-shrink-0 ${c.bonus_formula ? 'text-violet-500' : 'text-gray-300 hover:text-violet-400'}" data-colid="${c.id}" title="${c.bonus_formula ? '🔗 = '+c.bonus_formula : 'เปิดแถบสูตรในตาราง'}">🔗</button>` : ''}
@@ -1937,6 +1941,7 @@ export async function renderGradesGrid(teacher, classData) {
             <div class="flex items-center justify-between gap-0.5 px-0.5">
               <span class="col-sheet-ref font-mono text-[11px] flex-1 text-center rounded px-0.5 py-0.5 ${_isLockedScoreColumn(c) ? 'text-emerald-700 bg-emerald-50 cursor-not-allowed' : 'text-purple-600 cursor-pointer hover:bg-purple-100'}"
                 data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อเลือกคอลัมน์ Sheet'}">${c.sheet_column||'—'}</span>
+              <button class="btn-select-grade-col text-purple-400 hover:text-purple-700 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="เลือกทั้งคอลัมน์คะแนน">▤</button>
               <button class="btn-mass-score text-purple-300 hover:text-purple-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
               ${!_isLockedScoreColumn(c) ? `<button class="btn-scan-col text-purple-300 hover:text-purple-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="สแกน QR บันทึกคะแนนคอลัมน์นี้">📷</button>` : ''}
               ${showFormulaLink ? `<button class="btn-formula-link text-[10px] leading-none flex-shrink-0 ${c.bonus_formula ? 'text-violet-500' : 'text-gray-300 hover:text-violet-400'}" data-colid="${c.id}" title="${c.bonus_formula ? '🔗 = '+c.bonus_formula : 'เปิดแถบสูตรในตาราง'}">🔗</button>` : ''}
@@ -1950,12 +1955,14 @@ export async function renderGradesGrid(teacher, classData) {
           ${overrideCols.map(c=>`<th class="${thBase} bg-teal-50" style="width:${colW}px;min-width:${colW}px">
             <div class="flex items-center justify-between gap-0.5 px-0.5">
               <span class="text-[10px] text-teal-500 flex-1 text-center truncate" title="เชื่อมกับ: ${_htmlEsc(colById[c.link_column_id]?.assignment_name ?? 'ยังไม่ได้เชื่อม')}">🔗</span>
+              <button class="btn-select-grade-col text-teal-400 hover:text-teal-700 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="เลือกทั้งคอลัมน์คะแนน">▤</button>
               <button class="btn-mass-score text-teal-300 hover:text-teal-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
             </div>
           </th>`).join('')}
           ${showBonusCols ? bonusCols.map(c=>`<th class="${thBase} bg-amber-50" style="width:${colW}px;min-width:${colW}px">
             <div class="flex items-center justify-between gap-0.5 px-0.5">
               <span class="text-[11px] text-amber-500 flex-1 text-center">${c.sheet_column||'—'}</span>
+              <button class="btn-select-grade-col text-amber-400 hover:text-amber-700 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="เลือกทั้งคอลัมน์คะแนน">▤</button>
               <button class="btn-mass-score text-amber-300 hover:text-amber-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" data-colname="${_htmlEsc(c.assignment_name)}" data-max="${c.max_score??''}" title="ตั้งคะแนนทั้งห้อง">🌐</button>
               ${!_isLockedScoreColumn(c) ? `<button class="btn-scan-col text-amber-300 hover:text-amber-600 text-[10px] leading-none flex-shrink-0" data-colid="${c.id}" title="สแกน QR บันทึกคะแนนคอลัมน์นี้">📷</button>` : ''}
             </div>
@@ -2046,10 +2053,139 @@ export async function renderGradesGrid(teacher, classData) {
           ${_readCell(s.id)}
         </tr>`}).join('')
 
-      wrap.innerHTML = `${_formulaEditorHtml()}${_cellFormulaEditorHtml()}<table class="border-collapse text-xs" style="min-width:max-content">
+      wrap.innerHTML = `${_formulaEditorHtml()}${_cellFormulaEditorHtml()}<div class="sticky top-0 z-20 flex min-h-8 items-center gap-2 border-b border-gray-200 bg-white/95 px-3 py-1 text-[11px] text-gray-500 backdrop-blur"><span>ลากเลือกหลายช่อง · คลิก ▤ เลือกทั้งคอลัมน์ · Ctrl/Cmd+C คัดลอก · Ctrl/Cmd+V วางคะแนนที่แสดง</span><span data-grade-range-status class="font-medium text-indigo-700"></span></div><table class="border-collapse text-xs" style="min-width:max-content">
         <thead>${head}</thead><tbody>${body}</tbody></table>`
       _bindFormulaEditor(wrap)
       const tbl = wrap.querySelector('table')
+      gradeSelectionController = new AbortController()
+      let gradeRange = null
+      let selectingGradeRange = false
+      const _gradeRows = () => [...tbl.querySelectorAll('tbody tr')].map(row => [...row.querySelectorAll('.grade-input')])
+      const _paintGradeRange = () => {
+        const rows = _gradeRows()
+        tbl.querySelectorAll('td.grade-range-selected').forEach(td => {
+          td.classList.remove('grade-range-selected')
+          td.style.boxShadow = ''
+        })
+        if (!gradeRange) return
+        const rMin = Math.min(gradeRange.r1, gradeRange.r2), rMax = Math.max(gradeRange.r1, gradeRange.r2)
+        const cMin = Math.min(gradeRange.c1, gradeRange.c2), cMax = Math.max(gradeRange.c1, gradeRange.c2)
+        let count = 0
+        for (let r = rMin; r <= rMax; r++) for (let c = cMin; c <= cMax; c++) {
+          const td = rows[r]?.[c]?.closest('td')
+          if (!td) continue
+          td.classList.add('grade-range-selected'); td.style.boxShadow = 'inset 0 0 0 2px #6366f1'; count++
+        }
+        const status = wrap.querySelector('[data-grade-range-status]')
+        if (status) status.textContent = `${count} ช่องที่เลือก`
+      }
+      const _gradeCellPosition = input => {
+        const rows = _gradeRows(), row = input.closest('tr')
+        const r = rows.findIndex((_, index) => row === tbl.querySelectorAll('tbody tr')[index])
+        const c = rows[r]?.indexOf(input) ?? -1
+        return r < 0 || c < 0 ? null : { r, c }
+      }
+      tbl.addEventListener('mousedown', e => {
+        if (activeCellFormula) return
+        const input = e.target.closest('.grade-input')
+        if (!input) return
+        const pos = _gradeCellPosition(input)
+        if (!pos) return
+        e.preventDefault()
+        input.focus({ preventScroll: true })
+        input.select()
+        gradeRange = { r1: pos.r, c1: pos.c, r2: pos.r, c2: pos.c }
+        selectingGradeRange = true
+        _paintGradeRange()
+      })
+      tbl.addEventListener('mouseover', e => {
+        if (!selectingGradeRange || activeCellFormula) return
+        const input = e.target.closest('.grade-input')
+        const pos = input && _gradeCellPosition(input)
+        if (!pos || !gradeRange || (pos.r === gradeRange.r2 && pos.c === gradeRange.c2)) return
+        gradeRange.r2 = pos.r; gradeRange.c2 = pos.c
+        _paintGradeRange()
+      })
+      document.addEventListener('mouseup', () => { selectingGradeRange = false }, { signal: gradeSelectionController.signal })
+      tbl.addEventListener('click', e => {
+        const button = e.target.closest('.btn-select-grade-col')
+        if (!button || activeCellFormula) return
+        e.preventDefault(); e.stopPropagation()
+        const rows = _gradeRows(), colId = String(button.dataset.colid)
+        const c = rows[0]?.findIndex(input => input.dataset.col === colId) ?? -1
+        if (c < 0 || !rows.length) return
+        gradeRange = { r1: 0, c1: c, r2: rows.length - 1, c2: c }
+        _paintGradeRange()
+        rows[0]?.[c]?.focus({ preventScroll: true })
+      })
+      tbl.addEventListener('copy', e => {
+        if (!gradeRange || activeCellFormula) return
+        const rows = _gradeRows(), rMin = Math.min(gradeRange.r1, gradeRange.r2), rMax = Math.max(gradeRange.r1, gradeRange.r2)
+        const cMin = Math.min(gradeRange.c1, gradeRange.c2), cMax = Math.max(gradeRange.c1, gradeRange.c2)
+        const text = rows.slice(rMin, rMax + 1).map(row => row.slice(cMin, cMax + 1).map(input => {
+          const col = colById[Number(input.dataset.col)]
+          const value = col ? _displayScore(Number(input.dataset.sid), col) : null
+          return value == null ? '' : String(value)
+        }).join('\t')).join('\n')
+        e.clipboardData?.setData('text/plain', text)
+        e.preventDefault()
+      })
+      tbl.addEventListener('paste', async e => {
+        const focused = e.target.closest('.grade-input')
+        if (!focused || activeCellFormula) return
+        const text = e.clipboardData?.getData('text/plain')
+        if (text == null) return
+        e.preventDefault()
+        const matrix = text.replace(/\r/g, '').split('\n').map(line => line.split('\t'))
+        while (matrix.length > 1 && matrix[matrix.length - 1].length === 1 && matrix[matrix.length - 1][0] === '') matrix.pop()
+        if (!matrix.length) return
+        const focusedPos = _gradeCellPosition(focused)
+        const rows = _gradeRows()
+        const anchor = gradeRange ? { r: Math.min(gradeRange.r1, gradeRange.r2), c: Math.min(gradeRange.c1, gradeRange.c2) } : focusedPos
+        if (!anchor) return
+        const changes = []
+        for (let r = 0; r < matrix.length && anchor.r + r < rows.length; r++) {
+          for (let c = 0; c < matrix[r].length && anchor.c + c < (rows[anchor.r + r]?.length ?? 0); c++) {
+            const input = rows[anchor.r + r][anchor.c + c]
+            if (!input || input.disabled || _isLockedScoreColumn(Number(input.dataset.col))) continue
+            const value = matrix[r][c].trim()
+            if (value !== '' && !/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(value)) {
+              showToast('วางได้เฉพาะคะแนนตัวเลขหรือช่องว่าง สูตรจะวางเป็นค่าคะแนนที่แสดงอยู่', 'warning')
+              return
+            }
+            changes.push({ input, value })
+          }
+        }
+        if (!changes.length) return
+        const saving = document.getElementById('grade-saving')
+        saving?.classList.remove('hidden')
+        let savedCount = 0
+        try {
+          for (const { input, value } of changes) {
+            const sid = Number(input.dataset.sid), colId = Number(input.dataset.col)
+            const max = parseFloat(input.dataset.max)
+            const previous = _getScore(sid, colId)
+            if (!scoreMap[sid]) scoreMap[sid] = {}
+            if (!scoreMap[sid][colId]?.score_formula && ((value === '' && previous == null) || (value !== '' && previous != null && Number(value) === Number(previous)))) continue
+            const result = await saveStudentScore(classData.id, sid, colId, value === '' ? null : value, {
+              currentHistory: scoreMap[sid]?.[colId]?.history ?? [], max: Number.isFinite(max) ? max : null,
+            })
+            if (!result) continue
+            const { final, history, clamped } = result
+            scoreMap[sid][colId] = { orig: history[0]?.d ?? final, retake: null, final, history, score_formula: null, score_formula_refs: [] }
+            savedCount++
+            if (clamped) showToast(`คะแนนเกินคะแนนเต็ม ปรับให้เป็น ${final} อัตโนมัติ`, 'warning')
+            await _applyOverrideIfNeeded(sid, colId)
+          }
+          if (savedCount) {
+            _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
+            showToast(`วางคะแนนสำเร็จ ${savedCount} ช่อง`, 'success')
+          }
+        } catch (err) {
+          showToast('วางคะแนนได้บางส่วน แต่มีรายการบันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+          _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
+        } finally { saving?.classList.add('hidden') }
+      })
       const cellFormulaPanel = wrap.querySelector('[data-cell-formula-editor]')
       const _renderCellFormulaRefs = () => {
         const list = cellFormulaPanel?.querySelector('[data-cell-refs]')
