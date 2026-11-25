@@ -507,15 +507,24 @@ export async function renderGradesGrid(teacher, classData) {
       const next = new Set(visiting); next.add(key)
       const record = scoreMap[sid]?.[col.id]
       if (record?.score_formula) {
-        const vars = Object.fromEntries((record.score_formula_refs ?? []).map(ref => [
-          ref.var, _scoreValue(ref.student_id ?? sid, ref.col_id, next),
-        ]))
+        const refs = record.score_formula_refs ?? []
+        const values = refs.map(ref => _scoreValue(ref.student_id ?? sid, ref.col_id, next))
+        // Keep a formula cell visually empty until at least one referenced score exists.
+        // A real entered zero is still a value and remains visible.
+        if (refs.length && values.every(value => value == null || value === '')) return null
+        const vars = Object.fromEntries(refs.map((ref, index) => [ref.var, values[index]]))
         const calculated = evalFormula(record.score_formula, vars)
         if (calculated == null || !Number.isFinite(calculated)) return null
         return Math.max(0, col.max_score ? Math.min(calculated, Number(col.max_score)) : calculated)
       }
+      const stored = _getScore(sid, col.id)
+      const hasRaw = stored != null && stored !== ''
       const raw = _rawScore(sid, col.id)
-      if (!col.bonus_formula) return raw
+      if (!col.bonus_formula) return hasRaw ? raw : null
+      if (!hasRaw && bonusWithVars.every(b => {
+        const value = _getScore(sid, b.id)
+        return value == null || value === ''
+      })) return null
       const bvars = Object.fromEntries(bonusWithVars.map(b => [b.var, _rawScore(sid, b.id)]))
       const bonus = evalFormula(col.bonus_formula, bvars) ?? 0
       return col.max_score ? Math.min(raw + bonus, col.max_score) : raw + bonus
@@ -538,7 +547,10 @@ export async function renderGradesGrid(teacher, classData) {
     // derived: คำนวณจาก formula + bonus scores
     const _calcDerived = (col, sid, visiting = new Set()) => {
       if (!col.formula) return 0
-      const vars = Object.fromEntries((col.formula_refs ?? []).map(ref => [ref.var, _scoreValue(ref.student_id ?? sid, ref.col_id, visiting) ?? 0]))
+      const refs = col.formula_refs ?? []
+      const values = refs.map(ref => _scoreValue(ref.student_id ?? sid, ref.col_id, visiting))
+      if (refs.length && values.every(value => value == null || value === '')) return null
+      const vars = Object.fromEntries(refs.map((ref, index) => [ref.var, values[index] ?? 0]))
       return evalFormula(col.formula, vars) ?? 0
     }
 
@@ -2179,13 +2191,16 @@ export async function renderGradesGrid(teacher, classData) {
           if (val.startsWith('=')) {
             const refs = cellFormula?.refs ?? scoreMap[sid]?.[colId]?.score_formula_refs ?? []
             const visiting = new Set([`${sid}:${colId}`])
-            const vars = Object.fromEntries(refs.map(ref => [ref.var, _scoreValue(Number(ref.student_id ?? sid), Number(ref.col_id), visiting)]))
+            const values = refs.map(ref => _scoreValue(Number(ref.student_id ?? sid), Number(ref.col_id), visiting))
+            const vars = Object.fromEntries(refs.map((ref, index) => [ref.var, values[index]]))
             const calculated = evalFormula(val, vars)
             if (calculated == null || !Number.isFinite(calculated)) {
               showToast('สูตรยังไม่สมบูรณ์ หรืออ้างอิงวนกลับมาที่ช่องนี้', 'warning')
               gradeInp.focus(); return
             }
-            const resultValue = Math.max(0, Number.isFinite(max) ? Math.min(calculated, max) : calculated)
+            const resultValue = refs.length && values.every(value => value == null || value === '')
+              ? null
+              : Math.max(0, Number.isFinite(max) ? Math.min(calculated, max) : calculated)
             gradeInp.style.outline='2px solid #6366f1'; gradeInp.style.outlineOffset='1px'
             document.getElementById('grade-saving')?.classList.remove('hidden')
             try {

@@ -47,25 +47,39 @@ export function displayScore(settings, key, value, decimals = 1) {
 // Raw values stay unchanged. Standalone bonuses and override helpers never enter totals.
 export function effectiveScore(columns, col, raw, cellRecord = null) {
   if (col.column_type === 'derived') {
-    const vars = Object.fromEntries((col.formula_refs ?? []).map(ref => [ref.var, Number(raw(ref.col_id)) || 0]))
+    const refs = col.formula_refs ?? []
+    const values = refs.map(ref => raw(ref.col_id))
+    if (refs.length && values.every(value => value == null || value === '')) return null
+    const vars = Object.fromEntries(refs.map((ref, index) => [ref.var, Number(values[index]) || 0]))
     return evalFormula(col.formula, vars) ?? 0
   }
   if (cellRecord?.score_formula) {
     // Cross-student references are evaluated in the teacher grade grid and stored
     // in final_score. A student's own score payload cannot see other students' rows.
     if ((cellRecord.score_formula_refs ?? []).some(ref => ref.student_id != null)) {
+      if (cellRecord.final_score == null) return null
       const stored = Number(cellRecord.final_score)
       if (!Number.isFinite(stored)) return 0
       return col.max_score ? Math.max(0, Math.min(stored, Number(col.max_score))) : Math.max(0, stored)
     }
-    const vars = Object.fromEntries((cellRecord.score_formula_refs ?? []).map(ref => [ref.var, Number(raw(ref.col_id)) || 0]))
+    const refs = cellRecord.score_formula_refs ?? []
+    const values = refs.map(ref => raw(ref.col_id))
+    if (refs.length && values.every(value => value == null || value === '')) return null
+    const vars = Object.fromEntries(refs.map((ref, index) => [ref.var, Number(values[index]) || 0]))
     const result = evalFormula(cellRecord.score_formula, vars)
     if (result == null) return 0
     return col.max_score ? Math.max(0, Math.min(result, Number(col.max_score))) : Math.max(0, result)
   }
-  const value = Number(raw(col.id)) || 0
-  if (!col.bonus_formula || isBonus(col) || col.column_type === 'override') return value
-  const vars = Object.fromEntries(assignBonusVars(columns.filter(isBonus)).map(c => [c.var, Number(raw(c.id)) || 0]))
+  const stored = raw(col.id)
+  const hasValue = stored != null && stored !== ''
+  const value = Number(stored) || 0
+  if (!col.bonus_formula || isBonus(col) || col.column_type === 'override') return hasValue ? value : null
+  const bonusCols = assignBonusVars(columns.filter(isBonus))
+  if (!hasValue && bonusCols.every(c => {
+    const bonusValue = raw(c.id)
+    return bonusValue == null || bonusValue === ''
+  })) return null
+  const vars = Object.fromEntries(bonusCols.map(c => [c.var, Number(raw(c.id)) || 0]))
   const result = value + (evalFormula(col.bonus_formula, vars) ?? 0)
   return col.max_score ? Math.min(result, col.max_score) : result
 }

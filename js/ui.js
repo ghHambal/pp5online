@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1141'
+import { APP_VERSION } from './version.js?v=10.22.1142'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,10 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1142': [
+    'แก้ช่องคะแนนที่ยังไม่กรอกให้แสดงเป็นว่างแทนศูนย์ โดยยังแสดงคะแนน 0 ที่กรอกจริงและคำนวณคะแนนรวมได้ถูกต้อง',
+    'แก้ผลสูตรรายช่องและสูตรคะแนนพิเศษให้ยังว่างเมื่อช่องอ้างอิงยังไม่มีคะแนน พร้อมแสดงผลเมื่อมีคะแนนต้นทาง',
+  ],
   '10.22.1141': [
     'เพิ่มสูตรคะแนนเฉพาะช่องแบบพิมพ์ = แล้วคลิกหัวคอลัมน์หรือช่องคะแนนเพื่อแทรกตัวแปร พร้อมคงสูตรทั้งคอลัมน์และแก้ให้ผลสูตรแสดงในช่องคะแนนที่เกี่ยวข้อง',
   ],
