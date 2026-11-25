@@ -305,6 +305,33 @@ export async function openLessonPlanArchiveCenter({ subject, teacher, classes = 
       if (Object.keys(overridesByClass).length) nextSource.class_schedule_overrides = overridesByClass
       else delete nextSource.class_schedule_overrides
     }
+    const bypassMovesByPlan = new Map()
+    for (const change of changes) {
+      const planId = Number(change.plan_id)
+      const oldWeek = Number(undo ? change.after.week : change.before.week)
+      const newWeek = Number(undo ? change.before.week : change.after.week)
+      if (oldWeek === newWeek) continue
+      if (!bypassMovesByPlan.has(planId)) bypassMovesByPlan.set(planId, [])
+      bypassMovesByPlan.get(planId).push({ from: postLessonBypassKey(classId, oldWeek), to: postLessonBypassKey(classId, newWeek) })
+    }
+    for (const [planId, moves] of bypassMovesByPlan) {
+      const nextSource = updates.get(planId)
+      const bypasses = { ...(nextSource.post_lesson_bypass ?? {}) }
+      const movingKeys = new Set(moves.map(move => move.from))
+      const destinations = new Set()
+      for (const move of moves) {
+        if (destinations.has(move.to)) throw new Error('พบรายการข้ามหลังสอนปลายทางซ้ำกัน จึงยังเลื่อนไม่ได้')
+        destinations.add(move.to)
+        if (Object.prototype.hasOwnProperty.call(bypasses, move.to) && !movingKeys.has(move.to) && Object.prototype.hasOwnProperty.call(bypasses, move.from)) {
+          throw new Error('สัปดาห์ปลายทางมีการตั้งค่าข้ามหลังสอนอยู่แล้ว กรุณาตรวจสอบก่อนเลื่อน')
+        }
+      }
+      const valuesToMove = moves.map(move => ({ ...move, value: bypasses[move.from] })).filter(move => Object.prototype.hasOwnProperty.call(bypasses, move.from))
+      for (const move of valuesToMove) delete bypasses[move.from]
+      for (const move of valuesToMove) bypasses[move.to] = move.value
+      if (Object.keys(bypasses).length) nextSource.post_lesson_bypass = bypasses
+      else delete nextSource.post_lesson_bypass
+    }
     const targetSource = updates.get(Number(event.target_plan_id))
     if (!targetSource) throw new Error('ไม่พบแผนที่เริ่มการเลื่อน')
     const postponements = { ...(targetSource.class_postponements ?? {}) }
@@ -324,8 +351,6 @@ export async function openLessonPlanArchiveCenter({ subject, teacher, classes = 
     for (const change of changes) {
       const oldWeek = Number(undo ? change.after.week : change.before.week)
       const newWeek = Number(undo ? change.before.week : change.after.week)
-      const changePlan = plansById.get(Number(change.plan_id))
-      if (!undo && postLessonBypassEnabled(changePlan, classId, oldWeek)) throw new Error('รายการนี้บันทึกโดยข้ามหลังสอนไว้แล้ว กรุณาตรวจสอบก่อนเลื่อน')
       const reflection = roomReflections.find(item => Number(item.lesson_plan_id) === Number(change.plan_id) && Number(item.week_no) === oldWeek)
       if (reflection && reflectionHasTeachingData(reflection)) throw new Error('พบผลหลังสอนหรือลายเซ็นที่บันทึกแล้วในแผนที่จะขยับ กรุณาตรวจสอบรายการก่อนเลื่อน')
       if (reflection?.lesson_date) { movingIds.add(Number(reflection.id)); moves.push({ reflection, newWeek }) }

@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1135'
+import { APP_VERSION } from './version.js?v=10.22.1136'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1136': [
+    'แก้การเลื่อนแผนที่ตั้งค่าข้ามหลังสอน ให้การตั้งค่าติดตามครั้งของแผนและย้อนกลับได้ โดยยังป้องกันรายการที่มีผลหลังสอนหรือลายเซ็นแล้ว',
+  ],
   '10.22.1135': [
     'เพิ่มตัวเลือกสลับไปมาระหว่างแผนแต่ละครั้งในรายวิชาและห้องเดียวกัน พร้อมปุ่มก่อนหน้า/ถัดไป และเตือนก่อนทิ้งการแก้ไขที่ยังไม่บันทึก',
   ],
