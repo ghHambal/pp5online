@@ -2053,7 +2053,7 @@ export async function renderGradesGrid(teacher, classData) {
           ${_readCell(s.id)}
         </tr>`}).join('')
 
-      wrap.innerHTML = `${_formulaEditorHtml()}${_cellFormulaEditorHtml()}<div class="sticky top-0 z-20 flex min-h-8 items-center gap-2 border-b border-gray-200 bg-white/95 px-3 py-1 text-[11px] text-gray-500 backdrop-blur"><span>ลากเลือกหลายช่อง · คลิก ▤ เลือกทั้งคอลัมน์ · Ctrl/Cmd+C คัดลอก · Ctrl/Cmd+V วางคะแนนที่แสดง</span><span data-grade-range-status class="font-medium text-indigo-700"></span></div><table class="border-collapse text-xs" style="min-width:max-content">
+      wrap.innerHTML = `${_formulaEditorHtml()}${_cellFormulaEditorHtml()}<div class="sticky top-0 z-20 flex min-h-8 items-center gap-2 border-b border-gray-200 bg-white/95 px-3 py-1 text-[11px] text-gray-500 backdrop-blur"><span>ลากเลือกหลายช่อง · คลิก ▤ เลือกทั้งคอลัมน์ · Ctrl/Cmd+C คัดลอก · Ctrl/Cmd+V วางคะแนนที่แสดง</span><span data-grade-range-status class="font-medium text-indigo-700"></span><button type="button" data-grade-range-delete class="hidden ml-auto rounded-lg border border-rose-200 px-2 py-1 font-bold text-rose-600 hover:bg-rose-50">🗑 ลบคะแนนที่เลือก</button></div><table class="border-collapse text-xs" style="min-width:max-content">
         <thead>${head}</thead><tbody>${body}</tbody></table>`
       _bindFormulaEditor(wrap)
       const tbl = wrap.querySelector('table')
@@ -2078,6 +2078,7 @@ export async function renderGradesGrid(teacher, classData) {
         }
         const status = wrap.querySelector('[data-grade-range-status]')
         if (status) status.textContent = `${count} ช่องที่เลือก`
+        wrap.querySelector('[data-grade-range-delete]')?.classList.toggle('hidden', !count)
       }
       const _gradeCellPosition = input => {
         const rows = _gradeRows(), row = input.closest('tr')
@@ -2185,6 +2186,35 @@ export async function renderGradesGrid(teacher, classData) {
           showToast('วางคะแนนได้บางส่วน แต่มีรายการบันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
           _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
         } finally { saving?.classList.add('hidden') }
+      })
+      wrap.querySelector('[data-grade-range-delete]')?.addEventListener('click', async () => {
+        if (!gradeRange || activeCellFormula) return
+        const rows = _gradeRows(), rMin = Math.min(gradeRange.r1, gradeRange.r2), rMax = Math.max(gradeRange.r1, gradeRange.r2)
+        const cMin = Math.min(gradeRange.c1, gradeRange.c2), cMax = Math.max(gradeRange.c1, gradeRange.c2)
+        const targets = []
+        for (let r = rMin; r <= rMax; r++) for (let c = cMin; c <= cMax; c++) {
+          const input = rows[r]?.[c]
+          if (input && !input.disabled && !_isLockedScoreColumn(Number(input.dataset.col)) && _getScore(Number(input.dataset.sid), Number(input.dataset.col)) != null) targets.push(input)
+        }
+        if (!targets.length) { showToast('ช่วงที่เลือกไม่มีคะแนนที่ลบได้', 'info'); return }
+        if (!confirm(`ล้างคะแนน ${targets.length} ช่องที่เลือกใช่หรือไม่?`)) return
+        const btn = wrap.querySelector('[data-grade-range-delete]'), saving = document.getElementById('grade-saving')
+        btn.disabled = true; saving?.classList.remove('hidden')
+        let removed = 0
+        try {
+          for (const input of targets) {
+            const sid = Number(input.dataset.sid), colId = Number(input.dataset.col), record = scoreMap[sid]?.[colId]
+            const result = await saveStudentScore(classData.id, sid, colId, null, { currentHistory: record?.history ?? [], max: Number(input.dataset.max) || null })
+            if (!result) continue
+            scoreMap[sid][colId] = { orig: null, retake: null, final: null, history: result.history ?? [], score_formula: null, score_formula_refs: [] }
+            removed++
+          }
+          _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
+          showToast(`ลบคะแนนแล้ว ${removed} ช่อง`, 'success')
+        } catch (err) {
+          _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
+          showToast(`ลบได้ ${removed} ช่อง แต่มีรายการไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error')
+        } finally { saving?.classList.add('hidden'); btn.disabled = false }
       })
       const cellFormulaPanel = wrap.querySelector('[data-cell-formula-editor]')
       const _renderCellFormulaRefs = () => {
@@ -2634,6 +2664,7 @@ export async function renderGradesGrid(teacher, classData) {
         <button id="btn-scan-score" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-sky-200 text-sm text-sky-600 hover:bg-sky-50 transition flex-shrink-0">
           📷 <span class="hidden sm:inline text-xs">สแกนคะแนน</span>
         </button>
+        <button id="btn-ai-score" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-violet-200 text-sm text-violet-700 hover:bg-violet-50 transition flex-shrink-0">🤖 <span class="hidden sm:inline text-xs">เพิ่มคะแนนด้วย AI</span></button>
         <button id="btn-copy-cols" class="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-indigo-200 text-sm text-indigo-600 hover:bg-indigo-50 transition flex-shrink-0">
           📋 <span class="hidden sm:inline text-xs">คัดลอกคอลัมน์</span>
         </button>
@@ -2698,6 +2729,59 @@ export async function renderGradesGrid(teacher, classData) {
     document.getElementById('btn-copy-cols')?.addEventListener('click', () => _openCopyColsPopup(classData, allMyClasses))
     document.getElementById('btn-scan-score')?.addEventListener('click', () => {
       openScoreScanner({ classId: classData.id, className: classData.class_name })
+    })
+    document.getElementById('btn-ai-score')?.addEventListener('click', () => {
+      const modal = document.createElement('div')
+      modal.className = 'fixed inset-0 z-[120] flex items-center justify-center bg-black/50 p-3'
+      modal.innerHTML = `<section class="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"><header class="border-b px-5 py-4"><h3 class="font-extrabold text-gray-900">🤖 เพิ่มคะแนนด้วย AI</h3><p class="mt-1 text-xs text-gray-500">เลือกนักเรียนและรายละเอียดงาน → สร้างคำสั่งให้ AI → วางผลคะแนนเพื่อตรวจสอบก่อนบันทึก</p></header><div class="overflow-y-auto p-5 space-y-4"><div class="grid gap-3 sm:grid-cols-2"><label class="text-xs font-bold text-gray-600">ชื่องาน/คอลัมน์<input data-ai-colname class="mt-1 w-full rounded-lg border px-3 py-2 font-normal" placeholder="เช่น ใบงานเรื่องเศษส่วน"></label><label class="text-xs font-bold text-gray-600">คะแนนเต็ม<input data-ai-max type="number" min="0.01" step="any" class="mt-1 w-full rounded-lg border px-3 py-2 font-normal" placeholder="20"></label></div><label class="block text-xs font-bold text-gray-600">เกณฑ์หรือข้อมูลประกอบ<textarea data-ai-criteria rows="3" class="mt-1 w-full rounded-lg border px-3 py-2 font-normal" placeholder="วางเกณฑ์การให้คะแนน/สรุปผลงานนักเรียน"></textarea></label><div class="flex items-center justify-between"><b class="text-xs text-gray-700">เลือกนักเรียนที่จะให้ AI ช่วยประเมิน</b><button type="button" data-ai-selectall class="text-xs font-bold text-indigo-600">เลือกทั้งหมด</button></div><div data-ai-students class="grid max-h-40 grid-cols-1 gap-1 overflow-y-auto rounded-lg border p-2 sm:grid-cols-2">${students.map(s=>`<label class="flex items-center gap-2 rounded px-2 py-1 text-xs hover:bg-gray-50"><input type="checkbox" data-ai-sid="${s.id}" checked><span>${_htmlEsc(s.student_code)} · ${_htmlEsc(s.full_name)}</span></label>`).join('')}</div><button type="button" data-ai-prompt class="rounded-lg bg-violet-700 px-4 py-2 text-xs font-bold text-white">✨ สร้างคำสั่งและคัดลอก</button><textarea data-ai-output rows="5" class="w-full rounded-lg border px-3 py-2 font-mono text-xs" placeholder="วางผลลัพธ์จาก AI ในรูปแบบ JSON เช่น [{&quot;student_code&quot;:&quot;26056&quot;,&quot;score&quot;:18}]"></textarea><p class="text-[11px] text-gray-500">ระบบจะสร้างคอลัมน์คะแนนพิเศษและบันทึกเฉพาะนักเรียนที่เลือก หลังตรวจคะแนนเต็มแล้ว</p></div><footer class="flex justify-end gap-2 border-t px-5 py-3"><button type="button" data-ai-close class="rounded-lg border px-4 py-2 text-xs font-bold text-gray-600">ปิด</button><button type="button" data-ai-save class="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white">ตรวจและบันทึกคะแนน</button></footer></section>`
+      document.body.appendChild(modal)
+      const close = () => modal.remove()
+      modal.querySelector('[data-ai-close]').addEventListener('click', close)
+      modal.addEventListener('click', e => { if (e.target === modal) close() })
+      modal.querySelector('[data-ai-selectall]').addEventListener('click', () => {
+        const boxes = [...modal.querySelectorAll('[data-ai-sid]')], allChecked = boxes.every(box => box.checked)
+        boxes.forEach(box => { box.checked = !allChecked })
+        modal.querySelector('[data-ai-selectall]').textContent = allChecked ? 'เลือกทั้งหมด' : 'ยกเลิกทั้งหมด'
+      })
+      modal.querySelector('[data-ai-prompt]').addEventListener('click', async () => {
+        const selected = [...modal.querySelectorAll('[data-ai-sid]:checked')].map(box => students.find(s => String(s.id) === box.dataset.aiSid)).filter(Boolean)
+        const name = modal.querySelector('[data-ai-colname]').value.trim(), max = Number(modal.querySelector('[data-ai-max]').value), criteria = modal.querySelector('[data-ai-criteria]').value.trim()
+        if (!selected.length || !name || !(max > 0) || !criteria) { showToast('กรอกชื่องาน คะแนนเต็ม เกณฑ์ และเลือกนักเรียนก่อน', 'warning'); return }
+        const roster = selected.map(s => JSON.stringify({ student_code: s.student_code, name: s.full_name })).join(',\n')
+        const prompt = `ช่วยประเมินคะแนนงาน "${name}" วิชา ${ms?.subject_name ?? ''} คะแนนเต็ม ${max} คะแนน โดยยึดเกณฑ์นี้อย่างเป็นธรรม: ${criteria}\nรายชื่อนักเรียน:\n[${roster}]\nตอบกลับเป็น JSON array เท่านั้น รูปแบบ [{"student_code":"รหัสนักเรียน","score":คะแนน}] ให้ครบทุกคน ห้ามเกิน 0-${max} และอย่าใส่ markdown หรือคำอธิบาย`
+        try { await navigator.clipboard.writeText(prompt); showToast('คัดลอกคำสั่งแล้ว นำไปให้ AI ประเมิน จากนั้นวางผลลัพธ์ด้านล่าง', 'success') }
+        catch { showToast('สร้างคำสั่งแล้ว แต่คัดลอกอัตโนมัติไม่ได้ กรุณาอนุญาต Clipboard', 'warning') }
+      })
+      modal.querySelector('[data-ai-save]').addEventListener('click', async event => {
+        const selected = new Set([...modal.querySelectorAll('[data-ai-sid]:checked')].map(box => box.dataset.aiSid))
+        const name = modal.querySelector('[data-ai-colname]').value.trim(), max = Number(modal.querySelector('[data-ai-max]').value), output = modal.querySelector('[data-ai-output]').value.trim()
+        if (!selected.size || !name || !(max > 0) || !output) { showToast('กรอกข้อมูลงาน เลือกนักเรียน และวางผลจาก AI ก่อน', 'warning'); return }
+        let rows
+        try { rows = JSON.parse(output.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')) }
+        catch { showToast('รูปแบบผลลัพธ์ไม่ใช่ JSON ที่ถูกต้อง', 'error'); return }
+        if (!Array.isArray(rows) || !rows.length) { showToast('ผล AI ต้องเป็นรายการคะแนนแบบ JSON array', 'error'); return }
+        const byCode = new Map(students.filter(s => selected.has(String(s.id))).map(s => [String(s.student_code), s]))
+        const mapped = rows.map(row => ({ student: byCode.get(String(row.student_code)), score: Number(row.score), validScore: (typeof row.score === 'number' || (typeof row.score === 'string' && row.score.trim() !== '')) && Number.isFinite(Number(row.score)) }))
+        if (mapped.some(row => !row.student || !row.validScore || row.score < 0 || row.score > max) || new Set(mapped.map(row => row.student?.id)).size !== mapped.length) {
+          showToast(`ตรวจไม่ผ่าน: ต้องมีรหัสนักเรียนที่เลือกไม่ซ้ำ และคะแนน 0-${max}`, 'error'); return
+        }
+        const review = mapped.map(({ student, score }) => `${student.student_code} ${student.full_name}: ${score}/${max}`).join('\n')
+        if (!confirm(`ตรวจคะแนนจาก AI ก่อนบันทึก:\nคอลัมน์ ${name} (เต็ม ${max})\n${review}\n\nยืนยันสร้างคอลัมน์และบันทึก ${mapped.length} คนหรือไม่?`)) return
+        const btn = event.currentTarget, saving = document.getElementById('grade-saving')
+        btn.disabled = true; saving?.classList.remove('hidden')
+        let savedCount = 0
+        try {
+          const col = await createScoreColumn({ class_id: classData.id, assignment_name: name, assignment_type: 'คะแนนพิเศษ', sheet_column: '', max_score: max, column_type: 'bonus', formula: null, formula_refs: [] })
+          for (const { student, score } of mapped) {
+            const result = await saveStudentScore(classData.id, student.id, col.id, score, { max })
+            if (!result) throw new Error(`บันทึกคะแนนของ ${student.student_code} ไม่สำเร็จ`)
+            savedCount++
+          }
+          showBonusCols = true; _saveToggles()
+          showToast(`สร้างคอลัมน์และบันทึกคะแนน AI แล้ว ${mapped.length} คน`, 'success'); close(); renderGradesGrid(teacher, classData)
+        } catch (err) { showToast(`บันทึกได้ ${savedCount}/${mapped.length} คน: ${getFriendlyErrorMessage(err)}`, 'error'); btn.disabled = false; if (savedCount) renderGradesGrid(teacher, classData) }
+        finally { saving?.classList.add('hidden') }
+      })
     })
 
     _renderToggleBar()

@@ -1816,8 +1816,9 @@ export async function saveStudentScore(classId, studentId, columnId, score, opts
   // opts.max: max_score ของคอลัมน์ (ถ้ามี) — ใช้ตัดคะแนนไม่ให้เกิน/ติดลบ
   const raw = String(score ?? '').trim()
   if (raw === '' || score === null) {
-    await supabase.from('student_scores').delete()
+    const { error } = await supabase.from('student_scores').delete()
       .eq('student_id', studentId).eq('assignment_id', columnId)
+    if (error) throw error
     return { final: null, history: [] }
   }
 
@@ -1926,8 +1927,9 @@ export async function updateColumnSortOrders(updates) {
 }
 
 export async function createScoreColumn(payload) {
-  const { error } = await supabase.from('class_score_columns').insert(payload)
+  const { data, error } = await supabase.from('class_score_columns').insert(payload).select('*').single()
   if (error) throw error
+  return data
 }
 
 export async function updateScoreColumn(id, payload) {
