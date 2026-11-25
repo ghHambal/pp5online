@@ -1123,6 +1123,22 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
             : role === 'teacher' && profileTeacher?.signature_url ? option.path === profileTeacher.signature_url
             : false,
     }))
+    const planText = value => {
+      const text = asText(value).trim()
+      return text ? esc(text).replace(/\n/g, '<br>') : '<span class="text-gray-400">ยังไม่มีข้อมูลในส่วนนี้</span>'
+    }
+    const standardsType = plan.standards_type ?? plan.source_json?.standards_type
+    const standardsTitle = standardsType === 'learning_outcomes'
+      ? 'ผลการเรียนรู้'
+      : standardsType === 'indicators'
+        ? 'มาตรฐานการเรียนรู้ / ตัวชี้วัด'
+        : 'มาตรฐาน / ตัวชี้วัด / ผลการเรียนรู้'
+    const periodCount = Number(plan.source_json?.period_count) > 0
+      ? Number(plan.source_json.period_count)
+      : (Number(plan.duration_minutes) === 100 ? 2 : Number(plan.duration_minutes) > 0 && Number(plan.duration_minutes) % 45 === 0 ? Number(plan.duration_minutes) / 45 : 1)
+    const durationMinutes = Number(plan.duration_minutes) || Number(plan.source_json?.duration_minutes) || periodCount * Number(plan.source_json?.minutes_per_period || 45)
+    const durationLabel = durationMinutes > 0 && durationMinutes % 60 === 0 ? `${durationMinutes / 60} ชั่วโมง` : `${durationMinutes} นาที`
+    const planInfoCard = (title, value, extra = '') => `<section class="rounded-2xl border border-gray-200 bg-white p-4"><h4 class="mb-2 text-sm font-extrabold text-gray-700">${title}</h4><div class="text-sm leading-7 text-gray-600 ${extra}">${planText(value)}</div></section>`
     m.innerHTML = `<div class="bg-white rounded-3xl shadow-2xl w-full max-w-3xl max-h-[94vh] overflow-y-auto p-5 sm:p-6">
       <div class="flex justify-between gap-3 mb-3"><div><h3 class="font-bold text-gray-800">📝 ${esc(plan.title)}</h3><p class="text-xs ${bypassPostLesson ? 'text-amber-700' : 'text-gray-400'}">${bypassPostLesson ? 'ครั้งนี้เลือกข้ามผลหลังสอนและลายเซ็นครู/หัวหน้ากลุ่มสาระไว้แล้ว' : 'บันทึกหลังสอนและลายเซ็นตามการตั้งค่าของแผน'}</p>${movedOccurrence ? `<p class="mt-1 text-xs font-bold text-amber-700">⏭️ เลื่อนจากสัปดาห์ที่ ${movedOccurrence.baseWeek} คาบ ${movedOccurrence.baseSession} มาสัปดาห์ที่ ${weekNo} คาบ ${movedOccurrence.session}</p>` : ''}</div><button data-close class="w-10 h-10 rounded-xl border text-gray-400">✕</button></div>
       <div class="flex flex-wrap items-end gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3">
@@ -1131,17 +1147,53 @@ export async function openLessonPlanDocument({ plan, cls, teacher, classId, curr
         ${dateState.suggested ? `<button id="lp-doc-use-suggested-date" type="button" class="min-h-[40px] rounded-xl border border-indigo-200 bg-white px-3 text-[11px] font-bold text-indigo-700">↻ ใช้วันที่ตามตาราง</button>` : ''}
         <p id="lp-doc-date-hint" class="basis-full text-[11px] ${dateState.saved ? 'text-emerald-700' : dateState.suggested ? 'text-indigo-700' : 'text-amber-700'}">${esc(dateHint)}</p>
       </div>
-      <div class="flex flex-wrap items-center justify-between gap-2 mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-3"><div><p class="text-xs font-bold text-amber-900">การลงชื่อหัวหน้าห้อง: ${classHeadEnabled() ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}</p><p class="text-[10px] text-amber-700">เมื่อเปิด ระบบจะเสนอใช้ลายเซ็นจากแผนก่อนหน้าให้อัตโนมัติ</p></div><div class="flex gap-2"><button data-class-head-enable type="button" class="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-[11px] font-bold text-emerald-700">เปิดใช้งาน</button><button data-class-head-disable type="button" class="rounded-xl border border-red-200 bg-white px-3 py-2 text-[11px] font-bold text-red-700">ปิดใช้งาน</button></div></div>
-      <div data-write-nav class="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3"><span data-write-label class="text-[11px] font-bold text-indigo-900">เลือกช่องเพื่อเริ่มเขียน</span><div class="flex items-center gap-2"><button data-write-prev type="button" class="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-[11px] font-bold text-indigo-700">← ย้อนกลับ</button><button data-write-next type="button" class="rounded-xl border border-indigo-200 bg-white px-3 py-2 text-[11px] font-bold text-indigo-700">ถัดไป →</button><button data-write-unlock type="button" class="hidden rounded-xl bg-indigo-600 px-3 py-2 text-[11px] font-bold text-white">ปลดล็อกส่วนอื่น</button></div></div>
-      <div class="grid sm:grid-cols-3 gap-3 mt-4">
-        ${classHeadEnabled() ? signaturePadHTML('class-head','หัวหน้าห้อง',reflection?.class_head_name || priorClassHeadReflection?.class_head_name || classHeadDefault,classHeadUrl,makePadOptions('class-head'),sourceFor('class-head')) : ''}
-        ${signaturePadHTML('teacher','ครูผู้สอน',reflection?.teacher_name || teacher.full_name,teacherUrl,makePadOptions('teacher'),sourceFor('teacher'),Boolean(profileTeacher?.signature_url))}
-        ${signaturePadHTML('dept-head','หัวหน้ากลุ่มสาระ',effectiveReflectionDeptName || deptHeadName,deptHeadUrl,makePadOptions('dept-head'),sourceFor('dept-head'),false,true)}
+      <div role="tablist" aria-label="ส่วนต่าง ๆ ของแผนการจัดการเรียนรู้" class="sticky top-0 z-10 mt-4 flex gap-2 overflow-x-auto rounded-2xl border border-gray-200 bg-gray-50 p-2">
+        <button type="button" role="tab" aria-selected="true" data-lp-doc-tab="plan" class="min-h-11 shrink-0 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-extrabold text-white">📄 เนื้อหาแผน</button>
+        <button type="button" role="tab" aria-selected="false" data-lp-doc-tab="reflection" class="min-h-11 shrink-0 rounded-xl px-4 py-2 text-xs font-extrabold text-gray-600 hover:bg-white">✍️ บันทึกหลังสอน</button>
+        <button type="button" role="tab" aria-selected="false" data-lp-doc-tab="signatures" class="min-h-11 shrink-0 rounded-xl px-4 py-2 text-xs font-extrabold text-gray-600 hover:bg-white">🖊️ ลายเซ็น</button>
       </div>
-      <div class="grid sm:grid-cols-3 gap-3 mt-4">${reflectionNoteFieldHTML('result','ผลการจัดการเรียนรู้',reflection?.reflection_text)}${reflectionNoteFieldHTML('issues','ปัญหา/แนวทางแก้ไข',reflection?.issues_solutions)}${reflectionNoteFieldHTML('suggestions','ข้อเสนอแนะ',reflection?.suggestions)}</div>
-      <p class="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">ปุ่มข้ามจะไม่บังคับผลการจัดการเรียนรู้ แนวทางแก้ปัญหา ลายเซ็นครูผู้สอน และลายเซ็นหัวหน้ากลุ่มสาระ โดยยังตรวจวันที่สอนและลายเซ็นหัวหน้าห้องตามการตั้งค่าเดิม</p>
+      <section role="tabpanel" data-lp-doc-panel="plan" class="mt-4 space-y-3">
+        <div class="grid grid-cols-2 gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-4 text-xs sm:grid-cols-4">
+          <div><span class="block text-gray-400">หน่วยการเรียนรู้</span><strong class="mt-1 block text-gray-700">${planText(plan.unit_title)}</strong></div>
+          <div><span class="block text-gray-400">เรื่อง / สาระสำคัญ</span><strong class="mt-1 block text-gray-700">${planText(plan.key_concept)}</strong></div>
+          <div><span class="block text-gray-400">ครั้งที่</span><strong class="mt-1 block text-gray-700">${esc(plan.session_number || weekNo)}</strong></div>
+          <div><span class="block text-gray-400">เวลาเรียน</span><strong class="mt-1 block text-gray-700">${esc(`${periodCount} คาบ · ${durationLabel}`)}</strong></div>
+        </div>
+        ${planInfoCard(standardsTitle, plan.standards)}
+        ${planInfoCard('จุดประสงค์การเรียนรู้', plan.objectives)}
+        ${planInfoCard('กิจกรรมการเรียนรู้ · ขั้นนำเข้าสู่บทเรียน', plan.activities_intro)}
+        ${planInfoCard('กิจกรรมการเรียนรู้ · ขั้นสอน', plan.activities_main)}
+        ${planInfoCard('กิจกรรมการเรียนรู้ · ขั้นสรุป', plan.activities_wrap)}
+        ${planInfoCard('การวัดและประเมินผล', plan.assessment)}
+        ${planInfoCard('สื่อการเรียนรู้', plan.media)}
+      </section>
+      <section role="tabpanel" data-lp-doc-panel="reflection" class="mt-4 hidden">
+        <div class="grid gap-3 sm:grid-cols-3">${reflectionNoteFieldHTML('result','ผลการจัดการเรียนรู้',reflection?.reflection_text)}${reflectionNoteFieldHTML('issues','ปัญหา/แนวทางแก้ไข',reflection?.issues_solutions)}${reflectionNoteFieldHTML('suggestions','ข้อเสนอแนะ',reflection?.suggestions)}</div>
+        <p class="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">ปุ่มข้ามจะไม่บังคับผลการจัดการเรียนรู้ แนวทางแก้ปัญหา ลายเซ็นครูผู้สอน และลายเซ็นหัวหน้ากลุ่มสาระ โดยยังตรวจวันที่สอนและลายเซ็นหัวหน้าห้องตามการตั้งค่าเดิม</p>
+      </section>
+      <section role="tabpanel" data-lp-doc-panel="signatures" class="mt-4 hidden">
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-amber-100 bg-amber-50 p-3"><div><p class="text-xs font-bold text-amber-900">การลงชื่อหัวหน้าห้อง: ${classHeadEnabled() ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}</p><p class="text-[10px] text-amber-700">เมื่อเปิด ระบบจะเสนอใช้ลายเซ็นจากแผนก่อนหน้าให้อัตโนมัติ</p></div><div class="flex gap-2"><button data-class-head-enable type="button" class="min-h-11 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-[11px] font-bold text-emerald-700">เปิดใช้งาน</button><button data-class-head-disable type="button" class="min-h-11 rounded-xl border border-red-200 bg-white px-3 py-2 text-[11px] font-bold text-red-700">ปิดใช้งาน</button></div></div>
+        <div data-write-nav class="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3"><span data-write-label class="text-[11px] font-bold text-indigo-900">เลือกช่องเพื่อเริ่มเขียน</span><div class="flex items-center gap-2"><button data-write-prev type="button" class="min-h-11 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-[11px] font-bold text-indigo-700">← ย้อนกลับ</button><button data-write-next type="button" class="min-h-11 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-[11px] font-bold text-indigo-700">ถัดไป →</button><button data-write-unlock type="button" class="hidden min-h-11 rounded-xl bg-indigo-600 px-3 py-2 text-[11px] font-bold text-white">ปลดล็อกส่วนอื่น</button></div></div>
+        <div class="mt-4 grid gap-3 sm:grid-cols-3">
+          ${classHeadEnabled() ? signaturePadHTML('class-head','หัวหน้าห้อง',reflection?.class_head_name || priorClassHeadReflection?.class_head_name || classHeadDefault,classHeadUrl,makePadOptions('class-head'),sourceFor('class-head')) : ''}
+          ${signaturePadHTML('teacher','ครูผู้สอน',reflection?.teacher_name || teacher.full_name,teacherUrl,makePadOptions('teacher'),sourceFor('teacher'),Boolean(profileTeacher?.signature_url))}
+          ${signaturePadHTML('dept-head','หัวหน้ากลุ่มสาระ',effectiveReflectionDeptName || deptHeadName,deptHeadUrl,makePadOptions('dept-head'),sourceFor('dept-head'),false,true)}
+        </div>
+      </section>
       <div class="grid grid-cols-1 gap-2 mt-3 sm:grid-cols-3"><button id="lp-doc-save" class="py-3 rounded-xl bg-emerald-600 text-white text-xs font-bold">💾 บันทึกทั้งหมด</button><button id="lp-doc-save-skip" class="py-3 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 text-xs font-bold">⏭️ บันทึกโดยข้าม 4 ส่วน</button><button id="lp-doc-print" class="py-3 rounded-xl bg-indigo-600 text-white text-xs font-bold">🖨️ บันทึกแล้วพิมพ์</button></div>
     </div>`
+    const docTabs = [...m.querySelectorAll('[data-lp-doc-tab]')]
+    const activateDocTab = key => {
+      docTabs.forEach(tab => {
+        const active = tab.dataset.lpDocTab === key
+        tab.setAttribute('aria-selected', String(active))
+        tab.classList.toggle('bg-indigo-600', active)
+        tab.classList.toggle('text-white', active)
+        tab.classList.toggle('text-gray-600', !active)
+      })
+      m.querySelectorAll('[data-lp-doc-panel]').forEach(panel => panel.classList.toggle('hidden', panel.dataset.lpDocPanel !== key))
+    }
+    docTabs.forEach(tab => tab.addEventListener('click', () => activateDocTab(tab.dataset.lpDocTab)))
     const pads = Object.fromEntries([...m.querySelectorAll('[data-sign-role]')].map(box => [box.dataset.signRole, bindPad(box)]))
     const notePads = Object.fromEntries([...m.querySelectorAll('[data-reflection-note]')].map(box => [box.dataset.reflectionNote, bindReflectionNote(box)]))
     const writeBoxes = [...m.querySelectorAll('[data-sign-role], [data-reflection-note]')]

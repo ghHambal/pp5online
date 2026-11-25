@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1133'
+import { APP_VERSION } from './version.js?v=10.22.1134'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1134': [
+    'แยกหน้าต่างแผนการสอนเป็นแท็บเนื้อหาแผน บันทึกหลังสอน และลายเซ็น พร้อมแสดงรายละเอียดแผนในหน้าต่างเดียว',
+  ],
   '10.22.1133': [
     'เพิ่มการมอบสิทธิ์บัญชีผู้ดูแลบัญชีเดียวให้ติดตามทุกหอพัก โดยจำกัดข้อมูลไว้เฉพาะรอบหอพัก และให้นักเรียนเห็นเฉพาะข้อมูลรอบไปกลับของตนเอง',
   ],
