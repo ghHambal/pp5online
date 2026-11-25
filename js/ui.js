@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1140'
+import { APP_VERSION } from './version.js?v=10.22.1141'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1141': [
+    'เพิ่มสูตรคะแนนเฉพาะช่องแบบพิมพ์ = แล้วคลิกหัวคอลัมน์หรือช่องคะแนนเพื่อแทรกตัวแปร พร้อมคงสูตรทั้งคอลัมน์และแก้ให้ผลสูตรแสดงในช่องคะแนนที่เกี่ยวข้อง',
+  ],
   '10.22.1140': [
     'ปรับเครื่องมือสูตรคะแนนให้แก้ไขในแถบด้านบนของตาราง ไม่เปิดป๊อปอัป และแสดงเท็มเพลตเมื่อเริ่มพิมพ์ = พร้อมคลิกคอลัมน์เพื่อแทรกตัวแปร',
   ],

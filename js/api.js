@@ -1774,7 +1774,7 @@ export async function getStudentScores(classId, loadedColumns = null) {
   const colIds = cols.map(c => c.id)
   const data = await _fetchAllRows(() => supabase
     .from('student_scores')
-    .select('id, student_id, assignment_id, original_score, retake_score, final_score, score_history')
+    .select('id, student_id, assignment_id, original_score, retake_score, final_score, score_history, score_formula, score_formula_refs')
     .in('assignment_id', colIds)
     .order('id'))
   // normalize: map assignment_id → score_column_id, original_score → score
@@ -1786,7 +1786,28 @@ export async function getStudentScores(classId, loadedColumns = null) {
     retake_score:    r.retake_score,
     final_score:     r.final_score,
     score_history:   r.score_history ?? [],
+    score_formula:   r.score_formula ?? null,
+    score_formula_refs: r.score_formula_refs ?? [],
   }))
+}
+
+export async function saveStudentScoreFormula(studentId, columnId, formula, refs, result) {
+  const { data: existing, error: readError } = await supabase.from('student_scores')
+    .select('original_score, retake_score, score_history')
+    .eq('student_id', studentId).eq('assignment_id', columnId).maybeSingle()
+  if (readError) throw readError
+  const { error } = await supabase.from('student_scores').upsert({
+    student_id: studentId,
+    assignment_id: columnId,
+    original_score: existing?.original_score ?? result,
+    retake_score: existing?.retake_score ?? null,
+    final_score: result,
+    score_history: existing?.score_history ?? [],
+    score_formula: formula,
+    score_formula_refs: refs ?? [],
+  }, { onConflict: 'student_id,assignment_id' })
+  if (error) throw error
+  return { final: result, score_formula: formula, score_formula_refs: refs ?? [] }
 }
 
 export async function saveStudentScore(classId, studentId, columnId, score, opts = {}) {
@@ -1825,7 +1846,7 @@ export async function saveStudentScore(classId, studentId, columnId, score, opts
     .upsert({ student_id: studentId, assignment_id: columnId,
               original_score: history[0]?.d ?? finalScore,
               final_score: finalScore,
-              score_history: history },
+              score_history: history, score_formula: null, score_formula_refs: [] },
              { onConflict: 'student_id,assignment_id' })
   if (error) throw error
   return { final: finalScore, history, clamped }

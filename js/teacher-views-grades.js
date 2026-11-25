@@ -3,7 +3,7 @@ import { isBonus, isGradeColumn, normalizeRounding, scoreForGrade, sortScoreColu
 import {
   getScoreColumns, createScoreColumn, updateScoreColumn, deleteScoreColumn,
   updateColumnSortOrders,
-  getStudentScores, saveStudentScore, getSystemConfig, getAcademicTerms, getMyClasses,
+  getStudentScores, saveStudentScore, saveStudentScoreFormula, getSystemConfig, getAcademicTerms, getMyClasses,
   detectAssignmentKind, getSheetColumnOptionsForTypes,
   getClassStudents, getLifeSkillColumns, fillPrayerScoresForReligionClass,
   syncAutoAttendanceScoreColumns, setColumnAutoAttendanceSync,
@@ -474,6 +474,8 @@ export async function renderGradesGrid(teacher, classData) {
         orig: r.original_score, retake: r.retake_score,
         final: r.final_score ?? r.original_score,
         history: r.score_history ?? [],
+        score_formula: r.score_formula ?? null,
+        score_formula_refs: r.score_formula_refs ?? [],
       }
     }
     // โหลดค่า "บังคับเกรด" ที่เคยบันทึกไว้จริงใน class_students.special_result เข้ามาตั้งต้น
@@ -484,6 +486,10 @@ export async function renderGradesGrid(teacher, classData) {
       scoreMap[s.id]['__force'] = s.special_result
     }
     const _getScore = (sid, colId) => scoreMap[sid]?.[colId]?.final ?? scoreMap[sid]?.[colId]?.orig ?? null
+    const _rawScore = (sid, colId) => {
+      const value = _getScore(sid, colId)
+      return value == null || value === '' ? 0 : (Number(value) || 0)
+    }
     const _hasStoredGradeScore = (sid, col) => {
       if (col.column_type === 'derived') return true
       const value = _getScore(sid, col.id)
@@ -494,21 +500,45 @@ export async function renderGradesGrid(teacher, classData) {
     const _groupTotal = (sid, cols) => cols.reduce((s,c) => s + (parseFloat(_getScore(sid,c.id)) || 0), 0)
     const _groupMax   = (cols) => cols.reduce((s,c) => s + (parseFloat(c.max_score)||0), 0)
 
-    // คำนวณคะแนนจริงของคอลัมน์หลัก รวม bonus_formula (บวกเพิ่ม ไม่เกิน max)
-    const _effectiveScore = (sid, col) => {
-      const raw = parseFloat(_getScore(sid, col.id)) || 0
+    // สูตรรายช่องจะ override สูตรทั้งคอลัมน์เฉพาะนักเรียนคนนั้น; สูตรคอลัมน์เดิมยังคงบวกคะแนนพิเศษตามเดิม
+    const _effectiveScore = (sid, col, visiting = new Set()) => {
+      const key = `${sid}:${col.id}`
+      if (visiting.has(key)) return null
+      const next = new Set(visiting); next.add(key)
+      const record = scoreMap[sid]?.[col.id]
+      if (record?.score_formula) {
+        const vars = Object.fromEntries((record.score_formula_refs ?? []).map(ref => [
+          ref.var, _scoreValue(ref.student_id ?? sid, ref.col_id, next),
+        ]))
+        const calculated = evalFormula(record.score_formula, vars)
+        if (calculated == null || !Number.isFinite(calculated)) return null
+        return Math.max(0, col.max_score ? Math.min(calculated, Number(col.max_score)) : calculated)
+      }
+      const raw = _rawScore(sid, col.id)
       if (!col.bonus_formula) return raw
-      const bvars = Object.fromEntries(bonusWithVars.map(b => [b.var, parseFloat(_getScore(sid, b.id)) || 0]))
+      const bvars = Object.fromEntries(bonusWithVars.map(b => [b.var, _rawScore(sid, b.id)]))
       const bonus = evalFormula(col.bonus_formula, bvars) ?? 0
       return col.max_score ? Math.min(raw + bonus, col.max_score) : raw + bonus
+    }
+    const _scoreValue = (sid, colId, visiting = new Set()) => {
+      const col = colById[colId]
+      if (!col) return null
+      const key = `${sid}:${col.id}`
+      if (visiting.has(key)) return null
+      const next = new Set(visiting); next.add(key)
+      if (col.column_type === 'derived') return _calcDerived(col, sid, next)
+      return _effectiveScore(sid, col, visiting)
+    }
+    const _displayScore = (sid, col) => {
+      const value = _effectiveScore(sid, col)
+      return value == null ? '' : value
     }
     const _groupTotalEff = (sid, cols) => cols.reduce((s,c) => s + _effectiveScore(sid, c), 0)
 
     // derived: คำนวณจาก formula + bonus scores
-    const _calcDerived = (col, sid) => {
+    const _calcDerived = (col, sid, visiting = new Set()) => {
       if (!col.formula) return 0
-      const vars = {}
-      for (const ref of (col.formula_refs ?? [])) vars[ref.var] = parseFloat(_getScore(sid, ref.col_id)) || 0
+      const vars = Object.fromEntries((col.formula_refs ?? []).map(ref => [ref.var, _scoreValue(ref.student_id ?? sid, ref.col_id, visiting) ?? 0]))
       return evalFormula(col.formula, vars) ?? 0
     }
 
@@ -1848,6 +1878,14 @@ export async function renderGradesGrid(teacher, classData) {
       setTimeout(() => inp.focus(), 60)
     }
 
+    let activeCellFormula = null
+    const _cellFormulaEditorHtml = () => `<section data-cell-formula-editor class="hidden sticky top-0 z-40 border-b border-violet-200 bg-violet-50/95 p-3 shadow-sm backdrop-blur">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div><div class="text-sm font-bold text-violet-900">สูตรเฉพาะช่องคะแนน</div><p class="text-[11px] text-violet-700">พิมพ์ = แล้วใส่สูตร หรือคลิกหัวคอลัมน์/ช่องคะแนนเพื่อแทรกการอ้างอิง · Enter บันทึก · Esc ยกเลิก</p></div>
+        <div class="flex flex-wrap gap-1">${['=SUM(', '=MIN(', '=MAX(', '=AVG(', '=IF('].map(t => `<button type="button" data-cell-template="${t}" class="rounded-md border border-violet-200 bg-white px-2 py-1 font-mono text-[11px] text-violet-700 hover:bg-violet-100">${t}</button>`).join('')}</div>
+      </div><div data-cell-refs class="mt-2 flex flex-wrap gap-1 text-[11px] text-gray-600"></div>
+    </section>`
+
     const _renderGrid = () => {
       const midMax = _groupMax(midCols), finMax = _groupMax(finalCols)
       const wrap = document.getElementById('grade-grid-wrap')
@@ -1915,14 +1953,14 @@ export async function renderGradesGrid(teacher, classData) {
         </tr>
         <tr style="position:sticky;top:48px;z-index:30">
           ${midCols.map(c=>`<th class="${thBase} bg-blue-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="col-edit text-[11px] px-1 rounded block truncate ${_isLockedScoreColumn(c) ? 'text-emerald-800 cursor-not-allowed' : 'text-gray-700 cursor-text hover:bg-blue-50'}"
+            <span class="col-edit formula-ref text-[11px] px-1 rounded block truncate ${_isLockedScoreColumn(c) ? 'text-emerald-800 cursor-not-allowed' : 'text-gray-700 cursor-text hover:bg-blue-50'}"
               contenteditable="${_isLockedScoreColumn(c) ? 'false' : 'true'}" data-colid="${c.id}" data-field="assignment_name" title="${_isLockedScoreColumn(c) ? _lockedColTitle(c) : ''}">${c.assignment_name||'—'}</span>
             <span class="col-max text-[10px] select-none ${_isLockedScoreColumn(c) ? 'text-emerald-700 cursor-not-allowed' : 'text-gray-400 cursor-pointer hover:text-blue-500 hover:underline'}"
               data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อแก้คะแนนเต็ม'}">/<span class="font-medium">${c.max_score||0}</span></span>
             ${c.assignment_name === 'คะแนนละหมาด' ? `<span class="block text-[8px] text-teal-500 leading-tight mt-0.5 whitespace-nowrap overflow-hidden" title="คะแนนนี้มาจากการบันทึกของครูที่ปรึกษาศาสนา ถ้าคะแนนว่าง แสดงว่าครูยังไม่ได้บันทึก">📋 ครูที่ปรึกษาศาสนา</span>` : ''}</th>`).join('')}
           <th class="${thBase} bg-blue-50" style="width:30px"></th>
           ${finalCols.map(c=>`<th class="${thBase} bg-purple-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="col-edit text-[11px] px-1 rounded block truncate ${_isLockedScoreColumn(c) ? 'text-emerald-800 cursor-not-allowed' : 'text-gray-700 cursor-text hover:bg-purple-50'}"
+            <span class="col-edit formula-ref text-[11px] px-1 rounded block truncate ${_isLockedScoreColumn(c) ? 'text-emerald-800 cursor-not-allowed' : 'text-gray-700 cursor-text hover:bg-purple-50'}"
               contenteditable="${_isLockedScoreColumn(c) ? 'false' : 'true'}" data-colid="${c.id}" data-field="assignment_name" title="${_isLockedScoreColumn(c) ? _lockedColTitle(c) : ''}">${c.assignment_name||'—'}</span>
             <span class="col-max text-[10px] select-none ${_isLockedScoreColumn(c) ? 'text-emerald-700 cursor-not-allowed' : 'text-gray-400 cursor-pointer hover:text-purple-500 hover:underline'}"
               data-colid="${c.id}" title="${_isLockedScoreColumn(c) ? 'คะแนนระบบกลาง: แก้ไขไม่ได้' : 'คลิกเพื่อแก้คะแนนเต็ม'}">/<span class="font-medium">${c.max_score||0}</span></span>
@@ -1933,12 +1971,12 @@ export async function renderGradesGrid(teacher, classData) {
             <span class="text-[10px] text-indigo-400">/${c.max_score??'?'}</span>
           </th>`).join('')}
           ${overrideCols.map(c=>`<th class="${thBase} bg-teal-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="col-edit text-[11px] px-1 rounded block truncate text-teal-700 cursor-text hover:bg-teal-100"
+            <span class="col-edit formula-ref text-[11px] px-1 rounded block truncate text-teal-700 cursor-text hover:bg-teal-100"
               contenteditable="true" data-colid="${c.id}" data-field="assignment_name">${c.assignment_name||'—'}</span>
             <span class="text-[10px] text-teal-400">/${c.max_score??'?'}</span>
           </th>`).join('')}
           ${showBonusCols ? bonusCols.map(c=>`<th class="${thBase} bg-amber-50" style="width:${colW}px;min-width:${colW}px">
-            <span class="col-edit text-[11px] px-1 rounded block truncate text-amber-700 cursor-text hover:bg-amber-100"
+            <span class="col-edit formula-ref text-[11px] px-1 rounded block truncate text-amber-700 cursor-text hover:bg-amber-100"
               contenteditable="true" data-colid="${c.id}" data-field="assignment_name">${c.assignment_name||'—'}</span>
             <span class="text-[10px] text-amber-400">${c.max_score ? '/'+c.max_score : '(ไม่จำกัด)'}</span>
           </th>`).join('') : ''}
@@ -1958,7 +1996,7 @@ export async function renderGradesGrid(teacher, classData) {
               <span class="text-gray-800 text-xs truncate max-w-[100px]">${s.full_name}</span>
             </div>
           </td>
-          ${midCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-gray-100 text-center p-0 relative"
+          ${midCols.map(c=>{const v=_displayScore(s.id,c)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-gray-100 text-center p-0 relative"
             style="width:${colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(c,v)}">
             <input class="grade-input w-full h-full text-center text-xs ${_isLockedScoreColumn(c) ? 'bg-emerald-50/60 text-emerald-800 cursor-not-allowed' : 'bg-transparent focus:bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:rounded'}"
               type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
@@ -1966,7 +2004,7 @@ export async function renderGradesGrid(teacher, classData) {
             ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
             </td>`}).join('')}
           <td id="gmid-${s.id}" class="border border-gray-50 bg-blue-50/40 text-center text-[10px] text-blue-600 font-medium" style="width:34px">${midRaw>0?_fmtAgg('mid_subtotal', midRaw, 1):'—'}</td>
-          ${finalCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-gray-100 text-center p-0 relative"
+          ${finalCols.map(c=>{const v=_displayScore(s.id,c)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-gray-100 text-center p-0 relative"
             style="width:${colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(c,v)}">
             <input class="grade-input w-full h-full text-center text-xs ${_isLockedScoreColumn(c) ? 'bg-emerald-50/60 text-emerald-800 cursor-not-allowed' : 'bg-transparent focus:bg-purple-50 focus:outline-none focus:ring-1 focus:ring-purple-300 focus:rounded'}"
               type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
@@ -1996,10 +2034,78 @@ export async function renderGradesGrid(teacher, classData) {
           ${_readCell(s.id)}
         </tr>`}).join('')
 
-      wrap.innerHTML = `${_formulaEditorHtml()}<table class="border-collapse text-xs" style="min-width:max-content">
+      wrap.innerHTML = `${_formulaEditorHtml()}${_cellFormulaEditorHtml()}<table class="border-collapse text-xs" style="min-width:max-content">
         <thead>${head}</thead><tbody>${body}</tbody></table>`
       _bindFormulaEditor(wrap)
       const tbl = wrap.querySelector('table')
+      const cellFormulaPanel = wrap.querySelector('[data-cell-formula-editor]')
+      const _renderCellFormulaRefs = () => {
+        const list = cellFormulaPanel?.querySelector('[data-cell-refs]')
+        if (!list || !activeCellFormula) return
+        list.innerHTML = activeCellFormula.refs.map(ref => {
+          const col = colById[ref.col_id]
+          const student = students.find(s => Number(s.id) === Number(ref.student_id ?? activeCellFormula.sid))
+          return `<span class="rounded-full bg-white border border-violet-200 px-2 py-1"><b class="font-mono text-violet-700">${ref.var}</b> = ${_htmlEsc(col?.assignment_name ?? 'คอลัมน์')} · ${ref.student_id ? _htmlEsc(student?.full_name ?? 'นักเรียน') : 'แถวเดียวกัน'}</span>`
+        }).join('') || '<span>คลิกหัวคอลัมน์เพื่ออ้างอิงคะแนนของนักเรียนแถวนี้ หรือคลิกช่องอื่นเพื่ออ้างอิงช่องนั้นโดยตรง</span>'
+      }
+      const _beginCellFormula = inp => {
+        const sid = Number(inp.dataset.sid), colId = Number(inp.dataset.col)
+        if (activeCellFormula?.input === inp) return
+        const record = scoreMap[sid]?.[colId]
+        activeCellFormula = { input: inp, sid, colId, refs: [...(record?.score_formula_refs ?? [])] }
+        cellFormulaPanel?.classList.remove('hidden')
+        _renderCellFormulaRefs()
+      }
+      const _insertCellFormulaRef = (colId, sid = activeCellFormula?.sid) => {
+        if (!activeCellFormula || !sid || !colById[colId]) return
+        const used = new Set(activeCellFormula.refs.map(r => r.var))
+        const variable = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'].find(letter => !used.has(letter))
+        if (!variable) { showToast('สูตรนี้อ้างอิงได้สูงสุด 26 ช่อง', 'warning'); return }
+        const ref = { var: variable, col_id: Number(colId) }
+        if (Number(sid) !== activeCellFormula.sid) ref.student_id = Number(sid)
+        activeCellFormula.refs.push(ref)
+        const input = activeCellFormula.input
+        const start = input.selectionStart ?? input.value.length, end = input.selectionEnd ?? start
+        input.setRangeText(variable, start, end, 'end')
+        input.focus(); input.dispatchEvent(new Event('input', { bubbles: true }))
+        _renderCellFormulaRefs()
+      }
+      cellFormulaPanel?.querySelectorAll('[data-cell-template]').forEach(button => button.addEventListener('mousedown', e => e.preventDefault()))
+      cellFormulaPanel?.querySelectorAll('[data-cell-template]').forEach(button => button.addEventListener('click', () => {
+        if (!activeCellFormula) return
+        const inp = activeCellFormula.input
+        inp.value = button.dataset.cellTemplate; inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length)
+        inp.dispatchEvent(new Event('input', { bubbles: true }))
+      }))
+      tbl.addEventListener('input', e => {
+        const input = e.target.closest('.grade-input')
+        if (!input) return
+        if (input.value.trim().startsWith('=')) _beginCellFormula(input)
+        else if (activeCellFormula?.input === input) { activeCellFormula = null; cellFormulaPanel?.classList.add('hidden') }
+      })
+      tbl.addEventListener('mousedown', e => {
+        if (!activeCellFormula) return
+        const refTarget = e.target.closest('.formula-ref, .col-sheet-ref')
+        const scoreTarget = e.target.closest('.grade-input')
+        if (refTarget) {
+          e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation()
+          _insertCellFormulaRef(Number(refTarget.dataset.colid)); return
+        }
+        if (scoreTarget && scoreTarget !== activeCellFormula.input) {
+          e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation()
+          _insertCellFormulaRef(Number(scoreTarget.dataset.col), Number(scoreTarget.dataset.sid))
+        }
+      }, true)
+      tbl.addEventListener('keydown', e => {
+        const input = e.target.closest('.grade-input')
+        if (!input || activeCellFormula?.input !== input) return
+        if (e.key === 'Escape') {
+          e.preventDefault(); activeCellFormula = null; cellFormulaPanel?.classList.add('hidden')
+          input.value = _fmtEntryScore(input.dataset.col, _getScore(Number(input.dataset.sid), Number(input.dataset.col)) ?? '')
+          input.blur()
+        }
+        if (e.key === 'Enter') { e.preventDefault(); input.blur() }
+      }, true)
 
       // ── คอลัมน์ปรับคะแนน: เทียบ/บวกกับคอลัมน์ที่เชื่อมไว้ (link_column_id) ตามโหมด
       // override_mode ของคอลัมน์นี้ — ใช้ applyScoreOverride ตัวกลางร่วมกับหน้าตรวจคำร้องสอบซ่อม/แก้ ──
@@ -2041,12 +2147,22 @@ export async function renderGradesGrid(teacher, classData) {
       tbl.addEventListener('focusin', e => {
         const inp = e.target.closest('.grade-input')
         if (!inp) return
-        const raw = _getScore(Number(inp.dataset.sid), Number(inp.dataset.col))
-        inp.value = raw == null ? '' : String(raw)
+        const sid = Number(inp.dataset.sid), colId = Number(inp.dataset.col)
+        const record = scoreMap[sid]?.[colId]
+        const raw = _getScore(sid, colId)
+        inp.value = record?.score_formula ?? (raw == null ? '' : String(raw))
+        if (record?.score_formula) {
+          _beginCellFormula(inp)
+          inp.setSelectionRange(inp.value.length, inp.value.length)
+        }
       })
       tbl.addEventListener('focusout', e => {
         const inp = e.target.closest('.grade-input')
-        if (inp) inp.value = _fmtEntryScore(inp.dataset.col, inp.value)
+        if (!inp) return
+        const sid = Number(inp.dataset.sid), col = colById[Number(inp.dataset.col)]
+        if (inp.value.trim().startsWith('=')) return
+        const shown = col ? _displayScore(sid, col) : inp.value
+        inp.value = _fmtEntryScore(inp.dataset.col, shown)
       })
       tbl.addEventListener('change', async e => {
         const gradeInp=e.target.closest('.grade-input')
@@ -2059,8 +2175,35 @@ export async function renderGradesGrid(teacher, classData) {
             return
           }
           let val=gradeInp.value.trim()
+          const cellFormula = activeCellFormula?.input === gradeInp ? activeCellFormula : null
+          if (val.startsWith('=')) {
+            const refs = cellFormula?.refs ?? scoreMap[sid]?.[colId]?.score_formula_refs ?? []
+            const visiting = new Set([`${sid}:${colId}`])
+            const vars = Object.fromEntries(refs.map(ref => [ref.var, _scoreValue(Number(ref.student_id ?? sid), Number(ref.col_id), visiting)]))
+            const calculated = evalFormula(val, vars)
+            if (calculated == null || !Number.isFinite(calculated)) {
+              showToast('สูตรยังไม่สมบูรณ์ หรืออ้างอิงวนกลับมาที่ช่องนี้', 'warning')
+              gradeInp.focus(); return
+            }
+            const resultValue = Math.max(0, Number.isFinite(max) ? Math.min(calculated, max) : calculated)
+            gradeInp.style.outline='2px solid #6366f1'; gradeInp.style.outlineOffset='1px'
+            document.getElementById('grade-saving')?.classList.remove('hidden')
+            try {
+              const saved = await saveStudentScoreFormula(sid, colId, val, refs, resultValue)
+              const old = scoreMap[sid]?.[colId] ?? {}
+              scoreMap[sid][colId] = { ...old, final: saved.final, score_formula: val, score_formula_refs: refs }
+              activeCellFormula = null; cellFormulaPanel?.classList.add('hidden')
+              showToast(`บันทึกสูตรในช่อง ${colById[colId]?.assignment_name ?? ''} แล้ว ✅`, 'success')
+              _renderGrid(); _applyGradeFilters(); if (_scoresHidden) _hideScoreElements()
+            } catch (err) {
+              showToast('บันทึกสูตรไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
+              gradeInp.focus()
+            } finally { document.getElementById('grade-saving')?.classList.add('hidden') }
+            return
+          }
+          if (cellFormula) { activeCellFormula = null; cellFormulaPanel?.classList.add('hidden') }
           const previous = _getScore(sid, colId)
-          if ((val === '' && previous == null) || (val !== '' && previous != null && Number(val) === Number(previous))) return
+          if (!scoreMap[sid]?.[colId]?.score_formula && ((val === '' && previous == null) || (val !== '' && previous != null && Number(val) === Number(previous)))) return
           const currentHist = scoreMap[sid]?.[colId]?.history ?? []
           if(!scoreMap[sid])scoreMap[sid]={}
           gradeInp.style.outline='2px solid #6366f1';gradeInp.style.outlineOffset='1px'
@@ -2069,8 +2212,8 @@ export async function renderGradesGrid(teacher, classData) {
             const result = await saveStudentScore(classData.id,sid,colId,val===''?null:val,{currentHistory:currentHist,max:isNaN(max)?null:max})
             if(!result){gradeInp.value=scoreMap[sid][colId]?.final??'';return}
             const{final,history,clamped}=result
-            scoreMap[sid][colId]={orig:history[0]?.d??final,retake:null,final,history}
-            gradeInp.value = _fmtEntryScore(colId, final)
+            scoreMap[sid][colId]={orig:history[0]?.d??final,retake:null,final,history,score_formula:null,score_formula_refs:[]}
+            gradeInp.value = _fmtEntryScore(colId, _displayScore(sid, colById[colId]))
             _applyScoreColor(gradeInp, colById[colId], final)
             gradeInp.title = ''
             if(clamped) showToast(`คะแนนเกินคะแนนเต็ม ปรับให้เป็น ${final} อัตโนมัติ`,'warning')
@@ -2233,6 +2376,9 @@ export async function renderGradesGrid(teacher, classData) {
       // ── Sheet col ref popup ──
       wrap.querySelectorAll('.col-sheet-ref').forEach(el=>{
         el.addEventListener('click',()=>{
+          // While composing an inline cell formula, the captured mousedown handler
+          // has already inserted this column reference; do not open Sheet settings.
+          if (activeCellFormula) return
           const colId = parseInt(el.dataset.colid)
           if (_isLockedScoreColumn(colId)) {
             showToast('คอลัมน์นี้เป็นคะแนนระบบกลาง ครูไม่สามารถแก้คอลัมน์ Sheet ได้', 'warning')

@@ -125,7 +125,7 @@ export async function getMyScores(studentId, classId) {
 
   const { data: scores, error } = await supabase
     .from('student_scores')
-    .select('assignment_id, original_score, retake_score, final_score')
+    .select('assignment_id, original_score, retake_score, final_score, score_formula, score_formula_refs')
     .eq('student_id', studentId)
     .in('assignment_id', cols.map(c => c.id))
   if (error) throw error

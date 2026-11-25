@@ -45,10 +45,23 @@ export function displayScore(settings, key, value, decimals = 1) {
 }
 
 // Raw values stay unchanged. Standalone bonuses and override helpers never enter totals.
-export function effectiveScore(columns, col, raw) {
+export function effectiveScore(columns, col, raw, cellRecord = null) {
   if (col.column_type === 'derived') {
     const vars = Object.fromEntries((col.formula_refs ?? []).map(ref => [ref.var, Number(raw(ref.col_id)) || 0]))
     return evalFormula(col.formula, vars) ?? 0
+  }
+  if (cellRecord?.score_formula) {
+    // Cross-student references are evaluated in the teacher grade grid and stored
+    // in final_score. A student's own score payload cannot see other students' rows.
+    if ((cellRecord.score_formula_refs ?? []).some(ref => ref.student_id != null)) {
+      const stored = Number(cellRecord.final_score)
+      if (!Number.isFinite(stored)) return 0
+      return col.max_score ? Math.max(0, Math.min(stored, Number(col.max_score))) : Math.max(0, stored)
+    }
+    const vars = Object.fromEntries((cellRecord.score_formula_refs ?? []).map(ref => [ref.var, Number(raw(ref.col_id)) || 0]))
+    const result = evalFormula(cellRecord.score_formula, vars)
+    if (result == null) return 0
+    return col.max_score ? Math.max(0, Math.min(result, Number(col.max_score))) : Math.max(0, result)
   }
   const value = Number(raw(col.id)) || 0
   if (!col.bonus_formula || isBonus(col) || col.column_type === 'override') return value

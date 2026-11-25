@@ -28,7 +28,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1140'
+import { APP_VERSION } from './version.js?v=10.22.1141'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -1985,7 +1985,7 @@ export async function renderStudentSubjectDetail(student, classId, tab = 'todo',
   const teacher = ms?.teachers
 
   const roundSettings = await getClassScoreRounding(classId).catch(() => { showToast('โหลดค่าปัดเลขร่วมไม่สำเร็จ', 'error'); return null })
-  const _getVal = c => effectiveScore(columns, c, id => scoreMap[id]?.final_score ?? scoreMap[id]?.original_score)
+  const _getVal = c => effectiveScore(columns, c, id => scoreMap[id]?.final_score ?? scoreMap[id]?.original_score, scoreMap[c.id])
   const specialCols = columns.filter(isBonus)
   const derivedCols = columns.filter(c => c.column_type === 'derived')
   const midCols  = columns.filter(c => !isFinal(c) && !isBonus(c) && !['override', 'derived'].includes(c.column_type))
