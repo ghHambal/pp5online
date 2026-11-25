@@ -2025,13 +2025,13 @@ export async function renderGradesGrid(teacher, classData) {
             </td>`}).join('')}
           <td id="gfin-${s.id}" class="border border-gray-50 bg-purple-50/40 text-center text-[10px] text-purple-600 font-medium" style="width:34px">${finRaw>0?_fmtAgg('fin_subtotal', finRaw, 1):'—'}</td>
           ${derivedCols.map(c=>{const dv=_calcDerived(c,s.id);const disp=dv!==null&&dv!==0?_fmtAgg(`derived_${c.id}`, dv, 2):'—';return `<td class="border border-indigo-100 bg-indigo-50/40 text-center text-xs text-indigo-700 font-medium grade-derived-td" style="width:${colW}px;min-width:${colW}px;height:30px" title="คำนวณจาก: ${c.formula??''}">${disp}</td>`}).join('')}
-          ${overrideCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-teal-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(c,v)}">
+          ${overrideCols.map(c=>{const v=_displayScore(s.id,c)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-teal-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(c,v)}">
             <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-teal-50 focus:outline-none focus:ring-1 focus:ring-teal-300 focus:rounded"
               type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/>
             ${hh?`<span class="hist-indicator absolute top-0 right-0 text-[7px] text-indigo-400 leading-none cursor-pointer px-0.5 bg-white/80 rounded-bl select-none" data-sid="${s.id}" data-col="${c.id}" title="ดูประวัติคะแนน">Δ</span>`:''}
             </td>`}).join('')}
-          ${showBonusCols ? bonusCols.map(c=>{const v=_getScore(s.id,c.id)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-amber-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(c,v)}">
+          ${showBonusCols ? bonusCols.map(c=>{const v=_displayScore(s.id,c)??'';const hh=_hasHistory(s.id,c.id);return `<td class="border border-amber-100 text-center p-0 relative" style="width:${colW}px;min-width:${colW}px;height:30px;${_scoreColorStyle(c,v)}">
             <input class="grade-input w-full h-full text-center text-xs bg-transparent focus:bg-amber-50 focus:outline-none focus:ring-1 focus:ring-amber-300 focus:rounded"
               type="text" inputmode="decimal" value="${_fmtEntryScore(c.id, v)}" placeholder="—"
               data-sid="${s.id}" data-col="${c.id}" data-max="${c.max_score??9999}"/>
