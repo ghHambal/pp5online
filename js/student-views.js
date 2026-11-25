@@ -18,7 +18,8 @@ import {
   requestSubjectGroupChange, getMySubjectGroupRequests,
 } from './student-api.js'
 import { getFriendlyErrorMessage } from './ui.js'
-import { getMyStudentLeaveRequests, getStudentLeaveProofUrl, submitStudentLeaveRequest } from './student-leave-api.js'
+import { getMyStudentLeaveRequests, submitStudentLeaveRequest } from './student-leave-api.js'
+import { openStudentLeaveProofPreview } from './student-leave-proof-viewer.js'
 import { submitStudentPasswordResetRequest } from './student-password-reset-api.js'
 import { getThemeConfig } from './theme.js'
 import { getSystemConfig, getAcademicTerms, getMyOpenQrReissueRequest, submitQrReissueRequest, notifyQrReissueManagers, notifySubjectGroupAdmins } from './api.js'
@@ -27,7 +28,7 @@ import { _readingGrade, applyReadingGradesFromConfig, _currentWeek, _dateInputVa
 import { getQuizzesForStudentClass, rpcStartAttempt, getLatestQuizAttempt, getMyQuizFinalizations } from './quiz-api.js'
 import { formatLeaveCountdown } from './leave-time.js'
 import { uploadAssignmentFile } from './storage.js'
-import { APP_VERSION } from './version.js?v=10.22.1136'
+import { APP_VERSION } from './version.js?v=10.22.1137'
 import { supabase } from './supabase.js'
 import QRCode from 'qrcode'
 import { getRegradeConfig } from './regrade-api.js'
@@ -2660,8 +2661,7 @@ export async function renderStudentLeaveRequests(student) {
   })
   document.querySelectorAll('.student-leave-proof').forEach(button => button.addEventListener('click', async () => {
     try {
-      const url = await getStudentLeaveProofUrl(button.dataset.proofPath)
-      if (url) window.open(url, '_blank', 'noopener')
+      await openStudentLeaveProofPreview(button.dataset.proofPath)
     } catch (err) { showToast(`เปิดหลักฐานไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error') }
   }))
 }

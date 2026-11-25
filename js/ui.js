@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1136'
+import { APP_VERSION } from './version.js?v=10.22.1137'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1137': [
+    'แก้การเปิดหลักฐานใบลาจากหน้าครูและนักเรียน โดยแสดงตัวอย่างรูปภาพหรือ PDF ภายในหน้า รองรับมือถือและ iPad ที่บล็อกการเปิดแท็บหลังโหลดลิงก์',
+  ],
   '10.22.1136': [
     'แก้การเลื่อนแผนที่ตั้งค่าข้ามหลังสอน ให้การตั้งค่าติดตามครั้งของแผนและย้อนกลับได้ โดยยังป้องกันรายการที่มีผลหลังสอนหรือลายเซ็นแล้ว',
   ],

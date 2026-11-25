@@ -3,9 +3,9 @@ import { showToast, getFriendlyErrorMessage } from './ui.js'
 import { setContent, setTitle, setActiveNav, _htmlEsc } from './teacher-views-utils.js'
 import {
   getAdvisorStudentLeaveRequests,
-  getStudentLeaveProofUrl,
   reviewStudentLeaveRequest,
 } from './student-leave-api.js'
+import { openStudentLeaveProofPreview } from './student-leave-proof-viewer.js'
 
 const TYPE_LABEL = { excused: 'ก · ลากิจ', sick: 'ป · ลาป่วย' }
 const STATUS = {
@@ -165,8 +165,7 @@ export async function renderStudentLeaveRequests(teacher, { container = null, fo
     queryRoot.querySelectorAll('[data-leave-filter]').forEach(button => button.addEventListener('click', () => { filter = button.dataset.leaveFilter; render() }))
     queryRoot.querySelectorAll('.leave-proof-btn').forEach(button => button.addEventListener('click', async () => {
       try {
-        const url = await getStudentLeaveProofUrl(button.dataset.path)
-        if (url) window.open(url, '_blank', 'noopener')
+        await openStudentLeaveProofPreview(button.dataset.path)
       } catch (err) { showToast(`เปิดใบลาไม่สำเร็จ: ${getFriendlyErrorMessage(err)}`, 'error') }
     }))
     queryRoot.querySelectorAll('.leave-approve-btn').forEach(button => button.addEventListener('click', () => _review(button, 'approved')))

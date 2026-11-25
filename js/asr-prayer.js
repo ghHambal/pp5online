@@ -1,6 +1,6 @@
 import { supabase } from './supabase.js'
 import { showToast, getFriendlyErrorMessage } from './ui.js'
-import { startPrayerCamera } from './prayer-camera.js?v=10.22.1136'
+import { startPrayerCamera } from './prayer-camera.js?v=10.22.1137'
 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[ch]))
 const bangkokDate = () => new Intl.DateTimeFormat('en-CA', { timeZone:'Asia/Bangkok', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date())
