@@ -154,7 +154,7 @@ export async function renderBankQuizzes(teacher, bank, preferredClassId = null) 
   document.querySelectorAll('.btn-makeup-quiz').forEach(btn =>
     btn.addEventListener('click', () => {
       const quiz = quizzes.find(q => q.id === btn.dataset.id)
-      if (quiz) _openQuizMakeupModal(teacher, bank, quiz, classNameById[quiz.class_id] ?? 'ห้องเรียน')
+      if (quiz) _openQuizMakeupModal(teacher, bank, quiz, classNameById[quiz.class_id] ?? 'ห้องเรียน', classes, questions.length)
     }))
 
   document.querySelectorAll('.btn-apply-quiz-score').forEach(btn =>
@@ -197,7 +197,7 @@ export async function renderBankQuizzes(teacher, bank, preferredClassId = null) 
     }))
 }
 
-async function _openQuizMakeupModal(teacher, bank, quiz, className) {
+async function _openQuizMakeupModal(teacher, bank, quiz, className, classes, bankQuestionCount) {
   document.getElementById('quiz-makeup-modal')?.remove()
   const modal = document.createElement('div')
   modal.id = 'quiz-makeup-modal'
@@ -208,12 +208,18 @@ async function _openQuizMakeupModal(teacher, bank, quiz, className) {
     <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
       <header class="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
         <div><h2 class="font-bold text-gray-800">🕒 เปิดสอบชดเชย</h2>
-          <p class="text-xs text-gray-500 mt-1">${_htmlEsc(quiz.title)} · ${_htmlEsc(className)}</p></div>
+          <p class="quiz-makeup-subtitle text-xs text-gray-500 mt-1">${_htmlEsc(quiz.title)} · ${_htmlEsc(className)}</p></div>
         <button type="button" data-close class="text-gray-400 hover:text-gray-700 text-xl leading-none" aria-label="ปิด">×</button>
       </header>
       <div class="p-5 space-y-3 overflow-y-auto">
         <div class="rounded-xl bg-teal-50 border border-teal-100 p-3 text-xs text-teal-800 leading-relaxed">
           เลือกได้เฉพาะนักเรียนในห้องที่ยังไม่เคยเริ่มทำแบบทดสอบนี้ นักเรียนที่สอบแล้วจะไม่ถูกเปิดสิทธิ์ซ้ำ
+        </div>
+        <div class="rounded-xl border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div class="text-xs text-gray-600 leading-relaxed"><b class="block text-gray-700">การตั้งค่าข้อสอบ (เลือกทำหรือข้ามได้)</b>
+            <span id="quiz-makeup-edit-status">ข้ามการแก้ไขและใช้ค่าปัจจุบัน</span>
+            <span class="block text-[11px] text-gray-400 mt-1">การแก้ไขใช้หน้าตั้งค่าเดิมและอาจมีผลต่อการสรุป/ส่งคะแนนของแบบทดสอบนี้ด้วย</span></div>
+          <button type="button" id="quiz-makeup-edit-settings" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs font-bold whitespace-nowrap">⚙️ แก้ไขการตั้งค่า</button>
         </div>
         <div class="flex flex-col sm:flex-row gap-2">
           <input id="quiz-makeup-search" type="search" placeholder="ค้นหาชื่อหรือเลขประจำตัว" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm" />
@@ -263,8 +269,13 @@ async function _openQuizMakeupModal(teacher, bank, quiz, className) {
       const code = student.student_code ?? ''
       const haystack = `${name} ${code}`.toLocaleLowerCase()
       if (search && !haystack.includes(search)) return ''
+      const imageUrl = student.image_url ?? student.photo_url
+      const avatar = imageUrl
+        ? `<img src="${_htmlEsc(imageUrl)}" alt="" loading="lazy" class="h-11 w-11 rounded-full object-cover border border-gray-200" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><span hidden class="h-11 w-11 rounded-full bg-gray-100 text-gray-400 border border-gray-200 flex items-center justify-center text-lg" aria-hidden="true">👤</span>`
+        : `<span class="h-11 w-11 rounded-full bg-gray-100 text-gray-400 border border-gray-200 flex items-center justify-center text-lg" aria-hidden="true">👤</span>`
       return `<label class="flex items-center gap-3 px-3 py-2.5 hover:bg-teal-50 cursor-pointer">
         <input type="checkbox" class="quiz-makeup-student accent-teal-600" value="${Number(student.id)}" ${selectedStudentIds.has(Number(student.id)) ? 'checked' : ''} />
+        <span class="flex-shrink-0">${avatar}</span>
         <span class="min-w-0"><span class="block text-sm font-semibold text-gray-700 truncate">${_htmlEsc(name)}</span>
           <span class="text-[11px] text-gray-400">${_htmlEsc(code)} · ยังไม่เคยเริ่มสอบ</span></span></label>`
     }).filter(Boolean)
@@ -290,6 +301,31 @@ async function _openQuizMakeupModal(teacher, bank, quiz, className) {
   } catch (error) {
     list.innerHTML = `<div class="p-5 text-center text-sm text-red-600">โหลดรายชื่อไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(error))}</div>`
   }
+
+  modal.querySelector('#quiz-makeup-edit-settings').addEventListener('click', () => {
+    modal.style.zIndex = '80'
+    _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, Number(quiz.class_id), async payload => {
+      Object.assign(quiz, payload)
+      const editedClass = classes.find(item => Number(item.id) === Number(quiz.class_id))
+      const editedClassName = editedClass
+        ? `${editedClass.master_subjects?.subject_name ?? ''} (${editedClass.class_name ?? '—'})`
+        : 'ห้องเรียน'
+      modal.querySelector('.quiz-makeup-subtitle').textContent = `${quiz.title} · ${editedClassName}`
+      modal.querySelector('#quiz-makeup-edit-status').textContent = 'บันทึกการตั้งค่าแล้ว'
+      try {
+        const [students, attemptedIds] = await Promise.all([
+          getClassStudents(Number(quiz.class_id)),
+          getQuizAttemptStudentIds(quiz.id),
+        ])
+        eligibleStudents = students.filter(student => !attemptedIds.has(Number(student.id)))
+        const eligibleIds = new Set(eligibleStudents.map(student => Number(student.id)))
+        for (const selectedId of selectedStudentIds) if (!eligibleIds.has(selectedId)) selectedStudentIds.delete(selectedId)
+        renderStudents()
+      } catch (error) {
+        list.innerHTML = `<div class="p-5 text-center text-sm text-red-600">บันทึกการตั้งค่าแล้ว แต่โหลดรายชื่อนักเรียนใหม่ไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(error))}</div>`
+      }
+    }, () => { modal.style.zIndex = '120' })
+  })
 
   modal.querySelector('#quiz-makeup-search').addEventListener('input', renderStudents)
   selectAll.addEventListener('change', () => {
@@ -319,7 +355,7 @@ async function _openQuizMakeupModal(teacher, bank, quiz, className) {
   })
 }
 
-async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, preferredClassId = null) {
+async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, preferredClassId = null, onSaved = null, onClosed = null) {
   let promptDefaults = {}
   try { promptDefaults = JSON.parse(localStorage.getItem(`quiz-prompt-settings:${bank.id}`) ?? '{}') } catch { /* ignore invalid local preference */ }
 
@@ -650,6 +686,7 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
     document.documentElement.classList.remove('qzw-open')
     document.body.classList.remove('qzw-open')
     activeElement?.focus?.({ preventScroll: true })
+    if (typeof onClosed === 'function') onClosed()
   }
   const onKeyDown = e => {
     if (!document.body.contains(modal)) return
@@ -747,6 +784,7 @@ async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, 
       else await createQuiz({ ...payload, status: 'announced' })
       showToast('บันทึกแล้ว', 'success')
       closeModal()
+      if (typeof onSaved === 'function') await onSaved(payload)
       renderBankQuizzes(teacher, bank)
     } catch (err) {
       showToast('บันทึกไม่สำเร็จ: ' + getFriendlyErrorMessage(err), 'error')
