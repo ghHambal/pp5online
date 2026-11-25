@@ -1927,9 +1927,8 @@ export async function updateColumnSortOrders(updates) {
 }
 
 export async function createScoreColumn(payload) {
-  const { data, error } = await supabase.from('class_score_columns').insert(payload).select('*').single()
+  const { error } = await supabase.from('class_score_columns').insert(payload)
   if (error) throw error
-  return data
 }
 
 export async function updateScoreColumn(id, payload) {
