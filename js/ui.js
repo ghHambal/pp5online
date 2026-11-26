@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1154'
+import { APP_VERSION } from './version.js?v=10.22.1155'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1155': [
+    'ออกแบบหน้าต่างเปิดสอบชดเชยใหม่ เลือกนักเรียนจากทั้งแถวแทนช่องติ๊ก พร้อมจัดรายชื่อ รูปนักเรียน และกำหนดเวลาปิดสอบให้อ่านง่ายขึ้น',
+  ],
   '10.22.1154': [
     'ปรับรูปนักเรียนในรายชื่อสอบชดเชยเป็นกรอบสี่เหลี่ยมขอบมน และแก้รูปสำรองไม่ให้ซ้อนกับรูปจริง',
   ],

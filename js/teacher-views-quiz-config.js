@@ -1,4 +1,5 @@
 // js/teacher-views-quiz-config.js
+import '../css/quiz-makeup-modal.css'
 import '../css/quiz-config-wizard.css'
 import { getMyClasses, getClassStudents, getScoreColumns, getSystemConfig } from './api.js'
 import { getQuizzesForBank, getQuizQuestions, createQuiz, updateQuiz, startQuizLive, closeQuiz, openQuizMakeup, getQuizAttemptStudentIds, applyQuizScores, deleteQuiz, getTeacherStartedQuizCount } from './quiz-api.js'
@@ -199,51 +200,84 @@ export async function renderBankQuizzes(teacher, bank, preferredClassId = null) 
 
 async function _openQuizMakeupModal(teacher, bank, quiz, className, classes, bankQuestionCount) {
   document.getElementById('quiz-makeup-modal')?.remove()
+  const returnFocusTo = document.activeElement
   const modal = document.createElement('div')
   modal.id = 'quiz-makeup-modal'
-  modal.className = 'fixed inset-0 z-[120] bg-black/50 flex items-center justify-center p-3 sm:p-5'
+  modal.className = 'quiz-makeup-overlay'
   modal.setAttribute('role', 'dialog')
   modal.setAttribute('aria-modal', 'true')
+  modal.setAttribute('aria-labelledby', 'quiz-makeup-title')
   modal.innerHTML = `
-    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
-      <header class="px-5 py-4 border-b border-gray-100 flex items-start justify-between gap-3">
-        <div><h2 class="font-bold text-gray-800">🕒 เปิดสอบชดเชย</h2>
-          <p class="quiz-makeup-subtitle text-xs text-gray-500 mt-1">${_htmlEsc(quiz.title)} · ${_htmlEsc(className)}</p></div>
-        <button type="button" data-close class="text-gray-400 hover:text-gray-700 text-xl leading-none" aria-label="ปิด">×</button>
+    <section class="qm-dialog">
+      <header class="qm-header">
+        <div class="qm-heading">
+          <svg class="qm-heading-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 7v5l3.2 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <div class="qm-heading-copy"><h2 id="quiz-makeup-title">เปิดสอบชดเชย</h2>
+            <p class="quiz-makeup-subtitle">${_htmlEsc(quiz.title)}<span>${_htmlEsc(className)}</span></p></div>
+        </div>
+        <button type="button" data-close class="qm-icon-button" aria-label="ปิดหน้าต่าง">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
       </header>
-      <div class="p-5 space-y-3 overflow-y-auto">
-        <div class="rounded-xl bg-teal-50 border border-teal-100 p-3 text-xs text-teal-800 leading-relaxed">
-          เลือกได้เฉพาะนักเรียนในห้องที่ยังไม่เคยเริ่มทำแบบทดสอบนี้ นักเรียนที่สอบแล้วจะไม่ถูกเปิดสิทธิ์ซ้ำ
+      <div class="qm-body">
+        <div class="qm-notice" role="note">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v4m0 4h.01M10.3 3.9 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3l-7.5-13.1a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <p>เลือกได้เฉพาะนักเรียนที่ยังไม่เคยเริ่มทำแบบทดสอบนี้ ผู้ที่สอบแล้วจะไม่สามารถเปิดสิทธิ์ซ้ำได้</p>
         </div>
-        <div class="rounded-xl border border-gray-200 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div class="text-xs text-gray-600 leading-relaxed"><b class="block text-gray-700">การตั้งค่าข้อสอบ (เลือกทำหรือข้ามได้)</b>
-            <span id="quiz-makeup-edit-status">ข้ามการแก้ไขและใช้ค่าปัจจุบัน</span>
-            <span class="block text-[11px] text-gray-400 mt-1">การแก้ไขใช้หน้าตั้งค่าเดิมและอาจมีผลต่อการสรุป/ส่งคะแนนของแบบทดสอบนี้ด้วย</span></div>
-          <button type="button" id="quiz-makeup-edit-settings" class="px-3 py-2 rounded-lg border border-indigo-200 text-indigo-700 hover:bg-indigo-50 text-xs font-bold whitespace-nowrap">⚙️ แก้ไขการตั้งค่า</button>
+        <div class="qm-settings">
+          <div class="qm-settings-copy"><span class="qm-settings-label">การตั้งค่าข้อสอบ</span>
+            <span id="quiz-makeup-edit-status" class="qm-settings-status">ใช้การตั้งค่าปัจจุบัน</span>
+            <span class="qm-settings-help">แก้ไขก่อนเปิดสอบได้ หรือข้ามขั้นตอนนี้ได้</span></div>
+          <button type="button" id="quiz-makeup-edit-settings" class="qm-secondary-button">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z" stroke="currentColor" stroke-width="1.7"/><path d="m19.4 15 .1.1 1.2 1-.9 1.6-1.5-.5a8 8 0 0 1-1.5.9l-.3 1.6h-1.9l-.3-1.6a8 8 0 0 1-1.5-.9l-1.5.5-.9-1.6 1.2-1a7 7 0 0 1 0-1.8l-1.2-1 .9-1.6 1.5.5a8 8 0 0 1 1.5-.9l.3-1.6h1.9l.3 1.6a8 8 0 0 1 1.5.9l1.5-.5.9 1.6-1.2 1a7 7 0 0 1 0 1.8Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+            <span>แก้ไขการตั้งค่า</span>
+          </button>
         </div>
-        <div class="flex flex-col sm:flex-row gap-2">
-          <input id="quiz-makeup-search" type="search" placeholder="ค้นหาชื่อหรือเลขประจำตัว" class="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm" />
-          <label class="text-xs flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 cursor-pointer">
-            <input id="quiz-makeup-select-all" type="checkbox" class="accent-teal-600" /> เลือกผู้มีสิทธิ์ทั้งหมด
+        <section class="qm-roster" aria-labelledby="qm-roster-title">
+          <div class="qm-roster-heading">
+            <div><h3 id="qm-roster-title">นักเรียนที่มีสิทธิ์สอบ</h3>
+              <p id="quiz-makeup-eligible-count" class="qm-roster-count" aria-live="polite">กำลังตรวจสอบรายชื่อ</p></div>
+            <button type="button" id="quiz-makeup-select-all" class="qm-select-all" aria-pressed="false" disabled>เลือกทั้งหมด</button>
+          </div>
+          <label class="qm-search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+            <span class="qm-visually-hidden">ค้นหาชื่อนักเรียนหรือเลขประจำตัว</span>
+            <input id="quiz-makeup-search" type="search" placeholder="ค้นหาชื่อหรือเลขประจำตัว" autocomplete="off" />
           </label>
-        </div>
-        <div id="quiz-makeup-list" class="max-h-72 overflow-y-auto border border-gray-100 rounded-xl divide-y divide-gray-100">
-          <div class="p-6 text-center text-sm text-gray-400">กำลังโหลดรายชื่อนักเรียน...</div>
-        </div>
-        <label class="block text-xs font-semibold text-gray-600">เปิดสอบถึงวันและเวลา
-          <input id="quiz-makeup-closes-at" type="datetime-local" class="mt-1 block w-full border border-gray-200 rounded-xl px-3 py-2 text-sm" />
+          <div id="quiz-makeup-list" class="qm-roster-list" aria-live="polite" aria-busy="true">
+            <div class="qm-list-state"><span class="qm-loader" aria-hidden="true"></span><span>กำลังโหลดรายชื่อนักเรียน</span></div>
+          </div>
+        </section>
+        <label class="qm-deadline-label" for="quiz-makeup-closes-at">ปิดรับคำตอบวันที่และเวลา
+          <span>เลือกเวลาที่ต้องการสิ้นสุดการสอบชดเชย</span>
+          <input id="quiz-makeup-closes-at" type="datetime-local" />
         </label>
-        <p class="text-[11px] text-gray-400">ค่าเริ่มต้นเปิดสอบ 3 วัน และการสอบชดเชยจะใช้จำนวนครั้งและกติกาคะแนนของแบบทดสอบเดิม</p>
       </div>
-      <footer class="px-5 py-4 border-t border-gray-100 flex items-center justify-between gap-3">
-        <span id="quiz-makeup-selected-count" class="text-xs text-gray-500">เลือก 0 คน</span>
-        <div class="flex gap-2"><button type="button" data-close class="px-4 py-2 rounded-xl border border-gray-200 text-gray-600 text-sm">ยกเลิก</button>
-          <button id="quiz-makeup-submit" type="button" class="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:bg-gray-300 text-white font-bold text-sm" disabled>เปิดสอบชดเชย</button></div>
+      <footer class="qm-footer">
+        <span class="qm-footer-summary"><strong id="quiz-makeup-selected-count">ยังไม่ได้เลือกนักเรียน</strong><span>กำหนดเวลาเริ่มต้น 3 วัน</span></span>
+        <div class="qm-footer-actions"><button type="button" data-close class="qm-cancel-button">ยกเลิก</button>
+          <button id="quiz-makeup-submit" type="button" class="qm-submit-button" disabled>
+            <span class="qm-submit-label">เปิดสอบชดเชย</span><span class="qm-submit-loader" aria-hidden="true"></span>
+          </button></div>
       </footer>
-    </div>`
+    </section>`
   document.body.appendChild(modal)
-  modal.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => modal.remove()))
-  modal.addEventListener('click', event => { if (event.target === modal) modal.remove() })
+  modal.querySelector('#quiz-makeup-search').focus()
+  const closeModal = () => {
+    modal.remove()
+    if (returnFocusTo?.isConnected) returnFocusTo.focus()
+  }
+  modal.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', closeModal))
+  modal.addEventListener('click', event => { if (event.target === modal) closeModal() })
+  modal.addEventListener('keydown', event => {
+    if (event.key === 'Escape') { closeModal(); return }
+    if (event.key !== 'Tab') return
+    const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled)')]
+    const first = focusable[0]
+    const last = focusable.at(-1)
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus() }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
+  })
 
   const closesAt = modal.querySelector('#quiz-makeup-closes-at')
   const localInputDate = date => new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
@@ -251,18 +285,27 @@ async function _openQuizMakeupModal(teacher, bank, quiz, className, classes, ban
   closesAt.value = localInputDate(new Date(Date.now() + 3 * 24 * 60 * 60 * 1000))
 
   let eligibleStudents = []
+  let rosterError = ''
   const selectedStudentIds = new Set()
   const list = modal.querySelector('#quiz-makeup-list')
   const selectAll = modal.querySelector('#quiz-makeup-select-all')
   const submit = modal.querySelector('#quiz-makeup-submit')
   const updateSelection = () => {
     const selectedCount = selectedStudentIds.size
-    modal.querySelector('#quiz-makeup-selected-count').textContent = `เลือก ${selectedCount} คน`
+    modal.querySelector('#quiz-makeup-selected-count').textContent = selectedCount ? `เลือกแล้ว ${selectedCount} คน` : 'ยังไม่ได้เลือกนักเรียน'
     submit.disabled = selectedCount === 0
-    selectAll.checked = eligibleStudents.length > 0 && selectedCount === eligibleStudents.length
-    selectAll.indeterminate = selectedCount > 0 && selectedCount < eligibleStudents.length
+    selectAll.disabled = eligibleStudents.length === 0
+    const allSelected = eligibleStudents.length > 0 && selectedCount === eligibleStudents.length
+    selectAll.setAttribute('aria-pressed', String(allSelected))
+    selectAll.textContent = allSelected ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'
   }
   const renderStudents = () => {
+    if (rosterError) {
+      list.innerHTML = `<div class="qm-list-state qm-list-error">${_htmlEsc(rosterError)}</div>`
+      list.setAttribute('aria-busy', 'false')
+      updateSelection()
+      return
+    }
     const search = modal.querySelector('#quiz-makeup-search').value.trim().toLocaleLowerCase()
     const rows = eligibleStudents.map(student => {
       const name = student.full_name ?? 'ไม่ระบุชื่อ'
@@ -271,24 +314,33 @@ async function _openQuizMakeupModal(teacher, bank, quiz, className, classes, ban
       if (search && !haystack.includes(search)) return ''
       const imageUrl = student.image_url ?? student.photo_url
       const avatar = imageUrl
-        ? `<div class="h-11 w-11 flex-shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-100"><img src="${_htmlEsc(imageUrl)}" alt="" loading="lazy" class="block h-full w-full rounded-xl object-cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><span class="h-full w-full items-center justify-center text-lg text-gray-400" style="display:none" aria-hidden="true">👤</span></div>`
-        : `<span class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-100 text-lg text-gray-400" aria-hidden="true">👤</span>`
-      return `<label class="flex items-center gap-3 px-3 py-2.5 hover:bg-teal-50 cursor-pointer">
-        <input type="checkbox" class="quiz-makeup-student accent-teal-600" value="${Number(student.id)}" ${selectedStudentIds.has(Number(student.id)) ? 'checked' : ''} />
-        ${avatar}
-        <span class="min-w-0"><span class="block text-sm font-semibold text-gray-700 truncate">${_htmlEsc(name)}</span>
-          <span class="text-[11px] text-gray-400">${_htmlEsc(code)} · ยังไม่เคยเริ่มสอบ</span></span></label>`
+        ? `<span class="qm-avatar"><img src="${_htmlEsc(imageUrl)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='grid'" /><svg class="qm-avatar-fallback" style="display:none" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.5" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 20c.6-3.4 3.5-5.5 7.5-5.5s6.9 2.1 7.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>`
+        : `<span class="qm-avatar"><svg class="qm-avatar-fallback" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.5" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 20c.6-3.4 3.5-5.5 7.5-5.5s6.9 2.1 7.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>`
+      const isSelected = selectedStudentIds.has(Number(student.id))
+      return `<button type="button" class="qm-student-row" data-student-id="${Number(student.id)}" aria-pressed="${isSelected}" aria-label="${_htmlEsc(name)}, เลขประจำตัว ${_htmlEsc(code)}${isSelected ? ', เลือกแล้ว' : ', ยังไม่เลือก'}">
+        ${avatar}<span class="qm-student-copy"><span class="qm-student-name">${_htmlEsc(name)}</span>
+          <span class="qm-student-code">${_htmlEsc(code)}</span></span>
+        <span class="qm-student-state"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m4.5 10.2 3.4 3.4 7.6-7.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${isSelected ? 'เลือกแล้ว' : 'เลือก'}</span></span></button>`
     }).filter(Boolean)
     list.innerHTML = rows.length
       ? rows.join('')
-      : `<div class="p-6 text-center text-sm text-gray-400">${eligibleStudents.length ? 'ไม่พบรายชื่อที่ค้นหา' : 'ไม่มีนักเรียนที่ยังไม่เคยเริ่มทำแบบทดสอบนี้'}</div>`
-    modal.querySelectorAll('.quiz-makeup-student').forEach(input => input.addEventListener('change', () => {
-      const id = Number(input.value)
-      if (input.checked) selectedStudentIds.add(id)
-      else selectedStudentIds.delete(id)
+      : `<div class="qm-list-state">${eligibleStudents.length ? 'ไม่พบรายชื่อนักเรียนที่ตรงกับคำค้น' : 'ไม่มีนักเรียนที่ยังไม่เคยเริ่มทำแบบทดสอบนี้'}</div>`
+    list.setAttribute('aria-busy', 'false')
+    modal.querySelectorAll('.qm-student-row').forEach(row => row.addEventListener('click', () => {
+      const id = Number(row.dataset.studentId)
+      if (row.getAttribute('aria-pressed') === 'true') selectedStudentIds.delete(id)
+      else selectedStudentIds.add(id)
+      renderStudents()
+      modal.querySelector(`[data-student-id="${id}"]`)?.focus()
       updateSelection()
     }))
     updateSelection()
+  }
+
+  const renderEligibleCount = () => {
+    modal.querySelector('#quiz-makeup-eligible-count').textContent = eligibleStudents.length
+      ? `${eligibleStudents.length} คนที่ยังไม่เริ่มสอบ`
+      : 'ไม่มีผู้มีสิทธิ์สอบในขณะนี้'
   }
 
   try {
@@ -297,9 +349,13 @@ async function _openQuizMakeupModal(teacher, bank, quiz, className, classes, ban
       getQuizAttemptStudentIds(quiz.id),
     ])
     eligibleStudents = students.filter(student => !attemptedIds.has(Number(student.id)))
+    rosterError = ''
+    renderEligibleCount()
     renderStudents()
   } catch (error) {
-    list.innerHTML = `<div class="p-5 text-center text-sm text-red-600">โหลดรายชื่อไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(error))}</div>`
+    rosterError = `โหลดรายชื่อนักเรียนไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`
+    modal.querySelector('#quiz-makeup-eligible-count').textContent = 'ตรวจสอบรายชื่อไม่สำเร็จ'
+    renderStudents()
   }
 
   modal.querySelector('#quiz-makeup-edit-settings').addEventListener('click', () => {
@@ -310,7 +366,7 @@ async function _openQuizMakeupModal(teacher, bank, quiz, className, classes, ban
       const editedClassName = editedClass
         ? `${editedClass.master_subjects?.subject_name ?? ''} (${editedClass.class_name ?? '—'})`
         : 'ห้องเรียน'
-      modal.querySelector('.quiz-makeup-subtitle').textContent = `${quiz.title} · ${editedClassName}`
+      modal.querySelector('.quiz-makeup-subtitle').innerHTML = `${_htmlEsc(quiz.title)}<span>${_htmlEsc(editedClassName)}</span>`
       modal.querySelector('#quiz-makeup-edit-status').textContent = 'บันทึกการตั้งค่าแล้ว'
       try {
         const [students, attemptedIds] = await Promise.all([
@@ -318,41 +374,56 @@ async function _openQuizMakeupModal(teacher, bank, quiz, className, classes, ban
           getQuizAttemptStudentIds(quiz.id),
         ])
         eligibleStudents = students.filter(student => !attemptedIds.has(Number(student.id)))
+        rosterError = ''
         const eligibleIds = new Set(eligibleStudents.map(student => Number(student.id)))
         for (const selectedId of selectedStudentIds) if (!eligibleIds.has(selectedId)) selectedStudentIds.delete(selectedId)
+        renderEligibleCount()
         renderStudents()
       } catch (error) {
-        list.innerHTML = `<div class="p-5 text-center text-sm text-red-600">บันทึกการตั้งค่าแล้ว แต่โหลดรายชื่อนักเรียนใหม่ไม่สำเร็จ: ${_htmlEsc(getFriendlyErrorMessage(error))}</div>`
+        eligibleStudents = []
+        selectedStudentIds.clear()
+        rosterError = `บันทึกการตั้งค่าแล้ว แต่โหลดรายชื่อนักเรียนใหม่ไม่สำเร็จ: ${getFriendlyErrorMessage(error)}`
+        modal.querySelector('#quiz-makeup-eligible-count').textContent = 'โหลดรายชื่อใหม่ไม่สำเร็จ'
+        renderStudents()
       }
     }, () => { modal.style.zIndex = '120' })
   })
 
   modal.querySelector('#quiz-makeup-search').addEventListener('input', renderStudents)
-  selectAll.addEventListener('change', () => {
-    if (selectAll.checked) eligibleStudents.forEach(student => selectedStudentIds.add(Number(student.id)))
-    else selectedStudentIds.clear()
+  selectAll.addEventListener('click', () => {
+    const allSelected = eligibleStudents.length > 0 && selectedStudentIds.size === eligibleStudents.length
+    if (allSelected) selectedStudentIds.clear()
+    else eligibleStudents.forEach(student => selectedStudentIds.add(Number(student.id)))
     renderStudents()
+    selectAll.focus()
   })
   submit.addEventListener('click', async () => {
     const studentIds = [...selectedStudentIds]
     const closeDate = new Date(closesAt.value)
     if (!studentIds.length) { showToast('กรุณาเลือกนักเรียนอย่างน้อย 1 คน', 'error'); return }
     if (!closesAt.value || Number.isNaN(closeDate.getTime()) || closeDate <= new Date()) {
-      showToast('กรุณากำหนดเวลาปิดสอบชดเชยในอนาคต', 'error'); return
+      showToast('กรุณากำหนดเวลาปิดสอบชดเชยในอนาคต', 'error')
+      closesAt.setAttribute('aria-invalid', 'true')
+      closesAt.focus()
+      return
     }
     submit.disabled = true
-    submit.textContent = 'กำลังเปิดสอบชดเชย...'
+    submit.classList.add('is-loading')
+    submit.querySelector('.qm-submit-label').textContent = 'กำลังเปิดสอบชดเชย'
     try {
       const openedCount = await openQuizMakeup(quiz.id, studentIds, closeDate.toISOString())
-      modal.remove()
+      closeModal()
       showToast(`เปิดสอบชดเชยให้นักเรียน ${openedCount} คนแล้ว`, 'success')
       renderBankQuizzes(teacher, bank)
     } catch (error) {
       showToast('เปิดสอบชดเชยไม่สำเร็จ: ' + getFriendlyErrorMessage(error), 'error')
       submit.disabled = false
-      submit.textContent = 'เปิดสอบชดเชย'
+      submit.classList.remove('is-loading')
+      submit.querySelector('.qm-submit-label').textContent = 'เปิดสอบชดเชย'
     }
   })
+
+  closesAt.addEventListener('input', () => closesAt.removeAttribute('aria-invalid'))
 }
 
 async function _renderQuizForm(teacher, bank, classes, bankQuestionCount, quiz, preferredClassId = null, onSaved = null, onClosed = null) {

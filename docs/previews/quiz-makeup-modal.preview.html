@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ตัวอย่างสถานะหน้าต่างสอบชดเชย</title>
+  <meta name="description" content="ตัวอย่างสถานะปุ่มและช่องกรอกของหน้าต่างเปิดสอบชดเชยในระบบ ปพ.5 ออนไลน์" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="../../css/quiz-makeup-modal.css" />
+</head>
+<body class="qm-preview-page">
+  <main>
+    <section class="qm-preview-stage" aria-label="ตัวอย่างหน้าต่างเปิดสอบชดเชย">
+      <div class="qm-preview-stage-content">
+        <section class="qm-dialog" role="dialog" aria-modal="true" aria-labelledby="sample-title">
+          <header class="qm-header">
+            <div class="qm-heading">
+              <svg class="qm-heading-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 7v5l3.2 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <div class="qm-heading-copy"><h2 id="sample-title">เปิดสอบชดเชย</h2><p class="quiz-makeup-subtitle">แบบทดสอบตัวอย่าง<span>ห้องเรียนตัวอย่าง</span></p></div>
+            </div>
+            <button type="button" class="qm-icon-button" aria-label="ปิดหน้าต่าง"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>
+          </header>
+          <div class="qm-body">
+            <div class="qm-notice" role="note"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8v4m0 4h.01M10.3 3.9 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3l-7.5-13.1a2 2 0 0 0-3.4 0Z" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg><p>เลือกได้เฉพาะนักเรียนที่ยังไม่เคยเริ่มทำแบบทดสอบนี้ ผู้ที่สอบแล้วจะไม่สามารถเปิดสิทธิ์ซ้ำได้</p></div>
+            <div class="qm-settings"><div class="qm-settings-copy"><span class="qm-settings-label">การตั้งค่าข้อสอบ</span><span class="qm-settings-status">ใช้การตั้งค่าปัจจุบัน</span><span class="qm-settings-help">แก้ไขก่อนเปิดสอบได้ หรือข้ามขั้นตอนนี้ได้</span></div><button type="button" class="qm-secondary-button">แก้ไขการตั้งค่า</button></div>
+            <section class="qm-roster" aria-labelledby="sample-roster-title">
+              <div class="qm-roster-heading"><div><h3 id="sample-roster-title">นักเรียนที่มีสิทธิ์สอบ</h3><p class="qm-roster-count">แสดงเฉพาะผู้ที่ยังไม่เริ่มสอบ</p></div><button type="button" class="qm-select-all">เลือกทั้งหมด</button></div>
+              <label class="qm-search-wrap"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4.2 4.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg><span class="qm-visually-hidden">ค้นหาชื่อนักเรียนหรือเลขประจำตัว</span><input type="search" placeholder="ค้นหาชื่อหรือเลขประจำตัว" /></label>
+              <div class="qm-roster-list">
+                <button type="button" class="qm-student-row" aria-pressed="true"><span class="qm-avatar"><svg class="qm-avatar-fallback" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.5" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 20c.6-3.4 3.5-5.5 7.5-5.5s6.9 2.1 7.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><span class="qm-student-copy"><span class="qm-student-name">นักเรียนตัวอย่าง</span><span class="qm-student-code">เลขประจำตัว</span></span><span class="qm-student-state"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m4.5 10.2 3.4 3.4 7.6-7.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>เลือกแล้ว</span></span></button>
+                <button type="button" class="qm-student-row" aria-pressed="false"><span class="qm-avatar"><svg class="qm-avatar-fallback" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.5" stroke="currentColor" stroke-width="1.5"/><path d="M4.5 20c.6-3.4 3.5-5.5 7.5-5.5s6.9 2.1 7.5 5.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span><span class="qm-student-copy"><span class="qm-student-name">นักเรียนตัวอย่าง</span><span class="qm-student-code">เลขประจำตัว</span></span><span class="qm-student-state"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="m4.5 10.2 3.4 3.4 7.6-7.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span>เลือก</span></span></button>
+              </div>
+            </section>
+            <label class="qm-deadline-label">ปิดรับคำตอบวันที่และเวลา<span>ค่าเริ่มต้นเปิดสอบชดเชย 3 วัน</span><input type="datetime-local" aria-label="วันและเวลาปิดสอบตัวอย่าง" /></label>
+          </div>
+          <footer class="qm-footer"><span class="qm-footer-summary"><strong>มีนักเรียนที่เลือกไว้</strong><span>นักเรียนที่เลือกสอบได้ตามกติกาเดิม</span></span><div class="qm-footer-actions"><button type="button" class="qm-cancel-button">ยกเลิก</button><button type="button" class="qm-submit-button">เปิดสอบชดเชย</button></div></footer>
+        </section>
+      </div>
+    </section>
+    <h2>สถานะของปุ่มและช่องกรอก</h2>
+    <div class="qm-preview-gallery">
+      <section class="qm-preview-group" aria-labelledby="preview-button-title">
+        <h2 id="preview-button-title">ปุ่มเปิดสอบชดเชย</h2>
+        <div class="qm-state-preview"><span>ปกติ</span><button class="qm-submit-button qm-preview-button" type="button">เปิดสอบชดเชย</button></div>
+        <div class="qm-state-preview"><span>ชี้เมาส์</span><button class="qm-submit-button qm-preview-button is-hover" type="button">เปิดสอบชดเชย</button></div>
+        <div class="qm-state-preview"><span>โฟกัสแป้นพิมพ์</span><button class="qm-submit-button qm-preview-button is-focus" type="button">เปิดสอบชดเชย</button></div>
+        <div class="qm-state-preview"><span>กำลังกด</span><button class="qm-submit-button qm-preview-button is-active" type="button">เปิดสอบชดเชย</button></div>
+        <div class="qm-state-preview"><span>ยังเลือกนักเรียนไม่ครบ</span><button class="qm-submit-button qm-preview-button" type="button" disabled>เปิดสอบชดเชย</button></div>
+        <div class="qm-state-preview"><span>กำลังบันทึก</span><button class="qm-submit-button qm-preview-button is-loading" type="button"><span>กำลังเปิดสอบชดเชย</span><span class="qm-submit-loader" aria-hidden="true"></span></button></div>
+        <div class="qm-state-preview"><span>เกิดข้อผิดพลาด</span><button class="qm-submit-button qm-preview-button is-error" type="button">เปิดสอบชดเชย</button></div>
+        <div class="qm-state-preview"><span>สำเร็จ</span><button class="qm-submit-button qm-preview-button is-success" type="button">เปิดสอบชดเชยแล้ว</button></div>
+      </section>
+      <section class="qm-preview-group" aria-labelledby="preview-field-title">
+        <h2 id="preview-field-title">ช่องค้นหาและกำหนดเวลา</h2>
+        <div class="qm-state-preview"><span>ปกติ</span><input class="qm-preview-field" value="ค้นหาชื่อหรือเลขประจำตัว" readonly /></div>
+        <div class="qm-state-preview"><span>ชี้เมาส์</span><input class="qm-preview-field is-hover" value="ค้นหาชื่อหรือเลขประจำตัว" readonly /></div>
+        <div class="qm-state-preview"><span>โฟกัสแป้นพิมพ์</span><input class="qm-preview-field is-focus" value="ค้นหาชื่อหรือเลขประจำตัว" readonly /></div>
+        <div class="qm-state-preview"><span>กำลังแก้ไข</span><input class="qm-preview-field is-active" value="ค้นหาชื่อหรือเลขประจำตัว" readonly /></div>
+        <div class="qm-state-preview"><span>ปิดใช้งาน</span><input class="qm-preview-field is-disabled" value="ยังไม่มีรายชื่อ" disabled /></div>
+        <div class="qm-state-preview"><span>กำลังโหลด</span><input class="qm-preview-field is-loading" value="กำลังตรวจสอบรายชื่อ" readonly /></div>
+        <div class="qm-state-preview"><span>ข้อมูลไม่ถูกต้อง</span><input class="qm-preview-field is-error" value="ระบุเวลาในอนาคต" aria-invalid="true" readonly /></div>
+        <div class="qm-state-preview"><span>บันทึกแล้ว</span><input class="qm-preview-field is-success" value="กำหนดเวลาเรียบร้อย" readonly /></div>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
