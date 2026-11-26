@@ -29,6 +29,204 @@ let _activeSecTimer   = null
 let _teacherClockTimer = null
 let _dutyWidgetTimer  = null
 let _workCalWidgetTimer = null
+let _menuPinTeacher = null
+let _menuPinsSaving = Promise.resolve()
+
+function _teacherMenuItems() {
+  const nav = document.querySelector('#sidebar nav')
+  if (!nav) return []
+  const candidates = [...nav.querySelectorAll('a[href], button[id]')]
+  const seen = new Set()
+  return candidates.flatMap(element => {
+    if (element.matches('.sidebar-menu-group-toggle, .sidebar-menu-pin')) return []
+    if (!element.dataset.nav && !element.id && !element.getAttribute('href')) return []
+    for (let parent = element; parent && parent !== nav; parent = parent.parentElement) {
+      if (parent.hidden || parent.classList.contains('hidden') || parent.getAttribute('aria-hidden') === 'true') return []
+    }
+    const href = element.getAttribute('href') || ''
+    const key = element.dataset.nav ? 'nav:' + element.dataset.nav
+      : element.id ? 'id:' + element.id
+        : 'href:' + href
+    if (seen.has(key)) return []
+    seen.add(key)
+
+    const iconNode = [...element.children].find(child => child.tagName === 'SPAN' && !child.id?.startsWith('badge'))
+    const icon = iconNode?.textContent.trim() || '▣'
+    const labelNode = element.cloneNode(true)
+    labelNode.querySelectorAll('.sidebar-menu-pin, [id^="badge-"]').forEach(node => node.remove())
+    if (iconNode) labelNode.querySelector(':scope > span')?.remove()
+    const label = labelNode.textContent.replace(/\s+/g, ' ').trim()
+    if (!label) return []
+    const groupName = element.closest('.sidebar-menu-group')?.querySelector('.sidebar-menu-group-toggle-label')?.textContent.replace(/\s+/g, ' ').trim() || 'เมนูหลัก'
+    return [{ key, label, icon, groupName, element }]
+  })
+}
+
+function _menuPins(teacher = _menuPinTeacher) {
+  return Array.isArray(teacher?.overview_prefs?.pinnedMenuKeys) ? teacher.overview_prefs.pinnedMenuKeys : []
+}
+
+function _menuDiscoveryMarkup(items, pins) {
+  const byKey = new Map(items.map(item => [item.key, item]))
+  const pinned = pins.map(key => byKey.get(key)).filter(Boolean)
+  const pinnedMarkup = pinned.length
+    ? '<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">' + pinned.map(item =>
+        '<div class="flex min-w-0 items-stretch rounded-xl border border-emerald-100 bg-white shadow-sm hover:border-emerald-300 hover:shadow transition">' +
+          '<button type="button" data-menu-open="' + _htmlEsc(item.key) + '" class="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-l-xl">' +
+            '<span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-xl">' + _htmlEsc(item.icon) + '</span>' +
+            '<span class="min-w-0"><span class="block truncate text-sm font-semibold text-gray-800">' + _htmlEsc(item.label) + '</span><span class="mt-0.5 block truncate text-[11px] text-gray-400">' + _htmlEsc(item.groupName) + '</span></span>' +
+          '</button>' +
+          '<button type="button" data-menu-pin="' + _htmlEsc(item.key) + '" aria-label="เลิกปักหมุด ' + _htmlEsc(item.label) + '" title="เลิกปักหมุด" class="flex w-11 flex-shrink-0 items-center justify-center rounded-r-xl text-amber-500 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">★</button>' +
+        '</div>'
+      ).join('') + '</div>'
+    : '<div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-center"><p class="text-sm font-semibold text-gray-600">ยังไม่มีเมนูที่ปักหมุด</p><p class="mt-1 text-xs text-gray-400">กดรูปดาวข้างเมนูที่ใช้บ่อย หรือค้นหาเมนูด้านล่างเพื่อเริ่มปักหมุด</p></div>'
+
+  return '<section id="overview-menu-discovery" class="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5" aria-label="ค้นหาและปักหมุดเมนู">' +
+    '<div class="mb-4 flex flex-wrap items-end justify-between gap-2"><div><h2 class="text-base font-bold text-gray-800">เมนูของฉัน</h2><p class="mt-1 text-xs text-gray-500">ค้นหาเมนู หรือปักหมุดเมนูที่ใช้บ่อยไว้ตรงนี้</p></div><span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">' + pinned.length + ' เมนูที่ปักหมุด</span></div>' +
+    '<label for="overview-menu-search" class="mb-1.5 block text-xs font-semibold text-gray-600">ค้นหาเมนู</label>' +
+    '<div class="relative"><span aria-hidden="true" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">⌕</span><input id="overview-menu-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อเมนู เช่น แบบทดสอบ คะแนน หรือเช็คชื่อ" class="w-full rounded-xl border border-gray-300 bg-gray-50 py-3 pl-10 pr-4 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100" aria-controls="overview-menu-results" aria-expanded="false"></div>' +
+    '<div id="overview-menu-results" class="mt-2 hidden max-h-80 overflow-y-auto rounded-xl border border-gray-200" role="listbox" aria-label="ผลการค้นหาเมนู"></div>' +
+    '<div class="mt-5"><div class="mb-2 flex items-center justify-between"><h3 class="text-sm font-bold text-gray-700">ปักหมุด</h3><span class="text-[11px] text-gray-400">กดเมนูเพื่อเปิด · กดดาวเพื่อนำออก</span></div><div id="overview-pinned-menus">' + pinnedMarkup + '</div></div>' +
+    '</section>'
+}
+
+function _mountTeacherMenuDiscovery(teacher) {
+  _menuPinTeacher = teacher
+  const main = document.getElementById('main-content')
+  if (!main) return
+  main.querySelector('#overview-menu-discovery')?.remove()
+  const items = _teacherMenuItems()
+  const pins = _menuPins(teacher).filter(key => items.some(item => item.key === key))
+  const wrapper = document.createElement('div')
+  wrapper.innerHTML = _menuDiscoveryMarkup(items, pins)
+  main.prepend(wrapper.firstElementChild)
+
+  const refresh = () => {
+    const root = document.getElementById('overview-menu-discovery')
+    if (!root) return
+    const currentItems = _teacherMenuItems()
+    const currentPins = _menuPins(teacher).filter(key => currentItems.some(item => item.key === key))
+    const searchValue = root.querySelector('#overview-menu-search')?.value || ''
+    const expanded = root.querySelector('#overview-menu-search')?.getAttribute('aria-expanded') === 'true'
+    root.outerHTML = _menuDiscoveryMarkup(currentItems, currentPins)
+    const nextRoot = document.getElementById('overview-menu-discovery')
+    const input = nextRoot?.querySelector('#overview-menu-search')
+    if (input) {
+      input.value = searchValue
+      input.setAttribute('aria-expanded', String(expanded))
+    }
+    wire()
+    renderResults(searchValue)
+    _syncSidebarMenuPinButtons(currentItems, currentPins)
+  }
+
+  const togglePin = async key => {
+    if (!teacher?.id) return
+    const operation = _menuPinsSaving.catch(() => {}).then(async () => {
+      const current = new Set(_menuPins(teacher))
+      const wasPinned = current.has(key)
+      wasPinned ? current.delete(key) : current.add(key)
+      const nextPrefs = { ...(teacher.overview_prefs || {}), pinnedMenuKeys: [...current] }
+      await updateTeacher(teacher.id, { overview_prefs: nextPrefs })
+      teacher.overview_prefs = nextPrefs
+      refresh()
+      showToast(wasPinned ? 'นำเมนูออกจากรายการปักหมุดแล้ว' : 'ปักหมุดเมนูแล้ว', 'success')
+    })
+    _menuPinsSaving = operation
+    try { await operation } catch (error) {
+      console.error('save overview menu pin error:', error)
+      showToast('บันทึกเมนูที่ปักหมุดไม่สำเร็จ ลองอีกครั้ง', 'error')
+    }
+  }
+
+  const openMenu = key => {
+    const item = _teacherMenuItems().find(entry => entry.key === key)
+    if (item) item.element.click()
+  }
+
+  const renderResults = value => {
+    const root = document.getElementById('overview-menu-discovery')
+    const input = root?.querySelector('#overview-menu-search')
+    const results = root?.querySelector('#overview-menu-results')
+    if (!root || !input || !results) return
+    const query = value.trim().toLocaleLowerCase()
+    input.setAttribute('aria-expanded', String(Boolean(query)))
+    if (!query) {
+      results.classList.add('hidden')
+      results.innerHTML = ''
+      return
+    }
+    const matches = _teacherMenuItems().filter(item =>
+      (item.label + ' ' + item.groupName).normalize('NFKC').toLocaleLowerCase().includes(query.normalize('NFKC'))
+    )
+    results.classList.remove('hidden')
+    results.innerHTML = matches.length
+      ? '<p class="sticky top-0 border-b border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-semibold text-gray-500">พบ ' + matches.length + ' เมนู</p>' + matches.map(item => {
+          const pinned = _menuPins(teacher).includes(item.key)
+          return '<div class="flex items-center border-b border-gray-100 last:border-0 hover:bg-emerald-50">' +
+            '<button type="button" role="option" data-menu-open="' + _htmlEsc(item.key) + '" aria-label="เปิดเมนู ' + _htmlEsc(item.label) + '" class="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500">' +
+              '<span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white text-lg shadow-sm">' + _htmlEsc(item.icon) + '</span><span class="min-w-0"><span class="block truncate text-sm font-semibold text-gray-800">' + _htmlEsc(item.label) + '</span><span class="block truncate text-[11px] text-gray-400">' + _htmlEsc(item.groupName) + '</span></span>' +
+            '</button><button type="button" data-menu-pin="' + _htmlEsc(item.key) + '" aria-label="' + (pinned ? 'เลิกปักหมุด ' : 'ปักหมุด ') + _htmlEsc(item.label) + '" title="' + (pinned ? 'เลิกปักหมุด' : 'ปักหมุดเมนู') + '" class="mx-2 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-lg ' + (pinned ? 'text-amber-500' : 'text-gray-300 hover:bg-amber-50 hover:text-amber-500') + ' focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">' + (pinned ? '★' : '☆') + '</button></div>'
+        }).join('')
+      : '<p class="px-4 py-5 text-center text-sm text-gray-500">ไม่พบเมนูที่ตรงกับคำค้น</p>'
+  }
+
+  const wire = () => {
+    const root = document.getElementById('overview-menu-discovery')
+    if (!root) return
+    root.querySelector('#overview-menu-search')?.addEventListener('input', event => renderResults(event.target.value))
+    root.querySelector('#overview-menu-search')?.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        const firstResult = root.querySelector('[data-menu-open]')
+        if (firstResult) {
+          event.preventDefault()
+          firstResult.click()
+        }
+      } else if (event.key === 'Escape') {
+        event.currentTarget.value = ''
+        renderResults('')
+      }
+    })
+    root.querySelectorAll('[data-menu-open]').forEach(button => button.addEventListener('click', () => openMenu(button.dataset.menuOpen)))
+    root.querySelectorAll('[data-menu-pin]').forEach(button => button.addEventListener('click', () => togglePin(button.dataset.menuPin)))
+  }
+  wire()
+  renderResults('')
+
+  window._toggleOverviewMenuPin = togglePin
+  window._openOverviewMenu = openMenu
+  _syncSidebarMenuPinButtons(items, pins)
+}
+
+function _syncSidebarMenuPinButtons(items = _teacherMenuItems(), pins = _menuPins()) {
+  const pinned = new Set(pins)
+  items.forEach(item => {
+    const element = item.element
+    let wrapper = element.parentElement?.classList.contains('sidebar-menu-entry') ? element.parentElement : null
+    let button = wrapper?.querySelector(':scope > .sidebar-menu-pin')
+    if (!button) {
+      button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'sidebar-menu-pin absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-base text-emerald-200 hover:bg-emerald-700 hover:text-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300'
+      wrapper = document.createElement('div')
+      wrapper.className = 'sidebar-menu-entry relative'
+      element.parentElement.insertBefore(wrapper, element)
+      wrapper.append(element, button)
+      element.classList.add('pr-10')
+      button.addEventListener('click', event => {
+        event.preventDefault()
+        event.stopPropagation()
+        window._toggleOverviewMenuPin?.(item.key)
+      })
+    }
+    const isPinned = pinned.has(item.key)
+    button.textContent = isPinned ? '★' : '☆'
+    button.dataset.pinned = String(isPinned)
+    button.setAttribute('aria-label', (isPinned ? 'เลิกปักหมุด ' : 'ปักหมุด ') + item.label)
+    button.title = isPinned ? 'เลิกปักหมุด' : 'ปักหมุดเมนูนี้ไว้หน้าภาพรวม'
+    button.classList.toggle('text-amber-300', isPinned)
+  })
+}
 
 // ── ป้ายชื่อ/สีประเภทกิจกรรมปฏิทินปฏิบัติงาน (มิเรอร์จาก renderWorkCalendarView ใน views.js) ──
 const WCAL_TYPE_LABEL = { inspection: '🔍 รอบตรวจ', deadline: '⏰ กำหนดส่ง', meeting: '📅 ประชุม', other: '📌 อื่นๆ' }
@@ -364,6 +562,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
   // ครูเต็มรูปแบบด้านล่างทั้งหมด (ตารางสอน/โควตา/สติกเกอร์โดเนท ฯลฯ ไม่มีความหมายกับบัญชีนี้)
   if (_teacherPositionList(teacher).includes('executive')) {
     renderExecutiveOverview(teacher)
+    _mountTeacherMenuDiscovery(teacher)
     return
   }
   const { getPendingExamRequestCount } = await import('./api.js')
@@ -961,6 +1160,7 @@ export async function renderTeacherOverview(teacher, homeroomRooms = []) {
         </div>`}
     </div>
   </div>`)
+  _mountTeacherMenuDiscovery(teacher)
   startRegradeMenuCountdowns()
 
   // donor sticker → features popup
