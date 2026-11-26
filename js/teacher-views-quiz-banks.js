@@ -680,7 +680,7 @@ function _renderAIGenerator(teacher, bank) {
               <button id="btn-ai-copy-prompt" class="w-full py-2 rounded-xl border border-purple-300 text-purple-700 hover:bg-purple-100 font-bold text-xs">📋 คัดลอกคำสั่ง</button>
             </div>
             <div class="pt-2 border-t border-purple-100">
-              <label class="text-xs font-semibold text-gray-600 mb-1 block">วางคำตอบที่ได้จาก AI ที่นี่ (JSON หรือ CSV ก็ได้ ระบบจะตรวจให้เอง)</label>
+              <label class="text-xs font-semibold text-gray-600 mb-1 block">วางคำตอบจากกล่องโค้ดของ AI ที่นี่ (JSON หรือ CSV ระบบจะตรวจให้เอง)</label>
               <textarea id="ai-paste-response" class="${INPUT_CLS} font-mono text-xs" rows="6" placeholder="วางคำตอบทั้งหมดที่ AI ตอบกลับมา"></textarea>
               <button id="btn-ai-parse-response" class="w-full mt-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm">แปลงคำตอบเป็นคำถามร่าง</button>
             </div>

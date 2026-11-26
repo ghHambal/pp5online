@@ -50,8 +50,8 @@ export function openAttendanceAIAssistant({ classData, students, sessions, holid
           <span class="text-xs text-gray-500">นำคำสั่งไปใช้กับ AI พร้อมแนบหลักฐาน แล้วขอผลเป็น JSON ตามรูปแบบที่ระบุ</span>
         </div>
         <textarea data-prompt readonly rows="5" class="hidden w-full rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 font-mono text-xs"></textarea>
-        <label class="block text-sm font-semibold text-gray-700">วางผลจาก AI (JSON)
-          <textarea data-json rows="5" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" placeholder='[{"student_code":"26056","session_number":1,"status":"present"}]'></textarea>
+        <label class="block text-sm font-semibold text-gray-700">วางผลจากกล่องโค้ด AI (JSON)
+          <textarea data-json rows="5" class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-sm" placeholder='&#96;&#96;&#96;json&#10;[{"student_code":"26056","session_number":1,"status":"present"}]&#10;&#96;&#96;&#96;'></textarea>
         </label>
         <div class="flex items-center gap-3">
           <button type="button" data-preview class="rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 font-semibold">🔎 ตรวจผลและแสดงตัวอย่าง</button>
@@ -106,7 +106,8 @@ export function openAttendanceAIAssistant({ classData, students, sessions, holid
     const evidence = $('[data-evidence]').value.trim()
     const rosterData = picked.map(s => ({ student_code: String(s.student_code ?? ''), name: s.full_name ?? '' }))
     const sessionData = pickedSessions.map(s => ({ session_number: s.n, date: s.ds }))
-    const prompt = `ช่วยประเมินสถานะการเข้าเรียนจากหลักฐานที่แนบ โดยใช้ข้อมูลประกอบต่อไปนี้เท่านั้น: ${evidence || '(ครูจะให้คำอธิบายพร้อมหลักฐาน โดยระบุให้ชัดว่าหลักฐานตรงกับวันหรือคาบใด)'}\nวิชา: ${classData.master_subjects?.subject_name ?? ''} ห้อง: ${classData.class_name ?? ''}\nคาบที่ต้องประเมิน:\n${JSON.stringify(sessionData, null, 2)}\nรายชื่อนักเรียนที่ต้องประเมิน:\n${JSON.stringify(rosterData, null, 2)}\n\nคืนคำตอบเป็น JSON array เท่านั้น หนึ่งรายการต่อรหัสนักเรียนและคาบ ในรูปแบบ [{"student_code":"รหัส","session_number":1,"status":"present"}] โดย session_number ต้องเป็นเลขคาบจากรายการที่เลือก ใช้ status ได้เฉพาะ present=มา, absent=ขาด, late=สาย, excused=ลากิจ, sick=ป่วย; ถ้าหลักฐานระบุไม่ได้ให้ใช้ null ห้ามเดาหรืออนุมาน ห้ามใส่รหัสหรือคาบนอกบัญชีที่ให้มา`
+    const fence = String.fromCharCode(96).repeat(3)
+    const prompt = `ช่วยประเมินสถานะการเข้าเรียนจากหลักฐานที่แนบ โดยใช้ข้อมูลประกอบต่อไปนี้เท่านั้น: ${evidence || '(ครูจะให้คำอธิบายพร้อมหลักฐาน โดยระบุให้ชัดว่าหลักฐานตรงกับวันหรือคาบใด)'}\nวิชา: ${classData.master_subjects?.subject_name ?? ''} ห้อง: ${classData.class_name ?? ''}\nคาบที่ต้องประเมิน:\n${JSON.stringify(sessionData, null, 2)}\nรายชื่อนักเรียนที่ต้องประเมิน:\n${JSON.stringify(rosterData, null, 2)}\n\nคืนคำตอบเป็น JSON array เท่านั้น หนึ่งรายการต่อรหัสนักเรียนและคาบ ในรูปแบบ [{"student_code":"รหัส","session_number":1,"status":"present"}] โดย session_number ต้องเป็นเลขคาบจากรายการที่เลือก ใช้ status ได้เฉพาะ present=มา, absent=ขาด, late=สาย, excused=ลากิจ, sick=ป่วย; ถ้าหลักฐานระบุไม่ได้ให้ใช้ null ห้ามเดาหรืออนุมาน ห้ามใส่รหัสหรือคาบนอกบัญชีที่ให้มา\n\nบังคับรูปแบบคำตอบ: ใส่ JSON ทั้งหมดไว้ใน Markdown code block ที่เปิดด้วย ${fence}json และปิดด้วย ${fence} เท่านั้น ห้ามมีข้อความ คำอธิบาย หรืออักขระใดอยู่นอก code block ตัวอย่าง:\n${fence}json\n[{"student_code":"26056","session_number":1,"status":"present"}]\n${fence}`
     try {
       await navigator.clipboard.writeText(prompt)
       showToast('คัดลอกคำสั่งแล้ว แนบหลักฐานให้ AI และขอคำตอบเป็น JSON ได้เลย', 'success')

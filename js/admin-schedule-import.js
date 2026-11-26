@@ -158,7 +158,7 @@ function buildPrompt({ teachers, subjects, periods, year, semester, fileNames = 
     'รายวิชาอ้างอิงในระบบ:', JSON.stringify(subjectRoster),
     'คาบเรียนที่ระบบรองรับ:', JSON.stringify(periodRoster),
     '',
-    'ตอบกลับเป็น JSON เพียงกล่องเดียว ห้ามมีคำอธิบายก่อนหรือหลัง ตาม schema นี้:',
+    'ตอบกลับโดยครอบ JSON ทั้งหมดไว้ใน Markdown code block ชนิด json เพียงกล่องเดียว (เปิดด้วย ```json และปิดด้วย ```) ห้ามมีข้อความหรือคำอธิบายอยู่นอกกล่อง ตาม schema นี้:',
     JSON.stringify({
       schema_version: SCHEMA_VERSION,
       type: 'school_teacher_schedule',
@@ -192,7 +192,7 @@ function renderShell(state) {
       <div class="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-gray-500"><label class="cursor-pointer rounded-xl border border-gray-200 bg-white px-3 py-2 font-semibold hover:bg-gray-50">📎 เลือกไฟล์อ้างอิง<input id="asi-files" type="file" multiple accept=".xlsx,.xls,.csv,.pdf,.png,.jpg,.jpeg,.html" class="hidden" /></label><div id="asi-file-list" class="flex flex-wrap gap-1">${fileNames}</div></div>
     </section>
     <section class="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-      <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-bold text-gray-800">📥 วาง JSON จาก AI</h2><p class="mt-1 text-xs text-gray-500">ระบบจะยังไม่บันทึกจนกว่าจะยืนยันชื่อครูและตรวจรายการทั้งหมด</p></div><button id="asi-parse" type="button" class="rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white">🔎 ตรวจ JSON และ Preview</button></div>
+      <div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="font-bold text-gray-800">📥 วาง JSON จากกล่องโค้ดของ AI</h2><p class="mt-1 text-xs text-gray-500">ระบบจะยังไม่บันทึกจนกว่าจะยืนยันชื่อครูและตรวจรายการทั้งหมด</p></div><button id="asi-parse" type="button" class="rounded-xl bg-indigo-700 px-4 py-2.5 text-xs font-bold text-white">🔎 ตรวจ JSON และ Preview</button></div>
       <textarea id="asi-json" rows="10" class="mt-4 w-full rounded-xl border border-gray-200 p-3 font-mono text-[11px] leading-relaxed" placeholder="วาง JSON ประเภท pp5.school_teacher_schedule.v1 ที่นี่"></textarea>
       <div id="asi-message" class="mt-3 hidden rounded-xl px-3 py-2 text-xs"></div>
     </section>

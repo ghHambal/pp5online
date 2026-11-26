@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1152'
+import { APP_VERSION } from './version.js?v=10.22.1153'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1153': [
+    'กำชับทุกคำสั่ง AI ที่ขอผล JSON ให้ตอบใน Markdown code block ชนิด json เพียงกล่องเดียว โดยไม่มีข้อความนอกกล่อง',
+  ],
   '10.22.1152': [
     'ปรับ AI เช็คชื่อให้เลือกหลายคาบหรือเลือกทุกคาบได้ พร้อมแสดงตัวอย่างและแก้สถานะแยกรายคน–รายคาบก่อนบันทึก',
   ],
