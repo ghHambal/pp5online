@@ -17,6 +17,7 @@ import {
 } from './api.js'
 import { supabase } from './supabase.js'
 import { formatLeaveCountdown } from './leave-time.js'
+import { openAttendanceAIAssistant } from './attendance-ai.js'
 import { showToast, showDangerConfirm, showSuccessModal, getFriendlyErrorMessage } from './ui.js'
 import {
   setContent, setTitle, setActiveNav, _htmlEsc, _fmtDate, _parseDateOnly,
@@ -160,6 +161,12 @@ export async function renderAttendanceGrid(teacher, classData) {
                    hover:bg-emerald-700 transition flex items-center gap-1">
             ✅ <span class="hidden sm:inline">เช็คทั้งหมด</span>
           </button>
+          <button id="btn-att-ai"
+            class="px-3 py-1.5 bg-violet-600 text-white rounded-lg font-medium
+                   hover:bg-violet-700 transition flex items-center gap-1"
+            title="ให้ AI ช่วยอ่านหลักฐาน แล้วตรวจสถานะรายคนก่อนบันทึก">
+            🤖 <span class="hidden sm:inline">AI เช็คชื่อ</span>
+          </button>
           <button id="btn-leave-quota"
             class="px-3 py-1.5 bg-amber-50 text-amber-700 border border-amber-100 rounded-lg font-semibold
                    hover:bg-amber-100 transition flex items-center gap-1">
@@ -291,6 +298,13 @@ export async function renderAttendanceGrid(teacher, classData) {
       _openBulkCheckAllModal({
         students, sessions, attMap, holidaySet, saveClassId, saveSessN,
         onDone: () => renderAttendanceGrid(teacher, classData),
+      })
+    })
+
+    document.getElementById('btn-att-ai')?.addEventListener('click', () => {
+      openAttendanceAIAssistant({
+        classData, students, sessions, holidaySet, attMap, saveClassId, saveSessN,
+        onSaved: () => renderAttendanceGrid(teacher, classData),
       })
     })
 
