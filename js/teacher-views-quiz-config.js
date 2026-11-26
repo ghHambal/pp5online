@@ -271,11 +271,11 @@ async function _openQuizMakeupModal(teacher, bank, quiz, className, classes, ban
       if (search && !haystack.includes(search)) return ''
       const imageUrl = student.image_url ?? student.photo_url
       const avatar = imageUrl
-        ? `<img src="${_htmlEsc(imageUrl)}" alt="" loading="lazy" class="h-11 w-11 rounded-full object-cover border border-gray-200" onerror="this.hidden=true;this.nextElementSibling.hidden=false" /><span hidden class="h-11 w-11 rounded-full bg-gray-100 text-gray-400 border border-gray-200 flex items-center justify-center text-lg" aria-hidden="true">👤</span>`
-        : `<span class="h-11 w-11 rounded-full bg-gray-100 text-gray-400 border border-gray-200 flex items-center justify-center text-lg" aria-hidden="true">👤</span>`
+        ? `<div class="h-11 w-11 flex-shrink-0 overflow-hidden rounded-xl border border-gray-200 bg-gray-100"><img src="${_htmlEsc(imageUrl)}" alt="" loading="lazy" class="block h-full w-full rounded-xl object-cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><span class="h-full w-full items-center justify-center text-lg text-gray-400" style="display:none" aria-hidden="true">👤</span></div>`
+        : `<span class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-gray-100 text-lg text-gray-400" aria-hidden="true">👤</span>`
       return `<label class="flex items-center gap-3 px-3 py-2.5 hover:bg-teal-50 cursor-pointer">
         <input type="checkbox" class="quiz-makeup-student accent-teal-600" value="${Number(student.id)}" ${selectedStudentIds.has(Number(student.id)) ? 'checked' : ''} />
-        <span class="flex-shrink-0">${avatar}</span>
+        ${avatar}
         <span class="min-w-0"><span class="block text-sm font-semibold text-gray-700 truncate">${_htmlEsc(name)}</span>
           <span class="text-[11px] text-gray-400">${_htmlEsc(code)} · ยังไม่เคยเริ่มสอบ</span></span></label>`
     }).filter(Boolean)

@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1153'
+import { APP_VERSION } from './version.js?v=10.22.1154'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1154': [
+    'ปรับรูปนักเรียนในรายชื่อสอบชดเชยเป็นกรอบสี่เหลี่ยมขอบมน และแก้รูปสำรองไม่ให้ซ้อนกับรูปจริง',
+  ],
   '10.22.1153': [
     'กำชับทุกคำสั่ง AI ที่ขอผล JSON ให้ตอบใน Markdown code block ชนิด json เพียงกล่องเดียว โดยไม่มีข้อความนอกกล่อง',
   ],
