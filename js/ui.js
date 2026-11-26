@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1157'
+import { APP_VERSION } from './version.js?v=10.22.1158'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1158': [
+    'ย้ายไอคอนปักหมุดไปอยู่ด้านขวาของแถวเมนูตามตำแหน่งที่ครูเลือก',
+  ],
   '10.22.1157': [
     'ปรับเมนูค้นหาและรายการปักหมุดเป็นป๊อบอัพข้างหัวข้อสรุปของฉัน ลดพื้นที่บนหน้าภาพรวม และจัดรูปดาวให้อยู่ในแถวเมนูด้านซ้าย',
   ],

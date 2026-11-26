@@ -243,7 +243,7 @@ function _syncSidebarMenuPinButtons(items = _teacherMenuItems(), pins = _menuPin
       element.parentElement.insertBefore(wrapper, element)
       wrapper.append(element, button)
       Object.assign(button.style, {
-        position: 'absolute', left: '0', top: '50%', transform: 'translateY(-50%)', zIndex: '20',
+        position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', zIndex: '20',
         width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '0', border: '0', borderRadius: '8px', background: 'transparent', cursor: 'pointer',
         fontSize: '18px', lineHeight: '1',
