@@ -118,7 +118,7 @@ function _mountTeacherMenuDiscovery(teacher) {
   launcher.id = 'overview-menu-launcher'
   launcher.className = toolbar ? 'relative ml-auto flex-shrink-0' : 'relative mb-3 flex justify-end'
   launcher.innerHTML = '<button type="button" id="overview-menu-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="overview-menu-popover" class="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-800 shadow-sm hover:border-emerald-400 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"><span aria-hidden="true" class="text-base">☆</span><span>เมนูที่ใช้บ่อย</span><span id="overview-menu-pin-count" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px]">' + pins.length + '</span></button>' +
-    '<div id="overview-menu-popover" role="dialog" aria-label="เมนูที่ใช้บ่อยและค้นหาเมนู" class="hidden absolute right-0 top-full z-[120] mt-2 rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl" style="width:min(25rem, calc(100vw - 2rem));">' +
+    '<div id="overview-menu-popover" role="dialog" aria-label="เมนูที่ใช้บ่อยและค้นหาเมนู" class="hidden fixed z-[120] rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl" style="top:max(76px,calc(env(safe-area-inset-top) + 16px));right:max(12px,env(safe-area-inset-right));width:min(25rem,calc(100vw - 24px));max-height:calc(100dvh - max(92px,calc(env(safe-area-inset-top) + 32px)));transform-origin:top right;">' +
       '<div class="mb-2 flex items-center justify-between gap-3"><h3 class="text-sm font-bold text-gray-800">เมนูของฉัน</h3><button type="button" id="overview-menu-close" aria-label="ปิดเมนู" class="flex h-8 w-8 items-center justify-center rounded-lg text-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">×</button></div>' +
       '<label for="overview-menu-search" class="sr-only">ค้นหาเมนู</label><input id="overview-menu-search" type="search" autocomplete="off" placeholder="ค้นหาเมนู เช่น แบบทดสอบ คะแนน หรือเช็คชื่อ" class="mb-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-3 py-2.5 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100" aria-controls="overview-menu-list">' +
       '<div id="overview-menu-list" aria-live="polite"></div>' +
@@ -140,58 +140,16 @@ function _mountTeacherMenuDiscovery(teacher) {
     _syncSidebarMenuPinButtons(currentItems, currentPins)
   }
 
-  const animateMenuPinFlight = item => {
-    if (!item || !document.body.animate || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-    const source = launcher.querySelector('#overview-menu-toggle')?.getBoundingClientRect()
-    const sidebarItem = _teacherMenuItems().find(entry => entry.key === item.key)
-    const target = sidebarItem?.element.closest('.sidebar-menu-entry') || sidebarItem?.element
-    const destination = target?.getBoundingClientRect()
-    if (!source || !destination || !source.width || !destination.width || !destination.height || !target?.getClientRects().length) return
-    if (destination.bottom <= 0 || destination.top >= window.innerHeight || destination.right <= 0 || destination.left >= window.innerWidth) return
-
-    const cardWidth = Math.min(224, window.innerWidth - 24)
-    const startX = Math.max(12, Math.min(window.innerWidth - cardWidth - 12, source.left + source.width / 2 - cardWidth / 2))
-    const startY = Math.max(12, source.top + source.height / 2 - 24)
-    const endX = Math.max(12, Math.min(window.innerWidth - cardWidth - 12, destination.left + destination.width / 2 - cardWidth / 2))
-    const endY = Math.max(12, Math.min(window.innerHeight - 60, destination.top + destination.height / 2 - 24))
-    const deltaX = endX - startX
-    const deltaY = endY - startY
-    const card = document.createElement('div')
-    card.setAttribute('aria-hidden', 'true')
-    card.className = 'pointer-events-none fixed z-[9999] flex h-12 items-center gap-3 overflow-hidden rounded-2xl border border-emerald-200 bg-white/95 px-3 shadow-xl backdrop-blur-sm'
-    card.style.cssText = `left:${startX}px;top:${startY}px;width:${cardWidth}px;`
-    card.innerHTML = '<span class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-lg">' + _htmlEsc(item.icon) + '</span><span class="truncate text-sm font-semibold text-gray-800">' + _htmlEsc(item.label) + '</span>'
-    document.body.append(card)
-
-    const flight = card.animate([
-      { transform: 'translate3d(0,0,0) scale(.76)', opacity: 0, offset: 0 },
-      { transform: `translate3d(${deltaX * .48}px,${deltaY * .32 - 24}px,0) scale(1.04)`, opacity: 1, offset: .52 },
-      { transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(.76)`, opacity: .12, offset: 1 },
-    ], { duration: 720, easing: 'cubic-bezier(.2,.78,.25,1)', fill: 'forwards' })
-    flight.onfinish = () => {
-      card.remove()
-      const pin = target.querySelector(':scope > .sidebar-menu-pin')
-      pin?.animate([
-        { transform: 'translateY(-50%) scale(.72)', opacity: .6 },
-        { transform: 'translateY(-50%) scale(1.22)', opacity: 1, offset: .58 },
-        { transform: 'translateY(-50%) scale(1)', opacity: 1 },
-      ], { duration: 280, easing: 'ease-out' })
-    }
-    flight.oncancel = () => card.remove()
-  }
-
-  const togglePin = async (key, { animateFlight = false } = {}) => {
+  const togglePin = async key => {
     if (!teacher?.id) return
     const operation = _menuPinsSaving.catch(() => {}).then(async () => {
       const current = new Set(_menuPins(teacher))
       const wasPinned = current.has(key)
       wasPinned ? current.delete(key) : current.add(key)
-      const pinnedItem = !wasPinned && animateFlight ? _teacherMenuItems().find(item => item.key === key) : null
       const nextPrefs = { ...(teacher.overview_prefs || {}), pinnedMenuKeys: [...current] }
       await updateTeacher(teacher.id, { overview_prefs: nextPrefs })
       teacher.overview_prefs = nextPrefs
       renderPopover()
-      if (pinnedItem) animateMenuPinFlight(pinnedItem)
       showToast(wasPinned ? 'นำเมนูออกจากรายการปักหมุดแล้ว' : 'ปักหมุดเมนูแล้ว', 'success')
     })
     _menuPinsSaving = operation
@@ -232,7 +190,7 @@ function _mountTeacherMenuDiscovery(teacher) {
     const pinButton = event.target.closest('[data-menu-pin]')
     if (pinButton) {
       event.stopPropagation()
-      togglePin(pinButton.dataset.menuPin, { animateFlight: true })
+      togglePin(pinButton.dataset.menuPin)
       return
     }
     const openButton = event.target.closest('[data-menu-open]')
@@ -253,6 +211,12 @@ function _mountTeacherMenuDiscovery(teacher) {
       launcher.querySelector('#overview-menu-toggle').setAttribute('aria-expanded', String(!isOpen))
       if (!isOpen) {
         renderPopover()
+        if (!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches && typeof popover.animate === 'function') {
+          popover.animate([
+            { transform: 'scale(.08) translate3d(14px,-10px,0)', opacity: 0, filter: 'blur(5px)' },
+            { transform: 'scale(1) translate3d(0,0,0)', opacity: 1, filter: 'blur(0)' },
+          ], { duration: 420, easing: 'cubic-bezier(.16,1,.3,1)' })
+        }
       }
     } else if (event.target.closest('#overview-menu-close')) {
       popover.classList.add('hidden')
