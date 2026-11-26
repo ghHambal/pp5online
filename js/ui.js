@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1148'
+import { APP_VERSION } from './version.js?v=10.22.1149'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1149': [
+    'ให้ AI ช่วยลงคะแนนหลายคอลัมน์พร้อมกันได้ แสดงคอลัมน์ทั้งหมด เลือกหลายคอลัมน์หรือเลือกทุกคอลัมน์ พร้อมตรวจคะแนนรายช่องก่อนบันทึก',
+  ],
   '10.22.1148': [
     'ปรับ AI ให้เลือกคอลัมน์คะแนนที่มีอยู่ในห้องได้ พร้อมดึงชื่อและคะแนนเต็มจากคอลัมน์ และยืนยันก่อนเขียนทับคะแนนเดิม',
   ],
