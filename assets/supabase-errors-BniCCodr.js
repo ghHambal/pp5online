@@ -1,0 +1,1 @@
+function i(s,n){return["42703","PGRST204"].includes(s==null?void 0:s.code)&&new RegExp(`\\b${n}\\b`,"i").test(s.message??"")}function t(s,n){return["42883","PGRST202"].includes(s==null?void 0:s.code)&&new RegExp(`\\b${n}\\b`,"i").test(s.message??"")}export{i as a,t as i};

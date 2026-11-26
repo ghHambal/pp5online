@@ -1,0 +1,1 @@
+const i=new Set(["ชีวิต","ทักษะชีวิต"]);function l(n){if(n==null)return null;const r=String(n).trim().replace(/\s+/g," ");return r?i.has(r)?"ชีวิต":r:null}function t(n){return l(n)==="ชีวิต"}export{t as i,l as n};
