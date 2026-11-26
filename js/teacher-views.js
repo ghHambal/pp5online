@@ -31,6 +31,8 @@ let _dutyWidgetTimer  = null
 let _workCalWidgetTimer = null
 let _menuPinTeacher = null
 let _menuPinsSaving = Promise.resolve()
+let _menuDiscoveryAbort = null
+const MENU_PIN_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M16 9V4h1V2H7v2h1v5c0 1.66-1.34 3-3 3v2h7v7l1 1 1-1v-7h7v-2c-1.66 0-3-1.34-3-3z"/></svg>'
 
 function _teacherMenuItems() {
   const nav = document.querySelector('#sidebar nav')
@@ -66,57 +68,68 @@ function _menuPins(teacher = _menuPinTeacher) {
   return Array.isArray(teacher?.overview_prefs?.pinnedMenuKeys) ? teacher.overview_prefs.pinnedMenuKeys : []
 }
 
-function _menuDiscoveryMarkup(items, pins) {
+function _menuPopoverMarkup(items, pins, query = '') {
   const byKey = new Map(items.map(item => [item.key, item]))
   const pinned = pins.map(key => byKey.get(key)).filter(Boolean)
-  const pinnedMarkup = pinned.length
-    ? '<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">' + pinned.map(item =>
-        '<div class="flex min-w-0 items-stretch rounded-xl border border-emerald-100 bg-white shadow-sm hover:border-emerald-300 hover:shadow transition">' +
-          '<button type="button" data-menu-open="' + _htmlEsc(item.key) + '" class="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-l-xl">' +
-            '<span class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-xl">' + _htmlEsc(item.icon) + '</span>' +
-            '<span class="min-w-0"><span class="block truncate text-sm font-semibold text-gray-800">' + _htmlEsc(item.label) + '</span><span class="mt-0.5 block truncate text-[11px] text-gray-400">' + _htmlEsc(item.groupName) + '</span></span>' +
+  const normalizedQuery = query.trim().normalize('NFKC').toLocaleLowerCase()
+  const entries = normalizedQuery
+    ? items.filter(item => (item.label + ' ' + item.groupName).normalize('NFKC').toLocaleLowerCase().includes(normalizedQuery))
+    : pinned
+  const listHtml = entries.length
+    ? '<div class="divide-y divide-gray-100">' + entries.map(item => {
+        const isPinned = pins.includes(item.key)
+        return '<div class="flex items-center gap-2 px-2 py-1.5 hover:bg-emerald-50">' +
+          '<button type="button" data-menu-open="' + _htmlEsc(item.key) + '" class="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-1.5 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">' +
+            '<span class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-lg">' + _htmlEsc(item.icon) + '</span>' +
+            '<span class="min-w-0"><span class="block truncate text-sm font-semibold text-gray-800">' + _htmlEsc(item.label) + '</span><span class="block truncate text-[11px] text-gray-400">' + _htmlEsc(item.groupName) + '</span></span>' +
           '</button>' +
-          '<button type="button" data-menu-pin="' + _htmlEsc(item.key) + '" aria-label="เลิกปักหมุด ' + _htmlEsc(item.label) + '" title="เลิกปักหมุด" class="flex w-11 flex-shrink-0 items-center justify-center rounded-r-xl text-amber-500 hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">★</button>' +
+          '<button type="button" data-menu-pin="' + _htmlEsc(item.key) + '" aria-label="' + (isPinned ? 'เลิกปักหมุด ' : 'ปักหมุด ') + _htmlEsc(item.label) + '" title="' + (isPinned ? 'เลิกปักหมุด' : 'ปักหมุดเมนู') + '" class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ' + (isPinned ? 'text-amber-500' : 'text-gray-300 hover:bg-amber-50 hover:text-amber-500') + ' focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">' + MENU_PIN_SVG + '</button>' +
         '</div>'
-      ).join('') + '</div>'
-    : '<div class="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-5 text-center"><p class="text-sm font-semibold text-gray-600">ยังไม่มีเมนูที่ปักหมุด</p><p class="mt-1 text-xs text-gray-400">กดรูปดาวข้างเมนูที่ใช้บ่อย หรือค้นหาเมนูด้านล่างเพื่อเริ่มปักหมุด</p></div>'
-
-  return '<section id="overview-menu-discovery" class="mb-5 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5" aria-label="ค้นหาและปักหมุดเมนู">' +
-    '<div class="mb-4 flex flex-wrap items-end justify-between gap-2"><div><h2 class="text-base font-bold text-gray-800">เมนูของฉัน</h2><p class="mt-1 text-xs text-gray-500">ค้นหาเมนู หรือปักหมุดเมนูที่ใช้บ่อยไว้ตรงนี้</p></div><span class="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">' + pinned.length + ' เมนูที่ปักหมุด</span></div>' +
-    '<label for="overview-menu-search" class="mb-1.5 block text-xs font-semibold text-gray-600">ค้นหาเมนู</label>' +
-    '<div class="relative"><span aria-hidden="true" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">⌕</span><input id="overview-menu-search" type="search" autocomplete="off" placeholder="พิมพ์ชื่อเมนู เช่น แบบทดสอบ คะแนน หรือเช็คชื่อ" class="w-full rounded-xl border border-gray-300 bg-gray-50 py-3 pl-10 pr-4 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100" aria-controls="overview-menu-results" aria-expanded="false"></div>' +
-    '<div id="overview-menu-results" class="mt-2 hidden max-h-80 overflow-y-auto rounded-xl border border-gray-200" role="listbox" aria-label="ผลการค้นหาเมนู"></div>' +
-    '<div class="mt-5"><div class="mb-2 flex items-center justify-between"><h3 class="text-sm font-bold text-gray-700">ปักหมุด</h3><span class="text-[11px] text-gray-400">กดเมนูเพื่อเปิด · กดดาวเพื่อนำออก</span></div><div id="overview-pinned-menus">' + pinnedMarkup + '</div></div>' +
-    '</section>'
+      }).join('') + '</div>'
+    : normalizedQuery
+      ? '<p class="px-3 py-5 text-center text-sm text-gray-500">ไม่พบเมนูที่ตรงกับคำค้น</p>'
+      : '<p class="px-3 py-5 text-center text-sm text-gray-500">ยังไม่มีเมนูที่ปักหมุด กดรูปดาวข้างเมนูที่ใช้บ่อยเพื่อเพิ่มได้เลย</p>'
+  return '<p class="mb-1 px-1 text-xs font-semibold text-gray-500">' + (normalizedQuery ? 'ผลการค้นหา ' + entries.length + ' เมนู' : 'เมนูที่ปักหมุด ' + pinned.length) + '</p>' +
+    '<div class="max-h-[min(55vh,24rem)] overflow-y-auto rounded-xl border border-gray-200">' + listHtml + '</div>'
 }
 
 function _mountTeacherMenuDiscovery(teacher) {
   _menuPinTeacher = teacher
   const main = document.getElementById('main-content')
   if (!main) return
-  main.querySelector('#overview-menu-discovery')?.remove()
+  main.querySelector('#overview-menu-launcher')?.remove()
+  _menuDiscoveryAbort?.abort()
   const items = _teacherMenuItems()
   const pins = _menuPins(teacher).filter(key => items.some(item => item.key === key))
-  const wrapper = document.createElement('div')
-  wrapper.innerHTML = _menuDiscoveryMarkup(items, pins)
-  main.prepend(wrapper.firstElementChild)
-
-  const refresh = () => {
-    const root = document.getElementById('overview-menu-discovery')
-    if (!root) return
+  const summaryTitle = main.querySelector('#teacher-overview-summary-title')
+  const toolbar = summaryTitle?.parentElement
+  const executiveCards = main.querySelector('#exec-stat-cards')
+  if (!toolbar && !executiveCards) {
+    _syncSidebarMenuPinButtons(items, pins)
+    return
+  }
+  const launcher = document.createElement('div')
+  launcher.id = 'overview-menu-launcher'
+  launcher.className = toolbar ? 'relative ml-auto flex-shrink-0' : 'relative mb-3 flex justify-end'
+  launcher.innerHTML = '<button type="button" id="overview-menu-toggle" aria-haspopup="dialog" aria-expanded="false" aria-controls="overview-menu-popover" class="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-800 shadow-sm hover:border-emerald-400 hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"><span aria-hidden="true" class="text-base">☆</span><span>เมนูที่ใช้บ่อย</span><span id="overview-menu-pin-count" class="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px]">' + pins.length + '</span></button>' +
+    '<div id="overview-menu-popover" role="dialog" aria-label="เมนูที่ใช้บ่อยและค้นหาเมนู" class="hidden absolute right-0 top-full z-[120] mt-2 rounded-2xl border border-gray-200 bg-white p-3 shadow-2xl" style="width:min(25rem, calc(100vw - 2rem));">' +
+      '<div class="mb-2 flex items-center justify-between gap-3"><h3 class="text-sm font-bold text-gray-800">เมนูของฉัน</h3><button type="button" id="overview-menu-close" aria-label="ปิดเมนู" class="flex h-8 w-8 items-center justify-center rounded-lg text-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">×</button></div>' +
+      '<label for="overview-menu-search" class="sr-only">ค้นหาเมนู</label><input id="overview-menu-search" type="search" autocomplete="off" placeholder="ค้นหาเมนู เช่น แบบทดสอบ คะแนน หรือเช็คชื่อ" class="mb-2 w-full rounded-xl border border-gray-300 bg-gray-50 px-3 py-2.5 text-sm text-gray-800 outline-none placeholder:text-gray-400 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-100" aria-controls="overview-menu-list">' +
+      '<div id="overview-menu-list" aria-live="polite"></div>' +
+    '</div>'
+  if (toolbar) {
+    toolbar.classList.add('flex-wrap')
+    toolbar.append(launcher)
+  } else {
+    executiveCards.before(launcher)
+  }
+  const popover = launcher.querySelector('#overview-menu-popover')
+  const search = launcher.querySelector('#overview-menu-search')
+  const renderPopover = (query = search.value) => {
     const currentItems = _teacherMenuItems()
     const currentPins = _menuPins(teacher).filter(key => currentItems.some(item => item.key === key))
-    const searchValue = root.querySelector('#overview-menu-search')?.value || ''
-    const expanded = root.querySelector('#overview-menu-search')?.getAttribute('aria-expanded') === 'true'
-    root.outerHTML = _menuDiscoveryMarkup(currentItems, currentPins)
-    const nextRoot = document.getElementById('overview-menu-discovery')
-    const input = nextRoot?.querySelector('#overview-menu-search')
-    if (input) {
-      input.value = searchValue
-      input.setAttribute('aria-expanded', String(expanded))
-    }
-    wire()
-    renderResults(searchValue)
+    launcher.querySelector('#overview-menu-pin-count').textContent = currentPins.length
+    launcher.querySelector('#overview-menu-list').innerHTML = _menuPopoverMarkup(currentItems, currentPins, query)
     _syncSidebarMenuPinButtons(currentItems, currentPins)
   }
 
@@ -129,7 +142,7 @@ function _mountTeacherMenuDiscovery(teacher) {
       const nextPrefs = { ...(teacher.overview_prefs || {}), pinnedMenuKeys: [...current] }
       await updateTeacher(teacher.id, { overview_prefs: nextPrefs })
       teacher.overview_prefs = nextPrefs
-      refresh()
+      renderPopover()
       showToast(wasPinned ? 'นำเมนูออกจากรายการปักหมุดแล้ว' : 'ปักหมุดเมนูแล้ว', 'success')
     })
     _menuPinsSaving = operation
@@ -141,61 +154,75 @@ function _mountTeacherMenuDiscovery(teacher) {
 
   const openMenu = key => {
     const item = _teacherMenuItems().find(entry => entry.key === key)
-    if (item) item.element.click()
+    popover.classList.add('hidden')
+    launcher.querySelector('#overview-menu-toggle').setAttribute('aria-expanded', 'false')
+    if (item) {
+      item.element.click()
+    }
   }
 
-  const renderResults = value => {
-    const root = document.getElementById('overview-menu-discovery')
-    const input = root?.querySelector('#overview-menu-search')
-    const results = root?.querySelector('#overview-menu-results')
-    if (!root || !input || !results) return
-    const query = value.trim().toLocaleLowerCase()
-    input.setAttribute('aria-expanded', String(Boolean(query)))
-    if (!query) {
-      results.classList.add('hidden')
-      results.innerHTML = ''
+  _menuDiscoveryAbort = new AbortController()
+  const { signal } = _menuDiscoveryAbort
+  launcher.addEventListener('click', event => {
+    const pinButton = event.target.closest('[data-menu-pin]')
+    if (pinButton) {
+      event.stopPropagation()
+      togglePin(pinButton.dataset.menuPin)
       return
     }
-    const matches = _teacherMenuItems().filter(item =>
-      (item.label + ' ' + item.groupName).normalize('NFKC').toLocaleLowerCase().includes(query.normalize('NFKC'))
-    )
-    results.classList.remove('hidden')
-    results.innerHTML = matches.length
-      ? '<p class="sticky top-0 border-b border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-semibold text-gray-500">พบ ' + matches.length + ' เมนู</p>' + matches.map(item => {
-          const pinned = _menuPins(teacher).includes(item.key)
-          return '<div class="flex items-center border-b border-gray-100 last:border-0 hover:bg-emerald-50">' +
-            '<button type="button" role="option" data-menu-open="' + _htmlEsc(item.key) + '" aria-label="เปิดเมนู ' + _htmlEsc(item.label) + '" class="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-emerald-500">' +
-              '<span class="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-white text-lg shadow-sm">' + _htmlEsc(item.icon) + '</span><span class="min-w-0"><span class="block truncate text-sm font-semibold text-gray-800">' + _htmlEsc(item.label) + '</span><span class="block truncate text-[11px] text-gray-400">' + _htmlEsc(item.groupName) + '</span></span>' +
-            '</button><button type="button" data-menu-pin="' + _htmlEsc(item.key) + '" aria-label="' + (pinned ? 'เลิกปักหมุด ' : 'ปักหมุด ') + _htmlEsc(item.label) + '" title="' + (pinned ? 'เลิกปักหมุด' : 'ปักหมุดเมนู') + '" class="mx-2 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg text-lg ' + (pinned ? 'text-amber-500' : 'text-gray-300 hover:bg-amber-50 hover:text-amber-500') + ' focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">' + (pinned ? '★' : '☆') + '</button></div>'
-        }).join('')
-      : '<p class="px-4 py-5 text-center text-sm text-gray-500">ไม่พบเมนูที่ตรงกับคำค้น</p>'
-  }
-
-  const wire = () => {
-    const root = document.getElementById('overview-menu-discovery')
-    if (!root) return
-    root.querySelector('#overview-menu-search')?.addEventListener('input', event => renderResults(event.target.value))
-    root.querySelector('#overview-menu-search')?.addEventListener('keydown', event => {
+    const openButton = event.target.closest('[data-menu-open]')
+    if (openButton) {
+      event.stopPropagation()
+      openMenu(openButton.dataset.menuOpen)
+      return
+    }
+    if (event.target.closest('#overview-menu-toggle')) {
+      const isOpen = !popover.classList.contains('hidden')
+      popover.classList.toggle('hidden', isOpen)
+      launcher.querySelector('#overview-menu-toggle').setAttribute('aria-expanded', String(!isOpen))
+      if (!isOpen) {
+        renderPopover()
+        search.focus()
+      }
+    } else if (event.target.closest('#overview-menu-close')) {
+      popover.classList.add('hidden')
+      launcher.querySelector('#overview-menu-toggle').setAttribute('aria-expanded', 'false')
+    }
+  }, { signal })
+  search.addEventListener('input', () => renderPopover(), { signal })
+  search.addEventListener('keydown', event => {
       if (event.key === 'Enter') {
-        const firstResult = root.querySelector('[data-menu-open]')
+        const firstResult = popover.querySelector('[data-menu-open]')
         if (firstResult) {
           event.preventDefault()
           firstResult.click()
         }
       } else if (event.key === 'Escape') {
-        event.currentTarget.value = ''
-        renderResults('')
+        if (search.value) {
+          search.value = ''
+          renderPopover('')
+        } else {
+          popover.classList.add('hidden')
+          launcher.querySelector('#overview-menu-toggle').setAttribute('aria-expanded', 'false')
+        }
       }
-    })
-    root.querySelectorAll('[data-menu-open]').forEach(button => button.addEventListener('click', () => openMenu(button.dataset.menuOpen)))
-    root.querySelectorAll('[data-menu-pin]').forEach(button => button.addEventListener('click', () => togglePin(button.dataset.menuPin)))
-  }
-  wire()
-  renderResults('')
+  }, { signal })
+  document.addEventListener('pointerdown', event => {
+    if (!launcher.contains(event.target)) {
+      popover.classList.add('hidden')
+      launcher.querySelector('#overview-menu-toggle').setAttribute('aria-expanded', 'false')
+    }
+  }, { capture: true, signal })
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !popover.classList.contains('hidden')) {
+      popover.classList.add('hidden')
+      launcher.querySelector('#overview-menu-toggle').setAttribute('aria-expanded', 'false')
+    }
+  }, { signal })
+  renderPopover('')
 
   window._toggleOverviewMenuPin = togglePin
   window._openOverviewMenu = openMenu
-  _syncSidebarMenuPinButtons(items, pins)
 }
 
 function _syncSidebarMenuPinButtons(items = _teacherMenuItems(), pins = _menuPins()) {
@@ -207,12 +234,20 @@ function _syncSidebarMenuPinButtons(items = _teacherMenuItems(), pins = _menuPin
     if (!button) {
       button = document.createElement('button')
       button.type = 'button'
-      button.className = 'sidebar-menu-pin absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-base text-emerald-200 hover:bg-emerald-700 hover:text-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300'
+      button.className = 'sidebar-menu-pin text-emerald-200 hover:text-amber-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300'
+      button.innerHTML = MENU_PIN_SVG
       wrapper = document.createElement('div')
-      wrapper.className = 'sidebar-menu-entry relative'
+      wrapper.className = 'sidebar-menu-entry'
+      wrapper.style.position = 'relative'
+      wrapper.style.width = '100%'
       element.parentElement.insertBefore(wrapper, element)
       wrapper.append(element, button)
-      element.classList.add('pr-10')
+      Object.assign(button.style, {
+        position: 'absolute', left: '0', top: '50%', transform: 'translateY(-50%)', zIndex: '20',
+        width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0', border: '0', borderRadius: '8px', background: 'transparent', cursor: 'pointer',
+        fontSize: '18px', lineHeight: '1',
+      })
       button.addEventListener('click', event => {
         event.preventDefault()
         event.stopPropagation()
@@ -220,11 +255,12 @@ function _syncSidebarMenuPinButtons(items = _teacherMenuItems(), pins = _menuPin
       })
     }
     const isPinned = pinned.has(item.key)
-    button.textContent = isPinned ? '★' : '☆'
+    button.innerHTML = MENU_PIN_SVG
     button.dataset.pinned = String(isPinned)
     button.setAttribute('aria-label', (isPinned ? 'เลิกปักหมุด ' : 'ปักหมุด ') + item.label)
     button.title = isPinned ? 'เลิกปักหมุด' : 'ปักหมุดเมนูนี้ไว้หน้าภาพรวม'
     button.classList.toggle('text-amber-300', isPinned)
+    button.classList.toggle('text-emerald-200', !isPinned)
   })
 }
 
