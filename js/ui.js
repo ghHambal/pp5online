@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1159'
+import { APP_VERSION } from './version.js?v=10.22.1160'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1160': [
+    'เพิ่มแอนิเมชันการ์ดเมนูลอยจากปุ่มเมนูที่ใช้บ่อยไปยังแถบด้านซ้ายเมื่อปักหมุด พร้อมรองรับการลดการเคลื่อนไหวของอุปกรณ์',
+  ],
   '10.22.1159': [
     'ปรับป๊อบอัพเมนูที่ใช้บ่อยไม่ให้เปิดคีย์บอร์ดอัตโนมัติ และเพิ่มมุมมองรายการหรือกริดพร้อมจำค่าที่เลือก',
   ],

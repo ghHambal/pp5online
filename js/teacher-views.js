@@ -140,16 +140,58 @@ function _mountTeacherMenuDiscovery(teacher) {
     _syncSidebarMenuPinButtons(currentItems, currentPins)
   }
 
-  const togglePin = async key => {
+  const animateMenuPinFlight = item => {
+    if (!item || !document.body.animate || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    const source = launcher.querySelector('#overview-menu-toggle')?.getBoundingClientRect()
+    const sidebarItem = _teacherMenuItems().find(entry => entry.key === item.key)
+    const target = sidebarItem?.element.closest('.sidebar-menu-entry') || sidebarItem?.element
+    const destination = target?.getBoundingClientRect()
+    if (!source || !destination || !source.width || !destination.width || !destination.height || !target?.getClientRects().length) return
+    if (destination.bottom <= 0 || destination.top >= window.innerHeight || destination.right <= 0 || destination.left >= window.innerWidth) return
+
+    const cardWidth = Math.min(224, window.innerWidth - 24)
+    const startX = Math.max(12, Math.min(window.innerWidth - cardWidth - 12, source.left + source.width / 2 - cardWidth / 2))
+    const startY = Math.max(12, source.top + source.height / 2 - 24)
+    const endX = Math.max(12, Math.min(window.innerWidth - cardWidth - 12, destination.left + destination.width / 2 - cardWidth / 2))
+    const endY = Math.max(12, Math.min(window.innerHeight - 60, destination.top + destination.height / 2 - 24))
+    const deltaX = endX - startX
+    const deltaY = endY - startY
+    const card = document.createElement('div')
+    card.setAttribute('aria-hidden', 'true')
+    card.className = 'pointer-events-none fixed z-[9999] flex h-12 items-center gap-3 overflow-hidden rounded-2xl border border-emerald-200 bg-white/95 px-3 shadow-xl backdrop-blur-sm'
+    card.style.cssText = `left:${startX}px;top:${startY}px;width:${cardWidth}px;`
+    card.innerHTML = '<span class="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-lg">' + _htmlEsc(item.icon) + '</span><span class="truncate text-sm font-semibold text-gray-800">' + _htmlEsc(item.label) + '</span>'
+    document.body.append(card)
+
+    const flight = card.animate([
+      { transform: 'translate3d(0,0,0) scale(.76)', opacity: 0, offset: 0 },
+      { transform: `translate3d(${deltaX * .48}px,${deltaY * .32 - 24}px,0) scale(1.04)`, opacity: 1, offset: .52 },
+      { transform: `translate3d(${deltaX}px,${deltaY}px,0) scale(.76)`, opacity: .12, offset: 1 },
+    ], { duration: 720, easing: 'cubic-bezier(.2,.78,.25,1)', fill: 'forwards' })
+    flight.onfinish = () => {
+      card.remove()
+      const pin = target.querySelector(':scope > .sidebar-menu-pin')
+      pin?.animate([
+        { transform: 'translateY(-50%) scale(.72)', opacity: .6 },
+        { transform: 'translateY(-50%) scale(1.22)', opacity: 1, offset: .58 },
+        { transform: 'translateY(-50%) scale(1)', opacity: 1 },
+      ], { duration: 280, easing: 'ease-out' })
+    }
+    flight.oncancel = () => card.remove()
+  }
+
+  const togglePin = async (key, { animateFlight = false } = {}) => {
     if (!teacher?.id) return
     const operation = _menuPinsSaving.catch(() => {}).then(async () => {
       const current = new Set(_menuPins(teacher))
       const wasPinned = current.has(key)
       wasPinned ? current.delete(key) : current.add(key)
+      const pinnedItem = !wasPinned && animateFlight ? _teacherMenuItems().find(item => item.key === key) : null
       const nextPrefs = { ...(teacher.overview_prefs || {}), pinnedMenuKeys: [...current] }
       await updateTeacher(teacher.id, { overview_prefs: nextPrefs })
       teacher.overview_prefs = nextPrefs
       renderPopover()
+      if (pinnedItem) animateMenuPinFlight(pinnedItem)
       showToast(wasPinned ? 'นำเมนูออกจากรายการปักหมุดแล้ว' : 'ปักหมุดเมนูแล้ว', 'success')
     })
     _menuPinsSaving = operation
@@ -190,7 +232,7 @@ function _mountTeacherMenuDiscovery(teacher) {
     const pinButton = event.target.closest('[data-menu-pin]')
     if (pinButton) {
       event.stopPropagation()
-      togglePin(pinButton.dataset.menuPin)
+      togglePin(pinButton.dataset.menuPin, { animateFlight: true })
       return
     }
     const openButton = event.target.closest('[data-menu-open]')
