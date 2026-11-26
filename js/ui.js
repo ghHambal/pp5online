@@ -1,5 +1,5 @@
 import { mountTeacherHeaderTool } from './teacher-header-tools.js'
-import { APP_VERSION } from './version.js?v=10.22.1151'
+import { APP_VERSION } from './version.js?v=10.22.1152'
 
 if (typeof window !== 'undefined' && !('rootSettings' in window)) {
   Object.defineProperty(window, 'rootSettings', {
@@ -1015,6 +1015,9 @@ export function createStudentMultiSelect({ wrap, chipsWrap, students, value = []
 
 // ─── Version Changelogs List ────────────────────────────────────────────────
 const CHANGELOGS = {
+  '10.22.1152': [
+    'ปรับ AI เช็คชื่อให้เลือกหลายคาบหรือเลือกทุกคาบได้ พร้อมแสดงตัวอย่างและแก้สถานะแยกรายคน–รายคาบก่อนบันทึก',
+  ],
   '10.22.1151': [
     'เพิ่ม AI ช่วยเช็คชื่อ เลือกคาบและนักเรียน คัดลอกคำสั่งจากรายชื่อไปให้ AI แล้วตรวจหรือแก้สถานะรายคนก่อนยืนยันบันทึก',
   ],
